@@ -67,7 +67,7 @@ function copyRuntimeAssets(outDir: string): void {
     type: wrapperPackage.type ?? "module",
     piConfig: {
       name: wrapperPackage.piConfig?.name ?? "pi-roaster",
-      configDir: wrapperPackage.piConfig?.configDir ?? ".pi",
+      configDir: wrapperPackage.piConfig?.configDir ?? ".config/pi-roaster",
     },
   };
 

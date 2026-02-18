@@ -22,7 +22,7 @@ Modes:
 
 Options:
   --cwd <path>          Working directory
-  --config <path>       Roaster config path (default: .pi/roaster.json)
+  --config <path>       Roaster config path (default: .pi-roaster/roaster.json)
   --model <provider/id> Model override
   --task <json>         TaskSpec JSON (schema: roaster.task.v1)
   --task-file <path>    TaskSpec JSON file

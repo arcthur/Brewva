@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$ref": "#/definitions/RoasterConfig",
   "title": "pi-roaster RoasterConfig",
-  "description": "JSON Schema for .pi/roaster.json (Roaster runtime configuration).",
+  "description": "JSON Schema for .pi-roaster/roaster.json (Roaster runtime configuration).",
   "definitions": {
     "RoasterConfig": {
       "type": "object",

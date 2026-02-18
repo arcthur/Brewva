@@ -6,7 +6,7 @@
   "type": "module",
   "piConfig": {
     "name": "pi-roaster",
-    "configDir": ".pi"
+    "configDir": ".config/pi-roaster"
   },
   "bin": {
     "pi-roaster": "./bin/pi-roaster.js"

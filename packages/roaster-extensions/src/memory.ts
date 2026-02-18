@@ -1,13 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   type ContextBudgetUsage,
   type EvidenceLedgerRow,
   type RoasterRuntime,
+  resolveGlobalRoasterRootDir,
 } from "@pi-roaster/roaster-runtime";
-import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import {
   buildFallbackHandoff,
   buildHandoffFromDigest,
@@ -65,7 +65,7 @@ function memoryPath(cwd: string, sessionId: string): string {
 }
 
 function userMemoryDir(): string {
-  return resolve(dirname(getAgentDir()), "memory");
+  return resolve(resolveGlobalRoasterRootDir(), "memory");
 }
 
 function userMemoryPath(): string {

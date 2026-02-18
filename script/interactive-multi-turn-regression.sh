@@ -74,8 +74,8 @@ if [[ -z "$TARGET_CWD" ]]; then
   AUTO_WORKSPACE=1
 fi
 
-mkdir -p "$TARGET_CWD/.pi"
-cat >"$TARGET_CWD/.pi/roaster.json" <<'JSON'
+mkdir -p "$TARGET_CWD/.pi-roaster"
+cat >"$TARGET_CWD/.pi-roaster/roaster.json" <<'JSON'
 {
   "infrastructure": {
     "contextBudget": {

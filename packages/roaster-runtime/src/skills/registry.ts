@@ -1,7 +1,11 @@
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RoasterConfig, SkillDocument, SkillTier, SkillsIndexEntry } from "../types.js";
+import {
+  resolveGlobalRoasterRootDir,
+  resolveProjectRoasterRootDir,
+} from "../config/paths.js";
 import { parseSkillDocument, tightenContract } from "./contract.js";
 
 const TIER_PRIORITY: Record<SkillTier, number> = {
@@ -13,7 +17,8 @@ const TIER_PRIORITY: Record<SkillTier, number> = {
 export type SkillRootSource =
   | "module_ancestor"
   | "exec_ancestor"
-  | "cwd_ancestor"
+  | "global_root"
+  | "project_root"
   | "config_root";
 
 export interface SkillRegistryRoot {
@@ -45,10 +50,12 @@ function resolveSkillDirectory(rootDir: string): string | undefined {
   return undefined;
 }
 
-function collectAncestors(startDir: string): string[] {
+const MAX_ANCESTOR_DEPTH = 10;
+
+function collectBoundedAncestors(startDir: string): string[] {
   const out: string[] = [];
   let current = resolve(startDir);
-  while (true) {
+  for (let depth = 0; depth < MAX_ANCESTOR_DEPTH; depth++) {
     out.push(current);
     const parent = dirname(current);
     if (parent === current) break;
@@ -58,8 +65,9 @@ function collectAncestors(startDir: string): string[] {
 }
 
 function sourcePriority(source: SkillRootSource): number {
-  if (source === "config_root") return 4;
-  if (source === "cwd_ancestor") return 3;
+  if (source === "config_root") return 5;
+  if (source === "project_root") return 4;
+  if (source === "global_root") return 3;
   if (source === "exec_ancestor") return 2;
   return 1;
 }
@@ -100,6 +108,7 @@ export function discoverSkillRegistryRoots(input: {
   configuredRoots?: string[];
   moduleUrl?: string;
   execPath?: string;
+  globalRootDir?: string;
 }): SkillRegistryRoot[] {
   const roots: SkillRegistryRoot[] = [];
   const rootIndexBySkillDir = new Map<string, number>();
@@ -112,7 +121,7 @@ export function discoverSkillRegistryRoots(input: {
     modulePath = undefined;
   }
   if (modulePath) {
-    const moduleAncestors = collectAncestors(dirname(modulePath)).reverse();
+    const moduleAncestors = collectBoundedAncestors(dirname(modulePath)).reverse();
     for (const ancestor of moduleAncestors) {
       appendDiscoveredRoot(roots, rootIndexBySkillDir, ancestor, "module_ancestor");
     }
@@ -120,16 +129,17 @@ export function discoverSkillRegistryRoots(input: {
 
   const execPath = input.execPath ?? process.execPath;
   if (typeof execPath === "string" && execPath.trim().length > 0) {
-    const execAncestors = collectAncestors(dirname(resolve(execPath))).reverse();
+    const execAncestors = collectBoundedAncestors(dirname(resolve(execPath))).reverse();
     for (const ancestor of execAncestors) {
       appendDiscoveredRoot(roots, rootIndexBySkillDir, ancestor, "exec_ancestor");
     }
   }
 
-  const cwdAncestors = collectAncestors(input.cwd).reverse();
-  for (const ancestor of cwdAncestors) {
-    appendDiscoveredRoot(roots, rootIndexBySkillDir, ancestor, "cwd_ancestor");
-  }
+  const globalRootDir = input.globalRootDir ?? resolveGlobalRoasterRootDir();
+  appendDiscoveredRoot(roots, rootIndexBySkillDir, globalRootDir, "global_root");
+
+  const projectRoot = resolveProjectRoasterRootDir(input.cwd);
+  appendDiscoveredRoot(roots, rootIndexBySkillDir, projectRoot, "project_root");
 
   for (const configured of input.configuredRoots ?? []) {
     if (typeof configured !== "string") continue;
@@ -146,8 +156,15 @@ export function discoverSkillRegistryRoots(input: {
   return roots;
 }
 
+function isContainedWithin(candidate: string, container: string): boolean {
+  const resolved = resolve(candidate);
+  const base = resolve(container);
+  return resolved === base || resolved.startsWith(base + "/");
+}
+
 function listSkillFiles(rootDir: string): string[] {
   if (!isDirectory(rootDir)) return [];
+  const resolvedRoot = resolve(rootDir);
   const out: string[] = [];
 
   const walk = (dir: string, allowRootMarkdown: boolean): void => {
@@ -164,7 +181,9 @@ function listSkillFiles(rootDir: string): string[] {
       let isFile = entry.isFile();
       if (entry.isSymbolicLink()) {
         try {
-          const st = statSync(full);
+          const real = realpathSync(full);
+          if (!isContainedWithin(real, resolvedRoot)) continue;
+          const st = statSync(real);
           isDir = st.isDirectory();
           isFile = st.isFile();
         } catch {
@@ -185,7 +204,7 @@ function listSkillFiles(rootDir: string): string[] {
     }
   };
 
-  walk(rootDir, true);
+  walk(resolvedRoot, true);
   return out;
 }
 
@@ -260,7 +279,7 @@ export class SkillRegistry {
     }));
   }
 
-  writeIndex(filePath = join(this.rootDir, ".pi/skills_index.json")): string {
+  writeIndex(filePath = join(resolveProjectRoasterRootDir(this.rootDir), "skills_index.json")): string {
     const parent = dirname(filePath);
     if (parent && !existsSync(parent)) {
       mkdirSync(parent, { recursive: true });
@@ -290,7 +309,7 @@ export class SkillRegistry {
         entries = [];
       }
       const includeAllPacks =
-        source === "cwd_ancestor" || source === "config_root";
+        source === "project_root" || source === "config_root";
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         if (!includeAllPacks && !activePacks.has(entry.name)) continue;

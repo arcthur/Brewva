@@ -87,6 +87,18 @@ function createSessionMock(initialSessionId: string) {
   };
 }
 
+function createTurnEndEvent(toolResults: unknown[] = []): AgentSessionEvent {
+  return {
+    type: "turn_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "done" }],
+      timestamp: Date.now(),
+    },
+    toolResults,
+  } as AgentSessionEvent;
+}
+
 describe("session event bridge", () => {
   test("reads session id at event time instead of capture time", () => {
     const { runtime, events, turnStarts } = createRuntimeMock();
@@ -95,10 +107,10 @@ describe("session event bridge", () => {
     registerRuntimeCoreEventBridge(runtime, sessionMock.session);
 
     sessionMock.emit({ type: "turn_start" } as AgentSessionEvent);
-    sessionMock.emit({ type: "turn_end", toolResults: [] } as AgentSessionEvent);
+    sessionMock.emit(createTurnEndEvent());
     sessionMock.setSessionId("session-b");
     sessionMock.emit({ type: "turn_start" } as AgentSessionEvent);
-    sessionMock.emit({ type: "turn_end", toolResults: [] } as AgentSessionEvent);
+    sessionMock.emit(createTurnEndEvent());
 
     const turnStartEvents = events.filter((event) => event.type === "turn_start");
     expect(turnStartEvents).toHaveLength(2);

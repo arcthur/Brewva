@@ -6,7 +6,7 @@ import { RoasterRuntime } from "@pi-roaster/roaster-runtime";
 
 function createWorkspace(name: string): string {
   const workspace = mkdtempSync(join(tmpdir(), `roaster-${name}-`));
-  mkdirSync(join(workspace, ".pi"), { recursive: true });
+  mkdirSync(join(workspace, ".pi-roaster"), { recursive: true });
   return workspace;
 }
 
@@ -59,4 +59,3 @@ describe("Output health guard", () => {
     expect(injection.text.includes("[OutputHealthGuard]")).toBe(false);
   });
 });
-

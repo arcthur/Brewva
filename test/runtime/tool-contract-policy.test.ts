@@ -6,7 +6,7 @@ import { DEFAULT_ROASTER_CONFIG, RoasterRuntime, type SkillContract } from "@pi-
 
 function createWorkspace(name: string): string {
   const workspace = mkdtempSync(join(tmpdir(), `roaster-${name}-`));
-  mkdirSync(join(workspace, ".pi"), { recursive: true });
+  mkdirSync(join(workspace, ".pi-roaster"), { recursive: true });
 
   const repoRoot = resolve(import.meta.dirname, "../..");
   cpSync(resolve(repoRoot, "skills"), resolve(workspace, "skills"), { recursive: true });

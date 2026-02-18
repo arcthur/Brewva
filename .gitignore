@@ -3,6 +3,8 @@ bun.lockb
 *.tsbuildinfo
 dist
 .pi
+.pi-roaster
+.config/pi-roaster
 .orchestrator
 distribution/pi-roaster-*/bin/pi-roaster
 distribution/pi-roaster-*/bin/pi-roaster.exe
@@ -14,3 +16,4 @@ distribution/pi-roaster-*/bin/docs
 distribution/pi-roaster-*/bin/examples
 distribution/pi-roaster-*/bin/theme
 distribution/pi-roaster-*/bin/export-html
+distribution/pi-roaster-*/bin/skills
