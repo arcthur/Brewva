@@ -38,7 +38,7 @@ flowchart LR
   RT --> EVENTS[".orchestrator/events/<session>.jsonl"]
   RT --> SNAP[".orchestrator/state/<session>.json"]
   RT --> MEM[".orchestrator/memory/<session>.json"]
-  RT --> INDEX[".pi/skills_index.json"]
+  RT --> INDEX[".pi-roaster/skills_index.json"]
 ```
 
 ## Interruption and Resume Flow

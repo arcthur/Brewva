@@ -75,7 +75,7 @@ async function main(): Promise<void> {
   }).createSchema("RoasterConfig") as Schema;
 
   schema.title = "pi-roaster RoasterConfig";
-  schema.description = "JSON Schema for .pi/roaster.json (Roaster runtime configuration).";
+  schema.description = "JSON Schema for .pi-roaster/roaster.json (Roaster runtime configuration).";
 
   const parent = dirname(outputPath);
   mkdirSync(parent, { recursive: true });

@@ -9,7 +9,7 @@
 - Session memory: `.orchestrator/memory/<session>.json`
 - Rollback snapshots: `.orchestrator/snapshots/<session>/*.snap`
 - Rollback patch history: `.orchestrator/snapshots/<session>/patchsets.json`
-- Generated skill index: `.pi/skills_index.json`
+- Generated skill index: `.pi-roaster/skills_index.json`
   - includes selected skill roots (`roots`) and the merged selector index (`skills`)
 
 ## Distribution Paths

@@ -143,9 +143,9 @@ describe("S-006 three-layer contract tightening", () => {
 
   test("higher tier keeps stricter contract when overriding", () => {
     const workspace = mkdtempSync(join(tmpdir(), "roaster-s6-"));
-    mkdirSync(join(workspace, ".pi"), { recursive: true });
+    mkdirSync(join(workspace, ".pi-roaster"), { recursive: true });
     writeFileSync(
-      join(workspace, ".pi/roaster.json"),
+      join(workspace, ".pi-roaster/roaster.json"),
       JSON.stringify({
         skills: {
           packs: [],
@@ -156,19 +156,19 @@ describe("S-006 three-layer contract tightening", () => {
       }),
     );
 
-    mkdirSync(join(workspace, "skills/base/foo"), { recursive: true });
+    mkdirSync(join(workspace, ".pi-roaster", "skills", "base", "foo"), { recursive: true });
     writeFileSync(
-      join(workspace, "skills/base/foo/SKILL.md"),
+      join(workspace, ".pi-roaster/skills/base/foo/SKILL.md"),
       `---\nname: foo\ndescription: base\ntags: [foo]\ntools:\n  required: [read]\n  optional: [edit]\n  denied: [write]\nbudget:\n  max_tool_calls: 50\n  max_tokens: 10000\n---\nbase`,
     );
 
-    mkdirSync(join(workspace, "skills/project/foo"), { recursive: true });
+    mkdirSync(join(workspace, ".pi-roaster", "skills", "project", "foo"), { recursive: true });
     writeFileSync(
-      join(workspace, "skills/project/foo/SKILL.md"),
+      join(workspace, ".pi-roaster/skills/project/foo/SKILL.md"),
       `---\nname: foo\ndescription: project\ntags: [foo]\ntools:\n  required: []\n  optional: [write]\n  denied: [bash]\nbudget:\n  max_tool_calls: 30\n  max_tokens: 8000\n---\nproject`,
     );
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi-roaster/roaster.json" });
     const foo = runtime.getSkill("foo");
     expect(foo).toBeDefined();
     expect(foo!.contract.tools.denied).toContain("write");

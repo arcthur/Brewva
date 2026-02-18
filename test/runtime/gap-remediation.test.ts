@@ -7,12 +7,12 @@ import { DEFAULT_ROASTER_CONFIG, RoasterRuntime } from "@pi-roaster/roaster-runt
 
 function createWorkspace(name: string): string {
   const workspace = mkdtempSync(join(tmpdir(), `roaster-${name}-`));
-  mkdirSync(join(workspace, ".pi"), { recursive: true });
+  mkdirSync(join(workspace, ".config", "pi-roaster"), { recursive: true });
   return workspace;
 }
 
 function writeConfig(workspace: string, config: RoasterConfig): void {
-  writeFileSync(join(workspace, ".pi/roaster.json"), JSON.stringify(config, null, 2), "utf8");
+  writeFileSync(join(workspace, ".config/pi-roaster/roaster.json"), JSON.stringify(config, null, 2), "utf8");
 }
 
 function createConfig(overrides: Partial<RoasterConfig>): RoasterConfig {
@@ -76,7 +76,7 @@ describe("Gap remediation: verification gate", () => {
       }),
     );
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "verify-1";
     runtime.markToolCall(sessionId, "edit");
 
@@ -104,7 +104,7 @@ describe("Gap remediation: ledger compaction and redaction", () => {
       }),
     );
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "ledger-1";
     for (let i = 0; i < 5; i += 1) {
       runtime.onTurnStart(sessionId, i + 1);
@@ -129,7 +129,7 @@ describe("Gap remediation: ledger compaction and redaction", () => {
     const workspace = createWorkspace("redact");
     writeConfig(workspace, createConfig({}));
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "redact-1";
     runtime.recordToolResult({
       sessionId,
@@ -154,7 +154,7 @@ describe("Gap remediation: ledger compaction and redaction", () => {
     const workspace = createWorkspace("ledger-bad-lines");
     writeConfig(workspace, createConfig({}));
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "ledger-bad-lines-1";
     runtime.recordToolResult({
       sessionId,
@@ -238,7 +238,7 @@ describe("Gap remediation: event stream and context budget", () => {
     const workspace = createWorkspace("events-payload");
     writeConfig(workspace, createConfig({}));
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "events-payload-1";
 
     runtime.recordEvent({
@@ -277,7 +277,7 @@ describe("Gap remediation: event stream and context budget", () => {
     const workspace = createWorkspace("events-bad-lines");
     writeConfig(workspace, createConfig({}));
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "events-bad-lines-1";
     runtime.recordEvent({ sessionId, type: "session_start", payload: { cwd: workspace } });
 
@@ -293,7 +293,7 @@ describe("Gap remediation: event stream and context budget", () => {
     const workspace = createWorkspace("events-redact");
     writeConfig(workspace, createConfig({}));
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "events-redact-1";
     runtime.recordEvent({
       sessionId,
@@ -315,7 +315,7 @@ describe("Gap remediation: event stream and context budget", () => {
   test("drops context injection when usage exceeds hard limit", () => {
     const workspace = createWorkspace("context-budget");
     writeConfig(workspace, createConfig({}));
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
 
     const decision = runtime.buildContextInjection("ctx-1", "fix broken test in runtime", {
       tokens: 195_000,
@@ -328,7 +328,7 @@ describe("Gap remediation: event stream and context budget", () => {
   test("deduplicates per branch scope and allows reinjection after compaction", () => {
     const workspace = createWorkspace("context-injection-dedup");
     writeConfig(workspace, createConfig({}));
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" }) as RoasterRuntime & {
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" }) as RoasterRuntime & {
       getLedgerDigest: (sessionId: string) => string;
     };
     const sessionId = "context-injection-dedup-1";
@@ -411,7 +411,7 @@ describe("Gap remediation: event stream and context budget", () => {
     };
     writeConfig(workspace, config);
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "context-injection-truncate-1";
 
     for (let i = 0; i < 12; i += 1) {
@@ -448,7 +448,7 @@ describe("Gap remediation: event stream and context budget", () => {
     };
     writeConfig(workspace, config);
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "context-budget-disabled-1";
 
     for (let i = 0; i < 12; i += 1) {
@@ -503,7 +503,7 @@ describe("Gap remediation: event stream and context budget", () => {
     };
     writeConfig(workspace, config);
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "context-supplemental-budget-1";
     const usage = {
       tokens: 800,
@@ -541,7 +541,7 @@ describe("Gap remediation: event stream and context budget", () => {
     };
     writeConfig(workspace, config);
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "context-supplemental-commit-1";
     const usage = {
       tokens: 320,
@@ -573,7 +573,7 @@ describe("Gap remediation: event stream and context budget", () => {
   test("injects latest compaction summary once per compaction cycle", () => {
     const workspace = createWorkspace("context-compaction-summary");
     writeConfig(workspace, createConfig({}));
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "context-compaction-summary-1";
 
     runtime.markContextCompacted(sessionId, {
@@ -620,7 +620,7 @@ describe("Gap remediation: event stream and context budget", () => {
   test("clears stale compaction summary when next compaction has no summary", () => {
     const workspace = createWorkspace("context-compaction-summary-clear");
     writeConfig(workspace, createConfig({}));
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "context-compaction-summary-clear-1";
 
     runtime.markContextCompacted(sessionId, {
@@ -657,7 +657,7 @@ describe("Gap remediation: event stream and context budget", () => {
   test("keeps pending critical context when injection is dropped by hard limit", () => {
     const workspace = createWorkspace("context-hard-limit-retain");
     writeConfig(workspace, createConfig({}));
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "context-hard-limit-retain-1";
 
     runtime.markContextCompacted(sessionId, {
@@ -692,11 +692,11 @@ describe("Gap remediation: event stream and context budget", () => {
     const interruptedSession = "resume-old-session";
     const resumedSession = "resume-new-session";
 
-    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     runtimeA.onTurnStart(interruptedSession, 3);
     runtimeA.persistSessionSnapshot(interruptedSession, { reason: "signal", interrupted: true });
 
-    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const restored = runtimeB.restoreStartupSession(resumedSession);
     expect(restored.restored).toBe(true);
 
@@ -734,11 +734,11 @@ describe("Gap remediation: event stream and context budget", () => {
     const interruptedSession = "resume-flag-old";
     const resumedSession = "resume-flag-new";
 
-    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     runtimeA.onTurnStart(interruptedSession, 2);
     runtimeA.persistSessionSnapshot(interruptedSession, { reason: "signal", interrupted: true });
 
-    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const restored = runtimeB.restoreStartupSession(resumedSession);
     expect(restored.restored).toBe(true);
 
@@ -767,16 +767,16 @@ describe("Gap remediation: event stream and context budget", () => {
         },
       },
     };
-    writeFileSync(join(workspace, ".pi/roaster.json"), JSON.stringify(legacyOnly, null, 2), "utf8");
+    writeFileSync(join(workspace, ".config/pi-roaster/roaster.json"), JSON.stringify(legacyOnly, null, 2), "utf8");
 
     const interruptedSession = "resume-legacy-old";
     const resumedSession = "resume-legacy-new";
 
-    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     runtimeA.onTurnStart(interruptedSession, 2);
     runtimeA.persistSessionSnapshot(interruptedSession, { reason: "signal", interrupted: true });
 
-    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const restored = runtimeB.restoreStartupSession(resumedSession);
     expect(restored.restored).toBe(true);
 
@@ -801,7 +801,7 @@ describe("Gap remediation: event stream and context budget", () => {
     };
     writeConfig(workspace, config);
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "context-compaction-interval-1";
 
     runtime.onTurnStart(sessionId, 1);
@@ -824,7 +824,7 @@ describe("Gap remediation: event stream and context budget", () => {
   test("keeps ledger turn aligned with turn_start instead of tool-result sequence", () => {
     const workspace = createWorkspace("turn-alignment");
     writeConfig(workspace, createConfig({}));
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "turn-alignment-1";
 
     runtime.onTurnStart(sessionId, 7);
@@ -861,7 +861,7 @@ describe("Gap remediation: event stream and context budget", () => {
   test("writes context_compacted evidence into ledger", () => {
     const workspace = createWorkspace("context-compaction-ledger");
     writeConfig(workspace, createConfig({}));
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "context-compaction-ledger-1";
 
     runtime.onTurnStart(sessionId, 3);
@@ -900,7 +900,7 @@ patching`,
       "utf8",
     );
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const activated = runtime.activateSkill(sessionId, "patching");
     expect(activated.ok).toBe(true);
     runtime.markToolCall(sessionId, "edit");
@@ -913,7 +913,7 @@ patching`,
     });
     runtime.persistSessionSnapshot(sessionId, { reason: "manual", interrupted: true });
 
-    const recovered = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const recovered = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const restore = recovered.restoreSessionSnapshot(sessionId);
     expect(restore.restored).toBe(true);
     expect(recovered.getActiveSkill(sessionId)?.name).toBe("patching");
@@ -936,11 +936,11 @@ patching`,
     );
 
     const sessionId = "snapshot-parallel-1";
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     expect(runtime.parallel.acquire(sessionId, "run-1").accepted).toBe(true);
     runtime.persistSessionSnapshot(sessionId, { reason: "manual", interrupted: true });
 
-    const recovered = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const recovered = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const restored = recovered.restoreSessionSnapshot(sessionId);
     expect(restored.restored).toBe(true);
     expect(recovered.parallel.acquire(sessionId, "run-2").accepted).toBe(true);
@@ -955,12 +955,12 @@ patching`,
     writeConfig(workspace, createConfig({}));
 
     const interruptedSession = "old-session";
-    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     runtimeA.onTurnStart(interruptedSession, 9);
     runtimeA.markToolCall(interruptedSession, "edit");
     runtimeA.persistSessionSnapshot(interruptedSession, { reason: "signal", interrupted: true });
 
-    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const restored = runtimeB.restoreStartupSession("new-session");
     expect(restored.restored).toBe(true);
 
@@ -987,7 +987,7 @@ patching`,
     const filePath = join(workspace, "src/import-undo.ts");
     writeFileSync(filePath, "export const value = 1;\n", "utf8");
 
-    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     runtimeA.onTurnStart(interruptedSession, 4);
     runtimeA.trackToolCallStart({
       sessionId: interruptedSession,
@@ -1004,7 +1004,7 @@ patching`,
     });
     runtimeA.persistSessionSnapshot(interruptedSession, { reason: "signal", interrupted: true });
 
-    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const restored = runtimeB.restoreStartupSession("new-session");
     expect(restored.restored).toBe(true);
 
@@ -1024,7 +1024,7 @@ describe("Gap remediation: rollback safety net", () => {
     const filePath = join(workspace, "src/main.ts");
     writeFileSync(filePath, "export const value = 1;\n", "utf8");
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     runtime.onTurnStart(sessionId, 1);
     runtime.markToolCall(sessionId, "edit");
     runtime.recordToolResult({
@@ -1065,7 +1065,7 @@ describe("Gap remediation: rollback safety net", () => {
 
     const sessionId = "rollback-add-1";
     const createdPath = join(workspace, "src/new-file.ts");
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     runtime.onTurnStart(sessionId, 1);
 
     runtime.trackToolCallStart({
@@ -1096,7 +1096,7 @@ describe("Gap remediation: rollback safety net", () => {
     const filePath = join(workspace, "src/main.ts");
     writeFileSync(filePath, "export const value = 1;\n", "utf8");
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     runtime.onTurnStart(sessionId, 1);
 
     runtime.trackToolCallStart({
@@ -1131,7 +1131,7 @@ describe("Gap remediation: rollback safety net", () => {
     const workspace = createWorkspace("rollback-path-traversal");
     writeConfig(workspace, createConfig({}));
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "rollback-path-traversal-1";
 
     const outside = runtime.fileChanges.captureBeforeToolCall({
@@ -1169,7 +1169,7 @@ describe("Gap remediation: rollback safety net", () => {
     const filePath = join(workspace, "src/persisted.ts");
     writeFileSync(filePath, "export const persisted = 1;\n", "utf8");
 
-    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     runtimeA.onTurnStart(sessionId, 1);
     runtimeA.trackToolCallStart({
       sessionId,
@@ -1185,7 +1185,7 @@ describe("Gap remediation: rollback safety net", () => {
       success: true,
     });
 
-    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const resolved = runtimeB.resolveUndoSessionId();
     expect(resolved).toBe(sessionId);
 
@@ -1200,7 +1200,7 @@ describe("Gap remediation: structured replay events", () => {
     const workspace = createWorkspace("replay");
     writeConfig(workspace, createConfig({}));
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "replay-1";
     runtime.recordEvent({ sessionId, type: "session_start", payload: { cwd: workspace } });
     runtime.recordEvent({ sessionId, type: "tool_call", turn: 1, payload: { toolName: "read" } });
@@ -1221,7 +1221,7 @@ describe("Gap remediation: live event subscription", () => {
     const workspace = createWorkspace("event-subscribe");
     writeConfig(workspace, createConfig({}));
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "event-subscribe-1";
 
     const received: any[] = [];
@@ -1255,7 +1255,7 @@ describe("Gap remediation: cost view and budget linkage", () => {
     const workspace = createWorkspace("cost-allocation");
     writeConfig(workspace, createConfig({}));
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "cost-allocation-1";
     runtime.onTurnStart(sessionId, 1);
 
@@ -1298,7 +1298,7 @@ describe("Gap remediation: cost view and budget linkage", () => {
     };
     writeConfig(workspace, config);
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "cost-1";
     runtime.onTurnStart(sessionId, 1);
     runtime.markToolCall(sessionId, "edit");
@@ -1340,7 +1340,7 @@ describe("Gap remediation: cost view and budget linkage", () => {
     writeConfig(workspace, config);
 
     const oldSession = "cost-old";
-    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeA = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     runtimeA.onTurnStart(oldSession, 2);
     runtimeA.markToolCall(oldSession, "read");
     runtimeA.recordAssistantUsage({
@@ -1355,7 +1355,7 @@ describe("Gap remediation: cost view and budget linkage", () => {
     });
     runtimeA.persistSessionSnapshot(oldSession, { reason: "signal", interrupted: true });
 
-    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtimeB = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const restored = runtimeB.restoreStartupSession("cost-new");
     expect(restored.restored).toBe(true);
 
@@ -1413,7 +1413,7 @@ patching`,
       "utf8",
     );
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".config/pi-roaster/roaster.json" });
     const sessionId = "cost-budget-consistency-1";
     runtime.onTurnStart(sessionId, 1);
     runtime.markToolCall(sessionId, "read");

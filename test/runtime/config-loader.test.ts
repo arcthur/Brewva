@@ -2,11 +2,15 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_ROASTER_CONFIG, loadRoasterConfig } from "@pi-roaster/roaster-runtime";
+import {
+  DEFAULT_ROASTER_CONFIG,
+  loadRoasterConfig,
+  resolveGlobalRoasterConfigPath,
+} from "@pi-roaster/roaster-runtime";
 
 function createWorkspace(name: string): string {
   const workspace = mkdtempSync(join(tmpdir(), `roaster-config-${name}-`));
-  mkdirSync(join(workspace, ".pi"), { recursive: true });
+  mkdirSync(join(workspace, ".pi-roaster"), { recursive: true });
   return workspace;
 }
 
@@ -56,9 +60,9 @@ describe("Roaster config loader normalization", () => {
         },
       },
     };
-    writeFileSync(join(workspace, ".pi/roaster.json"), JSON.stringify(rawConfig, null, 2), "utf8");
+    writeFileSync(join(workspace, ".pi-roaster/roaster.json"), JSON.stringify(rawConfig, null, 2), "utf8");
 
-    const loaded = loadRoasterConfig({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const loaded = loadRoasterConfig({ cwd: workspace, configPath: ".pi-roaster/roaster.json" });
     const defaults = DEFAULT_ROASTER_CONFIG;
 
     expect(loaded.infrastructure.contextBudget.maxInjectionTokens).toBe(defaults.infrastructure.contextBudget.maxInjectionTokens);
@@ -115,10 +119,10 @@ describe("Roaster config loader normalization", () => {
   test("returns isolated config instances when no config file exists", () => {
     const workspace = createWorkspace("isolation");
 
-    const first = loadRoasterConfig({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const first = loadRoasterConfig({ cwd: workspace, configPath: ".pi-roaster/roaster.json" });
     first.security.enforceDeniedTools = false;
 
-    const second = loadRoasterConfig({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const second = loadRoasterConfig({ cwd: workspace, configPath: ".pi-roaster/roaster.json" });
     expect(second.security.enforceDeniedTools).toBe(DEFAULT_ROASTER_CONFIG.security.enforceDeniedTools);
   });
 
@@ -131,9 +135,9 @@ describe("Roaster config loader normalization", () => {
         },
       },
     };
-    writeFileSync(join(workspace, ".pi/roaster.json"), JSON.stringify(rawConfig, null, 2), "utf8");
+    writeFileSync(join(workspace, ".pi-roaster/roaster.json"), JSON.stringify(rawConfig, null, 2), "utf8");
 
-    const loaded = loadRoasterConfig({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const loaded = loadRoasterConfig({ cwd: workspace, configPath: ".pi-roaster/roaster.json" });
     expect(loaded.infrastructure.interruptRecovery.resumeHintInjectionEnabled).toBe(false);
   });
 
@@ -150,13 +154,77 @@ describe("Roaster config loader normalization", () => {
         },
       },
     };
-    writeFileSync(join(workspace, ".pi/roaster.json"), JSON.stringify(rawConfig, null, 2), "utf8");
+    writeFileSync(join(workspace, ".pi-roaster/roaster.json"), JSON.stringify(rawConfig, null, 2), "utf8");
 
-    const loaded = loadRoasterConfig({ cwd: workspace, configPath: ".pi/roaster.json" });
-    expect(loaded.skills.roots).toEqual(["./skills-extra"]);
+    const loaded = loadRoasterConfig({ cwd: workspace, configPath: ".pi-roaster/roaster.json" });
+    expect(loaded.skills.roots).toEqual([join(workspace, ".pi-roaster/skills-extra")]);
     expect(loaded.skills.packs).toEqual(["typescript"]);
     expect(loaded.skills.disabled).toEqual(["review"]);
     expect(loaded.skills.selector.k).toBe(DEFAULT_ROASTER_CONFIG.skills.selector.k);
     expect(loaded.skills.selector.maxDigestTokens).toBe(DEFAULT_ROASTER_CONFIG.skills.selector.maxDigestTokens);
+  });
+
+  test("loads global and project configs with project override precedence", () => {
+    const workspace = createWorkspace("layered-default");
+    const xdgRoot = mkdtempSync(join(tmpdir(), "roaster-config-xdg-"));
+    const previousXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = xdgRoot;
+
+    try {
+      mkdirSync(join(xdgRoot, "pi-roaster"), { recursive: true });
+      writeFileSync(
+        resolveGlobalRoasterConfigPath(process.env),
+        JSON.stringify(
+          {
+            parallel: { maxConcurrent: 7 },
+            verification: { defaultLevel: "quick" },
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      );
+
+      writeFileSync(
+        join(workspace, ".pi-roaster/roaster.json"),
+        JSON.stringify(
+          {
+            verification: { defaultLevel: "strict" },
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      );
+
+      const loaded = loadRoasterConfig({ cwd: workspace });
+      expect(loaded.parallel.maxConcurrent).toBe(7);
+      expect(loaded.verification.defaultLevel).toBe("strict");
+    } finally {
+      if (previousXdg === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = previousXdg;
+      }
+    }
+  });
+
+  test("does not fall back to legacy .pi config path", () => {
+    const workspace = createWorkspace("legacy-fallback-disabled");
+    mkdirSync(join(workspace, ".pi"), { recursive: true });
+    writeFileSync(
+      join(workspace, ".pi/roaster.json"),
+      JSON.stringify(
+        {
+          parallel: { maxConcurrent: 99 },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const loaded = loadRoasterConfig({ cwd: workspace });
+    expect(loaded.parallel.maxConcurrent).toBe(DEFAULT_ROASTER_CONFIG.parallel.maxConcurrent);
   });
 });

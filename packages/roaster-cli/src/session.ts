@@ -3,12 +3,15 @@ import {
   AuthStorage,
   createAgentSession,
   DefaultResourceLoader,
-  getAgentDir,
   ModelRegistry,
   SettingsManager,
   type CreateAgentSessionResult,
 } from "@mariozechner/pi-coding-agent";
-import { RoasterRuntime, type CreateRoasterSessionOptions } from "@pi-roaster/roaster-runtime";
+import {
+  RoasterRuntime,
+  resolveRoasterAgentDir,
+  type CreateRoasterSessionOptions,
+} from "@pi-roaster/roaster-runtime";
 import { buildRoasterTools } from "@pi-roaster/roaster-tools";
 import { createRoasterExtension } from "@pi-roaster/roaster-extensions";
 import { registerRuntimeCoreEventBridge } from "./session-event-bridge.js";
@@ -38,7 +41,9 @@ function applyDefaultStartupSilence(settingsManager: SettingsManager): void {
 
 export async function createRoasterSession(options: CreateRoasterSessionOptions = {}): Promise<RoasterSessionResult> {
   const cwd = resolve(options.cwd ?? process.cwd());
-  const agentDir = getAgentDir();
+  const agentDir = resolveRoasterAgentDir();
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  process.env["PI-ROASTER_CODING_AGENT_DIR"] = agentDir;
 
   const authStorage = new AuthStorage(join(agentDir, "auth.json"));
   const modelRegistry = new ModelRegistry(authStorage, join(agentDir, "models.json"));

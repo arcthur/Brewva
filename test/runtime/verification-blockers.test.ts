@@ -7,12 +7,12 @@ import { DEFAULT_ROASTER_CONFIG, RoasterRuntime } from "@pi-roaster/roaster-runt
 
 function createWorkspace(name: string): string {
   const workspace = mkdtempSync(join(tmpdir(), `roaster-${name}-`));
-  mkdirSync(join(workspace, ".pi"), { recursive: true });
+  mkdirSync(join(workspace, ".pi-roaster"), { recursive: true });
   return workspace;
 }
 
 function writeConfig(workspace: string, config: RoasterConfig): void {
-  writeFileSync(join(workspace, ".pi/roaster.json"), JSON.stringify(config, null, 2), "utf8");
+  writeFileSync(join(workspace, ".pi-roaster/roaster.json"), JSON.stringify(config, null, 2), "utf8");
 }
 
 function createConfig(overrides: Partial<RoasterConfig>): RoasterConfig {
@@ -75,7 +75,7 @@ describe("Verification blockers", () => {
       }),
     );
 
-    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi/roaster.json" });
+    const runtime = new RoasterRuntime({ cwd: workspace, configPath: ".pi-roaster/roaster.json" });
     const sessionId = "verify-blockers-1";
 
     runtime.markToolCall(sessionId, "edit");

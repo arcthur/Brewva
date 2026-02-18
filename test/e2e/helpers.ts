@@ -50,7 +50,7 @@ export function writeMinimalConfig(
   workspace: string,
   overrides?: Record<string, unknown>,
 ): void {
-  const configDir = join(workspace, ".pi");
+  const configDir = join(workspace, ".pi-roaster");
   mkdirSync(configDir, { recursive: true });
   writeFileSync(
     join(configDir, "roaster.json"),

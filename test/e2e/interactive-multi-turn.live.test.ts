@@ -43,7 +43,7 @@ function ensureExpectAvailable(): void {
 }
 
 function writeWorkspaceConfig(workspace: string): void {
-  const configDir = join(workspace, ".pi");
+  const configDir = join(workspace, ".pi-roaster");
   mkdirSync(configDir, { recursive: true });
   writeFileSync(
     join(configDir, "roaster.json"),

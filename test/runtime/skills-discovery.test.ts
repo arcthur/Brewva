@@ -1,10 +1,9 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_ROASTER_CONFIG, RoasterRuntime } from "@pi-roaster/roaster-runtime";
-import { SkillRegistry, discoverSkillRegistryRoots } from "../../packages/roaster-runtime/src/skills/registry.js";
+import { discoverSkillRegistryRoots } from "../../packages/roaster-runtime/src/skills/registry.js";
 
 function writeSkill(filePath: string, input: { name: string; tag: string }): void {
   mkdirSync(dirname(filePath), { recursive: true });
@@ -16,9 +15,28 @@ function writeSkill(filePath: string, input: { name: string; tag: string }): voi
 }
 
 describe("skill discovery and loading", () => {
-  test("loads ancestor workspace skills when running from nested cwd", () => {
-    const workspace = mkdtempSync(join(tmpdir(), "roaster-skill-ancestor-"));
-    writeSkill(join(workspace, "skills/base/commitcraft/SKILL.md"), {
+  test("loads project skills from cwd .pi-roaster root", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "roaster-skill-project-"));
+    writeSkill(join(workspace, ".pi-roaster/skills/base/commitcraft/SKILL.md"), {
+      name: "commitcraft",
+      tag: "commitcrafttag",
+    });
+    const runtime = new RoasterRuntime({ cwd: workspace });
+    const selected = runtime.selectSkills("please use commitcrafttag for this task");
+    expect(selected.some((entry) => entry.name === "commitcraft")).toBe(true);
+    const roots = discoverSkillRegistryRoots({
+      cwd: workspace,
+      configuredRoots: runtime.config.skills.roots ?? [],
+    });
+    expect(
+      roots.some((entry) =>
+        entry.source === "project_root" && entry.skillDir === resolve(workspace, ".pi-roaster/skills")),
+    ).toBe(true);
+  });
+
+  test("does not load ancestor .pi-roaster skills when running from nested cwd", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "roaster-skill-ancestor-disabled-"));
+    writeSkill(join(workspace, ".pi-roaster/skills/base/commitcraft/SKILL.md"), {
       name: "commitcraft",
       tag: "commitcrafttag",
     });
@@ -27,15 +45,15 @@ describe("skill discovery and loading", () => {
 
     const runtime = new RoasterRuntime({ cwd: nested });
     const selected = runtime.selectSkills("please use commitcrafttag for this task");
-    expect(selected.some((entry) => entry.name === "commitcraft")).toBe(true);
+    expect(selected.some((entry) => entry.name === "commitcraft")).toBe(false);
+
     const roots = discoverSkillRegistryRoots({
       cwd: nested,
       configuredRoots: runtime.config.skills.roots ?? [],
     });
     expect(
-      roots.some((entry) =>
-        entry.source === "cwd_ancestor" && entry.skillDir === resolve(workspace, "skills")),
-    ).toBe(true);
+      roots.some((entry) => entry.skillDir === resolve(workspace, ".pi-roaster/skills")),
+    ).toBe(false);
   });
 
   test("loads skills from config.skills.roots when cwd has no local skill tree", () => {
@@ -60,6 +78,39 @@ describe("skill discovery and loading", () => {
       roots.some((entry) =>
         entry.source === "config_root" && entry.skillDir === resolve(external, "skills")),
     ).toBe(true);
+  });
+
+  test("loads skills from global .config/pi-roaster root", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "roaster-skill-global-workspace-"));
+    const xdgRoot = mkdtempSync(join(tmpdir(), "roaster-skill-global-xdg-"));
+    const previousXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = xdgRoot;
+
+    try {
+      writeSkill(join(xdgRoot, "pi-roaster/skills/base/globalcraft/SKILL.md"), {
+        name: "globalcraft",
+        tag: "globalcrafttag",
+      });
+
+      const runtime = new RoasterRuntime({ cwd: workspace });
+      const selected = runtime.selectSkills("apply globalcrafttag flow");
+      expect(selected.some((entry) => entry.name === "globalcraft")).toBe(true);
+
+      const roots = discoverSkillRegistryRoots({
+        cwd: workspace,
+        configuredRoots: runtime.config.skills.roots ?? [],
+      });
+      expect(
+        roots.some((entry) =>
+          entry.source === "global_root" && entry.skillDir === resolve(xdgRoot, "pi-roaster/skills")),
+      ).toBe(true);
+    } finally {
+      if (previousXdg === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = previousXdg;
+      }
+    }
   });
 
   test("loads config skill roots that use direct tier layout", () => {
@@ -95,7 +146,7 @@ describe("skill discovery and loading", () => {
 
   test("loads workspace pack skills even when not listed in skills.packs", () => {
     const workspace = mkdtempSync(join(tmpdir(), "roaster-skill-workspace-pack-"));
-    writeSkill(join(workspace, "skills/packs/custom-pack/SKILL.md"), {
+    writeSkill(join(workspace, ".pi-roaster/skills/packs/custom-pack/SKILL.md"), {
       name: "packcraft",
       tag: "packcrafttag",
     });
@@ -109,97 +160,30 @@ describe("skill discovery and loading", () => {
     expect(selected.some((entry) => entry.name === "packcraft")).toBe(true);
   });
 
-  test("discovers skill roots from executable ancestors for packaged binaries", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "roaster-skill-discovery-cwd-"));
-    const execRoot = mkdtempSync(join(tmpdir(), "roaster-skill-discovery-exec-"));
-    mkdirSync(join(execRoot, "bin"), { recursive: true });
-    writeSkill(join(execRoot, "skills/base/execraft/SKILL.md"), {
-      name: "execraft",
-      tag: "execrafttag",
-    });
+  test("project skills override global skills when names collide", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "roaster-skill-precedence-workspace-"));
+    const xdgRoot = mkdtempSync(join(tmpdir(), "roaster-skill-precedence-xdg-"));
+    const previousXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = xdgRoot;
 
-    const roots = discoverSkillRegistryRoots({
-      cwd,
-      moduleUrl: pathToFileURL(join(cwd, "runtime.js")).href,
-      execPath: join(execRoot, "bin/pi-roaster"),
-    });
-    expect(
-      roots.some((entry) =>
-        entry.source === "exec_ancestor" && entry.skillDir === resolve(execRoot, "skills")),
-    ).toBe(true);
-  });
+    try {
+      writeSkill(join(xdgRoot, "pi-roaster/skills/base/chaincraft/SKILL.md"), {
+        name: "chaincraft",
+        tag: "globaltag",
+      });
+      writeSkill(join(workspace, ".pi-roaster/skills/base/chaincraft/SKILL.md"), {
+        name: "chaincraft",
+        tag: "projecttag",
+      });
 
-  test("prefers nearer executable ancestor roots over farther ancestors", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "roaster-skill-discovery-precedence-cwd-"));
-    const farRoot = mkdtempSync(join(tmpdir(), "roaster-skill-discovery-precedence-far-"));
-    const nearRoot = join(farRoot, "near");
-    mkdirSync(join(nearRoot, "bin"), { recursive: true });
-
-    writeSkill(join(farRoot, "skills/base/chaincraft/SKILL.md"), {
-      name: "chaincraft",
-      tag: "fartag",
-    });
-    writeSkill(join(nearRoot, "skills/base/chaincraft/SKILL.md"), {
-      name: "chaincraft",
-      tag: "neartag",
-    });
-
-    const roots = discoverSkillRegistryRoots({
-      cwd,
-      moduleUrl: pathToFileURL(join(cwd, "runtime.js")).href,
-      execPath: join(nearRoot, "bin/pi-roaster"),
-    });
-    const farSkillDir = resolve(farRoot, "skills");
-    const nearSkillDir = resolve(nearRoot, "skills");
-    const farIndex = roots.findIndex((entry) => entry.skillDir === farSkillDir);
-    const nearIndex = roots.findIndex((entry) => entry.skillDir === nearSkillDir);
-
-    expect(farIndex).toBeGreaterThanOrEqual(0);
-    expect(nearIndex).toBeGreaterThan(farIndex);
-
-    const config = structuredClone(DEFAULT_ROASTER_CONFIG);
-    const registry = new SkillRegistry({ rootDir: cwd, config, roots });
-    registry.load();
-    expect(registry.get("chaincraft")?.contract.tags).toContain("neartag");
-  });
-
-  test("applies pack filtering by root source", () => {
-    const workspace = mkdtempSync(join(tmpdir(), "roaster-skill-source-pack-workspace-"));
-    const skillRoot = mkdtempSync(join(tmpdir(), "roaster-skill-source-pack-root-"));
-    writeSkill(join(skillRoot, "skills/packs/custom/sourcepack/SKILL.md"), {
-      name: "sourcepack",
-      tag: "sourcepacktag",
-    });
-
-    const config = structuredClone(DEFAULT_ROASTER_CONFIG);
-    config.skills.packs = [];
-
-    const moduleRegistry = new SkillRegistry({
-      rootDir: workspace,
-      config,
-      roots: [
-        {
-          rootDir: skillRoot,
-          skillDir: resolve(skillRoot, "skills"),
-          source: "module_ancestor",
-        },
-      ],
-    });
-    moduleRegistry.load();
-    expect(moduleRegistry.get("sourcepack")).toBeUndefined();
-
-    const cwdRegistry = new SkillRegistry({
-      rootDir: workspace,
-      config,
-      roots: [
-        {
-          rootDir: skillRoot,
-          skillDir: resolve(skillRoot, "skills"),
-          source: "cwd_ancestor",
-        },
-      ],
-    });
-    cwdRegistry.load();
-    expect(cwdRegistry.get("sourcepack")).toBeDefined();
+      const runtime = new RoasterRuntime({ cwd: workspace });
+      expect(runtime.getSkill("chaincraft")?.contract.tags).toContain("projecttag");
+    } finally {
+      if (previousXdg === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = previousXdg;
+      }
+    }
   });
 });

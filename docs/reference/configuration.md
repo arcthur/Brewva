@@ -19,7 +19,7 @@ Configuration contract sources:
 
 ## Key Defaults
 
-- `skills.roots`: `[]` (optional additional skill root directories; relative paths are resolved from `cwd`)
+- `skills.roots`: `[]` (optional additional skill root directories; relative paths in config files are resolved from that config file's directory)
 - `skills.packs`: `typescript`, `react`, `bun`
 - `verification.defaultLevel`: `standard`
 - `ledger.path`: `.orchestrator/ledger/evidence.jsonl`
@@ -67,10 +67,9 @@ If both keys are set, `resumeHintInjectionEnabled` takes precedence; if only the
 Skill loading is root-aware and merges from multiple sources (lowest to highest
 precedence):
 
-1. runtime module ancestors (install/bundle location)
-2. executable ancestors (compiled binary sidecar assets)
-3. `cwd` ancestors (workspace tree)
-4. explicit `skills.roots` entries
+1. global config root (`$XDG_CONFIG_HOME/pi-roaster` or `~/.config/pi-roaster`)
+2. project root (`<cwd>/.pi-roaster`)
+3. explicit `skills.roots` entries
 
 For each discovered root, runtime accepts either:
 
@@ -79,8 +78,8 @@ For each discovered root, runtime accepts either:
 
 Pack loading behavior:
 
-- module/executable roots: load only packs listed in `skills.packs`
-- workspace/config roots: load all discovered packs (to include local custom
+- module/executable/global roots: load only packs listed in `skills.packs`
+- project/config roots: load all discovered packs (to include local custom
   packs without extra config churn)
 
 ## Context Budget Behavior
@@ -93,17 +92,18 @@ Pack loading behavior:
 
 ## Config File Location
 
-Default config path: `.pi/roaster.json`.
+Default project config path: `.pi-roaster/roaster.json`.
+By default, runtime merges global config from `~/.config/pi-roaster/roaster.json` and then project config from `.pi-roaster/roaster.json`; project values override global values on conflicts.
 
 Loading behavior is implemented in `packages/roaster-runtime/src/config/loader.ts`.
 
 ## JSON Schema
 
-To enable editor completion and validation for `.pi/roaster.json`, set `$schema` to the schema file shipped with the runtime package:
+To enable editor completion and validation for `.pi-roaster/roaster.json`, set `$schema` to the schema file shipped with the runtime package:
 
 ```json
 {
-  "$schema": "../node_modules/@pi-roaster/roaster-runtime/schema/roaster.schema.json"
+  "$schema": "../../node_modules/@pi-roaster/roaster-runtime/schema/roaster.schema.json"
 }
 ```
 
