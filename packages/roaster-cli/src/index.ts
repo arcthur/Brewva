@@ -3,9 +3,11 @@ import { readFileSync } from "node:fs";
 import process from "node:process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { format } from "node:util";
 import { InteractiveMode, runPrintMode } from "@mariozechner/pi-coding-agent";
 import { RoasterRuntime, parseTaskSpec, type TaskSpec } from "@pi-roaster/roaster-runtime";
-import { createRoasterSession } from "./session.js";
+import { createRoasterSession, type RoasterSessionResult } from "./session.js";
+import { JsonLineWriter, writeJsonLine } from "./json-lines.js";
 
 function printHelp(): void {
   console.log(`pi-roaster - AI-native coding agent CLI
@@ -341,6 +343,29 @@ function printCostSummary(sessionId: string, runtime: RoasterRuntime): void {
   console.error(`[cost] session=${sessionId} ${parts.join(" ")}`);
 }
 
+async function runSerializedJsonPrintMode(
+  session: RoasterSessionResult["session"],
+  initialMessage: string | undefined,
+): Promise<void> {
+  const writer = new JsonLineWriter();
+  const originalLog = console.log;
+
+  console.log = (...args: unknown[]): void => {
+    const line = args.length === 0 ? "" : format(...args);
+    writer.writeLine(line);
+  };
+
+  try {
+    await runPrintMode(session, {
+      mode: "json",
+      initialMessage,
+    });
+  } finally {
+    console.log = originalLog;
+    await writer.flush();
+  }
+}
+
 async function run(): Promise<void> {
   process.title = "pi-roaster";
   const parsed = parseArgs(process.argv.slice(2));
@@ -383,7 +408,7 @@ async function run(): Promise<void> {
     const events = runtime.queryStructuredEvents(targetSessionId);
     if (mode === "print-json") {
       for (const event of events) {
-        console.log(JSON.stringify(event));
+        await writeJsonLine(event);
       }
     } else {
       printReplayText(events);
@@ -420,9 +445,10 @@ async function run(): Promise<void> {
     enableExtensions: parsed.enableExtensions,
   });
 
-  const sessionId = session.sessionManager.getSessionId();
+  const getSessionId = (): string => session.sessionManager.getSessionId();
+  const initialSessionId = getSessionId();
   if (taskSpec) {
-    runtime.setTaskSpec(sessionId, taskSpec);
+    runtime.setTaskSpec(initialSessionId, taskSpec);
   }
   const gracefulTimeoutMs = runtime.config.infrastructure.interruptRecovery.gracefulTimeoutMs;
   let terminatedBySignal = false;
@@ -439,6 +465,7 @@ async function run(): Promise<void> {
     if (terminatedBySignal) return;
     terminatedBySignal = true;
 
+    const sessionId = getSessionId();
     runtime.recordEvent({
       sessionId,
       type: "session_interrupted",
@@ -475,19 +502,19 @@ async function run(): Promise<void> {
         verbose: parsed.verbose,
       });
       await interactiveMode.run();
-      printCostSummary(sessionId, runtime);
+      printCostSummary(getSessionId(), runtime);
       return;
     }
 
-    await runPrintMode(session, {
-      mode: mode === "print-json" ? "json" : "text",
-      initialMessage,
-    });
-
     if (mode === "print-json") {
+      await runSerializedJsonPrintMode(session, initialMessage);
       emitJsonBundle = true;
     } else {
-      printCostSummary(sessionId, runtime);
+      await runPrintMode(session, {
+        mode: "text",
+        initialMessage,
+      });
+      printCostSummary(getSessionId(), runtime);
     }
   } finally {
     process.off("SIGINT", handleSignal);
@@ -495,21 +522,20 @@ async function run(): Promise<void> {
     if (terminatedBySignal) {
       return;
     }
+    const sessionId = getSessionId();
     runtime.persistSessionSnapshot(sessionId, {
       reason: "shutdown",
       interrupted: false,
     });
     if (emitJsonBundle) {
       const replayEvents = runtime.queryStructuredEvents(sessionId);
-      console.log(
-        JSON.stringify({
-          schema: "roaster.stream.v1",
-          type: "roaster_event_bundle",
-          sessionId,
-          events: replayEvents,
-          costSummary: runtime.getCostSummary(sessionId),
-        }),
-      );
+      await writeJsonLine({
+        schema: "roaster.stream.v1",
+        type: "roaster_event_bundle",
+        sessionId,
+        events: replayEvents,
+        costSummary: runtime.getCostSummary(sessionId),
+      });
     }
     session.dispose();
   }

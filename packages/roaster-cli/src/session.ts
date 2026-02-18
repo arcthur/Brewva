@@ -11,6 +11,7 @@ import {
 import { RoasterRuntime, type CreateRoasterSessionOptions } from "@pi-roaster/roaster-runtime";
 import { buildRoasterTools } from "@pi-roaster/roaster-tools";
 import { createRoasterExtension } from "@pi-roaster/roaster-extensions";
+import { registerRuntimeCoreEventBridge } from "./session-event-bridge.js";
 
 export interface RoasterSessionResult extends CreateAgentSessionResult {
   runtime: RoasterRuntime;
@@ -81,6 +82,16 @@ export async function createRoasterSession(options: CreateRoasterSessionOptions 
 
   const sessionId = sessionResult.session.sessionManager.getSessionId();
   runtime.restoreStartupSession(sessionId);
+
+  if (!extensionsEnabled) {
+    runtime.recordEvent({
+      sessionId,
+      type: "session_start",
+      payload: { cwd },
+    });
+    registerRuntimeCoreEventBridge(runtime, sessionResult.session);
+  }
+
   runtime.recordEvent({
     sessionId,
     type: "session_bootstrap",
