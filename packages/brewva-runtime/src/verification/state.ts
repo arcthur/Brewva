@@ -1,3 +1,4 @@
+import { differenceInMilliseconds } from "date-fns";
 import type {
   VerificationCheckRun,
   VerificationEvidence,
@@ -103,9 +104,13 @@ export class VerificationStateStore {
 
   private prune(state: VerificationSessionState): void {
     const now = Date.now();
-    state.evidence = state.evidence.filter((entry) => now - entry.timestamp <= this.ttlMs);
+    state.evidence = state.evidence.filter(
+      (entry) => differenceInMilliseconds(now, entry.timestamp) <= this.ttlMs,
+    );
     state.checkRuns = Object.fromEntries(
-      Object.entries(state.checkRuns).filter(([, run]) => now - run.timestamp <= this.ttlMs),
+      Object.entries(state.checkRuns).filter(
+        ([, run]) => differenceInMilliseconds(now, run.timestamp) <= this.ttlMs,
+      ),
     );
   }
 
@@ -114,7 +119,8 @@ export class VerificationStateStore {
       state.evidence.length === 0 &&
       Object.keys(state.checkRuns).length === 0 &&
       state.denialCount === 0 &&
-      (state.lastWriteAt === undefined || Date.now() - state.lastWriteAt > this.ttlMs)
+      (state.lastWriteAt === undefined ||
+        differenceInMilliseconds(Date.now(), state.lastWriteAt) > this.ttlMs)
     );
   }
 }

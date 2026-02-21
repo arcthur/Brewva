@@ -49,6 +49,16 @@ describe("Brewva config loader normalization", () => {
           actionOnExceed: "drop_session",
         },
       },
+      schedule: {
+        enabled: "yes",
+        projectionPath: "",
+        leaseDurationMs: -100,
+        maxActiveIntentsPerSession: -2,
+        maxActiveIntentsGlobal: 0,
+        minIntervalMs: -1,
+        maxConsecutiveErrors: -5,
+        maxRecoveryCatchUps: 0,
+      },
     };
     writeFileSync(
       join(workspace, ".brewva/brewva.json"),
@@ -88,6 +98,17 @@ describe("Brewva config loader normalization", () => {
     expect(loaded.infrastructure.costTracking.actionOnExceed).toBe(
       defaults.infrastructure.costTracking.actionOnExceed,
     );
+
+    expect(loaded.schedule.enabled).toBe(defaults.schedule.enabled);
+    expect(loaded.schedule.projectionPath).toBe(defaults.schedule.projectionPath);
+    expect(loaded.schedule.leaseDurationMs).toBe(defaults.schedule.leaseDurationMs);
+    expect(loaded.schedule.maxActiveIntentsPerSession).toBe(
+      defaults.schedule.maxActiveIntentsPerSession,
+    );
+    expect(loaded.schedule.maxActiveIntentsGlobal).toBe(defaults.schedule.maxActiveIntentsGlobal);
+    expect(loaded.schedule.minIntervalMs).toBe(defaults.schedule.minIntervalMs);
+    expect(loaded.schedule.maxConsecutiveErrors).toBe(defaults.schedule.maxConsecutiveErrors);
+    expect(loaded.schedule.maxRecoveryCatchUps).toBe(defaults.schedule.maxRecoveryCatchUps);
   });
 
   test("normalizes memory config bounds and enum values", () => {

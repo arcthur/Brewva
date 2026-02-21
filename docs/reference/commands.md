@@ -11,6 +11,29 @@ Implementation source: `packages/brewva-cli/src/index.ts`.
 - Print JSON mode (`--mode json`, `--json`; newline-delimited JSON output, plus final `brewva_event_bundle` for one-shot runs)
 - Undo mode (`--undo`)
 - Replay mode (`--replay`)
+- Scheduler daemon mode (`--daemon`)
+
+`--daemon` executes due intents in child sessions (lineage-aware wakeups) and
+handles graceful shutdown by aborting active child runs on signals.
+Daemon mode rejects incompatible input surfaces:
+
+- `--print` / `--json` / `--mode` (non-interactive)
+- `--undo` / `--replay`
+- `--task` / `--task-file`
+- inline prompt text
+
+Daemon startup also requires:
+
+- `schedule.enabled=true`
+- `infrastructure.events.enabled=true`
+
+On startup recovery, catch-up execution is bounded by
+`schedule.maxRecoveryCatchUps`; overflow missed intents are deferred with
+`intent_updated` projection writes plus `schedule_recovery_deferred` telemetry
+events. Daemon recovery also emits per-session `schedule_recovery_summary`
+events.
+With `--verbose`, daemon prints a rolling 60-second scheduler window summary
+(`fired/errored/deferred/circuit_opened` plus child-session lifecycle counts).
 
 ## Flags
 
@@ -26,6 +49,7 @@ Implementation source: `packages/brewva-cli/src/index.ts`.
 - `--json`
 - `--undo`
 - `--replay`
+- `--daemon`
 - `--session`
 - `--verbose`
 - `--help`

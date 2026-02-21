@@ -16,6 +16,7 @@ Configuration contract sources:
 - `tape`
 - `memory`
 - `security`
+- `schedule`
 - `parallel`
 - `infrastructure`
 - `ui`
@@ -80,6 +81,25 @@ Defaults are defined in `packages/brewva-runtime/src/config/defaults.ts`.
 - `parallel.enabled`: `true`
 - `parallel.maxConcurrent`: `3`
 - `parallel.maxTotal`: `10`
+
+### Schedule
+
+- `schedule.enabled`: `true`
+- `schedule.projectionPath`: `.brewva/schedule/intents.jsonl`
+- `schedule.leaseDurationMs`: `60000`
+- `schedule.maxActiveIntentsPerSession`: `5`
+- `schedule.maxActiveIntentsGlobal`: `20`
+- `schedule.minIntervalMs`: `60000`
+- `schedule.maxConsecutiveErrors`: `3`
+- `schedule.maxRecoveryCatchUps`: `5`
+
+Schedule runtime behavior:
+
+- `projectionPath` stores a materialized projection (`brewva.schedule.projection.v1`)
+  as JSONL (one `meta` line + N `intent` lines).
+- `minIntervalMs` is a global lower bound for both one-shot scheduling and retry/catch-up deferral.
+- `maxConsecutiveErrors` controls circuit-open behavior for repeated fire failures.
+- `maxRecoveryCatchUps` bounds startup missed-run catch-up; overflow intents are deferred.
 
 ### Infrastructure
 

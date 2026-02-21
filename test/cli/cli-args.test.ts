@@ -70,4 +70,12 @@ describe("brewva cli args", () => {
     expect(parsed!.sessionId).toBe("session-123");
     expect(parsed!.mode).toBe("print-json");
   });
+
+  test("supports daemon mode flag", () => {
+    const parsed = parseArgs(["--daemon"]);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.daemon).toBe(true);
+    expect(parsed!.mode).toBe("interactive");
+    expect(parsed!.prompt).toBeUndefined();
+  });
 });

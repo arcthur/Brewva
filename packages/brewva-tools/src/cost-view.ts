@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { formatISO } from "date-fns";
 import type { BrewvaToolOptions } from "./types.js";
 import { textResult } from "./utils/result.js";
 import { getSessionId } from "./utils/session.js";
@@ -61,7 +62,7 @@ export function createCostViewTool(options: BrewvaToolOptions): ToolDefinition {
         lines.push("", "## Alerts");
         for (const alert of summary.alerts.slice(-top)) {
           lines.push(
-            `- ${new Date(alert.timestamp).toISOString()} ${alert.kind} scope=${alert.scope}${alert.scopeId ? `(${alert.scopeId})` : ""} cost=${alert.costUsd.toFixed(6)} threshold=${alert.thresholdUsd.toFixed(6)}`,
+            `- ${formatISO(alert.timestamp)} ${alert.kind} scope=${alert.scope}${alert.scopeId ? `(${alert.scopeId})` : ""} cost=${alert.costUsd.toFixed(6)} threshold=${alert.thresholdUsd.toFixed(6)}`,
           );
         }
       }

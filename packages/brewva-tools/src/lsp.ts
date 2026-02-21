@@ -3,6 +3,7 @@ import { basename, dirname, extname, join, resolve } from "node:path";
 import { parseTscDiagnostics, type TscDiagnostic } from "@brewva/brewva-runtime";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { differenceInMilliseconds } from "date-fns";
 import type { BrewvaToolRuntime } from "./types.js";
 import { runCommand } from "./utils/exec.js";
 import {
@@ -148,7 +149,7 @@ async function findDefinition(
       loadedFiles,
       failedFiles,
       batches,
-      durationMs: Date.now() - startedAt,
+      durationMs: differenceInMilliseconds(Date.now(), startedAt),
     });
   };
 
@@ -229,7 +230,7 @@ async function findReferences(
       loadedFiles,
       failedFiles,
       batches,
-      durationMs: Date.now() - startedAt,
+      durationMs: differenceInMilliseconds(Date.now(), startedAt),
     });
   };
 

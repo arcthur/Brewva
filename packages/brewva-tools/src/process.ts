@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { addMilliseconds, differenceInMilliseconds, isBefore } from "date-fns";
 import {
   DEFAULT_LOG_TAIL_LINES,
   MAX_POLL_WAIT_MS,
@@ -55,7 +56,7 @@ function resolvePollTimeoutMs(params: { timeout?: unknown; timeout_ms?: unknown 
 }
 
 function formatRuntimeMs(startedAt: number, endedAt = Date.now()): string {
-  const value = Math.max(0, endedAt - startedAt);
+  const value = Math.max(0, differenceInMilliseconds(endedAt, startedAt));
   if (value < 1000) return `${value}ms`;
   return `${(value / 1000).toFixed(1)}s`;
 }
@@ -111,12 +112,12 @@ async function waitForPollCondition(
   timeoutMs: number,
 ): Promise<void> {
   if (timeoutMs <= 0) return;
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+  const deadline = addMilliseconds(Date.now(), timeoutMs).getTime();
+  while (isBefore(Date.now(), deadline)) {
     const running = getRunningSession(ownerSessionId, sessionId);
     if (!running) return;
     if (running.exited || hasPendingOutput(running)) return;
-    const sleepMs = Math.min(200, Math.max(1, deadline - Date.now()));
+    const sleepMs = Math.min(200, Math.max(1, differenceInMilliseconds(deadline, Date.now())));
     await new Promise((resolveNow) => setTimeout(resolveNow, sleepMs));
   }
 }
@@ -314,8 +315,8 @@ export function createProcessTool(): ToolDefinition {
         const running = getRunningSession(ownerSessionId, sessionId);
         if (running) {
           terminateRunningSession(running, true);
-          const deadline = Date.now() + 3_000;
-          while (!running.exited && Date.now() < deadline) {
+          const deadline = addMilliseconds(Date.now(), 3_000).getTime();
+          while (!running.exited && isBefore(Date.now(), deadline)) {
             await new Promise((r) => setTimeout(r, 50));
           }
           if (!running.exited) {

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { differenceInMilliseconds } from "date-fns";
 
 export interface ShellRunResult {
   command: string;
@@ -69,7 +70,7 @@ export function runShellCommand(
         exitCode,
         stdout,
         stderr,
-        durationMs: Date.now() - startedAt,
+        durationMs: differenceInMilliseconds(Date.now(), startedAt),
         timedOut,
       });
     };

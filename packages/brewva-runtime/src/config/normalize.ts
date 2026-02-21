@@ -131,6 +131,7 @@ export function normalizeBrewvaConfig(config: unknown, defaults: BrewvaConfig): 
   const tapeInput = isRecord(input.tape) ? input.tape : {};
   const memoryInput = isRecord(input.memory) ? input.memory : {};
   const securityInput = isRecord(input.security) ? input.security : {};
+  const scheduleInput = isRecord(input.schedule) ? input.schedule : {};
   const parallelInput = isRecord(input.parallel) ? input.parallel : {};
   const infrastructureInput = isRecord(input.infrastructure) ? input.infrastructure : {};
   const infrastructureEventsInput = isRecord(infrastructureInput.events)
@@ -275,6 +276,37 @@ export function normalizeBrewvaConfig(config: unknown, defaults: BrewvaConfig): 
       )
         ? (securityInput.skillMaxParallelMode as BrewvaConfig["security"]["skillMaxParallelMode"])
         : defaults.security.skillMaxParallelMode,
+    },
+    schedule: {
+      enabled: normalizeBoolean(scheduleInput.enabled, defaults.schedule.enabled),
+      projectionPath: normalizeNonEmptyString(
+        scheduleInput.projectionPath,
+        defaults.schedule.projectionPath,
+      ),
+      leaseDurationMs: normalizePositiveInteger(
+        scheduleInput.leaseDurationMs,
+        defaults.schedule.leaseDurationMs,
+      ),
+      maxActiveIntentsPerSession: normalizePositiveInteger(
+        scheduleInput.maxActiveIntentsPerSession,
+        defaults.schedule.maxActiveIntentsPerSession,
+      ),
+      maxActiveIntentsGlobal: normalizePositiveInteger(
+        scheduleInput.maxActiveIntentsGlobal,
+        defaults.schedule.maxActiveIntentsGlobal,
+      ),
+      minIntervalMs: normalizePositiveInteger(
+        scheduleInput.minIntervalMs,
+        defaults.schedule.minIntervalMs,
+      ),
+      maxConsecutiveErrors: normalizePositiveInteger(
+        scheduleInput.maxConsecutiveErrors,
+        defaults.schedule.maxConsecutiveErrors,
+      ),
+      maxRecoveryCatchUps: normalizePositiveInteger(
+        scheduleInput.maxRecoveryCatchUps,
+        defaults.schedule.maxRecoveryCatchUps,
+      ),
     },
     parallel: {
       enabled: normalizeBoolean(parallelInput.enabled, defaults.parallel.enabled),

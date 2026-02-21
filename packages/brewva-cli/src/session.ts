@@ -3,7 +3,7 @@ import { createBrewvaExtension, createRuntimeCoreBridgeExtension } from "@brewva
 import {
   BrewvaRuntime,
   resolveBrewvaAgentDir,
-  type CreateBrewvaSessionOptions,
+  type CreateBrewvaSessionOptions as RuntimeCreateBrewvaSessionOptions,
 } from "@brewva/brewva-runtime";
 import { buildBrewvaTools } from "@brewva/brewva-tools";
 import {
@@ -21,6 +21,10 @@ import { registerRuntimeCoreEventBridge } from "./session-event-bridge.js";
 
 export interface BrewvaSessionResult extends CreateAgentSessionResult {
   runtime: BrewvaRuntime;
+}
+
+export interface CreateBrewvaSessionOptions extends RuntimeCreateBrewvaSessionOptions {
+  runtime?: BrewvaRuntime;
 }
 
 function resolveModel(
@@ -58,11 +62,13 @@ export async function createBrewvaSession(
   const modelRegistry = new ModelRegistry(authStorage, join(agentDir, "models.json"));
   const selectedModel = resolveModel(options.model, modelRegistry);
 
-  const runtime = new BrewvaRuntime({
-    cwd,
-    configPath: options.configPath,
-    config: undefined,
-  });
+  const runtime =
+    options.runtime ??
+    new BrewvaRuntime({
+      cwd,
+      configPath: options.configPath,
+      config: undefined,
+    });
 
   if (options.activePacks && options.activePacks.length > 0) {
     runtime.config.skills.packs = [...options.activePacks];

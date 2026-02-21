@@ -12,6 +12,7 @@ function collectToolNames(sourceRoot: string): string[] {
     "lsp.ts",
     "process.ts",
     "rollback-last-patch.ts",
+    "schedule-intent.ts",
     "session-compact.ts",
     "skill-load.ts",
     "skill-complete.ts",

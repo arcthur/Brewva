@@ -7,6 +7,7 @@ import { createLookAtTool } from "./look-at.js";
 import { createLspTools } from "./lsp.js";
 import { createProcessTool } from "./process.js";
 import { createRollbackLastPatchTool } from "./rollback-last-patch.js";
+import { createScheduleIntentTool } from "./schedule-intent.js";
 import { createSessionCompactTool } from "./session-compact.js";
 import { createSkillCompleteTool } from "./skill-complete.js";
 import { createSkillLoadTool } from "./skill-load.js";
@@ -27,6 +28,7 @@ export function buildBrewvaTools(options: BuildBrewvaToolsOptions): ToolDefiniti
     createProcessTool(),
     createCostViewTool({ runtime: options.runtime }),
     createLedgerQueryTool({ runtime: options.runtime }),
+    createScheduleIntentTool({ runtime: options.runtime }),
     ...createTapeTools({ runtime: options.runtime }),
     createSessionCompactTool({ runtime: options.runtime }),
     createRollbackLastPatchTool({ runtime: options.runtime }),
@@ -46,6 +48,7 @@ export { createLedgerQueryTool } from "./ledger-query.js";
 export { createTapeTools } from "./tape.js";
 export { createSessionCompactTool } from "./session-compact.js";
 export { createRollbackLastPatchTool } from "./rollback-last-patch.js";
+export { createScheduleIntentTool } from "./schedule-intent.js";
 export { createSkillLoadTool } from "./skill-load.js";
 export { createSkillCompleteTool } from "./skill-complete.js";
 export { createTaskLedgerTools } from "./task-ledger.js";

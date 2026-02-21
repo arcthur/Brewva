@@ -1,3 +1,4 @@
+import { differenceInMilliseconds } from "date-fns";
 import type { MemoryCrystal, MemorySearchResult, MemoryUnit, MemorySearchHit } from "./types.js";
 
 export interface MemoryRetrievalWeights {
@@ -68,7 +69,7 @@ function lexicalScore(queryTokens: string[], candidateTokens: string[]): number 
 }
 
 function recencyScore(updatedAt: number): number {
-  const ageMs = Math.max(0, Date.now() - updatedAt);
+  const ageMs = Math.max(0, differenceInMilliseconds(Date.now(), updatedAt));
   const ageDays = ageMs / (24 * 60 * 60 * 1000);
   return 1 / (1 + ageDays);
 }

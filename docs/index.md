@@ -23,6 +23,7 @@ This repository uses a layered documentation system:
 - Planning to execution: `docs/journeys/planning-to-execution.md`
 - Context and compaction: `docs/journeys/context-and-compaction.md`
 - Background and parallelism: `docs/journeys/background-and-parallelism.md`
+- Intent-driven scheduling: `docs/journeys/intent-driven-scheduling.md`
 - Session handoff and replay: `docs/journeys/session-handoff-and-reference.md`
 - Operations and debugging: `docs/journeys/operations-and-debugging.md`
 

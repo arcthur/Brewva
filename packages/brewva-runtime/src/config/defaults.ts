@@ -65,6 +65,16 @@ export const DEFAULT_BREWVA_CONFIG: BrewvaConfig = {
     skillMaxToolCallsMode: "warn",
     skillMaxParallelMode: "warn",
   },
+  schedule: {
+    enabled: true,
+    projectionPath: ".brewva/schedule/intents.jsonl",
+    leaseDurationMs: 60_000,
+    maxActiveIntentsPerSession: 5,
+    maxActiveIntentsGlobal: 20,
+    minIntervalMs: 60_000,
+    maxConsecutiveErrors: 3,
+    maxRecoveryCatchUps: 5,
+  },
   parallel: {
     enabled: true,
     maxConcurrent: 3,

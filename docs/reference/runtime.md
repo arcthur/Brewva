@@ -58,6 +58,11 @@ Primary class: `packages/brewva-runtime/src/runtime.ts`.
 - `resolveTaskBlocker`
 - `upsertTruthFact`
 - `resolveTruthFact`
+- `createScheduleIntent`
+- `cancelScheduleIntent`
+- `updateScheduleIntent`
+- `listScheduleIntents`
+- `getScheduleProjectionSnapshot`
 - `recordEvent`
 - `queryEvents`
 - `queryStructuredEvents`
@@ -79,6 +84,35 @@ Primary class: `packages/brewva-runtime/src/runtime.ts`.
 ## Type Contract
 
 All public runtime data contracts are defined in `packages/brewva-runtime/src/types.ts`.
+
+## Scheduling Notes
+
+- `createScheduleIntent()` accepts either `runAt` (one-shot) or `cron` (recurring).
+- `runAt` and `cron` are mutually exclusive.
+- `createScheduleIntent()` accepts `timeZone` for `cron` intents; omitted timezone
+  is persisted as the local host timezone.
+- One-shot `runAt` is clamped by `schedule.minIntervalMs` to avoid immediate fire storms.
+- Active intent quota is enforced by both `schedule.maxActiveIntentsPerSession` and
+  `schedule.maxActiveIntentsGlobal`.
+- `updateScheduleIntent()` allows schedule-target changes (`runAt` / `cron` / `timeZone`)
+  plus semantic updates (`reason`, `goalRef`, `continuityMode`, `maxRuns`,
+  `convergenceCondition`).
+- `convergenceCondition` uses structured predicates (`truth_resolved`, `task_phase`,
+  `max_runs`, `all_of`, `any_of`) and is evaluated after each fired run.
+- `SchedulerService.recover()` returns catch-up telemetry (`dueIntents`,
+  `firedIntents`, `deferredIntents`) plus per-session summaries
+  (`catchUp.sessions`).
+- If missed intents exceed `schedule.maxRecoveryCatchUps`, overflow intents are
+  deferred via `intent_updated` projection writes and
+  `schedule_recovery_deferred` events.
+- Recovery emits `schedule_recovery_summary` events per affected parent session.
+- Recovery catch-up uses session round-robin selection before deferring overflow
+  intents, improving fairness across parent sessions under backlog pressure.
+- Fire-time failures apply exponential backoff based on `schedule.minIntervalMs`
+  and open a circuit after `schedule.maxConsecutiveErrors` (intent transitions to
+  `error` via `intent_cancelled` with `error` payload).
+- Schedule APIs persist through `recordEvent()`. If event storage is disabled,
+  schedule mutations return `events_store_disabled`.
 
 ## Viewport Policy
 

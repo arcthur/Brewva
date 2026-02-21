@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { formatISO } from "date-fns";
 import { resolveGlobalBrewvaRootDir, resolveProjectBrewvaRootDir } from "../config/paths.js";
 import type { BrewvaConfig, SkillDocument, SkillTier, SkillsIndexEntry } from "../types.js";
 import { parseSkillDocument, tightenContract } from "./contract.js";
@@ -283,7 +284,7 @@ export class SkillRegistry {
       mkdirSync(parent, { recursive: true });
     }
     const payload = {
-      generatedAt: new Date().toISOString(),
+      generatedAt: formatISO(Date.now()),
       roots: this.getLoadedRoots(),
       skills: this.buildIndex(),
     };
