@@ -5,6 +5,7 @@ import type {
 } from "@brewva/brewva-runtime";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { formatISO } from "date-fns";
 import type { BrewvaToolOptions } from "./types.js";
 import { textResult } from "./utils/result.js";
 import { getSessionId } from "./utils/session.js";
@@ -207,7 +208,7 @@ export function createTapeTools(options: BrewvaToolOptions): ToolDefinition[] {
         const match = result.matches[index];
         if (!match) continue;
         lines.push(
-          `${index + 1}. [${match.type}] id=${match.eventId} turn=${match.turn ?? "n/a"} ts=${new Date(match.timestamp).toISOString()}`,
+          `${index + 1}. [${match.type}] id=${match.eventId} turn=${match.turn ?? "n/a"} ts=${formatISO(match.timestamp)}`,
         );
         lines.push(`   ${match.excerpt}`);
       }

@@ -206,6 +206,36 @@
             }
           }
         },
+        "schedule": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "leaseDurationMs": {
+              "type": "number"
+            },
+            "maxActiveIntentsGlobal": {
+              "type": "number"
+            },
+            "maxActiveIntentsPerSession": {
+              "type": "number"
+            },
+            "maxConsecutiveErrors": {
+              "type": "number"
+            },
+            "maxRecoveryCatchUps": {
+              "type": "number"
+            },
+            "minIntervalMs": {
+              "type": "number"
+            },
+            "projectionPath": {
+              "type": "string"
+            }
+          }
+        },
         "skills": {
           "type": "object",
           "additionalProperties": false,

@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import { differenceInMilliseconds } from "date-fns";
 import { ensureDir, writeFileAtomic } from "../utils/fs.js";
 import { sha256 } from "../utils/hash.js";
 import type {
@@ -493,7 +494,7 @@ export class MemoryStore {
       if (code !== "EEXIST") throw error;
       try {
         const stats = statSync(this.refreshLockPath);
-        const ageMs = Date.now() - stats.mtimeMs;
+        const ageMs = differenceInMilliseconds(Date.now(), stats.mtimeMs);
         if (ageMs > REFRESH_LOCK_STALE_MS) {
           unlinkSync(this.refreshLockPath);
           fd = openSync(this.refreshLockPath, "wx");

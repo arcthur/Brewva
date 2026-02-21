@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 import { getShellConfig } from "@mariozechner/pi-coding-agent";
+import { differenceInMilliseconds } from "date-fns";
 
 const MAX_AGGREGATED_OUTPUT_CHARS = 1_000_000;
 const TAIL_CHARS = 4_000;
@@ -69,7 +70,7 @@ const finishedSessions = new Map<string, ManagedExecFinishedSession>();
 
 function cleanupExpiredFinishedSessions(now = Date.now()): void {
   for (const [sessionId, session] of finishedSessions.entries()) {
-    if (now - session.endedAt > FINISHED_TTL_MS) {
+    if (differenceInMilliseconds(now, session.endedAt) > FINISHED_TTL_MS) {
       finishedSessions.delete(sessionId);
     }
   }

@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { differenceInMilliseconds } from "date-fns";
 import type { BrewvaToolRuntime } from "./types.js";
 import { runCommand } from "./utils/exec.js";
 import {
@@ -129,7 +130,7 @@ async function naiveSearch(
       loadedFiles,
       failedFiles,
       batches,
-      durationMs: Date.now() - startedAt,
+      durationMs: differenceInMilliseconds(Date.now(), startedAt),
     });
   };
 
@@ -238,7 +239,7 @@ async function naiveReplace(
       loadedFiles,
       failedFiles,
       batches,
-      durationMs: Date.now() - startedAt,
+      durationMs: differenceInMilliseconds(Date.now(), startedAt),
     });
   };
 

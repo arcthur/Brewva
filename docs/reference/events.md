@@ -58,6 +58,13 @@ fields as forward-compatible.
 - `ledger_compacted`
 - `viewport_built`
 - `viewport_policy_evaluated`
+- `schedule_intent`
+- `schedule_recovery_deferred`
+- `schedule_recovery_summary`
+- `schedule_wakeup`
+- `schedule_child_session_started`
+- `schedule_child_session_finished`
+- `schedule_child_session_failed`
 
 ## Raw vs Semantic Tool Events
 
@@ -157,6 +164,98 @@ Payload fields:
 - `latestAnchorEventId`: nearest semantic anchor id when available
 - `reason`: checkpoint trigger reason
 - `createdAt`: event creation timestamp (epoch ms)
+
+## Schedule Events
+
+### `schedule_intent`
+
+Primary scheduling stream with payload schema `brewva.schedule.v1`.
+`kind` values:
+
+- `intent_created`
+- `intent_updated`
+- `intent_cancelled`
+- `intent_fired`
+- `intent_converged`
+
+Common fields (some optional by `kind`):
+
+- `intentId`
+- `parentSessionId`
+- `reason`
+- `continuityMode` (`inherit | fresh`)
+- `maxRuns`
+- `runAt`
+- `cron`
+- `timeZone`
+- `nextRunAt`
+- `goalRef`
+- `convergenceCondition`
+
+Additional fields on `intent_fired`:
+
+- `runIndex`
+- `firedAt`
+- `childSessionId`
+- `error`
+
+### `schedule_recovery_deferred`
+
+Emitted when startup recovery finds more missed intents than
+`schedule.maxRecoveryCatchUps`.
+
+Payload schema: `brewva.schedule-recovery.v1`
+
+- `intentId`
+- `reason` (`max_recovery_catchups_exceeded`)
+- `deferredFrom`
+- `deferredTo`
+- `queueSequence`
+- `backlogSize`
+
+### `schedule_recovery_summary`
+
+Per-parent-session catch-up summary emitted after recovery.
+
+Payload schema: `brewva.schedule-recovery.v1`
+
+- `recoveredAt`
+- `parentSessionId`
+- `dueIntents`
+- `firedIntents`
+- `deferredIntents`
+- `maxRecoveryCatchUps`
+
+### `schedule_wakeup`
+
+Wakeup-context event emitted when daemon starts a child session.
+
+Payload schema: `brewva.schedule-wakeup.v1`
+
+- `intentId`
+- `parentSessionId`
+- `runIndex`
+- `reason`
+- `continuityMode`
+- `timeZone`
+- `goalRef`
+- `inheritedTaskSpec`
+- `inheritedTruthFacts`
+- `parentAnchorId`
+
+### `schedule_child_session_started|finished|failed`
+
+Parent-session lifecycle events for daemon-managed child sessions.
+
+Common fields:
+
+- `intentId`
+- `childSessionId`
+- `runIndex`
+
+Additional field on `schedule_child_session_failed`:
+
+- `error`
 
 ## Task and Truth Ledger Events
 

@@ -1,3 +1,4 @@
+import { formatISO } from "date-fns";
 import type {
   MemoryCrystal,
   MemoryInsight,
@@ -112,10 +113,7 @@ function buildSections(input: {
 }
 
 function renderContent(snapshot: WorkingMemorySnapshot): string {
-  const lines: string[] = [
-    "[WorkingMemory]",
-    `generated_at: ${new Date(snapshot.generatedAt).toISOString()}`,
-  ];
+  const lines: string[] = ["[WorkingMemory]", `generated_at: ${formatISO(snapshot.generatedAt)}`];
   for (const section of snapshot.sections) {
     lines.push(section.title);
     lines.push(...section.lines);

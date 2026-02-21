@@ -27,6 +27,7 @@ Defined in `packages/brewva-tools/src/ast-grep.ts`.
 - `process`
 - `cost_view`
 - `ledger_query`
+- `schedule_intent`
 - `tape_handoff`
 - `tape_info`
 - `tape_search`
@@ -43,6 +44,24 @@ Defined in `packages/brewva-tools/src/ast-grep.ts`.
 - `memory_dismiss_insight`
 - `memory_review_evolves_edge`
 
+`schedule_intent` supports `action=create|update|cancel|list`:
+
+- `create` requires `reason` and exactly one schedule target:
+  - one-shot: `runAt` or `delayMs`
+  - recurring: `cron` (optional `timeZone`)
+  - `runAt` / `delayMs` / `cron` are mutually exclusive, and `timeZone` is only valid with `cron`
+- `update` requires `intentId` and supports patching `reason`, `goalRef`,
+  `continuityMode`, `maxRuns`, `convergenceCondition`, and schedule target fields;
+  empty patches are rejected with `empty_update`
+- `cancel` requires `intentId`
+- `list` supports `status` filtering (`all|active|cancelled|converged|error`) and
+  `includeAllSessions` (global scope), and returns projection `watermarkOffset`
+
+Structured `convergenceCondition` predicates include:
+`truth_resolved`, `task_phase`, `max_runs`, `all_of`, `any_of`.
+
+For cron intents, runtime defaults `maxRuns` to `10000` when omitted.
+
 Definitions:
 
 - `packages/brewva-tools/src/look-at.ts`
@@ -50,6 +69,7 @@ Definitions:
 - `packages/brewva-tools/src/process.ts`
 - `packages/brewva-tools/src/cost-view.ts`
 - `packages/brewva-tools/src/ledger-query.ts`
+- `packages/brewva-tools/src/schedule-intent.ts`
 - `packages/brewva-tools/src/tape.ts`
 - `packages/brewva-tools/src/session-compact.ts`
 - `packages/brewva-tools/src/rollback-last-patch.ts`

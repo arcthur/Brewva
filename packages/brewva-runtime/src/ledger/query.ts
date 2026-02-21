@@ -1,3 +1,4 @@
+import { formatISO } from "date-fns";
 import type { EvidenceLedgerRow } from "../types.js";
 
 export function formatLedgerRows(rows: EvidenceLedgerRow[]): string {
@@ -8,7 +9,7 @@ export function formatLedgerRows(rows: EvidenceLedgerRow[]): string {
   const lines: string[] = [];
   for (const row of rows) {
     lines.push(
-      `[${new Date(row.timestamp).toISOString()}] id=${row.id} tool=${row.tool} verdict=${row.verdict} skill=${row.skill ?? "-"}`,
+      `[${formatISO(row.timestamp)}] id=${row.id} tool=${row.tool} verdict=${row.verdict} skill=${row.skill ?? "-"}`,
     );
     lines.push(`  args: ${row.argsSummary}`);
     lines.push(`  output: ${row.outputSummary}`);

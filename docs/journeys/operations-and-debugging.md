@@ -33,3 +33,7 @@ flowchart TD
 - Ledger query tool: `packages/brewva-tools/src/ledger-query.ts`
 - Rollback tool: `packages/brewva-tools/src/rollback-last-patch.ts`
 - Tool scan telemetry helper: `packages/brewva-tools/src/utils/parallel-read.ts`
+
+## Related Journeys
+
+- Intent-driven scheduling: `docs/journeys/intent-driven-scheduling.md`

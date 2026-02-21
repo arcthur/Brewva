@@ -9,6 +9,7 @@ CLI implementation: `packages/brewva-cli/src/index.ts`.
 - One-shot JSON mode (`--mode json` or `--json`; newline-delimited JSON output, plus final `brewva_event_bundle`)
 - Undo mode (`--undo`)
 - Replay mode (`--replay`)
+- Scheduler daemon mode (`--daemon`)
 
 ## Startup Behavior
 
@@ -37,6 +38,7 @@ CLI implementation: `packages/brewva-cli/src/index.ts`.
 - `--json`
 - `--undo`
 - `--replay`
+- `--daemon`
 - `--session`
 - `--verbose`
 - `--help`
@@ -52,6 +54,13 @@ installs runtime core bridge hooks, so tool policy, compaction gate, and
 ledger/patch tracking remain enforced.
 
 `--verbose` overrides quiet startup and emits the full startup output.
+
+`--daemon` runs a scheduler process for intent execution without creating an
+interactive coding session. Due intents are executed in child sessions with
+wakeup context and continuity metadata.
+It cannot be combined with `--print`/`--json`/`--mode`, `--undo`/`--replay`,
+`--task`/`--task-file`, or inline prompt text.
+It also requires `schedule.enabled=true` and `infrastructure.events.enabled=true`.
 
 To temporarily restore upstream version-check notifications (this is an upstream `pi-coding-agent` environment variable), launch with an empty override:
 

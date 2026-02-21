@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { formatISO } from "date-fns";
 import { loadBrewvaConfigWithDiagnostics, type BrewvaConfigDiagnostic } from "./config/loader.js";
 import { resolveWorkspaceRootDir } from "./config/paths.js";
 import { ContextBudgetManager } from "./context/budget.js";
@@ -14,6 +15,7 @@ import type { MemorySearchResult, WorkingMemorySnapshot } from "./memory/types.j
 import { ParallelBudgetManager } from "./parallel/budget.js";
 import { ParallelResultStore } from "./parallel/results.js";
 import type { ViewportQuality } from "./policy/viewport-policy.js";
+import { SchedulerService } from "./schedule/service.js";
 import { sanitizeContextText } from "./security/sanitize.js";
 import { checkToolAccess } from "./security/tool-policy.js";
 import { SkillRegistry } from "./skills/registry.js";
@@ -51,6 +53,15 @@ import type {
   EvidenceQuery,
   ParallelAcquireResult,
   RollbackResult,
+  ScheduleIntentCancelInput,
+  ScheduleIntentCancelResult,
+  ScheduleIntentCreateInput,
+  ScheduleIntentCreateResult,
+  ScheduleIntentListQuery,
+  ScheduleIntentProjectionRecord,
+  ScheduleIntentUpdateInput,
+  ScheduleIntentUpdateResult,
+  ScheduleProjectionSnapshot,
   BrewvaEventCategory,
   BrewvaEventQuery,
   BrewvaEventRecord,
@@ -95,6 +106,7 @@ const ALWAYS_ALLOWED_TOOLS = [
   "tape_search",
   "session_compact",
   "rollback_last_patch",
+  "schedule_intent",
 ];
 const ALWAYS_ALLOWED_TOOL_SET = new Set(ALWAYS_ALLOWED_TOOLS);
 const OUTPUT_HEALTH_GUARD_LOOKBACK_EVENTS = 32;
@@ -225,6 +237,7 @@ export class BrewvaRuntime {
   >();
   private tapeCheckpointWriteInProgressBySession = new Set<string>();
   private eventListeners = new Set<(event: BrewvaStructuredEvent) => void>();
+  private scheduleProjectionManager: SchedulerService | null = null;
 
   constructor(options: BrewvaRuntimeOptions = {}) {
     this.cwd = resolve(options.cwd ?? process.cwd());
@@ -2013,6 +2026,68 @@ export class BrewvaRuntime {
     return { ok: true };
   }
 
+  async createScheduleIntent(
+    sessionId: string,
+    input: ScheduleIntentCreateInput,
+  ): Promise<ScheduleIntentCreateResult> {
+    const manager = await this.ensureScheduleProjectionManager();
+    return manager.createIntent({
+      parentSessionId: sessionId,
+      reason: input.reason,
+      goalRef: input.goalRef,
+      continuityMode: input.continuityMode,
+      runAt: input.runAt,
+      cron: input.cron,
+      timeZone: input.timeZone,
+      maxRuns: input.maxRuns,
+      intentId: input.intentId,
+      convergenceCondition: input.convergenceCondition,
+    });
+  }
+
+  async cancelScheduleIntent(
+    sessionId: string,
+    input: ScheduleIntentCancelInput,
+  ): Promise<ScheduleIntentCancelResult> {
+    const manager = await this.ensureScheduleProjectionManager();
+    return manager.cancelIntent({
+      parentSessionId: sessionId,
+      intentId: input.intentId,
+      reason: input.reason,
+    });
+  }
+
+  async updateScheduleIntent(
+    sessionId: string,
+    input: ScheduleIntentUpdateInput,
+  ): Promise<ScheduleIntentUpdateResult> {
+    const manager = await this.ensureScheduleProjectionManager();
+    return manager.updateIntent({
+      parentSessionId: sessionId,
+      intentId: input.intentId,
+      reason: input.reason,
+      goalRef: input.goalRef,
+      continuityMode: input.continuityMode,
+      runAt: input.runAt,
+      cron: input.cron,
+      timeZone: input.timeZone,
+      maxRuns: input.maxRuns,
+      convergenceCondition: input.convergenceCondition,
+    });
+  }
+
+  async listScheduleIntents(
+    query: ScheduleIntentListQuery = {},
+  ): Promise<ScheduleIntentProjectionRecord[]> {
+    const manager = await this.ensureScheduleProjectionManager();
+    return manager.listIntents(query);
+  }
+
+  async getScheduleProjectionSnapshot(): Promise<ScheduleProjectionSnapshot> {
+    const manager = await this.ensureScheduleProjectionManager();
+    return manager.snapshot();
+  }
+
   recordEvent(input: {
     sessionId: string;
     type: string;
@@ -2083,10 +2158,26 @@ export class BrewvaRuntime {
       type: event.type,
       category: inferEventCategory(event.type),
       timestamp: event.timestamp,
-      isoTime: new Date(event.timestamp).toISOString(),
+      isoTime: formatISO(event.timestamp),
       turn: event.turn,
       payload: event.payload,
     };
+  }
+
+  private getScheduleProjectionManager(): SchedulerService {
+    if (!this.scheduleProjectionManager) {
+      this.scheduleProjectionManager = new SchedulerService({
+        runtime: this,
+        enableExecution: false,
+      });
+    }
+    return this.scheduleProjectionManager;
+  }
+
+  private async ensureScheduleProjectionManager(): Promise<SchedulerService> {
+    const manager = this.getScheduleProjectionManager();
+    await manager.recover();
+    return manager;
   }
 
   recordAssistantUsage(input: {

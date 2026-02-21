@@ -4,6 +4,15 @@ import type {
   EvidenceQuery,
   BrewvaConfig,
   RollbackResult,
+  ScheduleIntentCancelInput,
+  ScheduleIntentCancelResult,
+  ScheduleIntentCreateInput,
+  ScheduleIntentCreateResult,
+  ScheduleIntentListQuery,
+  ScheduleIntentProjectionRecord,
+  ScheduleIntentUpdateInput,
+  ScheduleIntentUpdateResult,
+  ScheduleProjectionSnapshot,
   SessionCostSummary,
   SkillDocument,
   TapeSearchResult,
@@ -17,7 +26,7 @@ import type {
 } from "@brewva/brewva-runtime";
 
 export interface BrewvaToolRuntime {
-  readonly config?: Pick<BrewvaConfig, "parallel" | "infrastructure">;
+  readonly config?: Pick<BrewvaConfig, "parallel" | "infrastructure" | "schedule">;
   activateSkill(
     sessionId: string,
     name: string,
@@ -81,6 +90,20 @@ export interface BrewvaToolRuntime {
     sessionId: string,
     input: { edgeId: string; decision: "accept" | "reject" },
   ): { ok: boolean; error?: "missing_id" | "not_found" | "already_set" };
+  createScheduleIntent(
+    sessionId: string,
+    input: ScheduleIntentCreateInput,
+  ): Promise<ScheduleIntentCreateResult>;
+  cancelScheduleIntent(
+    sessionId: string,
+    input: ScheduleIntentCancelInput,
+  ): Promise<ScheduleIntentCancelResult>;
+  updateScheduleIntent(
+    sessionId: string,
+    input: ScheduleIntentUpdateInput,
+  ): Promise<ScheduleIntentUpdateResult>;
+  listScheduleIntents(query?: ScheduleIntentListQuery): Promise<ScheduleIntentProjectionRecord[]>;
+  getScheduleProjectionSnapshot(): Promise<ScheduleProjectionSnapshot>;
   recordEvent?(input: {
     sessionId: string;
     type: string;

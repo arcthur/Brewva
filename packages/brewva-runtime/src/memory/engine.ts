@@ -1,3 +1,4 @@
+import { format, getHours } from "date-fns";
 import type { BrewvaEventRecord } from "../types.js";
 import { compileCrystalDrafts } from "./crystal.js";
 import { extractMemoryFromEvent } from "./extractor.js";
@@ -7,10 +8,7 @@ import type { MemoryEvolvesEdge, MemorySearchResult, WorkingMemorySnapshot } fro
 import { buildWorkingMemorySnapshot } from "./working-memory.js";
 
 function toDayKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return format(date, "yyyy-MM-dd");
 }
 
 function inferEvolvesRelation(input: {
@@ -164,7 +162,7 @@ export class MemoryEngine {
     const store = this.getStore();
     const state = store.getState();
     const today = toDayKey(now);
-    const crossedDailyHour = now.getHours() >= this.dailyRefreshHourLocal;
+    const crossedDailyHour = getHours(now) >= this.dailyRefreshHourLocal;
     const needsDailyRefresh = crossedDailyHour && state.lastPublishedDayKey !== today;
     const needsEventRefresh = state.dirtyTopics.length > 0;
     const needsRefresh = needsDailyRefresh || needsEventRefresh;
