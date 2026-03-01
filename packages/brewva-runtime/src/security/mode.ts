@@ -8,6 +8,7 @@ export interface EffectiveSecurityPolicy {
   skillMaxTokensMode: PolicyEnforcementMode;
   skillMaxToolCallsMode: PolicyEnforcementMode;
   skillMaxParallelMode: PolicyEnforcementMode;
+  skillDispatchGateMode: PolicyEnforcementMode;
 }
 
 export function resolveSecurityPolicy(
@@ -20,6 +21,7 @@ export function resolveSecurityPolicy(
       skillMaxTokensMode: "enforce",
       skillMaxToolCallsMode: "enforce",
       skillMaxParallelMode: "enforce",
+      skillDispatchGateMode: "enforce",
     };
   }
 
@@ -30,6 +32,7 @@ export function resolveSecurityPolicy(
       skillMaxTokensMode: "off",
       skillMaxToolCallsMode: "off",
       skillMaxParallelMode: "off",
+      skillDispatchGateMode: "off",
     };
   }
 
@@ -39,5 +42,6 @@ export function resolveSecurityPolicy(
     skillMaxTokensMode: "warn",
     skillMaxToolCallsMode: "warn",
     skillMaxParallelMode: "warn",
+    skillDispatchGateMode: "warn",
   };
 }

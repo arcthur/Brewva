@@ -116,6 +116,15 @@ This list is intentionally non-exhaustive. Unknown event types/fields should be 
 
 `tool_result` itself is treated as an SDK hook boundary. Persisted semantic result records are emitted as `tool_result_recorded`.
 
+### Skill Routing
+
+- `skill_routing_decided`
+- `skill_routing_followed`
+- `skill_routing_overridden`
+- `skill_routing_ignored`
+- `skill_dispatch_gate_warning`
+- `skill_dispatch_gate_blocked_tool`
+
 ### Task/Truth/Verification
 
 - `task_event`

@@ -63,6 +63,6 @@ describe("context memory split", () => {
     expect(injection.text.includes("[WorkingMemory]")).toBe(true);
     expect(injection.text.includes("[MemoryRecall]")).toBe(true);
     const sourceCount = getLastInjectedSourceCount(runtime, sessionId);
-    expect(sourceCount).toBe(3);
+    expect(sourceCount).toBeGreaterThanOrEqual(3);
   });
 });

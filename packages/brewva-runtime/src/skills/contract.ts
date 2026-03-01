@@ -33,14 +33,92 @@ function toStringArray(value: unknown): string[] {
   return [];
 }
 
-function toToolNameArray(value: unknown): string[] {
+function normalizeStringList(value: unknown): string[] {
   return toStringArray(value)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function toToolNameArray(value: unknown): string[] {
+  return normalizeStringList(value)
     .map((tool) => normalizeToolName(tool))
     .filter((tool) => tool.length > 0);
 }
 
 function toString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
+}
+
+function normalizePositiveInteger(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(1, Math.floor(value));
+}
+
+function normalizeNegatives(value: unknown): Array<{ scope: "intent" | "topic"; terms: string[] }> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+    .map((item) => ({
+      scope: item.scope === "intent" ? ("intent" as const) : ("topic" as const),
+      terms: normalizeStringList(item.terms),
+    }))
+    .filter((item) => item.terms.length > 0);
+}
+
+function normalizeTriggerPolicy(
+  data: Record<string, unknown>,
+): SkillContract["triggers"] | undefined {
+  const rawTriggers =
+    typeof data.triggers === "object" && data.triggers && !Array.isArray(data.triggers)
+      ? (data.triggers as Record<string, unknown>)
+      : {};
+  const intents = normalizeStringList(rawTriggers.intents);
+  const topics = normalizeStringList(rawTriggers.topics);
+  const phrases = normalizeStringList(rawTriggers.phrases);
+  const negatives = normalizeNegatives(rawTriggers.negatives);
+  if (
+    intents.length === 0 &&
+    topics.length === 0 &&
+    phrases.length === 0 &&
+    negatives.length === 0
+  ) {
+    return undefined;
+  }
+  return {
+    intents,
+    topics,
+    phrases,
+    negatives,
+  };
+}
+
+function normalizeDispatchPolicy(
+  data: Record<string, unknown>,
+): SkillContract["dispatch"] | undefined {
+  const rawDispatch =
+    typeof data.dispatch === "object" && data.dispatch && !Array.isArray(data.dispatch)
+      ? (data.dispatch as Record<string, unknown>)
+      : {};
+  const gateThreshold = normalizePositiveInteger(
+    rawDispatch.gate_threshold ?? rawDispatch.gateThreshold,
+    10,
+  );
+  const autoThreshold = Math.max(
+    gateThreshold,
+    normalizePositiveInteger(rawDispatch.auto_threshold ?? rawDispatch.autoThreshold, 16),
+  );
+  const modeCandidate = rawDispatch.default_mode ?? rawDispatch.defaultMode;
+  const defaultMode =
+    modeCandidate === "gate" || modeCandidate === "auto" || modeCandidate === "suggest"
+      ? modeCandidate
+      : "suggest";
+  return {
+    gateThreshold,
+    autoThreshold,
+    defaultMode,
+  };
 }
 
 function normalizeContract(
@@ -75,10 +153,12 @@ function normalizeContract(
         ? budget.maxTokens
         : 100_000;
 
-  const antiTags = toStringArray(data.anti_tags ?? data.antiTags);
-  const outputs = toStringArray(data.outputs);
-  const composableWith = toStringArray(data.composable_with ?? data.composableWith);
-  const consumes = toStringArray(data.consumes);
+  const antiTags = normalizeStringList(data.anti_tags ?? data.antiTags);
+  const outputs = normalizeStringList(data.outputs);
+  const composableWith = normalizeStringList(data.composable_with ?? data.composableWith);
+  const consumes = normalizeStringList(data.consumes);
+  const triggers = normalizeTriggerPolicy(data);
+  const dispatch = normalizeDispatchPolicy(data);
   const escalationPath =
     typeof data.escalation_path === "object" &&
     data.escalation_path &&
@@ -94,8 +174,10 @@ function normalizeContract(
     name,
     tier,
     description: typeof data.description === "string" ? data.description : undefined,
-    tags: toStringArray(data.tags),
+    tags: normalizeStringList(data.tags),
     antiTags,
+    triggers,
+    dispatch,
     tools: {
       required,
       optional,
@@ -175,10 +257,80 @@ export function tightenContract(
       ? Math.min(base.maxParallel ?? override.maxParallel, override.maxParallel)
       : base.maxParallel;
 
+  const triggers = (() => {
+    if (!override.triggers) return base.triggers;
+    const baseTriggers = base.triggers;
+    const overrideTriggers =
+      typeof override.triggers === "object" && override.triggers !== null
+        ? (override.triggers as unknown as Record<string, unknown>)
+        : {};
+
+    const pickStringList = (value: unknown, fallback: string[]): string[] => {
+      if (value === undefined) return [...fallback];
+      return normalizeStringList(value);
+    };
+
+    const pickNegativeRules = (
+      value: unknown,
+      fallback: NonNullable<SkillContract["triggers"]>["negatives"],
+    ): NonNullable<SkillContract["triggers"]>["negatives"] => {
+      if (value === undefined) return [...fallback];
+      return normalizeNegatives(value);
+    };
+
+    const merged = {
+      intents: pickStringList(overrideTriggers.intents, baseTriggers?.intents ?? []),
+      topics: pickStringList(overrideTriggers.topics, baseTriggers?.topics ?? []),
+      phrases: pickStringList(overrideTriggers.phrases, baseTriggers?.phrases ?? []),
+      negatives: pickNegativeRules(overrideTriggers.negatives, baseTriggers?.negatives ?? []),
+    };
+
+    if (
+      merged.intents.length === 0 &&
+      merged.topics.length === 0 &&
+      merged.phrases.length === 0 &&
+      merged.negatives.length === 0
+    ) {
+      return undefined;
+    }
+    return merged;
+  })();
+
+  const dispatch = (() => {
+    const baseDispatch = base.dispatch ?? {
+      gateThreshold: 10,
+      autoThreshold: 16,
+      defaultMode: "suggest" as const,
+    };
+    const overrideDispatch = override.dispatch;
+    if (!overrideDispatch) return base.dispatch;
+    const gateThreshold =
+      typeof overrideDispatch.gateThreshold === "number"
+        ? Math.max(baseDispatch.gateThreshold, Math.floor(overrideDispatch.gateThreshold))
+        : baseDispatch.gateThreshold;
+    const autoThreshold =
+      typeof overrideDispatch.autoThreshold === "number"
+        ? Math.max(baseDispatch.autoThreshold, Math.floor(overrideDispatch.autoThreshold))
+        : baseDispatch.autoThreshold;
+    const defaultMode =
+      overrideDispatch.defaultMode === "auto" ||
+      overrideDispatch.defaultMode === "gate" ||
+      overrideDispatch.defaultMode === "suggest"
+        ? overrideDispatch.defaultMode
+        : baseDispatch.defaultMode;
+    return {
+      gateThreshold,
+      autoThreshold: Math.max(gateThreshold, autoThreshold),
+      defaultMode,
+    };
+  })();
+
   return {
     ...base,
     tags: override.tags ?? base.tags,
     antiTags: override.antiTags ?? base.antiTags,
+    triggers,
+    dispatch,
     outputs: override.outputs ?? base.outputs,
     composableWith: override.composableWith ?? base.composableWith,
     consumes: override.consumes ?? base.consumes,

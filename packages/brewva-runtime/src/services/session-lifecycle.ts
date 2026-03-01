@@ -9,7 +9,7 @@ import type { ParallelResultStore } from "../parallel/results.js";
 import type { FileChangeTracker } from "../state/file-change-tracker.js";
 import { TAPE_CHECKPOINT_EVENT_TYPE, coerceTapeCheckpointPayload } from "../tape/events.js";
 import type { TurnReplayEngine } from "../tape/replay-engine.js";
-import type { BrewvaEventRecord } from "../types.js";
+import type { BrewvaEventRecord, SkillDispatchDecision } from "../types.js";
 import { normalizeToolName } from "../utils/tool-name.js";
 import type { VerificationGate } from "../verification/gate.js";
 import type { RuntimeCallback } from "./callback.js";
@@ -71,6 +71,7 @@ export class SessionLifecycleService {
     const current = this.sessionState.turnsBySession.get(sessionId) ?? 0;
     const effectiveTurn = Math.max(current, turnIndex);
     this.sessionState.turnsBySession.set(sessionId, effectiveTurn);
+    this.sessionState.skillDispatchGateWarningsBySession.delete(sessionId);
     this.contextBudget.beginTurn(sessionId, effectiveTurn);
     this.contextInjection.clearPending(sessionId);
     this.clearReservedInjectionTokensForSession(sessionId);
@@ -141,6 +142,10 @@ export class SessionLifecycleService {
     const skillParallelWarnings = new Set(
       this.sessionState.skillParallelWarningsBySession.get(sessionId) ?? [],
     );
+    const skillDispatchGateWarnings = new Set(
+      this.sessionState.skillDispatchGateWarningsBySession.get(sessionId) ?? [],
+    );
+    let pendingDispatch = this.sessionState.pendingDispatchBySession.get(sessionId);
 
     for (let index = 0; index < events.length; index += 1) {
       const event = events[index];
@@ -218,6 +223,34 @@ export class SessionLifecycleService {
         continue;
       }
 
+      if (event.type === "skill_dispatch_gate_warning") {
+        const warningKey =
+          typeof payload?.warningKey === "string" && payload.warningKey.trim().length > 0
+            ? payload.warningKey.trim()
+            : null;
+        if (warningKey) {
+          skillDispatchGateWarnings.add(warningKey);
+        }
+        continue;
+      }
+
+      if (event.type === "skill_routing_decided") {
+        const parsed = this.readPendingDispatch(payload, event.turn);
+        if (parsed) {
+          pendingDispatch = parsed;
+        }
+        continue;
+      }
+
+      if (
+        event.type === "skill_routing_followed" ||
+        event.type === "skill_routing_overridden" ||
+        event.type === "skill_routing_ignored"
+      ) {
+        pendingDispatch = undefined;
+        continue;
+      }
+
       if (
         event.type === "ledger_compacted" &&
         typeof event.turn === "number" &&
@@ -256,6 +289,17 @@ export class SessionLifecycleService {
     }
     if (skillParallelWarnings.size > 0) {
       this.sessionState.skillParallelWarningsBySession.set(sessionId, skillParallelWarnings);
+    }
+    if (skillDispatchGateWarnings.size > 0) {
+      this.sessionState.skillDispatchGateWarningsBySession.set(
+        sessionId,
+        skillDispatchGateWarnings,
+      );
+    }
+    if (pendingDispatch && (pendingDispatch.mode === "gate" || pendingDispatch.mode === "auto")) {
+      this.sessionState.pendingDispatchBySession.set(sessionId, pendingDispatch);
+    } else {
+      this.sessionState.pendingDispatchBySession.delete(sessionId);
     }
   }
 
@@ -296,6 +340,105 @@ export class SessionLifecycleService {
     if (!payload || typeof payload.toolName !== "string") return null;
     const normalized = normalizeToolName(payload.toolName);
     return normalized || null;
+  }
+
+  private readPendingDispatch(
+    payload: Record<string, unknown> | null,
+    eventTurn: number | undefined,
+  ): SkillDispatchDecision | undefined {
+    if (!payload) return undefined;
+
+    const modeCandidate = payload.mode;
+    const mode =
+      modeCandidate === "suggest" || modeCandidate === "gate" || modeCandidate === "auto"
+        ? modeCandidate
+        : null;
+    if (!mode) return undefined;
+
+    const primaryPayload =
+      payload.primary && typeof payload.primary === "object" && !Array.isArray(payload.primary)
+        ? (payload.primary as Record<string, unknown>)
+        : null;
+    const primaryName =
+      typeof primaryPayload?.name === "string" && primaryPayload.name.trim().length > 0
+        ? primaryPayload.name.trim()
+        : "";
+    if (!primaryName) return undefined;
+    const primaryScore = this.readNonNegativeNumber(primaryPayload?.score) ?? 0;
+    const primaryReason =
+      typeof primaryPayload?.reason === "string" && primaryPayload.reason.trim().length > 0
+        ? primaryPayload.reason.trim()
+        : "unknown";
+
+    const selectedPayload = Array.isArray(payload.selected) ? payload.selected : [];
+    const selected = selectedPayload
+      .filter(
+        (entry): entry is Record<string, unknown> =>
+          typeof entry === "object" && entry !== null && !Array.isArray(entry),
+      )
+      .map((entry) => {
+        const name =
+          typeof entry.name === "string" && entry.name.trim().length > 0 ? entry.name.trim() : "";
+        if (!name) return null;
+        const score = this.readNonNegativeNumber(entry.score) ?? 0;
+        const reason =
+          typeof entry.reason === "string" && entry.reason.trim().length > 0
+            ? entry.reason.trim()
+            : "unknown";
+        return { name, score, reason };
+      })
+      .filter((entry): entry is { name: string; score: number; reason: string } => entry !== null);
+    if (selected.length === 0) {
+      selected.push({
+        name: primaryName,
+        score: primaryScore,
+        reason: primaryReason,
+      });
+    }
+
+    const chain =
+      Array.isArray(payload.chain) && payload.chain.length > 0
+        ? payload.chain
+            .filter((item): item is string => typeof item === "string")
+            .map((item) => item.trim())
+            .filter((item) => item.length > 0)
+        : [primaryName];
+    const unresolvedConsumes = Array.isArray(payload.unresolvedConsumes)
+      ? payload.unresolvedConsumes
+          .filter((item): item is string => typeof item === "string")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
+      : [];
+    const confidence = this.readUnitIntervalNumber(payload.confidence) ?? 0.5;
+    const reason =
+      typeof payload.reason === "string" && payload.reason.trim().length > 0
+        ? payload.reason.trim()
+        : "unknown";
+
+    const decisionTurnFromPayload = this.readNonNegativeNumber(payload.decisionTurn);
+    const normalizedEventTurn =
+      typeof eventTurn === "number" && Number.isFinite(eventTurn)
+        ? Math.max(0, Math.floor(eventTurn))
+        : 0;
+    const turn =
+      decisionTurnFromPayload !== null
+        ? Math.max(0, Math.floor(decisionTurnFromPayload))
+        : normalizedEventTurn;
+
+    return {
+      mode,
+      primary: {
+        name: primaryName,
+        score: primaryScore,
+        reason: primaryReason,
+      },
+      selected,
+      chain: chain.length > 0 ? chain : [primaryName],
+      unresolvedConsumes,
+      confidence,
+      reason,
+      turn,
+    };
   }
 
   private replayCostStateEvent(
@@ -406,5 +549,11 @@ export class SessionLifecycleService {
   private readNonNegativeNumber(value: unknown): number | null {
     if (typeof value !== "number" || !Number.isFinite(value)) return null;
     return Math.max(0, value);
+  }
+
+  private readUnitIntervalNumber(value: unknown): number | null {
+    const normalized = this.readNonNegativeNumber(value);
+    if (normalized === null) return null;
+    return Math.max(0, Math.min(1, normalized));
   }
 }

@@ -17,8 +17,10 @@ import {
 } from "./zone-budget-controller.js";
 import {
   ZoneBudgetAllocator,
+  normalizeZoneBudgetConfig,
   type ZoneBudgetAllocationResult,
   type ZoneBudgetConfig,
+  type ZoneBudgetConfigInput,
 } from "./zone-budget.js";
 import {
   createZeroZoneTokenMap,
@@ -120,7 +122,7 @@ export class ContextArena {
       sourceTokenLimits?: Record<string, number>;
       truncationStrategy?: ContextInjectionTruncationStrategy;
       zoneLayout?: boolean;
-      zoneBudgets?: ZoneBudgetConfig;
+      zoneBudgets?: ZoneBudgetConfigInput;
       adaptiveZones?: ZoneBudgetAdaptiveConfig;
       maxEntriesPerSession?: number;
       degradationPolicy?: ContextArenaDegradationPolicy;
@@ -130,10 +132,13 @@ export class ContextArena {
     this.sourceTokenLimits = options.sourceTokenLimits ? { ...options.sourceTokenLimits } : {};
     this.truncationStrategy = options.truncationStrategy ?? "summarize";
     this.zoneLayout = options.zoneLayout === true;
-    this.baseZoneBudgets = options.zoneBudgets ? { ...options.zoneBudgets } : null;
+    const normalizedZoneBudgets = options.zoneBudgets
+      ? normalizeZoneBudgetConfig(options.zoneBudgets)
+      : null;
+    this.baseZoneBudgets = normalizedZoneBudgets;
     this.adaptiveController =
-      options.zoneBudgets && options.adaptiveZones
-        ? new ZoneBudgetController(options.zoneBudgets, options.adaptiveZones)
+      normalizedZoneBudgets && options.adaptiveZones
+        ? new ZoneBudgetController(normalizedZoneBudgets, options.adaptiveZones)
         : null;
     this.maxEntriesPerSession = Math.max(1, Math.floor(options.maxEntriesPerSession ?? 4096));
     this.degradationPolicy = options.degradationPolicy ?? "drop_recall";
@@ -863,6 +868,7 @@ export class ContextArena {
     return {
       identity: allocation.identity,
       truth: allocation.truth,
+      skills: allocation.skills,
       task_state: allocation.task_state,
       tool_failures: allocation.tool_failures,
       memory_working: allocation.memory_working,

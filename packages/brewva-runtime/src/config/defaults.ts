@@ -11,6 +11,12 @@ export const DEFAULT_BREWVA_CONFIG: BrewvaConfig = {
     overrides: {},
     selector: {
       k: 4,
+      semanticFallback: {
+        enabled: true,
+        lexicalBypassScore: 8,
+        minSimilarity: 0.22,
+        embeddingDimensions: 384,
+      },
     },
   },
   verification: {
@@ -180,6 +186,7 @@ export const DEFAULT_BREWVA_CONFIG: BrewvaConfig = {
         zones: {
           identity: { min: 0, max: 320 },
           truth: { min: 0, max: 420 },
+          skills: { min: 0, max: 240 },
           taskState: { min: 0, max: 360 },
           toolFailures: { min: 0, max: 480 },
           memoryWorking: { min: 0, max: 300 },

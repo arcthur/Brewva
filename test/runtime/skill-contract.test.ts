@@ -1,12 +1,38 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { BrewvaRuntime, tightenContract } from "@brewva/brewva-runtime";
+import { join, sep } from "node:path";
+import { BrewvaRuntime, parseSkillDocument, tightenContract } from "@brewva/brewva-runtime";
 import type { SkillContract } from "@brewva/brewva-runtime";
 
 function repoRoot(): string {
   return process.cwd();
+}
+
+function listSkillDocuments(rootDir: string): string[] {
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith(".")) continue;
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (entry.isFile() && entry.name === "SKILL.md") {
+        out.push(fullPath);
+      }
+    }
+  };
+  walk(rootDir);
+  return out.toSorted();
+}
+
+function inferSkillTier(filePath: string): "base" | "pack" | "project" {
+  if (filePath.includes(`${sep}base${sep}`)) return "base";
+  if (filePath.includes(`${sep}packs${sep}`)) return "pack";
+  if (filePath.includes(`${sep}project${sep}`)) return "project";
+  throw new Error(`Unknown skill tier for file: ${filePath}`);
 }
 
 describe("S-002 denied tool gate", () => {
@@ -117,5 +143,188 @@ describe("S-006 three-layer contract tightening", () => {
     expect(foo!.contract.tools.denied).toContain("write");
     expect(foo!.contract.tools.denied).toContain("exec");
     expect(foo!.contract.tools.required).toContain("read");
+  });
+});
+
+describe("skill contract triggers and dispatch parsing", () => {
+  test("parses triggers frontmatter when present", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-trigger-"));
+    const filePath = join(workspace, "skills", "base", "review", "SKILL.md");
+    mkdirSync(join(workspace, "skills", "base", "review"), { recursive: true });
+    writeFileSync(
+      filePath,
+      [
+        "---",
+        "name: review",
+        "description: review skill",
+        "tags: [review]",
+        "triggers:",
+        "  intents: [review, 审查]",
+        "  topics: [project]",
+        "  phrases: ['code review']",
+        "  negatives:",
+        "    - scope: intent",
+        "      terms: [implement]",
+        "tools:",
+        "  required: [read]",
+        "  optional: []",
+        "  denied: []",
+        "budget:",
+        "  max_tool_calls: 10",
+        "  max_tokens: 10000",
+        "---",
+        "# review",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const parsed = parseSkillDocument(filePath, "base");
+    expect(parsed.contract.triggers?.intents).toEqual(["review", "审查"]);
+    expect(parsed.contract.triggers?.topics).toEqual(["project"]);
+    expect(parsed.contract.triggers?.phrases).toEqual(["code review"]);
+    expect(parsed.contract.triggers?.negatives).toEqual([
+      { scope: "intent", terms: ["implement"] },
+    ]);
+  });
+
+  test("parses dispatch frontmatter with defaults", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-dispatch-"));
+    const filePath = join(workspace, "skills", "base", "verify", "SKILL.md");
+    mkdirSync(join(workspace, "skills", "base", "verify"), { recursive: true });
+    writeFileSync(
+      filePath,
+      [
+        "---",
+        "name: verify",
+        "description: verify skill",
+        "tags: [verify]",
+        "tools:",
+        "  required: [read]",
+        "  optional: []",
+        "  denied: []",
+        "budget:",
+        "  max_tool_calls: 10",
+        "  max_tokens: 10000",
+        "---",
+        "# verify",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const parsed = parseSkillDocument(filePath, "base");
+    expect(parsed.contract.dispatch).toEqual({
+      gateThreshold: 10,
+      autoThreshold: 16,
+      defaultMode: "suggest",
+    });
+  });
+
+  test("normalizes scoped negatives and tightens dispatch thresholds", () => {
+    const base: SkillContract = {
+      name: "review",
+      tier: "base",
+      tags: ["review"],
+      triggers: {
+        intents: ["review"],
+        topics: [],
+        phrases: [],
+        negatives: [{ scope: "topic", terms: ["feature"] }],
+      },
+      dispatch: {
+        gateThreshold: 10,
+        autoThreshold: 16,
+        defaultMode: "suggest",
+      },
+      tools: {
+        required: ["read"],
+        optional: [],
+        denied: [],
+      },
+      budget: {
+        maxToolCalls: 10,
+        maxTokens: 10_000,
+      },
+    };
+
+    const merged = tightenContract(base, {
+      triggers: {
+        intents: ["audit"],
+        topics: ["risk"],
+        phrases: [],
+        negatives: [{ scope: "intent", terms: ["implement"] }],
+      },
+      dispatch: {
+        gateThreshold: 12,
+        autoThreshold: 20,
+        defaultMode: "gate",
+      },
+    });
+
+    expect(merged.triggers).toEqual({
+      intents: ["audit"],
+      topics: ["risk"],
+      phrases: [],
+      negatives: [{ scope: "intent", terms: ["implement"] }],
+    });
+    expect(merged.dispatch).toEqual({
+      gateThreshold: 12,
+      autoThreshold: 20,
+      defaultMode: "gate",
+    });
+  });
+
+  test("keeps unspecified trigger fields when override provides partial trigger object", () => {
+    const base: SkillContract = {
+      name: "planning",
+      tier: "base",
+      tags: ["plan"],
+      triggers: {
+        intents: ["plan"],
+        topics: ["scope"],
+        phrases: ["execution plan"],
+        negatives: [{ scope: "topic", terms: ["quick-fix"] }],
+      },
+      tools: {
+        required: ["read"],
+        optional: [],
+        denied: [],
+      },
+      budget: {
+        maxToolCalls: 10,
+        maxTokens: 10_000,
+      },
+    };
+
+    const merged = tightenContract(base, {
+      triggers: {
+        intents: ["roadmap"],
+      } as unknown as SkillContract["triggers"],
+    });
+
+    expect(merged.triggers).toEqual({
+      intents: ["roadmap"],
+      topics: ["scope"],
+      phrases: ["execution plan"],
+      negatives: [{ scope: "topic", terms: ["quick-fix"] }],
+    });
+  });
+
+  test("repository skills define explicit trigger metadata", () => {
+    const skillFiles = listSkillDocuments(join(repoRoot(), "skills"));
+    expect(skillFiles.length).toBe(22);
+
+    const missingTriggers: string[] = [];
+    for (const filePath of skillFiles) {
+      const parsed = parseSkillDocument(filePath, inferSkillTier(filePath));
+      const triggerCount =
+        (parsed.contract.triggers?.intents.length ?? 0) +
+        (parsed.contract.triggers?.topics.length ?? 0) +
+        (parsed.contract.triggers?.phrases.length ?? 0);
+      if (triggerCount === 0) {
+        missingTriggers.push(parsed.name);
+      }
+    }
+
+    expect(missingTriggers).toEqual([]);
   });
 });

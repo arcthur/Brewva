@@ -6,6 +6,22 @@ Skill parsing, merge, and selection logic:
 - `packages/brewva-runtime/src/skills/registry.ts`
 - `packages/brewva-runtime/src/skills/selector.ts`
 
+## Contract Metadata
+
+Skill frontmatter supports dispatch-focused metadata:
+
+- `triggers.intents/topics/phrases/negatives` for selector matching
+- `dispatch.gate_threshold/auto_threshold/default_mode` for routing policy
+- `outputs/consumes/composable_with` for deterministic chain planning
+
+Selector execution is two-stage:
+
+1. deterministic lexical scoring (`intents/topics/phrases` + legacy fallback)
+2. semantic fallback (`feature-hashing bag-of-words + cosine`) when lexical top score is below `skills.selector.semanticFallback.lexicalBypassScore`
+3. lightweight token alias expansion is applied inside semantic text projection (for example `review/audit`, `ready/release/ship`) to reduce brittle phrase dependence while staying zero-dependency
+
+`skills_index.json` now carries the normalized `outputs`, `triggers`, and `dispatch` fields for each skill entry.
+
 ## Base Skills
 
 - `brainstorming`

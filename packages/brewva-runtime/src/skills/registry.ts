@@ -268,11 +268,23 @@ export class SkillRegistry {
       description: skill.description,
       tags: skill.contract.tags,
       antiTags: skill.contract.antiTags ?? [],
+      outputs: skill.contract.outputs ?? [],
       toolsRequired: skill.contract.tools.required,
       costHint: skill.contract.costHint ?? "medium",
       stability: skill.contract.stability ?? "stable",
       composableWith: skill.contract.composableWith ?? [],
       consumes: skill.contract.consumes ?? [],
+      triggers: {
+        intents: skill.contract.triggers?.intents ?? [],
+        topics: skill.contract.triggers?.topics ?? [],
+        phrases: skill.contract.triggers?.phrases ?? [],
+        negatives: skill.contract.triggers?.negatives ?? [],
+      },
+      dispatch: {
+        gateThreshold: skill.contract.dispatch?.gateThreshold ?? 10,
+        autoThreshold: skill.contract.dispatch?.autoThreshold ?? 16,
+        defaultMode: skill.contract.dispatch?.defaultMode ?? "suggest",
+      },
     }));
   }
 

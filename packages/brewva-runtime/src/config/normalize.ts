@@ -156,6 +156,7 @@ function normalizeContextBudgetZoneOrder(
   const allowed = new Set([
     "identity",
     "truth",
+    "skills",
     "task_state",
     "tool_failures",
     "memory_working",
@@ -206,6 +207,9 @@ export function normalizeBrewvaConfig(config: unknown, defaults: BrewvaConfig): 
   const uiInput = isRecord(input.ui) ? input.ui : {};
   const skillsInput = isRecord(input.skills) ? input.skills : {};
   const skillsSelectorInput = isRecord(skillsInput.selector) ? skillsInput.selector : {};
+  const skillsSelectorSemanticFallbackInput = isRecord(skillsSelectorInput.semanticFallback)
+    ? skillsSelectorInput.semanticFallback
+    : {};
   const verificationInput = isRecord(input.verification) ? input.verification : {};
   const verificationChecksInput = isRecord(verificationInput.checks)
     ? verificationInput.checks
@@ -329,6 +333,27 @@ export function normalizeBrewvaConfig(config: unknown, defaults: BrewvaConfig): 
       overrides: normalizeSkillOverrides(skillsInput.overrides, defaults.skills.overrides),
       selector: {
         k: normalizePositiveInteger(skillsSelectorInput.k, defaults.skills.selector.k),
+        semanticFallback: {
+          enabled: normalizeBoolean(
+            skillsSelectorSemanticFallbackInput.enabled,
+            defaults.skills.selector.semanticFallback.enabled,
+          ),
+          lexicalBypassScore: normalizeNonNegativeNumber(
+            skillsSelectorSemanticFallbackInput.lexicalBypassScore,
+            defaults.skills.selector.semanticFallback.lexicalBypassScore,
+          ),
+          minSimilarity: normalizeUnitInterval(
+            skillsSelectorSemanticFallbackInput.minSimilarity,
+            defaults.skills.selector.semanticFallback.minSimilarity,
+          ),
+          embeddingDimensions: Math.max(
+            64,
+            normalizePositiveInteger(
+              skillsSelectorSemanticFallbackInput.embeddingDimensions,
+              defaults.skills.selector.semanticFallback.embeddingDimensions,
+            ),
+          ),
+        },
       },
     },
     verification: {
@@ -713,6 +738,10 @@ export function normalizeBrewvaConfig(config: unknown, defaults: BrewvaConfig): 
             truth: normalizeContextArenaZone(
               contextBudgetArenaZonesInput.truth,
               defaultContextArena.zones.truth,
+            ),
+            skills: normalizeContextArenaZone(
+              contextBudgetArenaZonesInput.skills,
+              defaultContextArena.zones.skills,
             ),
             taskState: normalizeContextArenaZone(
               contextBudgetArenaZonesInput.taskState,

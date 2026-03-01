@@ -16,6 +16,11 @@ The runtime no longer exposes a large flat method list. Public access is organiz
 - `list()`
 - `get(name)`
 - `select(message)`
+- `prepareDispatch(sessionId, message)`
+- `getPendingDispatch(sessionId)`
+- `clearPendingDispatch(sessionId)`
+- `overridePendingDispatch(sessionId, input?)`
+- `reconcilePendingDispatch(sessionId, turn)`
 - `activate(sessionId, name)`
 - `getActive(sessionId)`
 - `validateOutputs(sessionId, outputs)`
@@ -157,12 +162,14 @@ Common async calls:
 
 ## Default Context Injection Semantics
 
-The default injection path is organized around eight semantic sources (the
-eighth is optional and budget-gated):
+The default injection path is organized around ten semantic sources (the
+tenth is optional and budget-gated):
 
 - `brewva.identity`
 - `brewva.truth-static`
 - `brewva.truth-facts`
+- `brewva.skill-candidates`
+- `brewva.skill-dispatch-gate`
 - `brewva.task-state`
 - `brewva.tool-failures`
 - `brewva.memory-working`

@@ -1,6 +1,8 @@
 import { ZONE_ORDER, createZeroZoneTokenMap, type ContextZone } from "./zones.js";
 
-export type ZoneBudgetConfig = Record<ContextZone, { min: number; max: number }>;
+export type ZoneBudgetRange = { min: number; max: number };
+export type ZoneBudgetConfig = Record<ContextZone, ZoneBudgetRange>;
+export type ZoneBudgetConfigInput = Partial<Record<ContextZone, ZoneBudgetRange>>;
 
 export type ZoneDemand = Partial<Record<ContextZone, number>>;
 
@@ -19,11 +21,29 @@ function normalizeLimit(value: number): number {
   return Math.max(0, Math.floor(value));
 }
 
+function normalizeRange(value: ZoneBudgetRange | undefined): ZoneBudgetRange {
+  if (!value) return { min: 0, max: 0 };
+  const min = normalizeLimit(value.min);
+  const max = normalizeLimit(value.max);
+  return {
+    min: Math.min(min, max),
+    max: Math.max(min, max),
+  };
+}
+
+export function normalizeZoneBudgetConfig(input: ZoneBudgetConfigInput): ZoneBudgetConfig {
+  const normalized = {} as ZoneBudgetConfig;
+  for (const zone of ZONE_ORDER) {
+    normalized[zone] = normalizeRange(input[zone]);
+  }
+  return normalized;
+}
+
 export class ZoneBudgetAllocator {
   private readonly config: ZoneBudgetConfig;
 
-  constructor(config: ZoneBudgetConfig) {
-    this.config = config;
+  constructor(config: ZoneBudgetConfigInput) {
+    this.config = normalizeZoneBudgetConfig(config);
   }
 
   allocate(input: { totalBudget: number; zoneDemands: ZoneDemand }): ZoneBudgetAllocationResult {

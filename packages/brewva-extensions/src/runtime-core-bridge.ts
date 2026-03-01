@@ -98,14 +98,45 @@ function extractCompactionEntryId(input: unknown): string | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function resolveInjectionScopeId(input: unknown): string | undefined {
+  const sessionManager = input as
+    | { getLeafId?: (() => string | null | undefined) | undefined }
+    | undefined;
+  const leafId = sessionManager?.getLeafId?.();
+  if (typeof leafId !== "string") return undefined;
+  const normalized = leafId.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 export function registerRuntimeCoreBridge(pi: ExtensionAPI, runtime: BrewvaRuntime): void {
   registerQualityGate(pi, runtime);
   registerLedgerWriter(pi, runtime);
 
-  pi.on("before_agent_start", (event, ctx) => {
+  pi.on("before_agent_start", async (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     const usage = coerceContextBudgetUsage(ctx.getContextUsage());
     runtime.context.observeUsage(sessionId, usage);
+    const injection =
+      typeof runtime.context.buildInjection === "function"
+        ? await runtime.context.buildInjection(
+            sessionId,
+            typeof (event as { prompt?: unknown }).prompt === "string"
+              ? ((event as { prompt: string }).prompt ?? "")
+              : "",
+            usage,
+            resolveInjectionScopeId(ctx.sessionManager),
+          )
+        : {
+            text: "",
+            accepted: false,
+            originalTokens: 0,
+            finalTokens: 0,
+            truncated: false,
+          };
+    const blocks = [buildCoreStatusBlock(runtime, sessionId)];
+    if (injection.accepted && injection.text.trim().length > 0) {
+      blocks.push(injection.text);
+    }
 
     return {
       systemPrompt: applyCoreContextContract(
@@ -114,10 +145,13 @@ export function registerRuntimeCoreBridge(pi: ExtensionAPI, runtime: BrewvaRunti
       ),
       message: {
         customType: CORE_CONTEXT_INJECTION_MESSAGE_TYPE,
-        content: buildCoreStatusBlock(runtime, sessionId),
+        content: blocks.join("\n\n"),
         display: false,
         details: {
           profile: "runtime-core",
+          originalTokens: injection.originalTokens,
+          finalTokens: injection.finalTokens,
+          truncated: injection.truncated,
         },
       },
     };

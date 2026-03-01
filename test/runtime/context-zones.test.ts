@@ -6,6 +6,8 @@ describe("context zones", () => {
     expect(zoneForSource("brewva.identity")).toBe("identity");
     expect(zoneForSource("brewva.truth-static")).toBe("truth");
     expect(zoneForSource("brewva.truth-facts")).toBe("truth");
+    expect(zoneForSource("brewva.skill-candidates")).toBe("skills");
+    expect(zoneForSource("brewva.skill-dispatch-gate")).toBe("skills");
     expect(zoneForSource("brewva.task-state")).toBe("task_state");
     expect(zoneForSource("brewva.tool-failures")).toBe("tool_failures");
     expect(zoneForSource("brewva.memory-working")).toBe("memory_working");
@@ -17,10 +19,12 @@ describe("context zones", () => {
     expect(zoneForSource("unknown.source")).toBe("memory_recall");
   });
 
-  test("keeps truth and task_state adjacent in zone order", () => {
+  test("keeps truth and skills/task_state adjacent in zone order", () => {
     const truthIndex = ZONE_ORDER.indexOf("truth");
+    const skillsIndex = ZONE_ORDER.indexOf("skills");
     const taskIndex = ZONE_ORDER.indexOf("task_state");
-    expect(Math.abs(truthIndex - taskIndex)).toBe(1);
+    expect(skillsIndex).toBeGreaterThan(truthIndex);
+    expect(taskIndex).toBeGreaterThan(skillsIndex);
     expect(ZONE_ORDER[0]).toBe("identity");
   });
 

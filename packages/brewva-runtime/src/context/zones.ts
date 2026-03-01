@@ -1,6 +1,7 @@
 export type ContextZone =
   | "identity"
   | "truth"
+  | "skills"
   | "task_state"
   | "tool_failures"
   | "memory_working"
@@ -10,6 +11,7 @@ export type ContextZone =
 export const ZONE_ORDER: ContextZone[] = [
   "identity",
   "truth",
+  "skills",
   "task_state",
   "tool_failures",
   "memory_working",
@@ -21,6 +23,8 @@ const SOURCE_TO_ZONE: Record<string, ContextZone> = {
   "brewva.identity": "identity",
   "brewva.truth-static": "truth",
   "brewva.truth-facts": "truth",
+  "brewva.skill-candidates": "skills",
+  "brewva.skill-dispatch-gate": "skills",
   "brewva.task-state": "task_state",
   "brewva.tool-failures": "tool_failures",
   "brewva.memory-working": "memory_working",
@@ -41,6 +45,7 @@ export function createZeroZoneTokenMap(): Record<ContextZone, number> {
   return {
     identity: 0,
     truth: 0,
+    skills: 0,
     task_state: 0,
     tool_failures: 0,
     memory_working: 0,

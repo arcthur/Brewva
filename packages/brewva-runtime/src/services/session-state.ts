@@ -1,5 +1,5 @@
 import type { ViewportQuality } from "../policy/viewport-policy.js";
-import type { SkillOutputRecord } from "../types.js";
+import type { SkillDispatchDecision, SkillOutputRecord } from "../types.js";
 
 export interface SessionViewportPolicySnapshot {
   quality: ViewportQuality;
@@ -24,7 +24,9 @@ export class RuntimeSessionStateStore {
   readonly toolContractWarningsBySession = new Map<string, Set<string>>();
   readonly skillBudgetWarningsBySession = new Map<string, Set<string>>();
   readonly skillParallelWarningsBySession = new Map<string, Set<string>>();
+  readonly skillDispatchGateWarningsBySession = new Map<string, Set<string>>();
   readonly skillOutputsBySession = new Map<string, Map<string, SkillOutputRecord>>();
+  readonly pendingDispatchBySession = new Map<string, SkillDispatchDecision>();
   readonly viewportPolicyBySession = new Map<string, SessionViewportPolicySnapshot>();
   readonly tapeCheckpointWriteInProgressBySession = new Set<string>();
   readonly tapeCheckpointCounterInitializedBySession = new Set<string>();
@@ -75,7 +77,9 @@ export class RuntimeSessionStateStore {
     this.toolContractWarningsBySession.delete(sessionId);
     this.skillBudgetWarningsBySession.delete(sessionId);
     this.skillParallelWarningsBySession.delete(sessionId);
+    this.skillDispatchGateWarningsBySession.delete(sessionId);
     this.skillOutputsBySession.delete(sessionId);
+    this.pendingDispatchBySession.delete(sessionId);
     this.latestCompactionSummaryBySession.delete(sessionId);
     this.viewportPolicyBySession.delete(sessionId);
     this.clearInjectionFingerprintsForSession(sessionId);

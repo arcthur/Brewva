@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { registerRuntimeCoreBridge } from "@brewva/brewva-extensions";
-import { createMockExtensionAPI, invokeHandler } from "../helpers/extension.js";
+import { createMockExtensionAPI, invokeHandler, invokeHandlerAsync } from "../helpers/extension.js";
 
 interface RuntimeCalls {
   started: Array<Record<string, unknown>>;
@@ -45,6 +45,15 @@ function createRuntimeFixture(
       },
       observeUsage(sessionId: string, usage: unknown) {
         calls.observedContext.push({ sessionId, usage });
+      },
+      async buildInjection() {
+        return {
+          text: "",
+          accepted: false,
+          originalTokens: 0,
+          finalTokens: 0,
+          truncated: false,
+        };
       },
       getCompactionGateStatus() {
         return {
@@ -123,12 +132,12 @@ describe("runtime core bridge extension", () => {
     expect(handlers.has("session_shutdown")).toBe(true);
   });
 
-  test("given before_agent_start, when bridge handles context, then prompt is annotated with core contract", () => {
+  test("given before_agent_start, when bridge handles context, then prompt is annotated with core contract", async () => {
     const { api, handlers } = createMockExtensionAPI();
     const { runtime, calls } = createRuntimeFixture();
     registerRuntimeCoreBridge(api, runtime as any);
 
-    const beforeStart = invokeHandler<{
+    const beforeStart = await invokeHandlerAsync<{
       systemPrompt?: string;
       message?: { content?: string; details?: Record<string, unknown> };
     }>(

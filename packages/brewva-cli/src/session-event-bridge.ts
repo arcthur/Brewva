@@ -37,6 +37,7 @@ export function registerRuntimeCoreEventBridge(
         const toolResults = Array.isArray((event as { toolResults?: unknown }).toolResults)
           ? (event as { toolResults: unknown[] }).toolResults.length
           : 0;
+        runtime.skills.reconcilePendingDispatch(sessionId, turnIndex);
         runtime.events.record({
           sessionId,
           type: "turn_end",

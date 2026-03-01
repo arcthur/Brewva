@@ -20,7 +20,7 @@ current model limitations and are designed to progressively retire.
 
 1. **Tape-first recovery** — session state is reconstructed from append-only events, checkpoints, and replay; no opaque process-local snapshots.
 2. **Contract-driven execution** — skill policy, verification gates, evidence ledger, and budget limits are explicit runtime constraints.
-3. **Skill-first orchestration** — prompt text is a dispatch signal; executable skill contracts are activated on demand (`skill_load`) with replayable lifecycle events.
+3. **Skill-first orchestration** — prompt text drives two-stage dispatch (deterministic lexical scoring, then zero-dependency semantic fallback when lexical confidence is low); executable skill contracts are activated on demand (`skill_load`) with replayable lifecycle events and explicit gate/override control.
 4. **Projection-based memory** — memory structures are derived from tape events and can be rebuilt deterministically.
 5. **Workspace-first orchestration** — multi-agent and channel state is isolated in workspace-scoped storage for restart-safe operation.
 

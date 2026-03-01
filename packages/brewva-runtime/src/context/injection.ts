@@ -1,7 +1,7 @@
 import type { ContextArenaDegradationPolicy, ContextStrategyArm } from "../types.js";
 import { ContextArena } from "./arena.js";
 import type { ZoneBudgetAdaptiveConfig } from "./zone-budget-controller.js";
-import type { ZoneBudgetConfig } from "./zone-budget.js";
+import type { ZoneBudgetConfigInput } from "./zone-budget.js";
 import type { ContextZone } from "./zones.js";
 
 export type ContextInjectionPriority = "critical" | "high" | "normal" | "low";
@@ -75,7 +75,7 @@ export class ContextInjectionCollector {
     options: {
       sourceTokenLimits?: Record<string, number>;
       truncationStrategy?: ContextInjectionTruncationStrategy;
-      zoneBudgets?: ZoneBudgetConfig;
+      zoneBudgets?: ZoneBudgetConfigInput;
       adaptiveZones?: ZoneBudgetAdaptiveConfig;
       maxEntriesPerSession?: number;
       degradationPolicy?: ContextArenaDegradationPolicy;
