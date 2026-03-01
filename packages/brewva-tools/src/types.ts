@@ -14,6 +14,7 @@ import type {
   ScheduleIntentUpdateResult,
   ScheduleProjectionSnapshot,
   SessionCostSummary,
+  SkillDispatchDecision,
   SkillDocument,
   TapeSearchResult,
   TapeSearchScope,
@@ -44,6 +45,11 @@ export interface BrewvaToolRuntime {
       outputs: Record<string, unknown>,
     ): { ok: boolean; missing: string[] };
     getConsumedOutputs(sessionId: string, targetSkillName: string): Record<string, unknown>;
+    overridePendingDispatch(
+      sessionId: string,
+      input?: { reason?: string; targetSkillName?: string },
+    ): { ok: boolean; reason?: string; decision?: SkillDispatchDecision };
+    getPendingDispatch?(sessionId: string): SkillDispatchDecision | undefined;
   };
   verification: {
     verify(

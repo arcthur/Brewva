@@ -1,5 +1,5 @@
 import type { SkillRegistry } from "../skills/registry.js";
-import type { SkillDocument } from "../types.js";
+import type { SkillDispatchDecision, SkillDocument } from "../types.js";
 import type { RuntimeCallback } from "./callback.js";
 import { RuntimeSessionStateStore } from "./session-state.js";
 
@@ -67,6 +67,34 @@ export class SkillLifecycleService {
         skillName: name,
       },
     });
+
+    const pendingDispatch = this.getPendingDispatch(sessionId);
+    if (pendingDispatch && pendingDispatch.mode !== "none") {
+      const primaryName = pendingDispatch.primary?.name;
+      if (primaryName && primaryName === name) {
+        this.recordEvent({
+          sessionId,
+          type: "skill_routing_followed",
+          turn: this.getCurrentTurn(sessionId),
+          payload: this.buildDispatchPayload(pendingDispatch, {
+            activatedSkill: name,
+            resolvedBy: "skill_load",
+          }),
+        });
+      } else {
+        this.recordEvent({
+          sessionId,
+          type: "skill_routing_overridden",
+          turn: this.getCurrentTurn(sessionId),
+          payload: this.buildDispatchPayload(pendingDispatch, {
+            activatedSkill: name,
+            resolvedBy: "skill_load_non_primary",
+          }),
+        });
+      }
+      this.sessionState.pendingDispatchBySession.delete(sessionId);
+    }
+
     return { ok: true, skill };
   }
 
@@ -74,6 +102,75 @@ export class SkillLifecycleService {
     const active = this.sessionState.activeSkillsBySession.get(sessionId);
     if (!active) return undefined;
     return this.skills.get(active);
+  }
+
+  setPendingDispatch(
+    sessionId: string,
+    decision: SkillDispatchDecision,
+    options: { emitEvent?: boolean } = {},
+  ): void {
+    const shouldStorePending =
+      (decision.mode === "gate" || decision.mode === "auto") && decision.primary !== null;
+    if (!shouldStorePending) {
+      this.sessionState.pendingDispatchBySession.delete(sessionId);
+    } else {
+      this.sessionState.pendingDispatchBySession.set(sessionId, decision);
+    }
+    if (options.emitEvent === false) return;
+    this.recordEvent({
+      sessionId,
+      type: "skill_routing_decided",
+      turn: this.getCurrentTurn(sessionId),
+      payload: this.buildDispatchPayload(decision),
+    });
+  }
+
+  getPendingDispatch(sessionId: string): SkillDispatchDecision | undefined {
+    return this.sessionState.pendingDispatchBySession.get(sessionId);
+  }
+
+  clearPendingDispatch(sessionId: string): SkillDispatchDecision | undefined {
+    const pending = this.sessionState.pendingDispatchBySession.get(sessionId);
+    this.sessionState.pendingDispatchBySession.delete(sessionId);
+    return pending;
+  }
+
+  overridePendingDispatch(
+    sessionId: string,
+    input: { reason?: string; targetSkillName?: string } = {},
+  ): { ok: boolean; reason?: string; decision?: SkillDispatchDecision } {
+    const pending = this.getPendingDispatch(sessionId);
+    if (!pending || pending.mode === "none") {
+      return { ok: false, reason: "No pending skill dispatch gate." };
+    }
+    this.recordEvent({
+      sessionId,
+      type: "skill_routing_overridden",
+      turn: this.getCurrentTurn(sessionId),
+      payload: this.buildDispatchPayload(pending, {
+        reason: input.reason ?? "manual_override",
+        targetSkillName: input.targetSkillName ?? null,
+        resolvedBy: "skill_route_override",
+      }),
+    });
+    this.clearPendingDispatch(sessionId);
+    return { ok: true, decision: pending };
+  }
+
+  reconcilePendingDispatchOnTurnEnd(sessionId: string, turn: number): void {
+    const pending = this.getPendingDispatch(sessionId);
+    if (!pending || pending.mode === "none") return;
+    if (pending.turn > turn) return;
+
+    this.recordEvent({
+      sessionId,
+      type: "skill_routing_ignored",
+      turn: this.getCurrentTurn(sessionId),
+      payload: this.buildDispatchPayload(pending, {
+        resolvedBy: "turn_end",
+      }),
+    });
+    this.clearPendingDispatch(sessionId);
   }
 
   validateSkillOutputs(
@@ -198,5 +295,49 @@ export class SkillLifecycleService {
       }
     }
     return result;
+  }
+
+  listProducedOutputKeys(sessionId: string): string[] {
+    const sessionOutputs = this.sessionState.skillOutputsBySession.get(sessionId);
+    if (!sessionOutputs || sessionOutputs.size === 0) {
+      return [];
+    }
+    const outputKeys = new Set<string>();
+    for (const record of sessionOutputs.values()) {
+      for (const key of Object.keys(record.outputs)) {
+        const normalized = key.trim();
+        if (!normalized) continue;
+        outputKeys.add(normalized);
+      }
+    }
+    return [...outputKeys];
+  }
+
+  private buildDispatchPayload(
+    decision: SkillDispatchDecision,
+    extra?: Record<string, unknown>,
+  ): Record<string, unknown> {
+    return {
+      mode: decision.mode,
+      reason: decision.reason,
+      confidence: decision.confidence,
+      decisionTurn: decision.turn,
+      primary: decision.primary
+        ? {
+            name: decision.primary.name,
+            score: decision.primary.score,
+            reason: decision.primary.reason,
+          }
+        : null,
+      selectedCount: decision.selected.length,
+      selected: decision.selected.map((entry) => ({
+        name: entry.name,
+        score: entry.score,
+        reason: entry.reason,
+      })),
+      chain: decision.chain,
+      unresolvedConsumes: decision.unresolvedConsumes,
+      ...extra,
+    };
   }
 }

@@ -27,6 +27,7 @@ import {
   ALWAYS_ALLOWED_TOOLS,
   buildContextSourceTokenLimits,
   buildSkillCandidateBlock,
+  buildSkillDispatchGateBlock,
   buildTaskStateBlock,
   inferEventCategory,
 } from "./runtime-helpers.js";
@@ -48,6 +49,7 @@ import { TaskService } from "./services/task.js";
 import { ToolGateService } from "./services/tool-gate.js";
 import { TruthService } from "./services/truth.js";
 import { VerificationService } from "./services/verification.js";
+import { resolveSkillDispatchDecision } from "./skills/dispatch.js";
 import { SkillRegistry } from "./skills/registry.js";
 import { selectTopKSkills } from "./skills/selector.js";
 import { FileChangeTracker } from "./state/file-change-tracker.js";
@@ -76,6 +78,7 @@ import type {
   BrewvaConfig,
   BrewvaStructuredEvent,
   SkillDocument,
+  SkillDispatchDecision,
   SkillSelection,
   SessionCostSummary,
   TapeSearchResult,
@@ -160,6 +163,14 @@ export class BrewvaRuntime {
     list(): SkillDocument[];
     get(name: string): SkillDocument | undefined;
     select(message: string): SkillSelection[];
+    prepareDispatch(sessionId: string, message: string): SkillDispatchDecision;
+    getPendingDispatch(sessionId: string): SkillDispatchDecision | undefined;
+    clearPendingDispatch(sessionId: string): SkillDispatchDecision | undefined;
+    overridePendingDispatch(
+      sessionId: string,
+      input?: { reason?: string; targetSkillName?: string },
+    ): { ok: boolean; reason?: string; decision?: SkillDispatchDecision };
+    reconcilePendingDispatch(sessionId: string, turn: number): void;
     activate(
       sessionId: string,
       name: string,
@@ -588,6 +599,7 @@ export class BrewvaRuntime {
       zoneBudgets: {
         identity: this.config.infrastructure.contextBudget.arena.zones.identity,
         truth: this.config.infrastructure.contextBudget.arena.zones.truth,
+        skills: this.config.infrastructure.contextBudget.arena.zones.skills,
         task_state: this.config.infrastructure.contextBudget.arena.zones.taskState,
         tool_failures: this.config.infrastructure.contextBudget.arena.zones.toolFailures,
         memory_working: this.config.infrastructure.contextBudget.arena.zones.memoryWorking,
@@ -738,8 +750,9 @@ export class BrewvaRuntime {
       getTaskState: (sessionId) => this.getTaskState(sessionId),
       getTruthState: (sessionId) => this.getTruthState(sessionId),
       getCostSummary: (sessionId) => this.costService.getCostSummary(sessionId),
-      selectSkills: (message) => this.selectSkills(message),
+      prepareSkillDispatch: (dispatchInput) => this.prepareSkillDispatch(dispatchInput),
       buildSkillCandidateBlock: (selected) => buildSkillCandidateBlock(selected),
+      buildSkillDispatchGateBlock: (decision) => buildSkillDispatchGateBlock(decision),
       buildTaskStateBlock: (state) => buildTaskStateBlock(state),
       maybeAlignTaskStatus: (input) => taskService.maybeAlignTaskStatus(input),
       getLedgerDigest: (sessionId) => ledgerService.getLedgerDigest(sessionId),
@@ -834,6 +847,7 @@ export class BrewvaRuntime {
       sessionState: this.sessionState,
       alwaysAllowedTools: ALWAYS_ALLOWED_TOOLS,
       getActiveSkill: (sessionId) => skillLifecycleService.getActiveSkill(sessionId),
+      getPendingDispatch: (sessionId) => skillLifecycleService.getPendingDispatch(sessionId),
       getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),
       recordEvent: (input) => this.recordEvent(input),
       checkContextCompactionGate: (sessionId, toolName, usage) =>
@@ -900,6 +914,19 @@ export class BrewvaRuntime {
         list: () => this.skillRegistry.list(),
         get: (name) => this.skillRegistry.get(name),
         select: (message) => this.selectSkills(message),
+        prepareDispatch: (sessionId, message) =>
+          this.prepareSkillDispatch({
+            sessionId,
+            promptText: message,
+            turn: this.getCurrentTurn(sessionId),
+          }),
+        getPendingDispatch: (sessionId) => this.skillLifecycleService.getPendingDispatch(sessionId),
+        clearPendingDispatch: (sessionId) =>
+          this.skillLifecycleService.clearPendingDispatch(sessionId),
+        overridePendingDispatch: (sessionId, input) =>
+          this.skillLifecycleService.overridePendingDispatch(sessionId, input),
+        reconcilePendingDispatch: (sessionId, turn) =>
+          this.skillLifecycleService.reconcilePendingDispatchOnTurnEnd(sessionId, turn),
         activate: (sessionId, name) => this.skillLifecycleService.activateSkill(sessionId, name),
         getActive: (sessionId) => this.skillLifecycleService.getActiveSkill(sessionId),
         validateOutputs: (sessionId, outputs) =>
@@ -1075,8 +1102,27 @@ export class BrewvaRuntime {
 
   private selectSkills(message: string): SkillSelection[] {
     const input = this.config.security.sanitizeContext ? sanitizeContextText(message) : message;
-    return selectTopKSkills(input, this.skillRegistry.buildIndex(), this.config.skills.selector.k);
+    return selectTopKSkills(input, this.skillRegistry.buildIndex(), this.config.skills.selector.k, {
+      semanticFallback: this.config.skills.selector.semanticFallback,
+    });
   }
+
+  private prepareSkillDispatch(input: {
+    sessionId: string;
+    promptText: string;
+    turn: number;
+  }): SkillDispatchDecision {
+    const selected = this.selectSkills(input.promptText);
+    const decision = resolveSkillDispatchDecision({
+      selected,
+      index: this.skillRegistry.buildIndex(),
+      turn: input.turn,
+      availableOutputs: this.skillLifecycleService.listProducedOutputKeys(input.sessionId),
+    });
+    this.skillLifecycleService.setPendingDispatch(input.sessionId, decision, { emitEvent: true });
+    return decision;
+  }
+
   private getTaskState(sessionId: string): TaskState {
     return this.turnReplay.getTaskState(sessionId);
   }

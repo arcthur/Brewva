@@ -6,6 +6,10 @@ stability: stable
 tier: base
 tags: [debug, bug, failure, regression]
 anti_tags: [feature]
+triggers:
+  intents: ["debug", "troubleshoot", "root cause", "investigate failure", "修 bug"]
+  topics: ["bug", "failure", "regression", "crash", "flaky"]
+  phrases: ["root cause analysis", "debug failing test"]
 tools:
   required: [read, exec, grep]
   optional: [lsp_diagnostics, ast_grep_search, edit, ledger_query, skill_complete]

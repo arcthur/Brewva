@@ -4,6 +4,7 @@ import { ZoneBudgetController, type ZoneBudgetConfig } from "@brewva/brewva-runt
 const BASE_CONFIG: ZoneBudgetConfig = {
   identity: { min: 0, max: 320 },
   truth: { min: 0, max: 420 },
+  skills: { min: 0, max: 240 },
   task_state: { min: 0, max: 360 },
   tool_failures: { min: 0, max: 480 },
   memory_working: { min: 0, max: 300 },
@@ -27,6 +28,7 @@ describe("ZoneBudgetController", () => {
       zoneDemandTokens: {
         identity: 0,
         truth: 300,
+        skills: 0,
         task_state: 0,
         tool_failures: 0,
         memory_working: 0,
@@ -36,6 +38,7 @@ describe("ZoneBudgetController", () => {
       zoneAllocatedTokens: {
         identity: 0,
         truth: 300,
+        skills: 0,
         task_state: 0,
         tool_failures: 0,
         memory_working: 0,
@@ -45,6 +48,7 @@ describe("ZoneBudgetController", () => {
       zoneAcceptedTokens: {
         identity: 0,
         truth: 60,
+        skills: 0,
         task_state: 0,
         tool_failures: 0,
         memory_working: 0,

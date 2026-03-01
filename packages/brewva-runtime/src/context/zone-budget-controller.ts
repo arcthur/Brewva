@@ -1,4 +1,8 @@
-import type { ZoneBudgetConfig } from "./zone-budget.js";
+import {
+  normalizeZoneBudgetConfig,
+  type ZoneBudgetConfig,
+  type ZoneBudgetConfigInput,
+} from "./zone-budget.js";
 import { ZONE_ORDER, createZeroZoneTokenMap, type ContextZone } from "./zones.js";
 
 export interface ZoneBudgetAdaptiveConfig {
@@ -83,8 +87,8 @@ export class ZoneBudgetController {
   private readonly adaptive: ZoneBudgetAdaptiveConfig;
   private readonly sessions = new Map<string, ZoneBudgetControllerState>();
 
-  constructor(config: ZoneBudgetConfig, adaptive: ZoneBudgetAdaptiveConfig) {
-    this.config = config;
+  constructor(config: ZoneBudgetConfigInput, adaptive: ZoneBudgetAdaptiveConfig) {
+    this.config = normalizeZoneBudgetConfig(config);
     this.adaptive = {
       enabled: adaptive.enabled,
       emaAlpha: normalizeRatio(adaptive.emaAlpha, 0.3),

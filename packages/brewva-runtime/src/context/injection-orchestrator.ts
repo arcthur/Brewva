@@ -2,6 +2,8 @@ import type {
   ContextBudgetUsage,
   ContextInjectionDecision,
   ContextStrategyArm,
+  SkillDispatchDecision,
+  SkillSelection,
   TaskState,
   TruthState,
 } from "../types.js";
@@ -49,6 +51,13 @@ export interface ContextInjectionOrchestratorDeps {
   getRecentToolFailures(sessionId: string): ToolFailureEntry[];
   getTaskState(sessionId: string): TaskState;
   buildTaskStateBlock(state: TaskState): string;
+  prepareSkillDispatch(input: {
+    sessionId: string;
+    promptText: string;
+    turn: number;
+  }): SkillDispatchDecision;
+  buildSkillCandidateBlock(selected: SkillSelection[]): string;
+  buildSkillDispatchGateBlock(decision: SkillDispatchDecision): string;
   registerContextInjection(sessionId: string, input: RegisterContextInjectionInput): void;
   recordEvent(input: {
     sessionId: string;
@@ -119,6 +128,29 @@ export function buildContextInjection(
     truthState,
     usage: input.usage,
   });
+  const currentTurn = deps.getCurrentTurn(input.sessionId);
+  const dispatchDecision = deps.prepareSkillDispatch({
+    sessionId: input.sessionId,
+    promptText,
+    turn: currentTurn,
+  });
+  const selectedSkills = dispatchDecision.selected;
+  if (selectedSkills.length > 0) {
+    deps.registerContextInjection(input.sessionId, {
+      source: "brewva.skill-candidates",
+      id: "top-k-skills",
+      priority: "high",
+      content: deps.buildSkillCandidateBlock(selectedSkills),
+    });
+  }
+  if (dispatchDecision.mode === "gate" || dispatchDecision.mode === "auto") {
+    deps.registerContextInjection(input.sessionId, {
+      source: "brewva.skill-dispatch-gate",
+      id: "skill-dispatch-gate",
+      priority: "critical",
+      content: deps.buildSkillDispatchGateBlock(dispatchDecision),
+    });
+  }
 
   const toolFailureConfig = deps.getToolFailureInjectionConfig();
   if (toolFailureConfig.enabled) {
@@ -155,7 +187,6 @@ export function buildContextInjection(
     }
   }
 
-  const currentTurn = deps.getCurrentTurn(input.sessionId);
   const strategyArm = input.strategyArm ?? "managed";
   const stabilityMonitorEnabled =
     input.stabilityMonitorEnabled !== false && strategyArm === "managed";

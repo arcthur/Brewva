@@ -1,7 +1,12 @@
 import type { SessionCostTracker } from "../cost/tracker.js";
 import { resolveSecurityPolicy } from "../security/mode.js";
 import { checkToolAccess as evaluateSkillToolAccess } from "../security/tool-policy.js";
-import type { BrewvaConfig, ContextBudgetUsage, SkillDocument } from "../types.js";
+import type {
+  BrewvaConfig,
+  ContextBudgetUsage,
+  SkillDispatchDecision,
+  SkillDocument,
+} from "../types.js";
 import { normalizeToolName } from "../utils/tool-name.js";
 import type { RuntimeCallback } from "./callback.js";
 import { RuntimeSessionStateStore } from "./session-state.js";
@@ -37,6 +42,7 @@ export interface ToolGateServiceOptions {
   sessionState: RuntimeSessionStateStore;
   alwaysAllowedTools: string[];
   getActiveSkill: RuntimeCallback<[sessionId: string], SkillDocument | undefined>;
+  getPendingDispatch: RuntimeCallback<[sessionId: string], SkillDispatchDecision | undefined>;
   getCurrentTurn: RuntimeCallback<[sessionId: string], number>;
   recordEvent: RuntimeCallback<
     [
@@ -100,6 +106,7 @@ export class ToolGateService {
   private readonly alwaysAllowedTools: string[];
   private readonly alwaysAllowedToolSet: Set<string>;
   private readonly getActiveSkill: (sessionId: string) => SkillDocument | undefined;
+  private readonly getPendingDispatch: (sessionId: string) => SkillDispatchDecision | undefined;
   private readonly getCurrentTurn: (sessionId: string) => number;
   private readonly recordEvent: ToolGateServiceOptions["recordEvent"];
   private readonly checkContextCompactionGate: ToolGateServiceOptions["checkContextCompactionGate"];
@@ -120,6 +127,7 @@ export class ToolGateService {
         .filter((toolName) => toolName.length > 0),
     );
     this.getActiveSkill = options.getActiveSkill;
+    this.getPendingDispatch = options.getPendingDispatch;
     this.getCurrentTurn = options.getCurrentTurn;
     this.recordEvent = options.recordEvent;
     this.checkContextCompactionGate = options.checkContextCompactionGate;
@@ -329,6 +337,9 @@ export class ToolGateService {
     );
     if (!compaction.allowed) return compaction;
 
+    const skillDispatchGate = this.checkSkillDispatchGate(input.sessionId, input.toolName);
+    if (!skillDispatchGate.allowed) return skillDispatchGate;
+
     this.markToolCall(input.sessionId, input.toolName);
     this.trackToolCallStart({
       sessionId: input.sessionId,
@@ -337,6 +348,82 @@ export class ToolGateService {
       args: input.args,
     });
     return { allowed: true };
+  }
+
+  private checkSkillDispatchGate(sessionId: string, toolName: string): ToolAccessDecision {
+    const pendingDispatch = this.getPendingDispatch(sessionId);
+    if (!pendingDispatch) return { allowed: true };
+    if (pendingDispatch.mode === "none" || pendingDispatch.mode === "suggest") {
+      return { allowed: true };
+    }
+
+    const normalizedToolName = normalizeToolName(toolName);
+    if (!normalizedToolName) {
+      return { allowed: true };
+    }
+    if (this.alwaysAllowedToolSet.has(normalizedToolName)) {
+      return { allowed: true };
+    }
+    if (normalizedToolName === "skill_load" || normalizedToolName === "skill_route_override") {
+      return { allowed: true };
+    }
+
+    const primarySkillName = pendingDispatch.primary?.name ?? null;
+    const reason = primarySkillName
+      ? `Skill dispatch gate active. Load '${primarySkillName}' via skill_load or explicitly bypass via skill_route_override.`
+      : "Skill dispatch gate active. Load the recommended skill via skill_load or bypass via skill_route_override.";
+
+    if (this.securityPolicy.skillDispatchGateMode === "off") {
+      return { allowed: true };
+    }
+
+    if (this.securityPolicy.skillDispatchGateMode === "warn") {
+      const warningKey = `${pendingDispatch.turn}:${normalizedToolName}`;
+      const seen =
+        this.sessionState.skillDispatchGateWarningsBySession.get(sessionId) ?? new Set<string>();
+      if (!seen.has(warningKey)) {
+        seen.add(warningKey);
+        this.sessionState.skillDispatchGateWarningsBySession.set(sessionId, seen);
+        this.recordEvent({
+          sessionId,
+          type: "skill_dispatch_gate_warning",
+          turn: this.getCurrentTurn(sessionId),
+          payload: {
+            warningKey,
+            toolName: normalizedToolName,
+            mode: pendingDispatch.mode,
+            primarySkill: primarySkillName,
+            decisionTurn: pendingDispatch.turn,
+            reason,
+          },
+        });
+      }
+      return { allowed: true };
+    }
+
+    this.recordEvent({
+      sessionId,
+      type: "skill_dispatch_gate_blocked_tool",
+      turn: this.getCurrentTurn(sessionId),
+      payload: {
+        toolName: normalizedToolName,
+        mode: pendingDispatch.mode,
+        primarySkill: primarySkillName,
+        decisionTurn: pendingDispatch.turn,
+        reason,
+      },
+    });
+    this.recordEvent({
+      sessionId,
+      type: "tool_call_blocked",
+      turn: this.getCurrentTurn(sessionId),
+      payload: {
+        toolName: normalizedToolName,
+        skill: this.getActiveSkill(sessionId)?.name ?? null,
+        reason,
+      },
+    });
+    return { allowed: false, reason };
   }
 
   finishToolCall(input: FinishToolCallInput): string {

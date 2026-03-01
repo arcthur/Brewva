@@ -35,6 +35,10 @@ Configuration files are patch overlays: omitted fields inherit defaults/lower-pr
 - `skills.disabled`: `[]`
 - `skills.overrides`: `{}`
 - `skills.selector.k`: `4`
+- `skills.selector.semanticFallback.enabled`: `true`
+- `skills.selector.semanticFallback.lexicalBypassScore`: `8`
+- `skills.selector.semanticFallback.minSimilarity`: `0.22`
+- `skills.selector.semanticFallback.embeddingDimensions`: `384`
 
 ### `verification`
 
@@ -170,6 +174,7 @@ Configuration files are patch overlays: omitted fields inherit defaults/lower-pr
 - `infrastructure.contextBudget.arena.degradationPolicy`: `drop_recall`
 - `infrastructure.contextBudget.arena.zones.identity`: `{ min: 0, max: 320 }`
 - `infrastructure.contextBudget.arena.zones.truth`: `{ min: 0, max: 420 }`
+- `infrastructure.contextBudget.arena.zones.skills`: `{ min: 0, max: 240 }`
 - `infrastructure.contextBudget.arena.zones.taskState`: `{ min: 0, max: 360 }`
 - `infrastructure.contextBudget.arena.zones.toolFailures`: `{ min: 0, max: 480 }`
 - `infrastructure.contextBudget.arena.zones.memoryWorking`: `{ min: 0, max: 300 }`
@@ -280,7 +285,7 @@ With `infrastructure.contextBudget.enabled=true`, runtime enforces:
 Arena allocation behavior:
 
 - Sources are planned by deterministic zone order:
-  `identity -> truth -> task_state -> tool_failures -> memory_working -> memory_recall -> rag_external`.
+  `identity -> truth -> skills -> task_state -> tool_failures -> memory_working -> memory_recall -> rag_external`.
 - `zones.<zone>.min` is a floor for demanded content; `zones.<zone>.max` is a hard cap.
 - If demanded floors exceed available injection budget, planner runs
   floor-relaxation cascade (`floorUnmetPolicy.relaxOrder`), then optional
@@ -317,6 +322,9 @@ Normalization details from `normalizeBrewvaConfig(...)`:
 - `memory.retrievalWeights` are normalized to sum to `1` when total weight is positive; otherwise defaults are used.
 - `memory.recallMode` is normalized to `primary | fallback` (invalid values fall back to defaults).
 - `memory.externalRecall.*` is normalized to bounded numeric/boolean defaults.
+- `skills.selector.semanticFallback.lexicalBypassScore` is normalized to a non-negative number.
+- `skills.selector.semanticFallback.minSimilarity` is clamped to `[0, 1]`.
+- `skills.selector.semanticFallback.embeddingDimensions` is normalized to an integer floor with minimum `64`.
 - `arena.zones.<zone>.min/max` are normalized to non-negative integers and `max >= min`.
 - `floorUnmetPolicy.relaxOrder` is normalized to valid zone names in deterministic order.
 - `adaptiveZones.*` and compaction cooldown settings are clamped to safe numeric ranges.

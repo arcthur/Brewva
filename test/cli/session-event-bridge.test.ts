@@ -34,6 +34,9 @@ function createRuntimeMock() {
         turnStarts.push({ sessionId, turnIndex });
       },
     },
+    skills: {
+      reconcilePendingDispatch(): void {},
+    },
     cost: {
       recordAssistantUsage(input: {
         sessionId: string;

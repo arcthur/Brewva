@@ -23,8 +23,8 @@ import type {
   ContextPressureLevel,
   ContextPressureStatus,
   SessionCostSummary,
+  SkillDispatchDecision,
   SkillDocument,
-  SkillSelection,
   TaskState,
   TruthState,
 } from "../types.js";
@@ -61,8 +61,18 @@ export interface ContextServiceOptions {
   getTaskState: RuntimeCallback<[sessionId: string], TaskState>;
   getTruthState: RuntimeCallback<[sessionId: string], TruthState>;
   getCostSummary: RuntimeCallback<[sessionId: string], SessionCostSummary>;
-  selectSkills: RuntimeCallback<[message: string], SkillSelection[]>;
-  buildSkillCandidateBlock: RuntimeCallback<[selected: SkillSelection[]], string>;
+  prepareSkillDispatch: RuntimeCallback<
+    [
+      input: {
+        sessionId: string;
+        promptText: string;
+        turn: number;
+      },
+    ],
+    SkillDispatchDecision
+  >;
+  buildSkillCandidateBlock: RuntimeCallback<[selected: SkillDispatchDecision["selected"]], string>;
+  buildSkillDispatchGateBlock: RuntimeCallback<[decision: SkillDispatchDecision], string>;
   buildTaskStateBlock: RuntimeCallback<[state: TaskState], string>;
   maybeAlignTaskStatus: RuntimeCallback<
     [
@@ -116,8 +126,15 @@ export class ContextService {
   private readonly getTaskState: (sessionId: string) => TaskState;
   private readonly getTruthState: (sessionId: string) => TruthState;
   private readonly getCostSummary: (sessionId: string) => SessionCostSummary;
-  private readonly selectSkills: (message: string) => SkillSelection[];
-  private readonly buildSkillCandidateBlock: (selected: SkillSelection[]) => string;
+  private readonly prepareSkillDispatch: (input: {
+    sessionId: string;
+    promptText: string;
+    turn: number;
+  }) => SkillDispatchDecision;
+  private readonly buildSkillCandidateBlock: (
+    selected: SkillDispatchDecision["selected"],
+  ) => string;
+  private readonly buildSkillDispatchGateBlock: (decision: SkillDispatchDecision) => string;
   private readonly buildTaskStateBlock: (state: TaskState) => string;
   private readonly maybeAlignTaskStatus: ContextServiceOptions["maybeAlignTaskStatus"];
   private readonly getLedgerDigest: (sessionId: string) => string;
@@ -148,8 +165,9 @@ export class ContextService {
     this.getTaskState = options.getTaskState;
     this.getTruthState = options.getTruthState;
     this.getCostSummary = options.getCostSummary;
-    this.selectSkills = options.selectSkills;
+    this.prepareSkillDispatch = options.prepareSkillDispatch;
     this.buildSkillCandidateBlock = options.buildSkillCandidateBlock;
+    this.buildSkillDispatchGateBlock = options.buildSkillDispatchGateBlock;
     this.buildTaskStateBlock = options.buildTaskStateBlock;
     this.maybeAlignTaskStatus = options.maybeAlignTaskStatus;
     this.getLedgerDigest = options.getLedgerDigest;
@@ -592,6 +610,9 @@ export class ContextService {
         getRecentToolFailures: (id) => this.getRecentToolFailures(id),
         getTaskState: (id) => this.getTaskState(id),
         buildTaskStateBlock: (state) => this.buildTaskStateBlock(state),
+        prepareSkillDispatch: (dispatchInput) => this.prepareSkillDispatch(dispatchInput),
+        buildSkillCandidateBlock: (selected) => this.buildSkillCandidateBlock(selected),
+        buildSkillDispatchGateBlock: (decision) => this.buildSkillDispatchGateBlock(decision),
         registerContextInjection: (id, registerInput) =>
           this.registerContextInjection(id, registerInput),
         recordEvent: (eventInput) => this.recordEvent(eventInput),

@@ -4,12 +4,34 @@ import type { JsonValue } from "./utils/json.js";
 export type VerificationLevel = "quick" | "standard" | "strict";
 export type SkillTier = "base" | "pack" | "project";
 export type SkillCostHint = "low" | "medium" | "high";
+export type SkillDispatchMode = "suggest" | "gate" | "auto";
+export type SkillTriggerNegativeScope = "intent" | "topic";
+
+export interface SkillDispatchPolicy {
+  gateThreshold: number;
+  autoThreshold: number;
+  defaultMode: SkillDispatchMode;
+}
+
+export interface SkillTriggerNegativeRule {
+  scope: SkillTriggerNegativeScope;
+  terms: string[];
+}
+
+export interface SkillTriggerPolicy {
+  intents: string[];
+  topics: string[];
+  phrases: string[];
+  negatives: SkillTriggerNegativeRule[];
+}
 
 export interface SkillContract {
   name: string;
   tier: SkillTier;
   tags: string[];
   antiTags?: string[];
+  triggers?: SkillTriggerPolicy;
+  dispatch?: SkillDispatchPolicy;
   tools: {
     required: string[];
     optional: string[];
@@ -51,17 +73,45 @@ export interface SkillsIndexEntry {
   description: string;
   tags: string[];
   antiTags: string[];
+  outputs: string[];
   toolsRequired: string[];
   costHint: SkillCostHint;
   stability: "experimental" | "stable" | "deprecated";
   composableWith: string[];
   consumes: string[];
+  triggers?: SkillTriggerPolicy;
+  dispatch?: SkillDispatchPolicy;
 }
 
 export interface SkillSelection {
   name: string;
   score: number;
   reason: string;
+}
+
+export interface SkillSelectorSemanticFallbackConfig {
+  enabled: boolean;
+  lexicalBypassScore: number;
+  minSimilarity: number;
+  embeddingDimensions: number;
+}
+
+export interface SkillSelectorConfig {
+  k: number;
+  semanticFallback: SkillSelectorSemanticFallbackConfig;
+}
+
+export type SkillDispatchDecisionMode = "none" | SkillDispatchMode;
+
+export interface SkillDispatchDecision {
+  mode: SkillDispatchDecisionMode;
+  primary: SkillSelection | null;
+  selected: SkillSelection[];
+  chain: string[];
+  unresolvedConsumes: string[];
+  confidence: number;
+  reason: string;
+  turn: number;
 }
 
 export interface SkillOutputRecord {
@@ -354,7 +404,7 @@ export interface BrewvaConfig {
     packs: string[];
     disabled: string[];
     overrides: Record<string, SkillContractOverride>;
-    selector: { k: number };
+    selector: SkillSelectorConfig;
   };
   verification: {
     defaultLevel: VerificationLevel;
@@ -494,6 +544,7 @@ export interface BrewvaConfig {
         zones: {
           identity: { min: number; max: number };
           truth: { min: number; max: number };
+          skills: { min: number; max: number };
           taskState: { min: number; max: number };
           toolFailures: { min: number; max: number };
           memoryWorking: { min: number; max: number };
@@ -737,6 +788,7 @@ export type ContextPressureLevel = "none" | "low" | "medium" | "high" | "critica
 export type ContextBudgetZone =
   | "identity"
   | "truth"
+  | "skills"
   | "task_state"
   | "tool_failures"
   | "memory_working"

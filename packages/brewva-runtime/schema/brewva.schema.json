@@ -97,6 +97,30 @@
                     "minTurnsBeforeAdapt": {
                       "type": "number"
                     },
+                    "retirement": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "checkIntervalHours": {
+                          "type": "number"
+                        },
+                        "disableBelow": {
+                          "type": "number"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "metricKey": {
+                          "$ref": "#/definitions/ContextRetirementMetricKey"
+                        },
+                        "minSamples": {
+                          "type": "number"
+                        },
+                        "reenableAbove": {
+                          "type": "number"
+                        }
+                      }
+                    },
                     "stepTokens": {
                       "type": "number"
                     },
@@ -156,6 +180,18 @@
                           }
                         },
                         "ragExternal": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "max": {
+                              "type": "number"
+                            },
+                            "min": {
+                              "type": "number"
+                            }
+                          }
+                        },
+                        "skills": {
                           "type": "object",
                           "additionalProperties": false,
                           "properties": {
@@ -249,6 +285,7 @@
                         "enum": [
                           "identity",
                           "truth",
+                          "skills",
                           "task_state",
                           "tool_failures",
                           "memory_working",
@@ -267,6 +304,63 @@
                 },
                 "maxInjectionTokens": {
                   "type": "number"
+                },
+                "stabilityMonitor": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "consecutiveThreshold": {
+                      "type": "number"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "retirement": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "checkIntervalHours": {
+                          "type": "number"
+                        },
+                        "disableBelow": {
+                          "type": "number"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "metricKey": {
+                          "$ref": "#/definitions/ContextRetirementMetricKey"
+                        },
+                        "minSamples": {
+                          "type": "number"
+                        },
+                        "reenableAbove": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                },
+                "strategy": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "defaultArm": {
+                      "$ref": "#/definitions/ContextStrategyArm"
+                    },
+                    "enableAutoByContextWindow": {
+                      "type": "boolean"
+                    },
+                    "hybridContextWindowMin": {
+                      "type": "number"
+                    },
+                    "overridesPath": {
+                      "type": "string"
+                    },
+                    "passthroughContextWindowMin": {
+                      "type": "number"
+                    }
+                  }
                 },
                 "truncationStrategy": {
                   "type": "string",
@@ -602,6 +696,9 @@
               "properties": {
                 "k": {
                   "type": "number"
+                },
+                "semanticFallback": {
+                  "$ref": "#/definitions/SkillSelectorSemanticFallbackConfig"
                 }
               }
             }
@@ -670,6 +767,14 @@
       "type": "string",
       "enum": ["drop_recall", "drop_low_priority", "force_compact"]
     },
+    "ContextRetirementMetricKey": {
+      "type": "string",
+      "enum": ["floor_unmet_rate_7d", "zone_adaptation_benefit_7d"]
+    },
+    "ContextStrategyArm": {
+      "type": "string",
+      "enum": ["managed", "hybrid", "passthrough"]
+    },
     "SkillContractOverride": {
       "type": "object",
       "additionalProperties": false,
@@ -709,6 +814,9 @@
         },
         "costHint": {
           "$ref": "#/definitions/SkillCostHint"
+        },
+        "dispatch": {
+          "$ref": "#/definitions/SkillDispatchPolicy"
         },
         "escalationPath": {
           "type": "object",
@@ -765,6 +873,9 @@
             }
           }
         },
+        "triggers": {
+          "$ref": "#/definitions/SkillTriggerPolicy"
+        },
         "version": {
           "type": "string"
         }
@@ -774,9 +885,99 @@
       "type": "string",
       "enum": ["low", "medium", "high"]
     },
+    "SkillDispatchMode": {
+      "type": "string",
+      "enum": ["suggest", "gate", "auto"]
+    },
+    "SkillDispatchPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "autoThreshold": {
+          "type": "number"
+        },
+        "defaultMode": {
+          "$ref": "#/definitions/SkillDispatchMode"
+        },
+        "gateThreshold": {
+          "type": "number"
+        }
+      },
+      "required": ["gateThreshold", "autoThreshold", "defaultMode"]
+    },
+    "SkillSelectorSemanticFallbackConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "embeddingDimensions": {
+          "type": "number"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "lexicalBypassScore": {
+          "type": "number"
+        },
+        "minSimilarity": {
+          "type": "number"
+        }
+      },
+      "required": ["enabled", "lexicalBypassScore", "minSimilarity", "embeddingDimensions"]
+    },
     "SkillTier": {
       "type": "string",
       "enum": ["base", "pack", "project"]
+    },
+    "SkillTriggerNegativeRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "$ref": "#/definitions/SkillTriggerNegativeScope"
+        },
+        "terms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["scope", "terms"]
+    },
+    "SkillTriggerNegativeScope": {
+      "type": "string",
+      "enum": ["intent", "topic"]
+    },
+    "SkillTriggerPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "intents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "negatives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SkillTriggerNegativeRule"
+          }
+        },
+        "phrases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["intents", "topics", "phrases", "negatives"]
     },
     "VerificationLevel": {
       "type": "string",

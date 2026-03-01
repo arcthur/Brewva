@@ -263,8 +263,10 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
   });
 
   pi.on("turn_end", (event, ctx) => {
+    const sessionId = ctx.sessionManager.getSessionId();
+    runtime.skills.reconcilePendingDispatch(sessionId, event.turnIndex);
     runtime.events.record({
-      sessionId: ctx.sessionManager.getSessionId(),
+      sessionId,
       type: "turn_end",
       turn: event.turnIndex,
       payload: {

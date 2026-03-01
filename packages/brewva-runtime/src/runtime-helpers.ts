@@ -1,6 +1,11 @@
 import { TAPE_ANCHOR_EVENT_TYPE, TAPE_CHECKPOINT_EVENT_TYPE } from "./tape/events.js";
 import { formatTaskStateBlock } from "./task/ledger.js";
-import type { BrewvaEventCategory, SkillSelection, TaskState } from "./types.js";
+import type {
+  BrewvaEventCategory,
+  SkillDispatchDecision,
+  SkillSelection,
+  TaskState,
+} from "./types.js";
 
 const DEFAULT_TOOL_FAILURE_MAX_ENTRIES = 3;
 const DEFAULT_TOOL_FAILURE_MAX_OUTPUT_CHARS = 300;
@@ -10,6 +15,7 @@ const TOKEN_ESTIMATE_CHARS_PER_TOKEN = 3.5;
 export const ALWAYS_ALLOWED_TOOLS = [
   "skill_complete",
   "skill_load",
+  "skill_route_override",
   "ledger_query",
   "cost_view",
   "tape_handoff",
@@ -54,6 +60,25 @@ export function buildTaskStateBlock(state: TaskState): string {
   return formatTaskStateBlock(state);
 }
 
+export function buildSkillDispatchGateBlock(decision: SkillDispatchDecision): string {
+  const primary = decision.primary?.name ?? "(none)";
+  const chainText = decision.chain.length > 0 ? decision.chain.join(" -> ") : primary;
+  const unresolvedConsumes =
+    decision.unresolvedConsumes.length > 0 ? decision.unresolvedConsumes.join(", ") : "(none)";
+  return [
+    "[SkillDispatchGate]",
+    `mode: ${decision.mode}`,
+    `primary: ${primary}`,
+    `confidence: ${decision.confidence.toFixed(3)}`,
+    `reason: ${decision.reason}`,
+    `chain: ${chainText}`,
+    `unresolved_consumes: ${unresolvedConsumes}`,
+    "Required action:",
+    `- call tool \`skill_load\` with name=\`${primary}\` before non-lifecycle tools`,
+    "- if intentional bypass, call `skill_route_override` with reason first",
+  ].join("\n");
+}
+
 function estimateToolFailureBlockTokens(input?: {
   maxEntries?: number;
   maxOutputChars?: number;
@@ -94,6 +119,8 @@ export function buildContextSourceTokenLimits(
   const baseLimits = {
     "brewva.identity": fromRatio(0.2, 140, 320),
     "brewva.task-state": fromRatio(0.15, 96, 360),
+    "brewva.skill-candidates": fromRatio(0.12, 96, 320),
+    "brewva.skill-dispatch-gate": fromRatio(0.12, 96, 320),
     "brewva.tool-failures": toolFailureLimit,
   };
 

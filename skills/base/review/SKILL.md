@@ -6,6 +6,17 @@ stability: stable
 tier: base
 tags: [review, quality, bug, risk, merge-safety]
 anti_tags: [implementation]
+triggers:
+  intents: [review, audit, assess, 审查, 审核]
+  topics: [architecture, risk, philosophy, quality]
+  phrases: ["code review", "project philosophy"]
+  negatives:
+    - scope: intent
+      terms: [implement, coding, 写代码]
+dispatch:
+  gate_threshold: 10
+  auto_threshold: 18
+  default_mode: suggest
 tools:
   required: [read, grep]
   optional: [lsp_diagnostics, ledger_query, skill_complete]
