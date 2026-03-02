@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs as parseNodeArgs } from "node:util";
 import { runGatewayCli } from "@brewva/brewva-gateway";
 import {
+  BrewvaConfigLoadError,
   BrewvaRuntime,
   normalizeAgentId,
   parseTaskSpec,
@@ -77,29 +78,13 @@ function assertSupportedRuntime(): void {
   }
 }
 
-function printConfigDiagnostics(
-  diagnostics: BrewvaRuntime["configDiagnostics"],
-  verbose: boolean,
-): void {
-  if (diagnostics.length === 0) return;
-
-  const errors = diagnostics.filter((diagnostic) => diagnostic.level === "error");
-  const warnings = diagnostics.filter((diagnostic) => diagnostic.level === "warn");
-
-  for (const diagnostic of errors) {
-    console.error(`[config:error] ${diagnostic.configPath}: ${diagnostic.message}`);
+function printStartupError(error: unknown): void {
+  if (error instanceof BrewvaConfigLoadError) {
+    console.error(`[config:error] ${error.configPath}: ${error.message}`);
+    return;
   }
-
-  if (warnings.length === 0) return;
-  const maxWarnings = verbose ? warnings.length : Math.min(3, warnings.length);
-  for (const diagnostic of warnings.slice(0, maxWarnings)) {
-    console.error(`[config:warn] ${diagnostic.configPath}: ${diagnostic.message}`);
-  }
-  if (!verbose && warnings.length > maxWarnings) {
-    console.error(
-      `[config:warn] ${warnings.length - maxWarnings} more warning(s) suppressed (run with --verbose for details).`,
-    );
-  }
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`Error: ${message}`);
 }
 
 function printHelp(): void {
@@ -792,9 +777,6 @@ async function run(): Promise<void> {
       verbose: parsed.verbose,
       channel: parsed.channel,
       channelConfig: parsed.channelConfig,
-      onRuntimeReady: (runtime) => {
-        printConfigDiagnostics(runtime.configDiagnostics, parsed.verbose);
-      },
     });
     return;
   }
@@ -833,9 +815,6 @@ async function run(): Promise<void> {
       agentId: parsed.agentId,
       enableExtensions: parsed.enableExtensions,
       verbose: parsed.verbose,
-      onRuntimeReady: (runtime) => {
-        printConfigDiagnostics(runtime.configDiagnostics, parsed.verbose);
-      },
     });
     return;
   }
@@ -990,7 +969,6 @@ async function run(): Promise<void> {
     agentId: parsed.agentId,
     enableExtensions: parsed.enableExtensions,
   });
-  printConfigDiagnostics(runtime.configDiagnostics, parsed.verbose);
 
   const getSessionId = (): string => session.sessionManager.getSessionId();
   const initialSessionId = getSessionId();
@@ -1089,7 +1067,10 @@ const isNodeMain = process.argv[1]
 
 if (isBunMain ?? isNodeMain) {
   assertSupportedRuntime();
-  void run();
+  void run().catch((error) => {
+    printStartupError(error);
+    process.exitCode = 1;
+  });
 }
 
 export { createBrewvaSession } from "./session.js";

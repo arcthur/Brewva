@@ -116,8 +116,9 @@ describe("ContextInjectionCollector characterization", () => {
     expect(sources).not.toContain("source-c");
   });
 
-  test("sourceTokenLimits truncates individual source entries", () => {
+  test("sourceTokenLimits truncates individual source entries under tail strategy", () => {
     const collector = new ContextInjectionCollector({
+      truncationStrategy: "tail",
       sourceTokenLimits: {
         "brewva.memory-working": 5,
       },
@@ -134,5 +135,27 @@ describe("ContextInjectionCollector characterization", () => {
     expect(plan.entries).toHaveLength(1);
     expect(plan.entries[0]?.truncated).toBe(true);
     expect((plan.entries[0]?.estimatedTokens ?? 0) <= 5).toBe(true);
+  });
+
+  test("sourceTokenLimits rejects oversized entries under summarize strategy", () => {
+    const collector = new ContextInjectionCollector({
+      truncationStrategy: "summarize",
+      sourceTokenLimits: {
+        "brewva.memory-working": 5,
+      },
+    });
+    const sessionId = "ctx-char-source-limit-summarize";
+
+    const register = collector.register(sessionId, {
+      source: "brewva.memory-working",
+      id: "memory-working",
+      priority: "normal",
+      content: "x".repeat(5_000),
+    });
+
+    const plan = collector.plan(sessionId, 10_000);
+    expect(register.accepted).toBe(false);
+    expect(plan.entries).toHaveLength(0);
+    expect(plan.text).toBe("");
   });
 });

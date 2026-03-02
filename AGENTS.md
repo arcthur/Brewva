@@ -88,18 +88,27 @@ brewva/
 - Security policy is strategy-based:
   - `security.mode: permissive | standard | strict`
   - `security.sanitizeContext: boolean`
+- Execution routing is policy-explicit:
+  - `security.execution.backend=auto` is best-available (`sandbox -> host`).
+  - `security.execution.backend=sandbox` is isolation-first; `fallbackToHost`
+    defaults to `false`.
+  - `strict` or `enforceIsolation=true` always fail-closed.
 - Event stream is level-based:
   - `infrastructure.events.level: audit | ops | debug` (default `ops`)
 - Exception: `cognitive_relevance_ranking*` remains `ops`-visible to support shadow-to-active rerank evaluation.
+- Config loading is fail-fast:
+  - JSON parse/non-object/schema invalid/schema unavailable are startup-blocking.
+  - Runtime does not continue with default-config fallback on invalid config.
 - Context injection is single-path and deterministic:
   - global injection cap + hard-limit compaction gate
   - arena SLO enforcement (`maxEntriesPerSession`, degradation policy)
-- Context injection uses eight semantic source labels:
+- Context injection uses explicit semantic source labels:
   - `brewva.identity`
   - `brewva.truth-static` / `brewva.truth-facts`
   - `brewva.skill-candidates` / `brewva.skill-dispatch-gate`
   - `brewva.task-state`
   - `brewva.tool-failures`
+  - `brewva.tool-outputs-distilled`
   - `brewva.memory-working` / `brewva.memory-recall`
   - `brewva.rag-external` (opt-in external I/O boundary)
 - Context arena has one closed loop plus one explicit boundary:

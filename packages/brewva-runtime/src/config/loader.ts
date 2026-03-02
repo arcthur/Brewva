@@ -7,22 +7,27 @@ import { normalizeBrewvaConfig } from "./normalize.js";
 import { resolveGlobalBrewvaConfigPath, resolveProjectBrewvaConfigPath } from "./paths.js";
 import { validateBrewvaConfigFile } from "./validate.js";
 
-export type BrewvaConfigDiagnosticLevel = "warn" | "error";
-
-export interface BrewvaConfigDiagnostic {
-  level: BrewvaConfigDiagnosticLevel;
-  code:
-    | "config_parse_error"
-    | "config_not_object"
-    | "config_schema_unavailable"
-    | "config_schema_invalid";
-  message: string;
-  configPath: string;
-}
+export type BrewvaConfigLoadErrorCode =
+  | "config_parse_error"
+  | "config_not_object"
+  | "config_schema_unavailable"
+  | "config_schema_invalid";
 
 export interface LoadConfigOptions {
   cwd?: string;
   configPath?: string;
+}
+
+export class BrewvaConfigLoadError extends Error {
+  readonly code: BrewvaConfigLoadErrorCode;
+  readonly configPath: string;
+
+  constructor(input: { code: BrewvaConfigLoadErrorCode; configPath: string; message: string }) {
+    super(input.message);
+    this.name = "BrewvaConfigLoadError";
+    this.code = input.code;
+    this.configPath = input.configPath;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -65,10 +70,7 @@ function stripMetaFields(value: Record<string, unknown>): Record<string, unknown
   return output;
 }
 
-function readConfigFile(
-  configPath: string,
-  diagnostics: BrewvaConfigDiagnostic[],
-): Partial<BrewvaConfig> | undefined {
+function readConfigFile(configPath: string): Partial<BrewvaConfig> | undefined {
   if (!existsSync(configPath)) return undefined;
   let parsed: unknown;
   try {
@@ -76,40 +78,35 @@ function readConfigFile(
     parsed = JSON.parse(raw);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    diagnostics.push({
-      level: "error",
+    throw new BrewvaConfigLoadError({
       code: "config_parse_error",
       message: `Failed to parse config JSON: ${message}`,
       configPath,
     });
-    return undefined;
   }
 
   if (!isRecord(parsed)) {
-    diagnostics.push({
-      level: "error",
+    throw new BrewvaConfigLoadError({
       code: "config_not_object",
       message: "Config must be a JSON object at the top-level.",
       configPath,
     });
-    return undefined;
   }
 
   const validation = validateBrewvaConfigFile(parsed);
   if (!validation.ok) {
     if (validation.error) {
-      diagnostics.push({
-        level: "warn",
+      throw new BrewvaConfigLoadError({
         code: "config_schema_unavailable",
         message: `Schema validation is unavailable: ${validation.error}`,
         configPath,
       });
     }
-    for (const error of validation.errors) {
-      diagnostics.push({
-        level: "warn",
+
+    if (validation.errors.length > 0) {
+      throw new BrewvaConfigLoadError({
         code: "config_schema_invalid",
-        message: `Config does not match schema: ${error}`,
+        message: `Config does not match schema: ${validation.errors.join("; ")}`,
         configPath,
       });
     }
@@ -119,13 +116,9 @@ function readConfigFile(
   return resolveConfigRelativeSkillRoots(cleaned as Partial<BrewvaConfig>, configPath);
 }
 
-export function loadBrewvaConfigWithDiagnostics(options: LoadConfigOptions = {}): {
-  config: BrewvaConfig;
-  diagnostics: BrewvaConfigDiagnostic[];
-} {
+export function loadBrewvaConfig(options: LoadConfigOptions = {}): BrewvaConfig {
   const cwd = resolve(options.cwd ?? process.cwd());
   const defaults = structuredClone(DEFAULT_BREWVA_CONFIG);
-  const diagnostics: BrewvaConfigDiagnostic[] = [];
 
   const configPaths = options.configPath
     ? [resolve(cwd, options.configPath)]
@@ -133,17 +126,10 @@ export function loadBrewvaConfigWithDiagnostics(options: LoadConfigOptions = {})
 
   let merged = defaults;
   for (const configPath of configPaths) {
-    const parsed = readConfigFile(configPath, diagnostics);
+    const parsed = readConfigFile(configPath);
     if (!parsed) continue;
     merged = deepMerge(merged, parsed);
   }
 
-  return {
-    config: normalizeBrewvaConfig(merged, DEFAULT_BREWVA_CONFIG),
-    diagnostics,
-  };
-}
-
-export function loadBrewvaConfig(options: LoadConfigOptions = {}): BrewvaConfig {
-  return loadBrewvaConfigWithDiagnostics(options).config;
+  return normalizeBrewvaConfig(merged, DEFAULT_BREWVA_CONFIG);
 }

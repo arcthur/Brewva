@@ -32,7 +32,7 @@ function createRuntimeForExecTests(input?: {
   const normalizedBackend =
     enforceIsolation || mode === "strict" ? "sandbox" : (input?.backend ?? "auto");
   const normalizedFallbackToHost =
-    enforceIsolation || mode === "strict" ? false : (input?.fallbackToHost ?? true);
+    enforceIsolation || mode === "strict" ? false : (input?.fallbackToHost ?? false);
   const events: Array<{ type?: string; payload?: Record<string, unknown> }> = [];
   const runtime = {
     config: {
@@ -202,6 +202,7 @@ describe("exec/process tool flow", () => {
     expect(events.some((event) => event.type === "exec_fallback_host")).toBe(true);
     const routed = events.find((event) => event.type === "exec_routed");
     const routedPayload = routed?.payload ?? {};
+    expect(routedPayload.routingPolicy).toBe("best_available");
     expect(routedPayload.command).toBeUndefined();
     expect(typeof routedPayload.commandHash).toBe("string");
     expect((routedPayload.commandHash as string).length).toBe(64);
@@ -209,6 +210,36 @@ describe("exec/process tool flow", () => {
     expect(typeof redacted).toBe("string");
     expect((redacted as string).includes("<redacted>")).toBe(true);
     expect((redacted as string).includes("super-secret-token")).toBe(false);
+  });
+
+  test("standard mode with backend=auto falls back to host when sandbox backend is unavailable", async () => {
+    const { runtime, events } = createRuntimeForExecTests({
+      mode: "standard",
+      backend: "auto",
+      fallbackToHost: false,
+      serverUrl: "http://127.0.0.1:2",
+    });
+    const execTool = createExecTool({ runtime });
+    const sessionId = "s13-exec-auto-fallback-host";
+
+    const result = await execTool.execute(
+      "tc-exec-auto-fallback-host",
+      {
+        command: "echo auto-fallback-ok",
+      },
+      undefined,
+      undefined,
+      fakeContext(sessionId),
+    );
+
+    expect(extractTextContent(result).includes("auto-fallback-ok")).toBe(true);
+    expect((result.details as { backend?: string }).backend).toBe("host");
+    const routed = events.find((event) => event.type === "exec_routed");
+    expect(routed?.payload?.configuredBackend).toBe("auto");
+    expect(routed?.payload?.resolvedBackend).toBe("sandbox");
+    expect(routed?.payload?.fallbackToHost).toBe(true);
+    expect(routed?.payload?.routingPolicy).toBe("best_available");
+    expect(events.some((event) => event.type === "exec_fallback_host")).toBe(true);
   });
 
   test("standard mode caches sandbox failures and skips immediate sandbox retries", async () => {
@@ -279,6 +310,34 @@ describe("exec/process tool flow", () => {
     expect(events.some((event) => event.type === "exec_fallback_host")).toBe(false);
   });
 
+  test("standard sandbox mode fails closed when fallbackToHost is false", async () => {
+    const { runtime, events } = createRuntimeForExecTests({
+      mode: "standard",
+      backend: "sandbox",
+      fallbackToHost: false,
+      serverUrl: "http://127.0.0.1:1",
+    });
+    const execTool = createExecTool({ runtime });
+    const sessionId = "s13-exec-sandbox-fail-closed";
+
+    expect(
+      execTool.execute(
+        "tc-exec-sandbox-fail-closed",
+        {
+          command: "echo should-block",
+        },
+        undefined,
+        undefined,
+        fakeContext(sessionId),
+      ),
+    ).rejects.toThrow("exec_blocked_isolation");
+
+    const routed = events.find((event) => event.type === "exec_routed");
+    expect(routed?.payload?.routingPolicy).toBe("fail_closed");
+    expect(events.some((event) => event.type === "exec_fallback_host")).toBe(false);
+    expect(events.some((event) => event.type === "exec_blocked_isolation")).toBe(true);
+  });
+
   test("enforce isolation overrides permissive host routing and fails closed", async () => {
     const { runtime, events } = createRuntimeForExecTests({
       mode: "permissive",
@@ -306,6 +365,7 @@ describe("exec/process tool flow", () => {
     expect(routed).toBeDefined();
     expect(routed?.payload?.configuredBackend).toBe("sandbox");
     expect(routed?.payload?.resolvedBackend).toBe("sandbox");
+    expect(routed?.payload?.routingPolicy).toBe("fail_closed");
     expect(routed?.payload?.fallbackToHost).toBe(false);
     expect(routed?.payload?.enforceIsolation).toBe(true);
 

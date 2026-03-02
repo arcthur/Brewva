@@ -62,8 +62,9 @@ type RecordedExecEvent =
 
 interface ResolvedExecutionPolicy {
   mode: SecurityMode;
-  backendPreference: ExecutionBackend;
+  configuredBackend: ExecutionBackend;
   backend: "host" | "sandbox";
+  routingPolicy: "best_available" | "fail_closed";
   enforceIsolation: boolean;
   allowHostFallback: boolean;
   denyListBestEffort: true;
@@ -444,19 +445,25 @@ function resolveExecutionPolicy(runtime?: BrewvaToolRuntime): ResolvedExecutionP
   const execution = security.execution;
   const enforceIsolation =
     execution.enforceIsolation || isTruthyEnvFlag(process.env.BREWVA_ENFORCE_EXEC_ISOLATION);
-  const backendPreference = enforceIsolation ? "sandbox" : execution.backend;
-  const backend = resolvePreferredBackend(security.mode, backendPreference);
+  const configuredBackend = execution.backend;
+  const backend = resolvePreferredBackend({
+    mode: security.mode,
+    configuredBackend,
+    enforceIsolation,
+  });
+  const allowHostFallback =
+    backend === "sandbox" &&
+    !enforceIsolation &&
+    security.mode !== "strict" &&
+    (configuredBackend === "auto" || execution.fallbackToHost);
 
   return {
     mode: security.mode,
-    backendPreference,
+    configuredBackend,
     backend,
+    routingPolicy: allowHostFallback || backend === "host" ? "best_available" : "fail_closed",
     enforceIsolation,
-    allowHostFallback:
-      backend === "sandbox" &&
-      !enforceIsolation &&
-      security.mode !== "strict" &&
-      execution.fallbackToHost,
+    allowHostFallback,
     denyListBestEffort: true,
     commandDenyList: new Set(
       execution.commandDenyList
@@ -471,14 +478,18 @@ function resolveExecutionPolicy(runtime?: BrewvaToolRuntime): ResolvedExecutionP
   };
 }
 
-function resolvePreferredBackend(
-  mode: SecurityMode,
-  backendPreference: ExecutionBackend,
-): "host" | "sandbox" {
-  if (backendPreference === "host" || backendPreference === "sandbox") {
-    return backendPreference;
+function resolvePreferredBackend(input: {
+  mode: SecurityMode;
+  configuredBackend: ExecutionBackend;
+  enforceIsolation: boolean;
+}): "host" | "sandbox" {
+  if (input.enforceIsolation || input.mode === "strict") {
+    return "sandbox";
   }
-  return mode === "permissive" ? "host" : "sandbox";
+  if (input.configuredBackend === "host" || input.configuredBackend === "sandbox") {
+    return input.configuredBackend;
+  }
+  return "sandbox";
 }
 
 function resolveSandboxBackoffKey(policy: ResolvedExecutionPolicy): string {
@@ -578,7 +589,8 @@ function buildExecAuditPayload(input: {
   return {
     toolCallId: input.toolCallId,
     mode: input.policy.mode,
-    configuredBackend: input.policy.backendPreference,
+    routingPolicy: input.policy.routingPolicy,
+    configuredBackend: input.policy.configuredBackend,
     enforceIsolation: input.policy.enforceIsolation,
     denyListBestEffort: input.policy.denyListBestEffort,
     ...buildCommandAuditPayload(input.command),

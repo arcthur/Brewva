@@ -62,6 +62,35 @@ describe("Extension gaps: quality gate", () => {
     expect(result.action).toBe("continue");
   });
 
+  test("given non-ascii input unchanged by sanitizer, when input hook runs, then extension continues", () => {
+    const { api, handlers, sentMessages } = createMockExtensionAPI();
+
+    const runtime = createRuntimeFixture({
+      tools: {
+        start: () => ({ allowed: true }),
+      },
+      context: {
+        sanitizeInput: (text: string) => text,
+      },
+    });
+
+    registerQualityGate(api, runtime);
+
+    const result = invokeHandler<{ action: string }>(
+      handlers,
+      "input",
+      {
+        source: "interactive",
+        text: "请 review this change",
+        images: [],
+      },
+      {},
+    );
+
+    expect(result.action).toBe("continue");
+    expect(sentMessages).toHaveLength(0);
+  });
+
   test("given tool_call and context usage, when quality gate runs, then runtime.tools.start receives normalized usage", () => {
     const { api, handlers } = createMockExtensionAPI();
     const calls: any[] = [];

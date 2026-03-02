@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import process from "node:process";
 import { parseArgs as parseNodeArgs } from "node:util";
-import { resolveBrewvaAgentDir } from "@brewva/brewva-runtime";
+import { BrewvaConfigLoadError, resolveBrewvaAgentDir } from "@brewva/brewva-runtime";
 import { readGatewayToken } from "./auth.js";
 import { connectGatewayClient } from "./client.js";
 import { GatewayDaemon } from "./daemon/gateway-daemon.js";
@@ -23,6 +23,13 @@ import {
 import { assertLoopbackHost, normalizeGatewayHost } from "./network.js";
 import { sleep } from "./utils/async.js";
 import { toErrorMessage } from "./utils/errors.js";
+
+function formatGatewayStartupError(error: unknown): string {
+  if (error instanceof BrewvaConfigLoadError) {
+    return `[config:error] ${error.configPath}: ${error.message}`;
+  }
+  return toErrorMessage(error);
+}
 
 export interface GatewayPaths {
   stateDir: string;
@@ -713,29 +720,28 @@ async function handleStart(argv: string[]): Promise<number> {
     }
   }
 
-  const daemon = new GatewayDaemon({
-    host,
-    port: portParsed.value,
-    stateDir: paths.stateDir,
-    pidFilePath: paths.pidFilePath,
-    logFilePath: paths.logFilePath,
-    tokenFilePath: paths.tokenFilePath,
-    heartbeatPolicyPath: paths.heartbeatPolicyPath,
-    cwd: typeof parsed.values.cwd === "string" ? parsed.values.cwd : process.cwd(),
-    configPath: typeof parsed.values.config === "string" ? parsed.values.config : undefined,
-    model: typeof parsed.values.model === "string" ? parsed.values.model : undefined,
-    enableExtensions: parsed.values["no-extensions"] !== true,
-    jsonStdout: jsonMode,
-    tickIntervalMs: tickParsed.value,
-    sessionIdleTtlMs: sessionIdleParsed.value,
-    maxWorkers: maxWorkersParsed.value,
-    maxPendingSessionOpens: maxQueueParsed.value,
-    maxPayloadBytes: maxPayloadParsed.value,
-    healthHttpPort: healthPortParsed.value,
-    healthHttpPath: healthPathParsed.value,
-  });
-
   try {
+    const daemon = new GatewayDaemon({
+      host,
+      port: portParsed.value,
+      stateDir: paths.stateDir,
+      pidFilePath: paths.pidFilePath,
+      logFilePath: paths.logFilePath,
+      tokenFilePath: paths.tokenFilePath,
+      heartbeatPolicyPath: paths.heartbeatPolicyPath,
+      cwd: typeof parsed.values.cwd === "string" ? parsed.values.cwd : process.cwd(),
+      configPath: typeof parsed.values.config === "string" ? parsed.values.config : undefined,
+      model: typeof parsed.values.model === "string" ? parsed.values.model : undefined,
+      enableExtensions: parsed.values["no-extensions"] !== true,
+      jsonStdout: jsonMode,
+      tickIntervalMs: tickParsed.value,
+      sessionIdleTtlMs: sessionIdleParsed.value,
+      maxWorkers: maxWorkersParsed.value,
+      maxPendingSessionOpens: maxQueueParsed.value,
+      maxPayloadBytes: maxPayloadParsed.value,
+      healthHttpPort: healthPortParsed.value,
+      healthHttpPath: healthPathParsed.value,
+    });
     await daemon.start();
     const runtime = daemon.getRuntimeInfo();
     if (jsonMode) {
@@ -766,7 +772,7 @@ async function handleStart(argv: string[]): Promise<number> {
     }
     return 0;
   } catch (error) {
-    console.error(`gateway: failed to start (${toErrorMessage(error)})`);
+    console.error(`gateway: failed to start (${formatGatewayStartupError(error)})`);
     return 1;
   }
 }

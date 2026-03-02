@@ -8,7 +8,7 @@ import type {
   CognitiveUsage,
 } from "./cognitive/port.js";
 import { cognitiveBudgetPayload, cognitiveUsagePayload } from "./cognitive/usage.js";
-import { loadBrewvaConfigWithDiagnostics, type BrewvaConfigDiagnostic } from "./config/loader.js";
+import { loadBrewvaConfig } from "./config/loader.js";
 import { resolveWorkspaceRootDir } from "./config/paths.js";
 import { ContextBudgetManager } from "./context/budget.js";
 import { normalizeAgentId } from "./context/identity.js";
@@ -48,7 +48,7 @@ import { ToolGateService } from "./services/tool-gate.js";
 import { TruthService } from "./services/truth.js";
 import { VerificationService } from "./services/verification.js";
 import { resolveSkillDispatchDecision } from "./skills/dispatch.js";
-import { SkillRegistry } from "./skills/registry.js";
+import { SkillRegistry, type SkillRegistryLoadReport } from "./skills/registry.js";
 import { FileChangeTracker } from "./state/file-change-tracker.js";
 import { TurnReplayEngine } from "./tape/replay-engine.js";
 import type {
@@ -112,7 +112,6 @@ export interface VerifyCompletionOptions {
 
 type RuntimeConfigState = {
   config: BrewvaConfig;
-  diagnostics: BrewvaConfigDiagnostic[];
 };
 
 type RuntimeCoreDependencies = {
@@ -153,9 +152,9 @@ export class BrewvaRuntime {
   readonly workspaceRoot: string;
   readonly agentId: string;
   readonly config: BrewvaConfig;
-  readonly configDiagnostics: BrewvaConfigDiagnostic[];
   readonly skills: {
     refresh(): void;
+    getLoadReport(): SkillRegistryLoadReport;
     list(): SkillDocument[];
     get(name: string): SkillDocument | undefined;
     setNextSelection(sessionId: string, selected: SkillSelection[]): void;
@@ -481,7 +480,6 @@ export class BrewvaRuntime {
     this.agentId = normalizeAgentId(options.agentId ?? process.env["BREWVA_AGENT_ID"]);
     const configState = this.resolveRuntimeConfig(options);
     this.config = configState.config;
-    this.configDiagnostics = configState.diagnostics;
     const coreDependencies = this.createCoreDependencies(options);
     this.skillRegistry = coreDependencies.skillRegistry;
     this.ledger = coreDependencies.ledger;
@@ -532,16 +530,13 @@ export class BrewvaRuntime {
     if (options.config) {
       return {
         config: options.config,
-        diagnostics: [],
       };
     }
-    const loaded = loadBrewvaConfigWithDiagnostics({
-      cwd: this.cwd,
-      configPath: options.configPath,
-    });
     return {
-      config: loaded.config,
-      diagnostics: loaded.diagnostics,
+      config: loadBrewvaConfig({
+        cwd: this.cwd,
+        configPath: options.configPath,
+      }),
     };
   }
 
@@ -861,6 +856,7 @@ export class BrewvaRuntime {
           this.skillRegistry.load();
           this.skillRegistry.writeIndex();
         },
+        getLoadReport: () => this.skillRegistry.getLoadReport(),
         list: () => this.skillRegistry.list(),
         get: (name) => this.skillRegistry.get(name),
         setNextSelection: (sessionId, selected) => this.setNextSkillSelections(sessionId, selected),

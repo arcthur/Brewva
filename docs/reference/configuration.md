@@ -36,6 +36,9 @@ Configuration files are patch overlays: omitted fields inherit defaults/lower-pr
 - `skills.overrides`: `{}`
 - `skills.selector.k`: `4`
 
+`skills.packs` is a strict allowlist for pack directories across all discovered skill roots
+(`global_root`, `project_root`, and `config_root`). Packs not listed here are skipped.
+
 ### `verification`
 
 - `verification.defaultLevel`: `standard`
@@ -44,7 +47,7 @@ Configuration files are patch overlays: omitted fields inherit defaults/lower-pr
 - `verification.checks.strict`: `["type-check", "tests", "lint", "diff-review"]`
 - `verification.commands.type-check`: `bun run typecheck`
 - `verification.commands.tests`: `bun test`
-- `verification.commands.lint`: `bunx tsc --noEmit`
+- `verification.commands.lint`: `bun run lint`
 - `verification.commands.diff-review`: `git diff --stat`
 
 ### `ledger`
@@ -85,7 +88,7 @@ Configuration files are patch overlays: omitted fields inherit defaults/lower-pr
 - `security.sanitizeContext`: `true`
 - `security.execution.backend`: `auto`
 - `security.execution.enforceIsolation`: `false`
-- `security.execution.fallbackToHost`: `true`
+- `security.execution.fallbackToHost`: `false`
 - `security.execution.commandDenyList`: `[]`
 - `security.execution.sandbox.serverUrl`: `http://127.0.0.1:5555`
 - `security.execution.sandbox.defaultImage`: `microsandbox/node`
@@ -177,10 +180,10 @@ Configuration files are patch overlays: omitted fields inherit defaults/lower-pr
 
 `security.execution` controls command isolation for `exec`:
 
-- `backend=auto` routes by mode (`permissive -> host`, `standard/strict -> sandbox`).
-- `fallbackToHost` allows host downgrade only when the resolved backend is `sandbox` and neither `strict` nor `enforceIsolation=true` is active.
-- `enforceIsolation=true` forces `backend=sandbox` and `fallbackToHost=false` regardless of mode/backend input.
-- `strict` always disables host fallback even when `fallbackToHost=true` is configured.
+- `backend=auto` always prefers sandbox first; if sandbox is unavailable or unsupported for the request, runtime downgrades to host (`best available`).
+- `backend=sandbox` is isolation-first; host fallback is controlled by `fallbackToHost` (`false` by default).
+- `enforceIsolation=true` forces `backend=sandbox` and disables host fallback regardless of other inputs.
+- `strict` always disables host fallback.
 - `exec.timeout` overrides `security.execution.sandbox.timeout` per command.
 - `exec.workdir` and `exec.env` are forwarded into sandbox commands via a shell wrapper (`cd` + `export`).
 
@@ -191,29 +194,32 @@ At runtime, execution isolation is resolved in this order:
 1. `BREWVA_ENFORCE_EXEC_ISOLATION` environment flag (`1`, `true`, `yes`, `on`)
 2. `security.execution.enforceIsolation`
 3. `security.mode === strict`
-4. configured `security.execution.backend` and `security.execution.fallbackToHost`
+4. configured `security.execution.backend`
+5. `security.execution.fallbackToHost` (only when `backend=sandbox`)
 
 This yields the following invariants:
 
 - If `BREWVA_ENFORCE_EXEC_ISOLATION` is enabled, host fallback is disabled.
 - If `enforceIsolation=true`, host fallback is disabled.
 - If `security.mode=strict`, host fallback is disabled.
+- `backend=auto` is availability-first (`sandbox -> host fallback`).
 - `backend=host` is honored only when none of the above force sandbox.
 
 ### `security.execution` Routing Matrix
 
 | mode       | backend | enforceIsolation | fallbackToHost | resolved backend | host fallback |
 | ---------- | ------- | ---------------- | -------------- | ---------------- | ------------- |
-| permissive | auto    | false            | true           | host             | n/a           |
-| permissive | sandbox | false            | true           | sandbox          | true          |
-| standard   | auto    | false            | true           | sandbox          | true          |
+| permissive | auto    | false            | false          | sandbox          | true          |
+| standard   | auto    | false            | false          | sandbox          | true          |
 | standard   | sandbox | false            | false          | sandbox          | false         |
+| standard   | sandbox | false            | true           | sandbox          | true          |
 | strict     | any     | false            | any            | sandbox          | false         |
 | any        | any     | true             | any            | sandbox          | false         |
 
 Notes:
 
 - `host fallback` applies only when the resolved backend is `sandbox`.
+- In `backend=auto`, fallback is always availability-driven even if `fallbackToHost=false`.
 - Sandbox background process mode is unsupported; with fallback disabled this is fail-closed.
 - When sandbox execution fails and host fallback is enabled, runtime applies a short backoff window before retrying sandbox (`exec_fallback_host.reason=sandbox_unavailable_cached`) to avoid repeated sandbox error churn.
 - If `exec.workdir` is omitted, sandbox execution defaults to `/` and does not inherit host runtime cwd.
@@ -289,7 +295,7 @@ Examples:
 - `parallel.maxTotal`
 - `infrastructure.costTracking.maxCostUsdPerSkill`
 
-If these keys are present in config files, schema validation emits diagnostics and runtime does not apply them.
+If these keys are present in config files, schema validation fails startup and runtime does not apply them.
 
 ## Config File Location and Merge Order
 
@@ -316,13 +322,14 @@ For editor validation/completion:
 
 `$schema` is ignored by runtime behavior and used only for tooling.
 
-## Validation and Diagnostics
+## Validation and Failure Behavior
 
 On load, config JSON is schema-validated:
 
-- parse errors and non-object roots are reported as errors
-- unknown keys/type mismatches are reported as schema warnings
-- runtime then normalizes/clamps values using `normalizeBrewvaConfig(...)`
+- parse errors and non-object roots are startup-blocking
+- schema mismatches (including unknown keys/type mismatches) are startup-blocking
+- schema loader failures are startup-blocking
+- runtime normalization (`normalizeBrewvaConfig(...)`) runs only after schema validation passes
 
 This means malformed or removed fields are never silently applied as active runtime policy.
 

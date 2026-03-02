@@ -316,6 +316,52 @@ describe("e2e: microsandbox isolation live", () => {
         );
         expect(standardEvents.some((event) => event.type === "exec_fallback_host")).toBe(false);
 
+        const autoEvents: Array<{ type?: string; payload?: Record<string, unknown> }> = [];
+        const autoRuntime = {
+          config: {
+            security: {
+              mode: "standard",
+              sanitizeContext: true,
+              execution: {
+                backend: "auto",
+                enforceIsolation: false,
+                fallbackToHost: false,
+                commandDenyList: [],
+                sandbox: {
+                  serverUrl: "http://127.0.0.1:1",
+                  defaultImage: "microsandbox/node",
+                  memory: 128,
+                  cpus: 1,
+                  timeout: 20,
+                },
+              },
+            },
+          },
+          events: {
+            record: (event: { type?: string; payload?: Record<string, unknown> }) => {
+              autoEvents.push(event);
+              return undefined;
+            },
+          },
+        };
+        const autoExecTool = createExecTool({ runtime: autoRuntime as any });
+        const autoFallback = await autoExecTool.execute(
+          "tc-msb-live-auto-fallback",
+          {
+            command: "echo auto-fallback-live",
+          },
+          undefined,
+          undefined,
+          ctx as any,
+        );
+        expect(extractTextContent(autoFallback).includes("auto-fallback-live")).toBe(true);
+        expect((autoFallback.details as { backend?: string }).backend).toBe("host");
+        const autoRouted = autoEvents.find((event) => event.type === "exec_routed");
+        expect(autoRouted?.payload?.configuredBackend).toBe("auto");
+        expect(autoRouted?.payload?.resolvedBackend).toBe("sandbox");
+        expect(autoRouted?.payload?.fallbackToHost).toBe(true);
+        expect(autoEvents.some((event) => event.type === "exec_fallback_host")).toBe(true);
+
         const timeoutStartedAt = Date.now();
         await expectRejected(
           execTool.execute(

@@ -142,6 +142,15 @@ function extractTranslationText(content: unknown): string {
   return withoutOpening.replace(/\n```$/u, "").trim();
 }
 
+function shouldBypassRoutingTranslation(prompt: string): boolean {
+  if (!/[A-Za-z]/u.test(prompt)) return false;
+  const letters = prompt.match(/\p{Letter}/gu);
+  if (!letters || letters.length === 0) return false;
+  const latinLetters = prompt.match(/[A-Za-z]/g);
+  const latinCount = latinLetters?.length ?? 0;
+  return latinCount / letters.length >= 0.9;
+}
+
 async function translatePromptForSkillRoutingWithModel(input: {
   prompt: string;
   ctx: ExtensionContext;
@@ -153,6 +162,15 @@ async function translatePromptForSkillRoutingWithModel(input: {
       translated: false,
       status: "pass_through",
       reason: "empty_prompt",
+    };
+  }
+
+  if (shouldBypassRoutingTranslation(prompt)) {
+    return {
+      prompt: input.prompt,
+      translated: false,
+      status: "pass_through",
+      reason: "english_input",
     };
   }
 

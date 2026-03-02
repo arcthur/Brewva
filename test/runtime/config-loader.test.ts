@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   DEFAULT_BREWVA_CONFIG,
   loadBrewvaConfig,
-  loadBrewvaConfigWithDiagnostics,
   resolveGlobalBrewvaConfigPath,
 } from "@brewva/brewva-runtime";
 
@@ -16,7 +16,7 @@ function createWorkspace(name: string): string {
 }
 
 describe("Brewva config loader normalization", () => {
-  test("given malformed config values, when loading config, then clamps ranges and preserves invariants", () => {
+  test("given schema-invalid config values, when loading config, then load fails fast", () => {
     const workspace = createWorkspace("normalize");
     const rawConfig = {
       ui: {
@@ -70,63 +70,9 @@ describe("Brewva config loader normalization", () => {
       "utf8",
     );
 
-    const loaded = loadBrewvaConfig({ cwd: workspace, configPath: ".brewva/brewva.json" });
-    const defaults = DEFAULT_BREWVA_CONFIG;
-
-    expect(loaded.ui.quietStartup).toBe(defaults.ui.quietStartup);
-    expect(loaded.tape.checkpointIntervalEntries).toBe(0);
-
-    expect(loaded.infrastructure.contextBudget.maxInjectionTokens).toBe(
-      defaults.infrastructure.contextBudget.maxInjectionTokens,
+    expect(() => loadBrewvaConfig({ cwd: workspace, configPath: ".brewva/brewva.json" })).toThrow(
+      /Config does not match schema/,
     );
-    expect(loaded.infrastructure.contextBudget.hardLimitPercent).toBe(1);
-    expect(loaded.infrastructure.contextBudget.compactionThresholdPercent).toBeLessThanOrEqual(
-      loaded.infrastructure.contextBudget.hardLimitPercent,
-    );
-    expect(loaded.infrastructure.contextBudget.truncationStrategy).toBe(
-      defaults.infrastructure.contextBudget.truncationStrategy,
-    );
-    expect(loaded.infrastructure.toolFailureInjection.enabled).toBe(
-      defaults.infrastructure.toolFailureInjection.enabled,
-    );
-    expect(loaded.infrastructure.toolFailureInjection.maxEntries).toBe(
-      defaults.infrastructure.toolFailureInjection.maxEntries,
-    );
-    expect(loaded.infrastructure.toolFailureInjection.maxOutputChars).toBe(
-      defaults.infrastructure.toolFailureInjection.maxOutputChars,
-    );
-
-    expect(loaded.infrastructure.interruptRecovery.gracefulTimeoutMs).toBe(
-      defaults.infrastructure.interruptRecovery.gracefulTimeoutMs,
-    );
-
-    expect(loaded.infrastructure.costTracking.alertThresholdRatio).toBe(1);
-    expect(loaded.infrastructure.costTracking.actionOnExceed).toBe(
-      defaults.infrastructure.costTracking.actionOnExceed,
-    );
-    expect(loaded.infrastructure.turnWal.enabled).toBe(defaults.infrastructure.turnWal.enabled);
-    expect(loaded.infrastructure.turnWal.dir).toBe(defaults.infrastructure.turnWal.dir);
-    expect(loaded.infrastructure.turnWal.defaultTtlMs).toBe(
-      defaults.infrastructure.turnWal.defaultTtlMs,
-    );
-    expect(loaded.infrastructure.turnWal.maxRetries).toBe(0);
-    expect(loaded.infrastructure.turnWal.compactAfterMs).toBe(
-      defaults.infrastructure.turnWal.compactAfterMs,
-    );
-    expect(loaded.infrastructure.turnWal.scheduleTurnTtlMs).toBe(
-      defaults.infrastructure.turnWal.scheduleTurnTtlMs,
-    );
-
-    expect(loaded.schedule.enabled).toBe(defaults.schedule.enabled);
-    expect(loaded.schedule.projectionPath).toBe(defaults.schedule.projectionPath);
-    expect(loaded.schedule.leaseDurationMs).toBe(defaults.schedule.leaseDurationMs);
-    expect(loaded.schedule.maxActiveIntentsPerSession).toBe(
-      defaults.schedule.maxActiveIntentsPerSession,
-    );
-    expect(loaded.schedule.maxActiveIntentsGlobal).toBe(defaults.schedule.maxActiveIntentsGlobal);
-    expect(loaded.schedule.minIntervalMs).toBe(defaults.schedule.minIntervalMs);
-    expect(loaded.schedule.maxConsecutiveErrors).toBe(defaults.schedule.maxConsecutiveErrors);
-    expect(loaded.schedule.maxRecoveryCatchUps).toBe(defaults.schedule.maxRecoveryCatchUps);
   });
 
   test("given malformed memory config, when loading config, then bounds are normalized", () => {
@@ -136,7 +82,7 @@ describe("Brewva config loader normalization", () => {
       JSON.stringify(
         {
           memory: {
-            enabled: "yes",
+            enabled: true,
             dir: "",
             workingFile: "",
             maxWorkingChars: -10,
@@ -150,11 +96,11 @@ describe("Brewva config loader normalization", () => {
             },
             evolvesMode: "review-gated",
             cognitive: {
-              mode: "unsupported",
+              mode: "shadow",
               maxTokensPerTurn: -50,
             },
             global: {
-              enabled: "yes",
+              enabled: true,
               minConfidence: 9,
             },
           },
@@ -202,7 +148,7 @@ describe("Brewva config loader normalization", () => {
     );
 
     expect(() => loadBrewvaConfig({ cwd: workspace, configPath: ".brewva/brewva.json" })).toThrow(
-      /memory\.(recallMode|evolvesMode)/,
+      /\/memory\/(recallMode|evolvesMode)/,
     );
   });
 
@@ -253,7 +199,7 @@ describe("Brewva config loader normalization", () => {
             execution: {
               backend: "host",
               fallbackToHost: true,
-              commandDenyList: ["  IPTABLES  ", "", 3],
+              commandDenyList: ["  IPTABLES  ", "", "  curl  "],
               sandbox: {
                 serverUrl: "",
                 apiKey: "  ",
@@ -278,7 +224,7 @@ describe("Brewva config loader normalization", () => {
     expect(loaded.security.execution.backend).toBe("sandbox");
     expect(loaded.security.execution.enforceIsolation).toBe(defaults.enforceIsolation);
     expect(loaded.security.execution.fallbackToHost).toBe(false);
-    expect(loaded.security.execution.commandDenyList).toEqual(["iptables"]);
+    expect(loaded.security.execution.commandDenyList).toEqual(["iptables", "curl"]);
     expect(loaded.security.execution.sandbox.serverUrl).toBe(defaults.sandbox.serverUrl);
     expect(loaded.security.execution.sandbox.apiKey).toBe(defaults.sandbox.apiKey);
     expect(loaded.security.execution.sandbox.defaultImage).toBe(defaults.sandbox.defaultImage);
@@ -329,9 +275,9 @@ describe("Brewva config loader normalization", () => {
     const workspace = createWorkspace("skills-normalize");
     const rawConfig = {
       skills: {
-        roots: ["  ./skills-extra  ", "", 123, null],
-        packs: ["  typescript  ", "", null],
-        disabled: ["  review  ", "", null],
+        roots: ["  ./skills-extra  ", " "],
+        packs: ["  typescript  ", " "],
+        disabled: ["  review  ", " "],
         selector: {
           k: 0,
         },
@@ -370,7 +316,7 @@ describe("Brewva config loader normalization", () => {
     expect(loaded.ui.quietStartup).toBe(false);
   });
 
-  test("given $schema metadata field, when loading config, then schema hint is ignored without diagnostics", () => {
+  test("given $schema metadata field, when loading config, then schema hint is ignored", () => {
     const workspace = createWorkspace("schema-meta");
     writeFileSync(
       join(workspace, ".brewva/brewva.json"),
@@ -391,21 +337,50 @@ describe("Brewva config loader normalization", () => {
     expect(loaded.ui.quietStartup).toBe(false);
   });
 
-  test("given invalid JSON config file, when loading with diagnostics, then defaults are used and parse diagnostics are emitted", () => {
+  test("given invalid JSON config file, when loading config, then load fails fast", () => {
     const workspace = createWorkspace("invalid-json");
     writeFileSync(join(workspace, ".brewva/brewva.json"), "{", "utf8");
 
-    const loaded = loadBrewvaConfigWithDiagnostics({
-      cwd: workspace,
-      configPath: ".brewva/brewva.json",
-    });
-    expect(loaded.config.ui.quietStartup).toBe(DEFAULT_BREWVA_CONFIG.ui.quietStartup);
-    expect(loaded.diagnostics.some((diagnostic) => diagnostic.code === "config_parse_error")).toBe(
-      true,
-    );
+    expect(() =>
+      loadBrewvaConfig({
+        cwd: workspace,
+        configPath: ".brewva/brewva.json",
+      }),
+    ).toThrow(/Failed to parse config JSON/);
   });
 
-  test("given unknown keys and malformed object shapes, when loading with diagnostics, then unknown keys are dropped", () => {
+  test("given unavailable schema path, when loading config, then load fails fast", () => {
+    const workspace = createWorkspace("schema-unavailable");
+    writeFileSync(
+      join(workspace, ".brewva/brewva.json"),
+      JSON.stringify({ ui: { quietStartup: false } }, null, 2),
+      "utf8",
+    );
+
+    const script = `
+      import { loadBrewvaConfig } from "@brewva/brewva-runtime";
+      try {
+        loadBrewvaConfig({ cwd: process.env.BREWVA_TEST_WORKSPACE, configPath: ".brewva/brewva.json" });
+        process.exit(0);
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(17);
+      }
+    `;
+    const child = spawnSync(process.execPath, ["-e", script], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        BREWVA_TEST_WORKSPACE: workspace,
+        BREWVA_CONFIG_SCHEMA_PATH: "./definitely-missing-schema.json",
+      },
+      encoding: "utf8",
+    });
+    expect(child.status).toBe(17);
+    expect(child.stderr.includes("Schema validation is unavailable")).toBe(true);
+  });
+
+  test("given unknown keys and malformed object shapes, when loading config, then load fails fast", () => {
     const workspace = createWorkspace("invalid-shapes");
     writeFileSync(
       join(workspace, ".brewva/brewva.json"),
@@ -423,13 +398,12 @@ describe("Brewva config loader normalization", () => {
       "utf8",
     );
 
-    const loaded = loadBrewvaConfig({ cwd: workspace, configPath: ".brewva/brewva.json" });
-    expect((loaded as unknown as Record<string, unknown>).foo).toBeUndefined();
-    expect(loaded.ui).toEqual(DEFAULT_BREWVA_CONFIG.ui);
-    expect(loaded.verification.defaultLevel).toBe(DEFAULT_BREWVA_CONFIG.verification.defaultLevel);
+    expect(() => loadBrewvaConfig({ cwd: workspace, configPath: ".brewva/brewva.json" })).toThrow(
+      /Config does not match schema/,
+    );
   });
 
-  test("given removed memory tuning keys, when loading with diagnostics, then removed-key diagnostics are reported", () => {
+  test("given removed memory tuning keys, when loading config, then load fails fast", () => {
     const workspace = createWorkspace("removed-memory-keys");
     writeFileSync(
       join(workspace, ".brewva/brewva.json"),
@@ -447,20 +421,15 @@ describe("Brewva config loader normalization", () => {
       "utf8",
     );
 
-    const loaded = loadBrewvaConfigWithDiagnostics({
-      cwd: workspace,
-      configPath: ".brewva/brewva.json",
-    });
-    expect(
-      loaded.diagnostics.some(
-        (diagnostic) =>
-          diagnostic.code === "config_schema_invalid" &&
-          diagnostic.message.includes('unknown property "maxInferenceCallsPerRefresh"'),
-      ),
-    ).toBe(true);
+    expect(() =>
+      loadBrewvaConfig({
+        cwd: workspace,
+        configPath: ".brewva/brewva.json",
+      }),
+    ).toThrow(/maxInferenceCallsPerRefresh/);
   });
 
-  test("given tool output distillation injection config, when loading with diagnostics, then schema accepts the key", () => {
+  test("given tool output distillation injection config, when loading config, then schema accepts the key", () => {
     const workspace = createWorkspace("tool-output-distillation-schema");
     writeFileSync(
       join(workspace, ".brewva/brewva.json"),
@@ -480,20 +449,13 @@ describe("Brewva config loader normalization", () => {
       "utf8",
     );
 
-    const loaded = loadBrewvaConfigWithDiagnostics({
+    const loaded = loadBrewvaConfig({
       cwd: workspace,
       configPath: ".brewva/brewva.json",
     });
-    expect(loaded.config.infrastructure.toolOutputDistillationInjection.enabled).toBe(false);
-    expect(loaded.config.infrastructure.toolOutputDistillationInjection.maxEntries).toBe(2);
-    expect(loaded.config.infrastructure.toolOutputDistillationInjection.maxOutputChars).toBe(180);
-    expect(
-      loaded.diagnostics.some(
-        (diagnostic) =>
-          diagnostic.code === "config_schema_invalid" &&
-          diagnostic.message.includes('unknown property "toolOutputDistillationInjection"'),
-      ),
-    ).toBe(false);
+    expect(loaded.infrastructure.toolOutputDistillationInjection.enabled).toBe(false);
+    expect(loaded.infrastructure.toolOutputDistillationInjection.maxEntries).toBe(2);
+    expect(loaded.infrastructure.toolOutputDistillationInjection.maxOutputChars).toBe(180);
   });
 
   test("given global and project configs, when loading config, then project values take precedence", () => {
@@ -553,13 +515,13 @@ describe("Brewva config loader normalization", () => {
               scopeStrategy: "thread",
               aclModeWhenOwnersEmpty: "closed",
               owners: {
-                telegram: [" 123 ", "", null, "@ops"],
+                telegram: [" 123 ", "", "@ops"],
               },
               limits: {
                 fanoutMaxAgents: 0,
                 maxDiscussionRounds: 4.8,
                 a2aMaxDepth: -1,
-                a2aMaxHops: "5",
+                a2aMaxHops: -5,
                 maxLiveRuntimes: 12,
                 idleRuntimeTtlMs: 0,
               },

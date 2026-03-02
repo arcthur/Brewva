@@ -70,7 +70,7 @@ export const DEFAULT_BREWVA_CONFIG: BrewvaConfig = {
     execution: {
       backend: "auto",
       enforceIsolation: false,
-      fallbackToHost: true,
+      fallbackToHost: false,
       commandDenyList: [],
       sandbox: {
         serverUrl: "http://127.0.0.1:5555",

@@ -25,6 +25,82 @@ export interface SkillRegistryRoot {
   source: SkillRootSource;
 }
 
+export interface SkillRegistrySkippedPack {
+  pack: string;
+  source: SkillRootSource;
+  rootDir: string;
+  skillDir: string;
+  reason: "not_in_skills.packs";
+}
+
+export interface SkillRegistryLoadReport {
+  roots: SkillRegistryRoot[];
+  activePacks: string[];
+  skippedPacks: SkillRegistrySkippedPack[];
+}
+
+const emittedSkippedPackWarningKeys = new Set<string>();
+
+function skippedPackWarningKey(report: SkillRegistryLoadReport): string {
+  return report.skippedPacks
+    .map((entry) => `${entry.pack}|${entry.source}|${entry.rootDir}|${entry.reason}`)
+    .toSorted((left, right) => left.localeCompare(right))
+    .join("||");
+}
+
+function uniqueSkippedPackNames(report: SkillRegistryLoadReport): string[] {
+  return [...new Set(report.skippedPacks.map((entry) => entry.pack))].toSorted((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
+export function resetSkippedPackFilterWarningCache(): void {
+  emittedSkippedPackWarningKeys.clear();
+}
+
+export function emitSkippedPackFilterWarning(
+  report: SkillRegistryLoadReport,
+  options: { log?: (message: string) => void; maxPreview?: number } = {},
+): boolean {
+  const uniquePacks = uniqueSkippedPackNames(report);
+  if (uniquePacks.length === 0) return false;
+
+  const dedupeKey = skippedPackWarningKey(report);
+  if (dedupeKey.length === 0 || emittedSkippedPackWarningKeys.has(dedupeKey)) {
+    return false;
+  }
+  if (emittedSkippedPackWarningKeys.size >= 1024) {
+    emittedSkippedPackWarningKeys.clear();
+  }
+  emittedSkippedPackWarningKeys.add(dedupeKey);
+
+  const maxPreview = Number.isFinite(options.maxPreview) ? Math.max(1, options.maxPreview ?? 6) : 6;
+  const preview = uniquePacks.slice(0, maxPreview).join(", ");
+  const suffix = uniquePacks.length > maxPreview ? ", ..." : "";
+  const log = options.log ?? (() => undefined);
+  const message = `[skills:warn] ${uniquePacks.length} pack(s) skipped by skills.packs filter: ${preview}${suffix}`;
+  log(message);
+  return true;
+}
+
+function cloneSkillRegistryRoot(entry: SkillRegistryRoot): SkillRegistryRoot {
+  return {
+    rootDir: entry.rootDir,
+    skillDir: entry.skillDir,
+    source: entry.source,
+  };
+}
+
+function cloneSkippedPack(entry: SkillRegistrySkippedPack): SkillRegistrySkippedPack {
+  return {
+    pack: entry.pack,
+    source: entry.source,
+    rootDir: entry.rootDir,
+    skillDir: entry.skillDir,
+    reason: entry.reason,
+  };
+}
+
 function isDirectory(path: string): boolean {
   try {
     return statSync(path).isDirectory();
@@ -214,6 +290,11 @@ export class SkillRegistry {
   private readonly config: BrewvaConfig;
   private readonly rootsOverride?: SkillRegistryRoot[];
   private loadedRoots: SkillRegistryRoot[] = [];
+  private lastLoadReport: SkillRegistryLoadReport = {
+    roots: [],
+    activePacks: [],
+    skippedPacks: [],
+  };
   private skills = new Map<string, SkillDocument>();
 
   constructor(options: SkillRegistryOptions) {
@@ -231,11 +312,12 @@ export class SkillRegistry {
         cwd: this.rootDir,
         configuredRoots: this.config.skills.roots ?? [],
       });
-    this.loadedRoots = discoveredRoots.map((entry) => ({ ...entry }));
+    this.loadedRoots = discoveredRoots.map(cloneSkillRegistryRoot);
 
     const activePacks = new Set(this.config.skills.packs);
+    const skippedPacks: SkillRegistrySkippedPack[] = [];
     for (const root of discoveredRoots) {
-      this.loadRoot(root.skillDir, root.source, activePacks);
+      this.loadRoot(root, activePacks, skippedPacks);
     }
 
     for (const disabled of this.config.skills.disabled) {
@@ -247,6 +329,12 @@ export class SkillRegistry {
       if (!skill) continue;
       skill.contract = tightenContract(skill.contract, override);
     }
+
+    this.lastLoadReport = {
+      roots: this.getLoadedRoots(),
+      activePacks: [...activePacks].toSorted((a, b) => a.localeCompare(b)),
+      skippedPacks: skippedPacks.map(cloneSkippedPack),
+    };
   }
 
   list(): SkillDocument[] {
@@ -258,7 +346,15 @@ export class SkillRegistry {
   }
 
   getLoadedRoots(): SkillRegistryRoot[] {
-    return this.loadedRoots.map((entry) => ({ ...entry }));
+    return this.loadedRoots.map(cloneSkillRegistryRoot);
+  }
+
+  getLoadReport(): SkillRegistryLoadReport {
+    return {
+      roots: this.lastLoadReport.roots.map(cloneSkillRegistryRoot),
+      activePacks: [...this.lastLoadReport.activePacks],
+      skippedPacks: this.lastLoadReport.skippedPacks.map(cloneSkippedPack),
+    };
   }
 
   buildIndex(): SkillsIndexEntry[] {
@@ -298,7 +394,12 @@ export class SkillRegistry {
     return filePath;
   }
 
-  private loadRoot(skillDir: string, source: SkillRootSource, activePacks: Set<string>): void {
+  private loadRoot(
+    root: SkillRegistryRoot,
+    activePacks: Set<string>,
+    skippedPacks: SkillRegistrySkippedPack[],
+  ): void {
+    const { skillDir, source, rootDir } = root;
     this.loadTier("base", join(skillDir, "base"));
 
     const packsDir = join(skillDir, "packs");
@@ -309,10 +410,18 @@ export class SkillRegistry {
       } catch {
         entries = [];
       }
-      const includeAllPacks = source === "project_root" || source === "config_root";
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
-        if (!includeAllPacks && !activePacks.has(entry.name)) continue;
+        if (!activePacks.has(entry.name)) {
+          skippedPacks.push({
+            pack: entry.name,
+            source,
+            rootDir,
+            skillDir,
+            reason: "not_in_skills.packs",
+          });
+          continue;
+        }
         this.loadTier("pack", join(packsDir, entry.name));
       }
     }

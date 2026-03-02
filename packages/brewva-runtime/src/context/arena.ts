@@ -300,15 +300,8 @@ export class ContextArena {
     }
 
     if (this.truncationStrategy === "summarize") {
-      const summary = truncateTextToTokenBudget(this.buildTruncatedSummary(entry), budget);
-      const summaryTokens = estimateTokenCount(summary);
-      if (summaryTokens <= 0) return null;
-      return {
-        ...this.toPublicEntry(entry),
-        content: summary,
-        estimatedTokens: summaryTokens,
-        truncated: true,
-      };
+      // Synthetic placeholders are too low-fidelity to be useful context.
+      return null;
     }
 
     const partialText = truncateTextToTokenBudget(entry.content, budget);
@@ -320,16 +313,6 @@ export class ContextArena {
       estimatedTokens: partialTokens,
       truncated: true,
     };
-  }
-
-  private buildTruncatedSummary(entry: ContextInjectionEntry): string {
-    return [
-      "[ContextTruncated]",
-      `source=${entry.source}`,
-      `id=${entry.id}`,
-      `originalTokens=${entry.estimatedTokens}`,
-      "reason=budget_limit",
-    ].join("\n");
   }
 
   private resolveSourceLimit(source: string): number {

@@ -79,7 +79,9 @@ This list is intentionally non-exhaustive. Unknown event types/fields should be 
 ### Session/Turn
 
 - `session_start`
+- `session_bootstrap`
 - `session_shutdown`
+- `input`
 - `turn_start`
 - `turn_end`
 
@@ -216,6 +218,16 @@ whether async results were actually applied to runtime state.
 
 ## Key Payload Notes
 
+### `session_bootstrap`
+
+Session bootstrap summary emitted after runtime/session wiring. Common payload fields include:
+
+- `cwd`
+- `agentId`
+- `extensionsEnabled`
+- `skillLoad.activePacks`
+- `skillLoad.skippedPacks` (`pack`, `source`, `rootDir`, `skillDir`, `reason`)
+
 ### `task_event`
 
 Event-sourced task ledger stream (`brewva.task.ledger.v1`), including:
@@ -348,6 +360,7 @@ Telemetry for runtime-aware multi-file read scans (mode, batch behavior, scanned
 Records execution backend routing decisions before command execution. Common payload fields include:
 
 - `mode`
+- `routingPolicy` (`best_available` | `fail_closed`)
 - `configuredBackend`
 - `resolvedBackend`
 - `fallbackToHost`
@@ -366,6 +379,7 @@ Records execution backend routing decisions before command execution. Common pay
 Records sandbox-to-host downgrade decisions when fallback is allowed. Common payload fields include:
 
 - `mode`
+- `routingPolicy`
 - `configuredBackend`
 - `enforceIsolation`
 - `denyListBestEffort`
@@ -379,6 +393,7 @@ Records sandbox-to-host downgrade decisions when fallback is allowed. Common pay
 Records fail-closed outcomes when command execution is blocked by isolation policy. Common payload fields include:
 
 - `mode`
+- `routingPolicy`
 - `configuredBackend`
 - `enforceIsolation`
 - `denyListBestEffort`
@@ -393,6 +408,7 @@ Records fail-closed outcomes when command execution is blocked by isolation poli
 Records sandbox execution errors before a fallback or fail-closed decision. Common payload fields include:
 
 - `mode`
+- `routingPolicy`
 - `configuredBackend`
 - `enforceIsolation`
 - `denyListBestEffort`

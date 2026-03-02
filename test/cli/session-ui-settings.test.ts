@@ -85,4 +85,64 @@ describe("brewva session ui settings wiring", () => {
       result.session.dispose();
     }
   });
+
+  test("session_bootstrap payload includes skipped skill packs filtered by skills.packs", async () => {
+    const workspace = createWorkspace("skill-load-report");
+    mkdirSync(join(workspace, ".brewva/skills/packs/custom-pack"), { recursive: true });
+    writeFileSync(
+      join(workspace, ".brewva/skills/packs/custom-pack/SKILL.md"),
+      [
+        "---",
+        "name: custom-pack-skill",
+        "description: custom",
+        "tags: [custom]",
+        "tools:",
+        "  required: [read]",
+        "  optional: []",
+        "  denied: []",
+        "budget:",
+        "  max_tool_calls: 5",
+        "  max_tokens: 2000",
+        "---",
+        "# custom-pack-skill",
+      ].join("\n"),
+      "utf8",
+    );
+    writeFileSync(
+      join(workspace, ".brewva/brewva.json"),
+      JSON.stringify(
+        {
+          skills: {
+            packs: [],
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await createBrewvaSession({
+      cwd: workspace,
+      configPath: ".brewva/brewva.json",
+    });
+    try {
+      const sessionId = result.session.sessionManager.getSessionId();
+      const bootstrap = result.runtime.events.query(sessionId, {
+        type: "session_bootstrap",
+        last: 1,
+      })[0];
+      const payload = (bootstrap?.payload as
+        | {
+            skillLoad?: {
+              skippedPacks?: Array<{ pack?: string }>;
+            };
+          }
+        | undefined) ?? { skillLoad: { skippedPacks: [] } };
+      const skippedPacks = payload.skillLoad?.skippedPacks ?? [];
+      expect(skippedPacks.some((entry) => entry.pack === "custom-pack")).toBe(true);
+    } finally {
+      result.session.dispose();
+    }
+  });
 });

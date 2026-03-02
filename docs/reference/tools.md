@@ -20,6 +20,14 @@ Defined in `packages/brewva-tools/src/lsp.ts`.
 
 Defined in `packages/brewva-tools/src/ast-grep.ts`.
 
+`ast_grep_search` / `ast_grep_replace` require the `sg` binary (ast-grep).
+If `sg` is unavailable or execution fails, tools return `status=unavailable`
+with a reason/next-step hint instead of regex fallback.
+Parameter surface is intentionally minimal:
+
+- `ast_grep_search`: `pattern`, `lang`, optional `paths`
+- `ast_grep_replace`: `pattern`, `rewrite`, `lang`, optional `paths`, optional `dryRun`
+
 ## Runtime-Aware Tools
 
 Default tool bundle (registered by `buildBrewvaTools()`):
@@ -95,3 +103,8 @@ Definitions:
 - `packages/brewva-tools/src/skill-load.ts`
 - `packages/brewva-tools/src/skill-complete.ts`
 - `packages/brewva-tools/src/task-ledger.ts`
+
+`look_at` returns `status=unavailable` when it cannot find high-confidence
+goal matches; it no longer falls back to returning top-of-file lines.
+`look_at.goal` is English-ASCII only; non-ASCII goals return
+`status=unavailable` with `reason=unsupported_goal_language`.

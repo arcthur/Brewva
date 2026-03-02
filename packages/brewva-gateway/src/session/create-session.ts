@@ -2,6 +2,7 @@ import { join, resolve } from "node:path";
 import { createBrewvaExtension, createRuntimeCoreBridgeExtension } from "@brewva/brewva-extensions";
 import {
   BrewvaRuntime,
+  emitSkippedPackFilterWarning,
   resolveBrewvaAgentDir,
   type CreateBrewvaSessionOptions as RuntimeCreateBrewvaSessionOptions,
   recordAssistantUsageFromMessage,
@@ -132,6 +133,10 @@ export async function createGatewaySession(
     runtime.config.skills.packs = [...options.activePacks];
     runtime.skills.refresh();
   }
+  const skillLoadReport = runtime.skills.getLoadReport();
+  emitSkippedPackFilterWarning(skillLoadReport, {
+    log: (message) => console.error(message),
+  });
 
   const settingsManager = SettingsManager.create(cwd, agentDir);
   applyRuntimeUiSettings(settingsManager, runtime.config.ui);
@@ -178,6 +183,10 @@ export async function createGatewaySession(
       cwd,
       agentId: runtime.agentId,
       extensionsEnabled,
+      skillLoad: {
+        activePacks: skillLoadReport.activePacks,
+        skippedPacks: skillLoadReport.skippedPacks,
+      },
     },
   });
 

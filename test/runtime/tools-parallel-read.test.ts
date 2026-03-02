@@ -465,11 +465,11 @@ describe("tool parallel read runtime integration", () => {
     }
   });
 
-  test("ast_grep_search fallback tolerates invalid cwd that points to a file", async () => {
+  test("ast_grep_search returns unavailable when sg execution fails", async () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-astgrep-file-cwd-");
     const runtime = createRuntime(workspace);
     const sessionId = "parallel-read-astgrep-file-cwd";
-    const tools = createAstGrepTools({ runtime });
+    const tools = createAstGrepTools();
     const astGrepSearch = tools.find((tool) => tool.name === "ast_grep_search");
     expect(astGrepSearch).toBeDefined();
 
@@ -485,105 +485,19 @@ describe("tool parallel read runtime integration", () => {
       fakeContext(sessionId, fileCwd),
     );
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
-    expect(text.includes("No matches found")).toBe(true);
-
-    const payloads = getParallelReadPayloads(runtime, sessionId).filter(
-      (payload) => payload.toolName === "ast_grep_search",
-    );
-    expect(payloads.length > 0).toBe(true);
-    expect(payloads.some((payload) => payload.operation === "naive_search")).toBe(true);
-    if (payloads[0]) {
-      expectTelemetryCountersConsistent(payloads[0]);
-    }
+    expect(text.includes("unavailable")).toBe(true);
+    expect(text.includes("next_step=")).toBe(true);
+    const details = (result as { details?: Record<string, unknown> }).details;
+    expect(details?.status).toBe("unavailable");
+    expect(details?.reason).toBe("ast_grep_unavailable");
+    expect(getParallelReadPayloads(runtime, sessionId)).toHaveLength(0);
   });
 
-  test("ast_grep_search fallback avoids eager over-read when first file saturates limit", async () => {
-    const workspace = mkdtempSync(join(tmpdir(), "brewva-tools-astgrep-saturate-"));
-    const hitRoot = join(workspace, "hit");
-    const tailRoot = join(workspace, "tail");
-    mkdirSync(hitRoot, { recursive: true });
-    mkdirSync(tailRoot, { recursive: true });
-
-    const saturated =
-      Array.from({ length: 250 }, (_, index) => `const fallbackToken = ${index};`).join("\n") +
-      "\n";
-    writeFileSync(join(hitRoot, "hit.ts"), saturated, "utf8");
-    for (let i = 0; i < 20; i += 1) {
-      writeFileSync(join(tailRoot, `tail-${i}.ts`), `const tailToken${i} = ${i};\n`, "utf8");
-    }
-
-    const runtime = createRuntime(workspace);
-    const sessionId = "parallel-read-astgrep-saturate";
-    const tools = createAstGrepTools({ runtime });
-    const astGrepSearch = tools.find((tool) => tool.name === "ast_grep_search");
-    expect(astGrepSearch).toBeDefined();
-
-    const invalidCwd = join(workspace, "missing-cwd");
-    const result = await astGrepSearch!.execute(
-      "tc-astgrep-search-saturate",
-      {
-        pattern: "fallbackToken",
-        lang: "ts",
-        paths: [hitRoot, tailRoot],
-      },
-      undefined,
-      undefined,
-      fakeContext(sessionId, invalidCwd),
-    );
-    const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
-    expect(text.includes("hit.ts")).toBe(true);
-
-    const payloads = getParallelReadPayloads(runtime, sessionId).filter(
-      (payload) => payload.toolName === "ast_grep_search",
-    );
-    expect(payloads.length > 0).toBe(true);
-    const telemetry = payloads.find((payload) => payload.operation === "naive_search");
-    expect(telemetry).toBeDefined();
-    expect(telemetry?.scannedFiles).toBe(1);
-    expect(telemetry?.loadedFiles).toBe(1);
-    expect(telemetry?.failedFiles).toBe(0);
-    if (telemetry) {
-      expectTelemetryCountersConsistent(telemetry);
-    }
-  });
-
-  test("ast_grep_search fallback emits runtime telemetry when command execution fails", async () => {
-    const workspace = workspaceWithSampleFiles("brewva-tools-astgrep-search-fallback-");
-    const runtime = createRuntime(workspace);
-    const sessionId = "parallel-read-astgrep-search-fallback";
-    const tools = createAstGrepTools({ runtime });
-    const astGrepSearch = tools.find((tool) => tool.name === "ast_grep_search");
-    expect(astGrepSearch).toBeDefined();
-
-    const invalidCwd = join(workspace, "missing-cwd");
-    const result = await astGrepSearch!.execute(
-      "tc-astgrep-search-fallback",
-      {
-        pattern: "valueA",
-        lang: "ts",
-      },
-      undefined,
-      undefined,
-      fakeContext(sessionId, invalidCwd),
-    );
-    const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
-    expect(text.includes("No matches found")).toBe(true);
-
-    const payloads = getParallelReadPayloads(runtime, sessionId).filter(
-      (payload) => payload.toolName === "ast_grep_search",
-    );
-    expect(payloads.length > 0).toBe(true);
-    expect(payloads.some((payload) => payload.operation === "naive_search")).toBe(true);
-    if (payloads[0]) {
-      expectTelemetryCountersConsistent(payloads[0]);
-    }
-  });
-
-  test("ast_grep_replace fallback emits runtime telemetry when command execution fails", async () => {
+  test("ast_grep_replace returns unavailable when sg execution fails", async () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-astgrep-replace-fallback-");
     const runtime = createRuntime(workspace);
     const sessionId = "parallel-read-astgrep-replace-fallback";
-    const tools = createAstGrepTools({ runtime });
+    const tools = createAstGrepTools();
     const astGrepReplace = tools.find((tool) => tool.name === "ast_grep_replace");
     expect(astGrepReplace).toBeDefined();
 
@@ -601,23 +515,19 @@ describe("tool parallel read runtime integration", () => {
       fakeContext(sessionId, invalidCwd),
     );
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
-    expect(text.includes("No matches found")).toBe(true);
-
-    const payloads = getParallelReadPayloads(runtime, sessionId).filter(
-      (payload) => payload.toolName === "ast_grep_replace",
-    );
-    expect(payloads.length > 0).toBe(true);
-    expect(payloads.some((payload) => payload.operation === "naive_replace")).toBe(true);
-    if (payloads[0]) {
-      expectTelemetryCountersConsistent(payloads[0]);
-    }
+    expect(text.includes("unavailable")).toBe(true);
+    expect(text.includes("next_step=")).toBe(true);
+    const details = (result as { details?: Record<string, unknown> }).details;
+    expect(details?.status).toBe("unavailable");
+    expect(details?.reason).toBe("ast_grep_unavailable");
+    expect(getParallelReadPayloads(runtime, sessionId)).toHaveLength(0);
   });
 
-  test("ast_grep_replace fallback non-dry-run applies updates and records consistent telemetry", async () => {
+  test("ast_grep_replace unavailable path does not mutate files", async () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-astgrep-replace-apply-");
     const runtime = createRuntime(workspace);
     const sessionId = "parallel-read-astgrep-replace-apply";
-    const tools = createAstGrepTools({ runtime });
+    const tools = createAstGrepTools();
     const astGrepReplace = tools.find((tool) => tool.name === "ast_grep_replace");
     expect(astGrepReplace).toBeDefined();
 
@@ -638,19 +548,11 @@ describe("tool parallel read runtime integration", () => {
     );
 
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
-    expect(text.includes("Applied updates")).toBe(true);
+    expect(text.includes("unavailable")).toBe(true);
 
     const rewritten = readFileSync(targetFile, "utf8");
-    expect(rewritten.includes("valueAUpdated")).toBe(true);
-
-    const payloads = getParallelReadPayloads(runtime, sessionId).filter(
-      (payload) => payload.toolName === "ast_grep_replace",
-    );
-    expect(payloads.length > 0).toBe(true);
-    expect(payloads.some((payload) => payload.operation === "naive_replace")).toBe(true);
-    if (payloads[0]) {
-      expectTelemetryCountersConsistent(payloads[0]);
-    }
+    expect(rewritten.includes("valueAUpdated")).toBe(false);
+    expect(getParallelReadPayloads(runtime, sessionId)).toHaveLength(0);
   });
 
   test("resolveParallelReadConfig falls back to runtime_unavailable defaults", () => {

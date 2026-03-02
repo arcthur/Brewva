@@ -16,7 +16,7 @@ Skill frontmatter supports dispatch-focused metadata:
 
 Selector execution is LLM-first for runtime routing:
 
-1. step-0 routing translation runs before injection/dispatch: user prompt is translated to English by the active model in `before_agent_start`; on translation failure or empty output, runtime falls back to the original prompt
+1. step-0 routing translation runs before injection/dispatch: non-English prompts are translated to English by the active model in `before_agent_start`, while English prompts are passed through; on translation failure or empty output, runtime falls back to the original prompt
 2. semantic skill routing runs immediately after translation using the active model and skill catalog metadata (`name/description/outputs/consumes`); the resulting `selected` skills are injected into runtime as the next dispatch input
 3. runtime dispatch consumes that semantic selection directly (no lexical fallback in this path)
 4. lexical selector and `runtime.skills.select` are removed; runtime dispatch now consumes semantic preselection only

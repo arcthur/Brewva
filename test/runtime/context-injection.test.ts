@@ -101,7 +101,7 @@ describe("Context injection collector", () => {
     expect(consumed.entries[0]?.estimatedTokens).toBe(5);
   });
 
-  test("summarize strategy avoids tail-cutting structured content", () => {
+  test("summarize strategy drops oversized low-fidelity entries", () => {
     const collector = new ContextInjectionCollector({ truncationStrategy: "summarize" });
     const sessionId = "collector-summarize-strategy";
     const structured = JSON.stringify({
@@ -118,9 +118,8 @@ describe("Context injection collector", () => {
     });
 
     const consumed = collector.consume(sessionId, 10);
-    expect(consumed.entries).toHaveLength(1);
-    expect(consumed.entries[0]?.content.includes("[ContextTruncated]")).toBe(true);
-    expect(consumed.entries[0]?.content.includes('{"skills"')).toBe(false);
+    expect(consumed.entries).toHaveLength(0);
+    expect(consumed.text).toBe("");
   });
 
   test("drop-entry strategy skips oversized entries and keeps smaller ones", () => {

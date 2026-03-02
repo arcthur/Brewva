@@ -2,8 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { DEFAULT_BREWVA_CONFIG, BrewvaRuntime } from "@brewva/brewva-runtime";
-import { discoverSkillRegistryRoots } from "@brewva/brewva-runtime";
+import {
+  DEFAULT_BREWVA_CONFIG,
+  BrewvaRuntime,
+  discoverSkillRegistryRoots,
+  emitSkippedPackFilterWarning,
+  resetSkippedPackFilterWarningCache,
+} from "@brewva/brewva-runtime";
 
 function writeSkill(filePath: string, input: { name: string; tag: string }): void {
   mkdirSync(dirname(filePath), { recursive: true });
@@ -144,7 +149,7 @@ describe("skill discovery and loading", () => {
     expect(runtime.skills.get("relativecraft")).toBeDefined();
   });
 
-  test("loads workspace pack skills even when not listed in skills.packs", () => {
+  test("does not load workspace pack skills when not listed in skills.packs", () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-workspace-pack-"));
     writeSkill(join(workspace, ".brewva/skills/packs/custom-pack/SKILL.md"), {
       name: "packcraft",
@@ -155,7 +160,66 @@ describe("skill discovery and loading", () => {
     config.skills.packs = [];
 
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
-    expect(runtime.skills.get("packcraft")).toBeDefined();
+    expect(runtime.skills.get("packcraft")).toBeUndefined();
+    const loadReport = runtime.skills.getLoadReport();
+    expect(loadReport.skippedPacks.some((entry) => entry.pack === "custom-pack")).toBe(true);
+    expect(
+      loadReport.skippedPacks.some(
+        (entry) => entry.pack === "custom-pack" && entry.reason === "not_in_skills.packs",
+      ),
+    ).toBe(true);
+  });
+
+  test("does not load config_root pack skills when not listed in skills.packs", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-config-pack-workspace-"));
+    const external = mkdtempSync(join(tmpdir(), "brewva-skill-config-pack-external-"));
+    writeSkill(join(external, "skills/packs/custom-pack/SKILL.md"), {
+      name: "external-packcraft",
+      tag: "external-packcrafttag",
+    });
+
+    const config = structuredClone(DEFAULT_BREWVA_CONFIG);
+    config.skills.roots = [external];
+    config.skills.packs = [];
+
+    const runtime = new BrewvaRuntime({ cwd: workspace, config });
+    expect(runtime.skills.get("external-packcraft")).toBeUndefined();
+    const loadReport = runtime.skills.getLoadReport();
+    expect(
+      loadReport.skippedPacks.some(
+        (entry) => entry.pack === "custom-pack" && entry.source === "config_root",
+      ),
+    ).toBe(true);
+  });
+
+  test("emits skipped-pack warning only once for the same skipped set", () => {
+    resetSkippedPackFilterWarningCache();
+    const logs: string[] = [];
+    const report = {
+      roots: [],
+      activePacks: [],
+      skippedPacks: [
+        {
+          pack: "custom-pack",
+          source: "project_root" as const,
+          rootDir: "/tmp/project",
+          skillDir: "/tmp/project/.brewva/skills",
+          reason: "not_in_skills.packs" as const,
+        },
+      ],
+    };
+
+    const first = emitSkippedPackFilterWarning(report, {
+      log: (message) => logs.push(message),
+    });
+    const second = emitSkippedPackFilterWarning(report, {
+      log: (message) => logs.push(message),
+    });
+
+    expect(first).toBe(true);
+    expect(second).toBe(false);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]?.includes("custom-pack")).toBe(true);
   });
 
   test("project skills override global skills when names collide", () => {

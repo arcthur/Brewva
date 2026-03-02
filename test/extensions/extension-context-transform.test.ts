@@ -367,6 +367,65 @@ describe("Extension gaps: context transform", () => {
     expect(summary.totalCostUsd).toBe(0);
   });
 
+  test("given English input, when before_agent_start runs, then translation is bypassed and semantic routing still runs", async () => {
+    const { api, handlers } = createMockExtensionAPI();
+    const translationPayloads: Record<string, unknown>[] = [];
+    const semanticPayloads: Record<string, unknown>[] = [];
+    const runtime = createRuntimeFixture({
+      events: {
+        record: (input: { type: string; payload?: Record<string, unknown> }) => {
+          if (input.type === "skill_routing_translation" && input.payload) {
+            translationPayloads.push(input.payload);
+          }
+          if (input.type === "skill_routing_semantic" && input.payload) {
+            semanticPayloads.push(input.payload);
+          }
+          return undefined;
+        },
+      },
+    });
+
+    registerContextTransform(api, runtime);
+
+    const prompt = "review architecture and fallback quality";
+    const result = await invokeHandlerAsync<{
+      message: {
+        details?: {
+          routingTranslation?: {
+            status?: string;
+            reason?: string;
+          };
+          semanticRouting?: {
+            status?: string;
+          };
+        };
+      };
+    }>(
+      handlers,
+      "before_agent_start",
+      {
+        type: "before_agent_start",
+        prompt,
+        systemPrompt: "base",
+      },
+      {
+        sessionManager: {
+          getSessionId: () => "s-english-bypass",
+        },
+        getContextUsage: () => undefined,
+      },
+    );
+
+    expect(translationPayloads[0]?.status).toBe("pass_through");
+    expect(translationPayloads[0]?.reason).toBe("english_input");
+    expect(translationPayloads[0]?.translated).toBe(false);
+    expect(semanticPayloads).toHaveLength(1);
+    expect(semanticPayloads[0]?.inputChars).toBe(prompt.length);
+    expect(result.message.details?.routingTranslation?.status).toBe("pass_through");
+    expect(result.message.details?.routingTranslation?.reason).toBe("english_input");
+    expect(result.message.details?.semanticRouting?.status).toBeDefined();
+  });
+
   test("given semantic selector returns empty, when before_agent_start runs, then lexical fallback is bypassed", async () => {
     const { api, handlers } = createMockExtensionAPI();
     const runtime = createRuntimeFixture();

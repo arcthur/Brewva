@@ -8,16 +8,21 @@ export type ExtensionTestHandler = (
 export function createMockExtensionAPI(): {
   api: ExtensionAPI;
   handlers: Map<string, ExtensionTestHandler[]>;
+  sentMessages: Array<Record<string, unknown>>;
 } {
   const handlers = new Map<string, ExtensionTestHandler[]>();
+  const sentMessages: Array<Record<string, unknown>> = [];
   const api = {
     on(event: string, handler: ExtensionTestHandler) {
       const list = handlers.get(event) ?? [];
       list.push(handler);
       handlers.set(event, list);
     },
+    sendMessage(message: Record<string, unknown>) {
+      sentMessages.push(message);
+    },
   } as unknown as ExtensionAPI;
-  return { api, handlers };
+  return { api, handlers, sentMessages };
 }
 
 export function invokeHandler<T = unknown>(
