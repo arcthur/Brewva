@@ -21,6 +21,7 @@ import type {
   ContextCompactionGateStatus,
   ContextPressureLevel,
   ContextPressureStatus,
+  SkillChainIntent,
   SkillDispatchDecision,
   SkillDocument,
   TaskState,
@@ -67,6 +68,8 @@ export interface ContextServiceOptions {
   >;
   buildSkillCandidateBlock: RuntimeCallback<[selected: SkillDispatchDecision["selected"]], string>;
   buildSkillDispatchGateBlock: RuntimeCallback<[decision: SkillDispatchDecision], string>;
+  getSkillCascadeIntent: RuntimeCallback<[sessionId: string], SkillChainIntent | undefined>;
+  buildSkillCascadeGateBlock: RuntimeCallback<[intent: SkillChainIntent], string>;
   buildTaskStateBlock: RuntimeCallback<[state: TaskState], string>;
   maybeAlignTaskStatus: RuntimeCallback<
     [
@@ -120,6 +123,8 @@ export class ContextService {
     selected: SkillDispatchDecision["selected"],
   ) => string;
   private readonly buildSkillDispatchGateBlock: (decision: SkillDispatchDecision) => string;
+  private readonly getSkillCascadeIntent: (sessionId: string) => SkillChainIntent | undefined;
+  private readonly buildSkillCascadeGateBlock: (intent: SkillChainIntent) => string;
   private readonly buildTaskStateBlock: (state: TaskState) => string;
   private readonly maybeAlignTaskStatus: ContextServiceOptions["maybeAlignTaskStatus"];
   private readonly getCurrentTurn: (sessionId: string) => number;
@@ -150,6 +155,8 @@ export class ContextService {
     this.prepareSkillDispatch = options.prepareSkillDispatch;
     this.buildSkillCandidateBlock = options.buildSkillCandidateBlock;
     this.buildSkillDispatchGateBlock = options.buildSkillDispatchGateBlock;
+    this.getSkillCascadeIntent = options.getSkillCascadeIntent;
+    this.buildSkillCascadeGateBlock = options.buildSkillCascadeGateBlock;
     this.buildTaskStateBlock = options.buildTaskStateBlock;
     this.maybeAlignTaskStatus = options.maybeAlignTaskStatus;
     this.getCurrentTurn = options.getCurrentTurn;
@@ -222,6 +229,9 @@ export class ContextService {
       prepareSkillDispatch: (dispatchInput) => this.prepareSkillDispatch(dispatchInput),
       buildSkillCandidateBlock: (selected) => this.buildSkillCandidateBlock(selected),
       buildSkillDispatchGateBlock: (decision) => this.buildSkillDispatchGateBlock(decision),
+      getActiveSkillName: (id) => this.getActiveSkill(id)?.name ?? null,
+      getSkillCascadeIntent: (id) => this.getSkillCascadeIntent(id),
+      buildSkillCascadeGateBlock: (intent) => this.buildSkillCascadeGateBlock(intent),
       registerContextInjection: (id, registerInput) =>
         this.registerContextInjection(id, registerInput),
       recordEvent: (eventInput) => this.recordEvent(eventInput),

@@ -8,8 +8,18 @@ tags: [design, ideation, pre-implementation, feature-scoping]
 anti_tags: [quick-fix, hotfix, typo]
 tools:
   required: [read, grep]
-  optional: [glob, ledger_query, skill_complete]
-  denied: [write, edit, exec]
+  optional:
+    [
+      glob,
+      look_at,
+      lsp_symbols,
+      lsp_find_references,
+      lsp_diagnostics,
+      ast_grep_search,
+      ledger_query,
+      skill_complete,
+    ]
+  denied: [write, edit, exec, process]
 budget:
   max_tool_calls: 60
   max_tokens: 130000

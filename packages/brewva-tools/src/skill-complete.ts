@@ -41,12 +41,37 @@ export function createSkillCompleteTool(options: BrewvaToolOptions): ToolDefinit
       }
 
       options.runtime.skills.complete(sessionId, outputs);
-      const message = verification.readOnly
-        ? "Skill completed (read-only, no verification needed)."
-        : "Skill completed and verification gate passed.";
+      const intent = options.runtime.skills.getCascadeIntent
+        ? options.runtime.skills.getCascadeIntent(sessionId)
+        : undefined;
+      const nextStep = intent?.steps[intent.cursor];
+      const hasNextStep =
+        intent &&
+        (intent.status === "pending" || intent.status === "paused") &&
+        nextStep &&
+        typeof nextStep.skill === "string" &&
+        nextStep.skill.length > 0;
+      const cascadeHint = hasNextStep
+        ? ` Next cascade step: ${nextStep.skill} (use skill_load name=${nextStep.skill}).`
+        : "";
+
+      const message =
+        (verification.readOnly
+          ? "Skill completed (read-only, no verification needed)."
+          : "Skill completed and verification gate passed.") + cascadeHint;
       return textResult(message, {
         ok: true,
         verification,
+        cascade: intent
+          ? {
+              status: intent.status,
+              cursor: intent.cursor,
+              steps: intent.steps.length,
+              nextSkill: hasNextStep ? nextStep.skill : null,
+              intentId: intent.id,
+              source: intent.source,
+            }
+          : null,
       });
     },
   });

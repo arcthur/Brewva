@@ -8,12 +8,12 @@ Skills are loaded by tier with increasing precedence: `base` -> `pack` -> `proje
 - Pack tier: `skills/packs`
 - Project tier: `skills/project`
 
-## Active Pack Defaults
+## Pack Filtering (`skills.packs`)
 
-Default packs are defined in `packages/brewva-runtime/src/config/defaults.ts`:
+`skills.packs` (default: `[]`) is an optional allowlist for pack directories across all discovered skill roots.
 
-- `skill-creator`
-- `telegram-interactive-components`
+- empty array: no pack filter, load all discovered packs
+- non-empty array: strict allowlist; packs not listed are skipped (reported in `skillLoad.skippedPacks`)
 
 ## Current Skill Inventory
 

@@ -8,7 +8,7 @@ tags: [execute, dispatch, subagent, batch, parallel, orchestration]
 anti_tags: [explore, plan]
 tools:
   required: [read, exec]
-  optional: [grep, edit, skill_complete]
+  optional: [grep, lsp_symbols, lsp_find_references, lsp_diagnostics, edit, write, skill_complete]
   denied: []
 budget:
   max_tool_calls: 100

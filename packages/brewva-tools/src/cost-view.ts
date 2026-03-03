@@ -36,9 +36,12 @@ export function createCostViewTool(options: BrewvaToolOptions): ToolDefinition {
         (a, b) => b[1].allocatedCostUsd - a[1].allocatedCostUsd,
       );
 
+      const rawTotalTokens = summary.totalTokens + summary.cacheReadTokens;
       const lines = [
         "# Cost View",
-        `- total tokens: ${summary.totalTokens}`,
+        `- tracked tokens (excludes cache read): ${summary.totalTokens}`,
+        `- cache read tokens: ${summary.cacheReadTokens}`,
+        `- raw tokens (tracked + cache read): ${rawTotalTokens}`,
         `- total cost usd: ${summary.totalCostUsd.toFixed(6)}`,
         `- budget action: ${summary.budget.action}`,
         `- budget blocked: ${summary.budget.blocked}`,
@@ -47,7 +50,7 @@ export function createCostViewTool(options: BrewvaToolOptions): ToolDefinition {
         ...formatTopRows(skillRows, {
           limit: top,
           line: (name, value) =>
-            `- ${name}: usd=${value.totalCostUsd.toFixed(6)}, tokens=${value.totalTokens}, usage=${value.usageCount}, turns=${value.turns}`,
+            `- ${name}: usd=${value.totalCostUsd.toFixed(6)}, tracked_tokens=${value.totalTokens}, cache_read_tokens=${value.cacheReadTokens}, raw_tokens=${value.totalTokens + value.cacheReadTokens}, usage=${value.usageCount}, turns=${value.turns}`,
         }),
         "",
         "## Top Tools",

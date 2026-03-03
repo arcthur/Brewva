@@ -176,7 +176,7 @@ describe("ContextPressureService", () => {
     expect(dataPlaneDecision.allowed).toBe(false);
   });
 
-  test("runtime wiring blocks diagnostic tools during critical pressure while allowing completion", () => {
+  test("runtime wiring allows select control-plane diagnostics during critical pressure while gating data-plane tools", () => {
     const workspace = createWorkspace("pressure-runtime-wiring");
     const config = structuredClone(DEFAULT_BREWVA_CONFIG);
     config.infrastructure.contextBudget.enabled = true;
@@ -192,7 +192,12 @@ describe("ContextPressureService", () => {
     const usage = createUsage(0.9);
     runtime.context.observeUsage(sessionId, usage);
 
-    expect(runtime.context.checkCompactionGate(sessionId, "tape_info", usage).allowed).toBe(false);
+    expect(runtime.context.checkCompactionGate(sessionId, "tape_info", usage).allowed).toBe(true);
+    expect(runtime.context.checkCompactionGate(sessionId, "tape_search", usage).allowed).toBe(true);
+    expect(runtime.context.checkCompactionGate(sessionId, "cost_view", usage).allowed).toBe(true);
+    expect(runtime.context.checkCompactionGate(sessionId, "ledger_query", usage).allowed).toBe(
+      true,
+    );
     expect(runtime.context.checkCompactionGate(sessionId, "exec", usage).allowed).toBe(false);
     expect(runtime.context.checkCompactionGate(sessionId, "skill_complete", usage).allowed).toBe(
       true,

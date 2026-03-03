@@ -17,4 +17,10 @@ export const CONTROL_PLANE_TOOLS = [
 
 // Tools that remain usable even when context pressure is critical and the compaction gate is armed.
 // Keep this list minimal: anything allowed here can bypass "compact-first" recovery.
-export const CONTEXT_CRITICAL_ALLOWED_TOOLS = ["skill_complete", "session_compact"];
+export const CONTEXT_CRITICAL_ALLOWED_TOOLS = [
+  "skill_complete",
+  "ledger_query",
+  "cost_view",
+  "tape_info",
+  "tape_search",
+];

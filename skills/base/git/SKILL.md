@@ -8,7 +8,7 @@ tags: [git, branch, commit, rebase, blame, bisect]
 anti_tags: [runtime]
 tools:
   required: [exec, read]
-  optional: [grep, ledger_query, skill_complete]
+  optional: [grep, process, ledger_query, skill_complete]
   denied: []
 budget:
   max_tool_calls: 80

@@ -42,6 +42,7 @@ Parameter surface is intentionally minimal:
 Default tool bundle (registered by `buildBrewvaTools()`):
 
 - `look_at`
+- `grep`
 - `exec`
 - `process`
 - `cost_view`
@@ -54,7 +55,9 @@ Default tool bundle (registered by `buildBrewvaTools()`):
 - `session_compact`
 - `rollback_last_patch`
 - `skill_load`
+- `skill_route_override`
 - `skill_complete`
+- `skill_chain_control`
 - `task_set_spec`
 - `task_add_item`
 - `task_update_item`
@@ -69,6 +72,11 @@ Optional A2A tools (registered by channel orchestration extensions when an A2A a
 - `agent_send`
 - `agent_broadcast`
 - `agent_list`
+
+Notes:
+
+- `grep` is a read-only workspace search tool intended to replace ad-hoc `exec` usage for text search in read-only skills.
+- `skill_route_override` and `skill_chain_control` are control-plane tools for steering semantic routing and cascade progression.
 
 `schedule_intent` supports `action=create|update|cancel|list`:
 
@@ -102,6 +110,7 @@ Definitions:
 - `packages/brewva-tools/src/look-at.ts`
 - `packages/brewva-tools/src/a2a.ts`
 - `packages/brewva-tools/src/exec.ts`
+- `packages/brewva-tools/src/grep.ts`
 - `packages/brewva-tools/src/process.ts`
 - `packages/brewva-tools/src/cost-view.ts`
 - `packages/brewva-tools/src/ledger-query.ts`
@@ -111,7 +120,9 @@ Definitions:
 - `packages/brewva-tools/src/session-compact.ts`
 - `packages/brewva-tools/src/rollback-last-patch.ts`
 - `packages/brewva-tools/src/skill-load.ts`
+- `packages/brewva-tools/src/skill-route-override.ts`
 - `packages/brewva-tools/src/skill-complete.ts`
+- `packages/brewva-tools/src/skill-chain-control.ts`
 - `packages/brewva-tools/src/task-ledger.ts`
 
 `look_at` returns `status=unavailable` when it cannot find high-confidence
