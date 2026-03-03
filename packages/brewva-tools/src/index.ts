@@ -2,6 +2,7 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { createAstGrepTools } from "./ast-grep.js";
 import { createCostViewTool } from "./cost-view.js";
 import { createExecTool } from "./exec.js";
+import { createGrepTool } from "./grep.js";
 import { createLedgerQueryTool } from "./ledger-query.js";
 import { createLookAtTool } from "./look-at.js";
 import { createLspTools } from "./lsp.js";
@@ -27,6 +28,7 @@ export function buildBrewvaTools(options: BuildBrewvaToolsOptions): ToolDefiniti
     ...createLspTools({ runtime: options.runtime }),
     ...createAstGrepTools(),
     createLookAtTool(),
+    createGrepTool({ runtime: options.runtime }),
     createExecTool({ runtime: options.runtime }),
     createProcessTool(),
     createCostViewTool({ runtime: options.runtime }),
@@ -50,6 +52,7 @@ export { createAstGrepTools } from "./ast-grep.js";
 // (for example `createChannelA2AExtension` in `@brewva/brewva-cli`), not by the default bundle.
 export { createA2ATools } from "./a2a.js";
 export { createLookAtTool } from "./look-at.js";
+export { createGrepTool } from "./grep.js";
 export { createExecTool } from "./exec.js";
 export { createProcessTool } from "./process.js";
 export { createCostViewTool } from "./cost-view.js";

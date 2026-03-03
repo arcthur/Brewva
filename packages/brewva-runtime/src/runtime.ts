@@ -25,6 +25,7 @@ import { ParallelBudgetManager } from "./parallel/budget.js";
 import { ParallelResultStore } from "./parallel/results.js";
 import {
   buildSkillCandidateBlock,
+  buildSkillCascadeGateBlock,
   buildSkillDispatchGateBlock,
   buildTaskStateBlock,
   inferEventCategory,
@@ -760,6 +761,8 @@ export class BrewvaRuntime {
       prepareSkillDispatch: (dispatchInput) => this.prepareSkillDispatch(dispatchInput),
       buildSkillCandidateBlock: (selected) => buildSkillCandidateBlock(selected),
       buildSkillDispatchGateBlock: (decision) => buildSkillDispatchGateBlock(decision),
+      getSkillCascadeIntent: (sessionId) => skillCascadeService.getIntent(sessionId),
+      buildSkillCascadeGateBlock: (intent) => buildSkillCascadeGateBlock(intent),
       buildTaskStateBlock: (state) => buildTaskStateBlock(state),
       maybeAlignTaskStatus: (input) => taskService.maybeAlignTaskStatus(input),
       getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),

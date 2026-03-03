@@ -49,17 +49,32 @@ export class CostService {
     costUsd: number;
     stopReason?: string;
   }): SessionCostSummary {
+    const normalizedInputTokens = Math.max(0, Math.trunc(input.inputTokens));
+    const normalizedOutputTokens = Math.max(0, Math.trunc(input.outputTokens));
+    const normalizedCacheReadTokens = Math.max(0, Math.trunc(input.cacheReadTokens));
+    const normalizedCacheWriteTokens = Math.max(0, Math.trunc(input.cacheWriteTokens));
+    const providedTotalTokens = Math.max(0, Math.trunc(input.totalTokens));
+    const derivedTotalTokens =
+      normalizedInputTokens + normalizedOutputTokens + normalizedCacheWriteTokens;
+    // Skill budgets track "new" (non-cacheRead) tokens so they remain meaningful even under heavy
+    // cache reuse. If a provider does not report per-field breakdowns, fall back to the total only
+    // when cacheRead is unavailable (otherwise totalTokens may include cacheRead).
+    const effectiveTotalTokens =
+      derivedTotalTokens > 0 || providedTotalTokens <= 0 || normalizedCacheReadTokens > 0
+        ? derivedTotalTokens
+        : providedTotalTokens;
+
     const turn = this.getCurrentTurn(input.sessionId);
     const skillName = this.getActiveSkill(input.sessionId)?.name;
     const usageResult = this.costTracker.recordUsage(
       input.sessionId,
       {
         model: input.model,
-        inputTokens: input.inputTokens,
-        outputTokens: input.outputTokens,
-        cacheReadTokens: input.cacheReadTokens,
-        cacheWriteTokens: input.cacheWriteTokens,
-        totalTokens: input.totalTokens,
+        inputTokens: normalizedInputTokens,
+        outputTokens: normalizedOutputTokens,
+        cacheReadTokens: normalizedCacheReadTokens,
+        cacheWriteTokens: normalizedCacheWriteTokens,
+        totalTokens: effectiveTotalTokens,
         costUsd: input.costUsd,
       },
       {
@@ -76,11 +91,11 @@ export class CostService {
       payload: {
         model: input.model,
         skill: skillName ?? null,
-        inputTokens: input.inputTokens,
-        outputTokens: input.outputTokens,
-        cacheReadTokens: input.cacheReadTokens,
-        cacheWriteTokens: input.cacheWriteTokens,
-        totalTokens: input.totalTokens,
+        inputTokens: normalizedInputTokens,
+        outputTokens: normalizedOutputTokens,
+        cacheReadTokens: normalizedCacheReadTokens,
+        cacheWriteTokens: normalizedCacheWriteTokens,
+        totalTokens: effectiveTotalTokens,
         costUsd: input.costUsd,
         sessionCostUsd: summary.totalCostUsd,
         sessionTokens: summary.totalTokens,
@@ -111,15 +126,15 @@ export class CostService {
       skill: skillName,
       tool: "brewva_cost",
       argsSummary: `model=${input.model}`,
-      outputSummary: `tokens=${input.totalTokens} cost=${input.costUsd.toFixed(6)} usd`,
+      outputSummary: `tokens=${effectiveTotalTokens} cost=${input.costUsd.toFixed(6)} usd`,
       fullOutput: JSON.stringify({
         model: input.model,
         usage: {
-          input: input.inputTokens,
-          output: input.outputTokens,
-          cacheRead: input.cacheReadTokens,
-          cacheWrite: input.cacheWriteTokens,
-          total: input.totalTokens,
+          input: normalizedInputTokens,
+          output: normalizedOutputTokens,
+          cacheRead: normalizedCacheReadTokens,
+          cacheWrite: normalizedCacheWriteTokens,
+          total: effectiveTotalTokens,
         },
         allocation: {
           skill: skillName ?? "(none)",
@@ -134,11 +149,11 @@ export class CostService {
         source: "llm_usage",
         model: input.model,
         usage: {
-          input: input.inputTokens,
-          output: input.outputTokens,
-          cacheRead: input.cacheReadTokens,
-          cacheWrite: input.cacheWriteTokens,
-          total: input.totalTokens,
+          input: normalizedInputTokens,
+          output: normalizedOutputTokens,
+          cacheRead: normalizedCacheReadTokens,
+          cacheWrite: normalizedCacheWriteTokens,
+          total: effectiveTotalTokens,
         },
         skill: skillName ?? null,
         turn,

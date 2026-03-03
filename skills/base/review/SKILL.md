@@ -12,8 +12,17 @@ dispatch:
   default_mode: suggest
 tools:
   required: [read, grep]
-  optional: [lsp_diagnostics, ledger_query, skill_complete]
-  denied: [write, edit]
+  optional:
+    [
+      look_at,
+      lsp_diagnostics,
+      lsp_symbols,
+      lsp_find_references,
+      ast_grep_search,
+      ledger_query,
+      skill_complete,
+    ]
+  denied: [write, edit, exec, process]
 budget:
   max_tool_calls: 80
   max_tokens: 160000

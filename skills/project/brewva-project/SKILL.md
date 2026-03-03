@@ -30,7 +30,9 @@ tools:
     - session_compact
     - rollback_last_patch
     - skill_load
+    - skill_route_override
     - skill_complete
+    - skill_chain_control
     - task_set_spec
     - task_add_item
     - task_update_item

@@ -22,6 +22,7 @@
 - `ast_grep_search`
 - `ast_grep_replace`
 - `look_at`
+- `grep`
 - `exec`
 - `process`
 - `cost_view`
@@ -34,7 +35,9 @@
 - `session_compact`
 - `rollback_last_patch`
 - `skill_load`
+- `skill_route_override`
 - `skill_complete`
+- `skill_chain_control`
 - `task_set_spec`
 - `task_add_item`
 - `task_update_item`

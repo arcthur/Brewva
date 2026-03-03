@@ -6,6 +6,7 @@ const TOOL_SOURCE_FILES = [
   "ast-grep.ts",
   "cost-view.ts",
   "exec.ts",
+  "grep.ts",
   "ledger-query.ts",
   "look-at.ts",
   "lsp.ts",
@@ -14,8 +15,10 @@ const TOOL_SOURCE_FILES = [
   "rollback-last-patch.ts",
   "schedule-intent.ts",
   "session-compact.ts",
+  "skill-chain-control.ts",
   "skill-load.ts",
   "skill-complete.ts",
+  "skill-route-override.ts",
   "tape.ts",
   "task-ledger.ts",
 ];

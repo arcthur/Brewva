@@ -1,6 +1,7 @@
 import type {
   ContextBudgetUsage,
   ContextInjectionDecision,
+  SkillChainIntent,
   SkillDispatchDecision,
   SkillSelection,
   TaskState,
@@ -67,6 +68,9 @@ export interface ContextInjectionOrchestratorDeps {
   }): SkillDispatchDecision;
   buildSkillCandidateBlock(selected: SkillSelection[]): string;
   buildSkillDispatchGateBlock(decision: SkillDispatchDecision): string;
+  getActiveSkillName(sessionId: string): string | null;
+  getSkillCascadeIntent(sessionId: string): SkillChainIntent | undefined;
+  buildSkillCascadeGateBlock(intent: SkillChainIntent): string;
   registerContextInjection(sessionId: string, input: RegisterContextInjectionInput): void;
   recordEvent(input: {
     sessionId: string;
@@ -148,6 +152,19 @@ export function buildContextInjection(
       priority: "critical",
       content: deps.buildSkillDispatchGateBlock(dispatchDecision),
     });
+  }
+
+  const activeSkillName = deps.getActiveSkillName(input.sessionId);
+  if (!activeSkillName) {
+    const intent = deps.getSkillCascadeIntent(input.sessionId);
+    if (intent && (intent.status === "paused" || intent.status === "pending")) {
+      deps.registerContextInjection(input.sessionId, {
+        source: CONTEXT_SOURCES.skillCascadeGate,
+        id: "skill-cascade-gate",
+        priority: "critical",
+        content: deps.buildSkillCascadeGateBlock(intent),
+      });
+    }
   }
 
   const toolFailureConfig = deps.getToolFailureInjectionConfig();

@@ -7,6 +7,7 @@ function collectToolNames(sourceRoot: string): string[] {
     "ast-grep.ts",
     "cost-view.ts",
     "exec.ts",
+    "grep.ts",
     "ledger-query.ts",
     "look-at.ts",
     "lsp.ts",
@@ -15,8 +16,10 @@ function collectToolNames(sourceRoot: string): string[] {
     "rollback-last-patch.ts",
     "schedule-intent.ts",
     "session-compact.ts",
+    "skill-chain-control.ts",
     "skill-load.ts",
     "skill-complete.ts",
+    "skill-route-override.ts",
     "tape.ts",
     "task-ledger.ts",
   ];

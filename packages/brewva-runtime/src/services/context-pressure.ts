@@ -213,7 +213,11 @@ export class ContextPressureService {
         : gate.pressure.hardLimitRatio;
     const usagePercent = Math.max(0, Math.min(1, usageRatio)) * 100;
     const hardLimitPercent = Math.max(0, Math.min(1, gate.pressure.hardLimitRatio)) * 100;
-    const reason = `Context usage is critical (${usagePercent.toFixed(1)}% >= hard limit ${hardLimitPercent.toFixed(1)}%). Call tool 'session_compact' first, then continue with other tools. Allowed during gate: session_compact, skill_complete.`;
+    const allowedTools = [
+      "session_compact",
+      ...[...this.alwaysAllowedToolSet].toSorted((a, b) => a.localeCompare(b)),
+    ];
+    const reason = `Context usage is critical (${usagePercent.toFixed(1)}% >= hard limit ${hardLimitPercent.toFixed(1)}%). Call tool 'session_compact' first, then continue with other tools. Allowed during gate: ${allowedTools.join(", ")}.`;
     this.recordEvent({
       sessionId,
       type: "context_compaction_gate_blocked_tool",
