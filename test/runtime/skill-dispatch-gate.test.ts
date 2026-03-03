@@ -85,6 +85,41 @@ describe("skill dispatch gate", () => {
     ).toHaveLength(1);
   });
 
+  test("routing failure conservative gate blocks non-lifecycle tools in strict mode", () => {
+    const runtime = new BrewvaRuntime({
+      cwd: createWorkspace("strict-routing-failed"),
+      config: createConfig("strict"),
+    });
+    const sessionId = "skill-dispatch-strict-failed-1";
+
+    runtime.context.onTurnStart(sessionId, 1);
+    runtime.skills.setNextSelection(sessionId, [], {
+      routingOutcome: "failed",
+    });
+
+    const dispatch = runtime.skills.prepareDispatch(sessionId, "review architecture risks");
+    expect(dispatch.mode).toBe("gate");
+    expect(dispatch.primary).toBeNull();
+    expect(dispatch.routingOutcome).toBe("failed");
+
+    const blocked = runtime.tools.start({
+      sessionId,
+      toolCallId: "tc-exec-failed-routing",
+      toolName: "exec",
+      args: { command: "echo blocked" },
+    });
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.reason?.includes("skill_load")).toBe(true);
+
+    const overrideAllowed = runtime.tools.start({
+      sessionId,
+      toolCallId: "tc-override-after-failed-routing",
+      toolName: "skill_route_override",
+      args: { reason: "manual fallback" },
+    });
+    expect(overrideAllowed.allowed).toBe(true);
+  });
+
   test("standard mode warns but does not block", () => {
     const runtime = new BrewvaRuntime({
       cwd: createWorkspace("standard-warn"),

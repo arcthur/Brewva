@@ -418,7 +418,6 @@ export class SessionLifecycleService {
       typeof primaryPayload?.name === "string" && primaryPayload.name.trim().length > 0
         ? primaryPayload.name.trim()
         : "";
-    if (!primaryName) return undefined;
     const primaryScore = this.readNonNegativeNumber(primaryPayload?.score) ?? 0;
     const primaryReason =
       typeof primaryPayload?.reason === "string" && primaryPayload.reason.trim().length > 0
@@ -454,7 +453,7 @@ export class SessionLifecycleService {
           breakdown: SkillSelectionBreakdownEntry[];
         } => entry !== null,
       );
-    if (selected.length === 0) {
+    if (selected.length === 0 && primaryName) {
       selected.push({
         name: primaryName,
         score: primaryScore,
@@ -469,7 +468,9 @@ export class SessionLifecycleService {
             .filter((item): item is string => typeof item === "string")
             .map((item) => item.trim())
             .filter((item) => item.length > 0)
-        : [primaryName];
+        : primaryName
+          ? [primaryName]
+          : [];
     const unresolvedConsumes = Array.isArray(payload.unresolvedConsumes)
       ? payload.unresolvedConsumes
           .filter((item): item is string => typeof item === "string")
@@ -491,21 +492,30 @@ export class SessionLifecycleService {
       decisionTurnFromPayload !== null
         ? Math.max(0, Math.floor(decisionTurnFromPayload))
         : normalizedEventTurn;
+    const routingOutcome =
+      payload.routingOutcome === "selected" ||
+      payload.routingOutcome === "empty" ||
+      payload.routingOutcome === "failed"
+        ? payload.routingOutcome
+        : undefined;
 
     return {
       mode,
-      primary: {
-        name: primaryName,
-        score: primaryScore,
-        reason: primaryReason,
-        breakdown: primaryBreakdown,
-      },
+      primary: primaryName
+        ? {
+            name: primaryName,
+            score: primaryScore,
+            reason: primaryReason,
+            breakdown: primaryBreakdown,
+          }
+        : null,
       selected,
-      chain: chain.length > 0 ? chain : [primaryName],
+      chain,
       unresolvedConsumes,
       confidence,
       reason,
       turn,
+      routingOutcome,
     };
   }
 

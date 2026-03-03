@@ -200,8 +200,7 @@ export class SkillLifecycleService {
     decision: SkillDispatchDecision,
     options: { emitEvent?: boolean } = {},
   ): void {
-    const shouldStorePending =
-      (decision.mode === "gate" || decision.mode === "auto") && decision.primary !== null;
+    const shouldStorePending = decision.mode === "gate" || decision.mode === "auto";
     if (!shouldStorePending) {
       this.sessionState.pendingDispatchBySession.delete(sessionId);
     } else {
@@ -417,6 +416,7 @@ export class SkillLifecycleService {
       mode: decision.mode,
       reason: decision.reason,
       confidence: decision.confidence,
+      routingOutcome: decision.routingOutcome ?? null,
       decisionTurn: decision.turn,
       primary: decision.primary
         ? {

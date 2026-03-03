@@ -3,6 +3,7 @@ import type {
   SkillDispatchDecisionMode,
   SkillDispatchMode,
   SkillDispatchPolicy,
+  SkillRoutingOutcome,
   SkillSelection,
   SkillsIndexEntry,
 } from "../types.js";
@@ -12,6 +13,7 @@ export interface ResolveSkillDispatchInput {
   selected: SkillSelection[];
   index: SkillsIndexEntry[];
   turn: number;
+  routingOutcome?: SkillRoutingOutcome;
   availableOutputs?: Iterable<string>;
 }
 
@@ -108,7 +110,7 @@ function resolveReason(input: {
   return `score(${input.score})<gate_threshold(${input.gateThreshold})`;
 }
 
-function emptyDecision(turn: number): SkillDispatchDecision {
+function emptyDecision(turn: number, routingOutcome?: SkillRoutingOutcome): SkillDispatchDecision {
   return {
     mode: "none",
     primary: null,
@@ -116,8 +118,23 @@ function emptyDecision(turn: number): SkillDispatchDecision {
     chain: [],
     unresolvedConsumes: [],
     confidence: 0,
-    reason: "no-skill-match",
+    reason: routingOutcome === "failed" ? "semantic-routing-failed" : "no-skill-match",
     turn,
+    routingOutcome,
+  };
+}
+
+function conservativeFailureDecision(turn: number): SkillDispatchDecision {
+  return {
+    mode: "gate",
+    primary: null,
+    selected: [],
+    chain: [],
+    unresolvedConsumes: [],
+    confidence: 0,
+    reason: "semantic-routing-failed",
+    turn,
+    routingOutcome: "failed",
   };
 }
 
@@ -125,7 +142,10 @@ export function resolveSkillDispatchDecision(
   input: ResolveSkillDispatchInput,
 ): SkillDispatchDecision {
   if (input.selected.length === 0) {
-    return emptyDecision(input.turn);
+    if (input.routingOutcome === "failed") {
+      return conservativeFailureDecision(input.turn);
+    }
+    return emptyDecision(input.turn, input.routingOutcome);
   }
 
   const primary = input.selected[0]!;
@@ -140,6 +160,7 @@ export function resolveSkillDispatchDecision(
       confidence: 0.5,
       reason: "primary-skill-missing-from-index",
       turn: input.turn,
+      routingOutcome: input.routingOutcome,
     };
   }
 
@@ -178,5 +199,6 @@ export function resolveSkillDispatchDecision(
       mode,
     }),
     turn: input.turn,
+    routingOutcome: input.routingOutcome,
   };
 }

@@ -1,4 +1,4 @@
-import type { SkillDispatchDecision, SkillOutputRecord, SkillSelection } from "../types.js";
+import type { SkillDispatchDecision, SkillOutputRecord, SkillPreselection } from "../types.js";
 
 export class RuntimeSessionStateStore {
   readonly activeSkillsBySession = new Map<string, string>();
@@ -13,7 +13,7 @@ export class RuntimeSessionStateStore {
   readonly skillDispatchGateWarningsBySession = new Map<string, Set<string>>();
   readonly skillOutputsBySession = new Map<string, Map<string, SkillOutputRecord>>();
   readonly pendingDispatchBySession = new Map<string, SkillDispatchDecision>();
-  readonly nextSkillSelectionsBySession = new Map<string, SkillSelection[]>();
+  readonly nextSkillSelectionsBySession = new Map<string, SkillPreselection>();
   readonly tapeCheckpointWriteInProgressBySession = new Set<string>();
   readonly tapeCheckpointCounterInitializedBySession = new Set<string>();
   readonly tapeEntriesSinceCheckpointBySession = new Map<string, number>();

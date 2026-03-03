@@ -91,6 +91,13 @@ export interface SkillSelectionBreakdownEntry {
 
 export type SkillDispatchDecisionMode = "none" | SkillDispatchMode;
 
+export type SkillRoutingOutcome = "selected" | "empty" | "failed";
+
+export interface SkillPreselection {
+  selected: SkillSelection[];
+  routingOutcome?: SkillRoutingOutcome;
+}
+
 export interface SkillDispatchDecision {
   mode: SkillDispatchDecisionMode;
   primary: SkillSelection | null;
@@ -100,6 +107,7 @@ export interface SkillDispatchDecision {
   confidence: number;
   reason: string;
   turn: number;
+  routingOutcome?: SkillRoutingOutcome;
 }
 
 export interface SkillOutputRecord {

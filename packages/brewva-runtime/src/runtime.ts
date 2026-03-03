@@ -77,6 +77,8 @@ import type {
   BrewvaStructuredEvent,
   SkillDocument,
   SkillDispatchDecision,
+  SkillPreselection,
+  SkillRoutingOutcome,
   SkillSelection,
   SessionCostSummary,
   TapeSearchResult,
@@ -157,8 +159,12 @@ export class BrewvaRuntime {
     getLoadReport(): SkillRegistryLoadReport;
     list(): SkillDocument[];
     get(name: string): SkillDocument | undefined;
-    setNextSelection(sessionId: string, selected: SkillSelection[]): void;
-    clearNextSelection(sessionId: string): SkillSelection[] | undefined;
+    setNextSelection(
+      sessionId: string,
+      selected: SkillSelection[],
+      input?: { routingOutcome?: SkillRoutingOutcome },
+    ): void;
+    clearNextSelection(sessionId: string): SkillPreselection | undefined;
     prepareDispatch(sessionId: string, message: string): SkillDispatchDecision;
     getPendingDispatch(sessionId: string): SkillDispatchDecision | undefined;
     clearPendingDispatch(sessionId: string): SkillDispatchDecision | undefined;
@@ -861,7 +867,8 @@ export class BrewvaRuntime {
         getLoadReport: () => this.skillRegistry.getLoadReport(),
         list: () => this.skillRegistry.list(),
         get: (name) => this.skillRegistry.get(name),
-        setNextSelection: (sessionId, selected) => this.setNextSkillSelections(sessionId, selected),
+        setNextSelection: (sessionId, selected, input) =>
+          this.setNextSkillSelections(sessionId, selected, input),
         clearNextSelection: (sessionId) => this.clearNextSkillSelections(sessionId),
         prepareDispatch: (sessionId, message) =>
           this.prepareSkillDispatch({
@@ -1067,30 +1074,46 @@ export class BrewvaRuntime {
       .slice(0, Math.max(1, this.config.skills.selector.k));
   }
 
-  private setNextSkillSelections(sessionId: string, selected: SkillSelection[]): void {
-    this.sessionState.nextSkillSelectionsBySession.set(
-      sessionId,
-      this.normalizeSkillSelections(selected),
-    );
+  private normalizeRoutingOutcome(value: unknown): SkillRoutingOutcome | undefined {
+    return value === "selected" || value === "empty" || value === "failed" ? value : undefined;
   }
 
-  private clearNextSkillSelections(sessionId: string): SkillSelection[] | undefined {
-    const selected = this.sessionState.nextSkillSelectionsBySession.get(sessionId);
+  private setNextSkillSelections(
+    sessionId: string,
+    selected: SkillSelection[],
+    input?: { routingOutcome?: SkillRoutingOutcome },
+  ): void {
+    this.sessionState.nextSkillSelectionsBySession.set(sessionId, {
+      selected: this.normalizeSkillSelections(selected),
+      routingOutcome: this.normalizeRoutingOutcome(input?.routingOutcome),
+    });
+  }
+
+  private clearNextSkillSelections(sessionId: string): SkillPreselection | undefined {
+    const preselection = this.sessionState.nextSkillSelectionsBySession.get(sessionId);
     this.sessionState.nextSkillSelectionsBySession.delete(sessionId);
-    return selected;
+    return preselection;
   }
 
-  private consumeNextSkillSelections(sessionId: string): SkillSelection[] | undefined {
+  private consumeNextSkillSelections(sessionId: string): SkillPreselection | undefined {
     if (!this.sessionState.nextSkillSelectionsBySession.has(sessionId)) {
       return undefined;
     }
-    return this.clearNextSkillSelections(sessionId) ?? [];
+    return (
+      this.clearNextSkillSelections(sessionId) ?? {
+        selected: [],
+      }
+    );
   }
 
-  private selectSkillsForDispatch(sessionId: string, message: string): SkillSelection[] {
+  private selectSkillsForDispatch(sessionId: string, message: string): SkillPreselection {
     void message;
     const preselected = this.consumeNextSkillSelections(sessionId);
-    return preselected ?? [];
+    return (
+      preselected ?? {
+        selected: [],
+      }
+    );
   }
 
   private prepareSkillDispatch(input: {
@@ -1098,9 +1121,10 @@ export class BrewvaRuntime {
     promptText: string;
     turn: number;
   }): SkillDispatchDecision {
-    const selected = this.selectSkillsForDispatch(input.sessionId, input.promptText);
+    const preselection = this.selectSkillsForDispatch(input.sessionId, input.promptText);
     const decision = resolveSkillDispatchDecision({
-      selected,
+      selected: preselection.selected,
+      routingOutcome: preselection.routingOutcome,
       index: this.skillRegistry.buildIndex(),
       turn: input.turn,
       availableOutputs: this.skillLifecycleService.listProducedOutputKeys(input.sessionId),

@@ -475,6 +475,48 @@ describe("Extension gaps: context transform", () => {
     expect(payload.reason).toBe("no-skill-match");
   });
 
+  test("given semantic selector fails, when before_agent_start runs, then conservative dispatch gate is armed", async () => {
+    const { api, handlers } = createMockExtensionAPI();
+    const runtime = createRuntimeFixture();
+
+    registerContextTransform(api, runtime, {
+      translatePromptForRouting: async ({ prompt }) => ({
+        prompt,
+        translated: false,
+        status: "pass_through",
+        reason: "unchanged",
+      }),
+      selectSkillsForRouting: async () => ({
+        selected: [],
+        status: "failed",
+        reason: "routing_error",
+        error: "provider timeout",
+      }),
+    });
+
+    await invokeHandlerAsync(
+      handlers,
+      "before_agent_start",
+      {
+        type: "before_agent_start",
+        prompt: "please review architecture and fallback quality",
+        systemPrompt: "base",
+      },
+      {
+        sessionManager: {
+          getSessionId: () => "s-semantic-failed",
+        },
+        getContextUsage: () => undefined,
+      },
+    );
+
+    const decision = runtime.skills.getPendingDispatch("s-semantic-failed");
+    expect(decision?.mode).toBe("gate");
+    expect(decision?.primary).toBeNull();
+    expect(decision?.routingOutcome).toBe("failed");
+    expect(decision?.reason).toBe("semantic-routing-failed");
+  });
+
   test("given semantic selector chooses review, when before_agent_start runs, then dispatch follows semantic result", async () => {
     const { api, handlers } = createMockExtensionAPI();
     const runtime = createRuntimeFixture();
@@ -622,6 +664,111 @@ describe("Extension gaps: context transform", () => {
     );
 
     expect(skippedReasons).toContain("non_interactive_mode");
+  });
+
+  test("given critical gate required, when before_agent_start runs, then routing and injection are short-circuited", async () => {
+    const { api, handlers } = createMockExtensionAPI();
+    const eventPayloads: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+    let translationCalls = 0;
+    let semanticCalls = 0;
+    let injectionCalls = 0;
+
+    const runtime = createRuntimeFixture({
+      config: createRuntimeConfig((config) => {
+        config.infrastructure.contextBudget.hardLimitPercent = 0.8;
+      }),
+      context: {
+        buildInjection: async () => {
+          injectionCalls += 1;
+          return {
+            text: "[should-not-run]",
+            accepted: true,
+            originalTokens: 1,
+            finalTokens: 1,
+            truncated: false,
+          };
+        },
+      },
+      events: {
+        record: (input: { type: string; payload?: Record<string, unknown> }) => {
+          eventPayloads.push({ type: input.type, payload: input.payload });
+          return undefined;
+        },
+      },
+    });
+
+    runtime.skills.setNextSelection(
+      "s-critical-short-circuit",
+      [
+        {
+          name: "review",
+          score: 20,
+          reason: "semantic:stale",
+          breakdown: [{ signal: "semantic_match", term: "stale", delta: 20 }],
+        },
+      ],
+      { routingOutcome: "selected" },
+    );
+
+    registerContextTransform(api, runtime, {
+      translatePromptForRouting: async ({ prompt }) => {
+        translationCalls += 1;
+        return {
+          prompt,
+          translated: false,
+          status: "pass_through",
+          reason: "unexpected",
+        };
+      },
+      selectSkillsForRouting: async () => {
+        semanticCalls += 1;
+        return {
+          selected: [],
+          status: "empty",
+          reason: "unexpected",
+        };
+      },
+    });
+
+    const result = await invokeHandlerAsync<{
+      message?: {
+        content?: string;
+        details?: {
+          routingTranslation?: { status?: string; reason?: string };
+          semanticRouting?: { status?: string; reason?: string; selectedCount?: number };
+        };
+      };
+    }>(
+      handlers,
+      "before_agent_start",
+      {
+        type: "before_agent_start",
+        prompt: "critical-turn",
+        systemPrompt: "base",
+      },
+      {
+        sessionManager: {
+          getSessionId: () => "s-critical-short-circuit",
+        },
+        getContextUsage: () => ({ tokens: 950, contextWindow: 1000, percent: 0.95 }),
+      },
+    );
+
+    expect(translationCalls).toBe(0);
+    expect(semanticCalls).toBe(0);
+    expect(injectionCalls).toBe(0);
+    expect(result.message?.content?.includes("[ContextCompactionGate]")).toBe(true);
+    expect(result.message?.details?.routingTranslation?.status).toBe("skipped");
+    expect(result.message?.details?.routingTranslation?.reason).toBe("critical_compaction_gate");
+    expect(result.message?.details?.semanticRouting?.status).toBe("skipped");
+    expect(result.message?.details?.semanticRouting?.selectedCount).toBe(0);
+    expect(runtime.skills.clearNextSelection("s-critical-short-circuit")).toBeUndefined();
+
+    const translationEvent = eventPayloads.find(
+      (event) => event.type === "skill_routing_translation",
+    );
+    expect(translationEvent?.payload?.status).toBe("skipped");
+    expect(translationEvent?.payload?.reason).toBe("critical_compaction_gate");
   });
 
   test("given critical context pressure, when gating lifecycle runs, then non-session_compact flow is gated and clears after compaction", async () => {

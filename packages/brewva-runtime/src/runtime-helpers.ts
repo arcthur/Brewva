@@ -62,19 +62,28 @@ export function buildTaskStateBlock(state: TaskState): string {
 
 export function buildSkillDispatchGateBlock(decision: SkillDispatchDecision): string {
   const primary = decision.primary?.name ?? "(none)";
-  const chainText = decision.chain.length > 0 ? decision.chain.join(" -> ") : primary;
+  const chainText =
+    decision.chain.length > 0
+      ? decision.chain.join(" -> ")
+      : decision.routingOutcome === "failed"
+        ? "(unavailable — routing failed)"
+        : primary;
   const unresolvedConsumes =
     decision.unresolvedConsumes.length > 0 ? decision.unresolvedConsumes.join(", ") : "(none)";
+  const requiredActionLine = decision.primary?.name
+    ? `- call tool \`skill_load\` with name=\`${decision.primary.name}\` before non-lifecycle tools`
+    : "- call tool `skill_load` with an explicit skill name before non-lifecycle tools";
   return [
     "[SkillDispatchGate]",
     `mode: ${decision.mode}`,
     `primary: ${primary}`,
     `confidence: ${decision.confidence.toFixed(3)}`,
     `reason: ${decision.reason}`,
+    `routing_outcome: ${decision.routingOutcome ?? "unknown"}`,
     `chain: ${chainText}`,
     `unresolved_consumes: ${unresolvedConsumes}`,
     "Required action:",
-    `- call tool \`skill_load\` with name=\`${primary}\` before non-lifecycle tools`,
+    requiredActionLine,
     "- if intentional bypass, call `skill_route_override` with reason first",
   ].join("\n");
 }

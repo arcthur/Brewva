@@ -37,4 +37,19 @@ describe("S-001 semantic skill selection input", () => {
     expect(decision.mode).toBe("none");
     expect(decision.selected).toEqual([]);
   });
+
+  test("prepareDispatch enters conservative gate when semantic routing failed", () => {
+    const runtime = new BrewvaRuntime({ cwd: repoRoot() });
+    const sessionId = "semantic-preselect-failed";
+
+    runtime.skills.setNextSelection(sessionId, [], {
+      routingOutcome: "failed",
+    });
+
+    const decision = runtime.skills.prepareDispatch(sessionId, "review architecture risks");
+    expect(decision.mode).toBe("gate");
+    expect(decision.primary).toBeNull();
+    expect(decision.routingOutcome).toBe("failed");
+    expect(decision.reason).toBe("semantic-routing-failed");
+  });
 });

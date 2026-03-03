@@ -71,9 +71,24 @@ Default semantic injection sources are:
 
 ## Runtime Core Bridge (`--no-extensions`)
 
-`createRuntimeCoreBridgeExtension` / `registerRuntimeCoreBridge` provide minimal safety hooks when full extensions are disabled.
+`createRuntimeCoreBridgeExtension` / `registerRuntimeCoreBridge` provide a reduced extension surface when full extensions are disabled.
 
-In this profile, core lifecycle bookkeeping (`session_compact`, `session_shutdown`, etc.) is still preserved through runtime bridge hooks.
+Retained hooks in this profile:
+
+- `tool_call` (`registerQualityGate`) for runtime policy + compaction gate checks
+- `tool_result` / `tool_execution_*` ledger persistence (`registerLedgerWriter`)
+- `before_agent_start` core context block (`[CoreTapeStatus]` + autonomy contract + runtime context injection result)
+- `session_compact` / `session_shutdown` lifecycle bookkeeping
+
+Disabled full-extension hooks in this profile:
+
+- `registerContextTransform` (`turn_start`, `context`, semantic routing translation/selection pipeline)
+- `registerCompletionGuard`
+- `registerEventStream`
+- `registerNotification`
+- `registerMemoryBridge`
+
+This means no-extensions keeps core safety/evidence guarantees, but omits presentation-oriented lifecycle orchestration from the full extension stack.
 
 ## Channel Bridge Notes
 

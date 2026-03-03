@@ -115,10 +115,16 @@ Short aliases:
 - `-v` for `--version`
 - `-h` for `--help`
 
-`--no-extensions` disables presentation-oriented extension stack. CLI still
-installs runtime core bridge hooks, so tool policy, compaction gate, and
-ledger/patch tracking remain enforced. A minimal autonomy context contract
-and tape/context pressure status block are still injected before agent start.
+`--no-extensions` disables the full extension orchestration layer.
+CLI still installs runtime core bridge hooks, so tool policy, compaction gate,
+and ledger/patch tracking remain enforced.
+
+Retained: `before_agent_start` core status/context block, `tool_call`,
+`tool_result`, `session_compact`, `session_shutdown`.
+
+Disabled: `registerContextTransform` (`turn_start`/`context` + semantic routing pipeline),
+`registerCompletionGuard`, `registerEventStream`, `registerNotification`,
+`registerMemoryBridge`.
 
 `--backend` selects the primary session backend:
 

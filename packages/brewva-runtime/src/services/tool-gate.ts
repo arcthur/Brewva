@@ -371,7 +371,9 @@ export class ToolGateService {
     const primarySkillName = pendingDispatch.primary?.name ?? null;
     const reason = primarySkillName
       ? `Skill dispatch gate active. Load '${primarySkillName}' via skill_load or explicitly bypass via skill_route_override.`
-      : "Skill dispatch gate active. Load the recommended skill via skill_load or bypass via skill_route_override.";
+      : pendingDispatch.routingOutcome === "failed"
+        ? "Skill routing failed and conservative dispatch gate is active. Load a target skill via skill_load or explicitly bypass via skill_route_override."
+        : "Skill dispatch gate active. Load an explicit skill via skill_load or bypass via skill_route_override.";
 
     if (this.securityPolicy.skillDispatchGateMode === "off") {
       return { allowed: true };
@@ -393,6 +395,7 @@ export class ToolGateService {
             toolName: normalizedToolName,
             mode: pendingDispatch.mode,
             primarySkill: primarySkillName,
+            routingOutcome: pendingDispatch.routingOutcome ?? null,
             decisionTurn: pendingDispatch.turn,
             reason,
           },
@@ -409,6 +412,7 @@ export class ToolGateService {
         toolName: normalizedToolName,
         mode: pendingDispatch.mode,
         primarySkill: primarySkillName,
+        routingOutcome: pendingDispatch.routingOutcome ?? null,
         decisionTurn: pendingDispatch.turn,
         reason,
       },

@@ -732,15 +732,89 @@ export function registerContextTransform(
     };
 
     let gateStatus = runtime.context.getCompactionGateStatus(sessionId, usage);
-    let gateReason: "hard_limit" | null = gateStatus.required ? "hard_limit" : null;
-    if (gateStatus.required && gateReason) {
-      emitGateEvents(gateStatus, gateReason);
+    if (gateStatus.required) {
+      emitGateEvents(gateStatus, "hard_limit");
     }
     const systemPromptWithContract = applyContextContract(
       (event as { systemPrompt?: unknown }).systemPrompt,
       runtime,
     );
     const originalPrompt = event.prompt;
+
+    if (gateStatus.required) {
+      state.lastRuntimeGateRequired = true;
+      runtime.skills.clearNextSelection(sessionId);
+      const skippedReason = "critical_compaction_gate";
+      emitRuntimeEvent(runtime, {
+        sessionId,
+        turn: state.turnIndex,
+        type: "skill_routing_translation",
+        payload: {
+          status: "skipped",
+          reason: skippedReason,
+          translated: false,
+          inputChars: originalPrompt.length,
+          outputChars: originalPrompt.length,
+          provider: null,
+          model: null,
+          stopReason: null,
+          error: null,
+        },
+      });
+      emitRuntimeEvent(runtime, {
+        sessionId,
+        turn: state.turnIndex,
+        type: "skill_routing_semantic",
+        payload: {
+          status: "skipped",
+          reason: skippedReason,
+          selectedCount: 0,
+          selectedSkills: [],
+          inputChars: originalPrompt.length,
+          provider: null,
+          model: null,
+          stopReason: null,
+          error: null,
+        },
+      });
+
+      const blocks: string[] = [
+        buildTapeStatusBlock({
+          runtime,
+          sessionId,
+          gateStatus,
+        }),
+        buildCompactionGateMessage({
+          pressure: gateStatus.pressure,
+        }),
+      ];
+
+      return {
+        systemPrompt: systemPromptWithContract,
+        message: {
+          customType: CONTEXT_INJECTION_MESSAGE_TYPE,
+          content: blocks.join("\n\n"),
+          display: false,
+          details: {
+            originalTokens: 0,
+            finalTokens: 0,
+            truncated: false,
+            gateRequired: true,
+            routingTranslation: {
+              status: "skipped",
+              reason: skippedReason,
+              translated: false,
+            },
+            semanticRouting: {
+              status: "skipped",
+              reason: skippedReason,
+              selectedCount: 0,
+            },
+          },
+        },
+      };
+    }
+
     const routingTranslation = await translatePromptForRouting({
       prompt: originalPrompt,
       ctx,
@@ -808,7 +882,14 @@ export function registerContextTransform(
         stopReason: semanticRouting.stopReason,
       });
     }
-    runtime.skills.setNextSelection(sessionId, semanticRouting.selected);
+    runtime.skills.setNextSelection(sessionId, semanticRouting.selected, {
+      routingOutcome:
+        semanticRouting.status === "selected"
+          ? "selected"
+          : semanticRouting.status === "empty"
+            ? "empty"
+            : "failed",
+    });
 
     const injection = await resolveContextInjection(runtime, {
       sessionId,
@@ -821,7 +902,6 @@ export function registerContextTransform(
       emitGateEvents(gateStatusAfterInjection, "hard_limit");
     }
     gateStatus = gateStatusAfterInjection;
-    gateReason = gateStatus.required ? "hard_limit" : null;
     state.lastRuntimeGateRequired = gateStatus.required;
 
     const blocks: string[] = [
