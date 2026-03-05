@@ -1,6 +1,6 @@
 ---
 name: telegram-channel-behavior
-description: Telegram 渠道回复行为策略。用于约束 Telegram 对话中的响应节奏、交互降级、文本可读性与失败回报方式，并与 telegram-interactive-components 协同工作。
+description: Response behavior strategy for the Telegram channel. Constrains response pacing, interaction fallback behavior, text readability, and failure reporting in Telegram conversations, and works together with telegram-interactive-components.
 stability: stable
 tools:
   required: [skill_load]
@@ -16,47 +16,47 @@ composable_with: [telegram-interactive-components]
 
 # Telegram Channel Behavior
 
-## 意图
+## Intent
 
-在 Telegram 渠道中生成稳定、清晰、可执行的回复策略，优先保证：
+Generate stable, clear, and executable reply strategies for Telegram, with priority on:
 
-1. 用户可读性
-2. 渠道兼容性
-3. 交互失败时的可降级性
+1. User readability
+2. Channel compatibility
+3. Graceful fallback when interactive features fail
 
-## 触发条件
+## Trigger Conditions
 
-- 当前消息来自 Telegram channel。
-- 需要在最终回复前明确“纯文本 vs 交互组件”的策略。
-- 需要在 Telegram 约束下给出可执行下一步（确认、取消、重试、继续）。
+- The current message comes from the Telegram channel.
+- A clear strategy is needed before the final response: "plain text vs interactive components."
+- The response must provide executable next steps under Telegram constraints (confirm, cancel, retry, continue).
 
-## 工作流
+## Workflow
 
-1. 先输出用户可读文本，简短说明当前状态与下一步。
-2. 判断是否真的需要交互组件（按钮、确认、分页）。
-3. 仅在确实需要交互时，再调用 `skill_load(name="telegram-interactive-components")`。
-4. 如果不需要交互，保持纯文本回复，不输出 `telegram-ui` 代码块。
+1. Start with user-readable text and briefly explain the current status and next step.
+2. Decide whether interactive components are truly needed (buttons, confirmation, pagination).
+3. Only if interaction is genuinely needed, call `skill_load(name="telegram-interactive-components")`.
+4. If interaction is not needed, keep the response plain text and do not output a `telegram-ui` code block.
 
-## 回复策略
+## Response Strategy
 
-- 先给结论，再给动作。
-- 一次回复聚焦一个决策点，避免长串并列指令。
-- 失败时明确三件事：失败原因、已完成部分、下一步建议。
-- 当交互能力不可用时，始终提供纯文本备选指令（例如：`Reply with: confirm or cancel`）。
+- Give the conclusion first, then the action.
+- Focus each response on one decision point; avoid long parallel instruction lists.
+- On failure, explicitly state three things: failure reason, what has already completed, and the recommended next step.
+- When interactive capability is unavailable, always provide a plain-text fallback instruction (for example: `Reply with: confirm or cancel`).
 
-## 与交互 Skill 的协作边界
+## Collaboration Boundary with the Interactive Skill
 
-- 本 skill 负责“是否需要交互、如何降级、文案结构”。
-- `telegram-interactive-components` 负责“如何生成 `telegram-ui` 结构”。
-- 不要在本 skill 中发明新的 UI schema。
+- This skill decides whether interaction is needed, how to degrade gracefully, and how to structure copy.
+- `telegram-interactive-components` is responsible for generating the `telegram-ui` structure.
+- Do not invent new UI schemas in this skill.
 
-## 终止条件
+## Termination Conditions
 
-- 已给出可执行的 Telegram 回复文本，且包含必要的降级路径。
-- 如果启用交互组件，已切换到 `telegram-interactive-components` 并完成输出。
+- An executable Telegram reply text has been provided, including the required fallback path.
+- If interactive components are enabled, control has been handed to `telegram-interactive-components` and output is completed.
 
-## 反模式
+## Anti-Patterns
 
-- 在不需要交互的场景强行输出 `telegram-ui`。
-- 只输出按钮语义，不给纯文本降级路径。
-- 失败回复只说“出错了”，没有可执行下一步。
+- Forcing `telegram-ui` output in scenarios that do not need interaction.
+- Outputting only button semantics without a plain-text fallback path.
+- Replying to failures with only "something went wrong" and no executable next step.
