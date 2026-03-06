@@ -2,6 +2,7 @@
 name: verification
 description: Use when about to claim work is complete, fixed, or passing — requires running verification commands and confirming output before making any success claims.
 stability: stable
+effect_level: execute
 tools:
   required: [exec, lsp_diagnostics, ledger_query]
   optional: [read, skill_complete]
@@ -10,6 +11,7 @@ budget:
   max_tool_calls: 45
   max_tokens: 100000
 outputs: [checks, verdict, missing_evidence]
+requires: []
 consumes: [change_summary, files_changed]
 ---
 

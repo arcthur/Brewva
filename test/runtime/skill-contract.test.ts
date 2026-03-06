@@ -410,17 +410,14 @@ describe("skill contract and dispatch parsing", () => {
     );
     expect(goalLoop.contract.composableWith).toContain("recovery");
 
+    expect(recovery.contract.requires).toEqual(expect.arrayContaining(["iteration_report"]));
     expect(recovery.contract.consumes).toEqual(
-      expect.arrayContaining([
-        "iteration_report",
-        "failure_evidence",
-        "current_plan",
-        "constraints",
-      ]),
+      expect.arrayContaining(["failure_evidence", "current_plan", "constraints"]),
     );
     expect(recovery.contract.outputs).toEqual(
       expect.arrayContaining(["recovery_plan", "blocker_evidence", "next_skill_hint"]),
     );
     expect(recovery.contract.composableWith).toContain("goal-loop");
+    expect(recovery.contract.effectLevel).toBe("read_only");
   });
 });

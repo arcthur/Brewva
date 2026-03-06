@@ -2,6 +2,7 @@
 name: github
 description: GitHub operations via `gh` CLI for issues, pull requests, checks, workflow runs, and API queries. Use when users need PR/issue lifecycle actions, CI diagnostics, or repository metadata.
 stability: stable
+effect_level: execute
 tools:
   required: [exec, read]
   optional: [grep, ledger_query, skill_complete]
@@ -10,6 +11,7 @@ budget:
   max_tool_calls: 90
   max_tokens: 160000
 outputs: [github_context, issue_draft, pr_draft, ci_summary]
+requires: []
 consumes: [change_summary, verification]
 ---
 

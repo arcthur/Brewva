@@ -2,6 +2,7 @@
 name: brewva-session-logs
 description: Search and analyze Brewva runtime session artifacts (event store, evidence ledger, working projection, cost, tape, governance telemetry) using jq and rg.
 stability: stable
+effect_level: execute
 tools:
   required: [read, grep]
   optional: [exec, process, ledger_query, tape_info, tape_search, cost_view, skill_complete]
@@ -18,6 +19,7 @@ outputs:
     projection_snapshot,
     process_evidence,
   ]
+requires: []
 consumes: []
 ---
 

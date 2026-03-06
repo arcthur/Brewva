@@ -2,6 +2,7 @@
 name: telegram-interactive-components
 description: Generate Telegram interactive UI payloads (inline keyboard and callback flows) with robust fallback text. Use when LLM responses must drive reusable Telegram UI components (buttons, menus, pagination, confirmation screens) and return machine-readable `telegram-ui` blocks for rendering and callback handling.
 stability: experimental
+effect_level: read_only
 tools:
   required: [read]
   optional: [grep]
@@ -10,6 +11,7 @@ budget:
   max_tool_calls: 30
   max_tokens: 80000
 outputs: [telegram_ui_payload, callback_contract, fallback_text]
+requires: []
 consumes: [objective, constraints, inbound_event]
 composable_with: [telegram-channel-behavior]
 ---

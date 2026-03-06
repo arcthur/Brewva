@@ -29,6 +29,8 @@ export interface SkillBrokerJudgeCandidate {
   description: string;
   outputs: string[];
   consumes: string[];
+  requires: string[];
+  effectLevel: SkillsIndexEntry["effectLevel"];
   toolsRequired: string[];
   score: number;
   stageOneScore: number;

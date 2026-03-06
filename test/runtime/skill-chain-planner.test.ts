@@ -20,6 +20,8 @@ function createEntry(
     stability: input.stability ?? "stable",
     composableWith: input.composableWith ?? [],
     consumes: input.consumes ?? [],
+    requires: input.requires ?? [],
+    effectLevel: input.effectLevel ?? "read_only",
     dispatch: input.dispatch ?? {
       gateThreshold: 10,
       autoThreshold: 16,
@@ -44,15 +46,17 @@ function loadEntry(relativePath: string, tier: SkillTier): SkillsIndexEntry {
     stability: skill.contract.stability ?? "stable",
     composableWith: skill.contract.composableWith ?? [],
     consumes: skill.contract.consumes ?? [],
+    requires: skill.contract.requires ?? [],
+    effectLevel: skill.contract.effectLevel ?? "read_only",
     dispatch: skill.contract.dispatch,
   };
 }
 
 describe("skill chain planner", () => {
-  test("inserts prerequisite producer for missing consumed outputs", () => {
+  test("inserts prerequisite producer for missing required inputs", () => {
     const primary = createEntry({
       name: "review",
-      consumes: ["change_summary"],
+      requires: ["change_summary"],
     });
     const planner = createEntry({
       name: "planning",
@@ -73,7 +77,7 @@ describe("skill chain planner", () => {
   test("respects producer priority: composableWith, then cost/stability, then lexical", () => {
     const primary = createEntry({
       name: "review",
-      consumes: ["verification"],
+      requires: ["verification"],
     });
     const expensiveProducer = createEntry({
       name: "verify-zeta",
@@ -104,10 +108,10 @@ describe("skill chain planner", () => {
     expect(chain.chain).toEqual(["verify-chain", "review"]);
   });
 
-  test("does not insert producer when consumed output is already available", () => {
+  test("does not insert producer when required input is already available", () => {
     const primary = createEntry({
       name: "review",
-      consumes: ["change_summary"],
+      requires: ["change_summary"],
     });
     const planner = createEntry({
       name: "planning",
@@ -128,7 +132,7 @@ describe("skill chain planner", () => {
   test("returns unresolved consumes when no producer exists", () => {
     const primary = createEntry({
       name: "review",
-      consumes: ["unknown_output"],
+      requires: ["unknown_output"],
     });
 
     const chain = planSkillChain({
@@ -159,6 +163,69 @@ describe("skill chain planner", () => {
 
     expect(chain.prerequisites).toEqual(["goal-loop"]);
     expect(chain.chain).toEqual(["goal-loop", "recovery"]);
+    expect(chain.unresolvedConsumes).toEqual([]);
+  });
+
+  test("does not auto-insert mutation producers for a read_only primary skill", () => {
+    const review = createEntry({
+      name: "review",
+      effectLevel: "read_only",
+      requires: ["change_summary"],
+    });
+    const patching = createEntry({
+      name: "patching",
+      effectLevel: "mutation",
+      outputs: ["change_summary"],
+    });
+
+    const chain = planSkillChain({
+      primary: review,
+      index: [review, patching],
+    });
+
+    expect(chain.chain).toEqual(["review"]);
+    expect(chain.unresolvedConsumes).toEqual(["change_summary"]);
+  });
+
+  test("recursively orders prerequisites before the skill that needs them", () => {
+    const planning = createEntry({
+      name: "planning",
+      effectLevel: "read_only",
+      outputs: ["execution_steps"],
+    });
+    const debugging = createEntry({
+      name: "debugging",
+      effectLevel: "mutation",
+      requires: ["execution_steps"],
+      outputs: ["root_cause"],
+    });
+    const patching = createEntry({
+      name: "patching",
+      effectLevel: "mutation",
+      requires: ["root_cause"],
+      outputs: ["change_summary"],
+    });
+
+    const chain = planSkillChain({
+      primary: patching,
+      index: [patching, debugging, planning],
+    });
+
+    expect(chain.chain).toEqual(["planning", "debugging", "patching"]);
+    expect(chain.unresolvedConsumes).toEqual([]);
+  });
+
+  test("actual review contract no longer auto-plans patching or planning", () => {
+    const review = loadEntry("skills/base/review/SKILL.md", "base");
+    const planning = loadEntry("skills/base/planning/SKILL.md", "base");
+    const patching = loadEntry("skills/base/patching/SKILL.md", "base");
+
+    const chain = planSkillChain({
+      primary: review,
+      index: [review, planning, patching],
+    });
+
+    expect(chain.chain).toEqual(["review"]);
     expect(chain.unresolvedConsumes).toEqual([]);
   });
 });

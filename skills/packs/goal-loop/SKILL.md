@@ -2,6 +2,7 @@
 name: goal-loop
 description: Runtime-native iterative delivery skill for goals that require repeated scheduled execution until explicit convergence. Use when a task needs multi-run progress, bounded continuity, and auditable stop conditions rather than a single-session push.
 stability: experimental
+effect_level: read_only
 tools:
   required: [read]
   optional:
@@ -18,6 +19,7 @@ budget:
   max_tokens: 140000
 outputs:
   [loop_intent, iteration_report, convergence_evidence, delivery_summary, loop_handoff]
+requires: []
 consumes: [goal_statement, constraints, completion_contract, available_skills]
 composable_with: [planning, execution, verification, recovery]
 ---

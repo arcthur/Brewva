@@ -163,9 +163,10 @@ function buildAvailableOutputScore(
   breakdown: SkillSelectionBreakdownEntry[],
 ): number {
   const available = new Set(availableOutputs.map((output) => normalizeOutputKey(output)));
+  const inputs = [...new Set([...entry.requires, ...entry.consumes])];
   if (available.size === 0) return 0;
   let total = 0;
-  for (const consume of entry.consumes) {
+  for (const consume of inputs) {
     const normalizedConsume = normalizeOutputKey(consume);
     if (!available.has(normalizedConsume) || total >= 8) continue;
     breakdown.push({
@@ -226,6 +227,8 @@ function stableIndexHash(index: SkillsIndexEntry[]): string {
         outputs: entry.outputs,
         toolsRequired: entry.toolsRequired,
         consumes: entry.consumes,
+        requires: entry.requires,
+        effectLevel: entry.effectLevel,
         dispatch: entry.dispatch,
       })),
     ),
@@ -329,7 +332,9 @@ export class SkillRouterService {
         });
         score += scoreTerms({
           promptTokens,
-          terms: entry.consumes.flatMap((consume) => extractScoringTerms(consume)),
+          terms: [...new Set([...entry.requires, ...entry.consumes])].flatMap((consume) =>
+            extractScoringTerms(consume),
+          ),
           signal: "consume_token",
           delta: 3,
           cap: 6,

@@ -2,6 +2,7 @@
 name: skill-creator
 description: Create and update reusable skills with clear contracts, resources, and packaging workflow.
 stability: stable
+effect_level: execute
 tools:
   required: [read]
   optional: [grep, exec, skill_complete]
@@ -10,6 +11,7 @@ budget:
   max_tool_calls: 70
   max_tokens: 150000
 outputs: [skill_spec, skill_structure, skill_package]
+requires: []
 consumes: [objective, constraints]
 license: Complete terms in LICENSE.txt
 ---
@@ -365,7 +367,7 @@ Any example files and directories not needed for the skill should be deleted. Th
   - Include both capability and trigger context.
   - Keep "when to use" guidance in `description`, because body text is loaded later.
 
-Optional contract metadata is allowed when useful (for example: `tier`, `tools`, `budget`, `outputs`, `consumes`, `metadata`) as long as it follows runtime parser expectations and repository conventions.
+Optional contract metadata is allowed when useful (for example: `tier`, `tools`, `budget`, `outputs`, `requires`, `consumes`, `effect_level`, `metadata`) as long as it follows runtime parser expectations and repository conventions.
 
 For forked skills, keep `metadata.fork` provenance unless there is a strong reason to remove it.
 

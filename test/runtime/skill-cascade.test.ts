@@ -151,6 +151,33 @@ describe("skill cascade orchestration", () => {
     }
   });
 
+  test("review dispatch stays read_only and does not prepend mutation skills", () => {
+    const runtime = new BrewvaRuntime({
+      cwd: createWorkspace("review-read-only"),
+      config: createConfig("assist"),
+    });
+    const sessionId = "skill-cascade-review-read-only-1";
+
+    runtime.context.onTurnStart(sessionId, 1);
+    runtime.skills.setNextSelection(sessionId, [
+      {
+        name: "review",
+        score: 30,
+        reason: "semantic:review request",
+        breakdown: [{ signal: "semantic_match", term: "review", delta: 30 }],
+      },
+    ]);
+    runtime.skills.prepareDispatch(sessionId, "Review this refactor for merge risk");
+
+    const decision = runtime.skills.getPendingDispatch(sessionId);
+    expect(decision?.chain).toEqual(["review"]);
+    expect(decision?.unresolvedConsumes).toEqual([]);
+
+    const intent = runtime.skills.getCascadeIntent(sessionId);
+    expect(intent?.steps.map((step) => step.skill)).toEqual(["review"]);
+    expect(intent?.status).toBe("paused");
+  });
+
   test("off mode keeps dispatch routing in manual flow", () => {
     const runtime = new BrewvaRuntime({
       cwd: createWorkspace("off-dispatch"),

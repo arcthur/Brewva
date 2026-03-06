@@ -28,6 +28,7 @@ const DEFAULT_MIN_SCORE = 12;
 const DEFAULT_SHORTLIST_MIN_SCORE = 6;
 const DEFAULT_MIN_MARGIN = 4;
 const DEFAULT_K = 4;
+const MAX_JUDGE_FALLBACK_CANDIDATES = 32;
 
 const GENERIC_SKILL_TERMS = new Set([
   "skill",
@@ -65,6 +66,59 @@ interface ScoredCandidate {
   strongSignalMatchCount: number;
   exactNameMatch: boolean;
   preview?: SkillBrokerPreview;
+}
+
+function isEffectLevel(value: unknown): value is SkillsIndexEntry["effectLevel"] {
+  if (value === "read_only" || value === "execute" || value === "mutation") {
+    return true;
+  }
+  return false;
+}
+
+function assertCatalogEntry(entry: unknown): asserts entry is SkillsIndexEntry {
+  if (!entry || typeof entry !== "object") {
+    throw new Error("catalog_invalid");
+  }
+  const candidate = entry as Record<string, unknown>;
+  if (typeof candidate.name !== "string" || candidate.name.trim().length === 0) {
+    throw new Error("catalog_invalid");
+  }
+  if (typeof candidate.description !== "string") {
+    throw new Error("catalog_invalid");
+  }
+  if (
+    !Array.isArray(candidate.outputs) ||
+    !candidate.outputs.every((value) => typeof value === "string")
+  ) {
+    throw new Error("catalog_invalid");
+  }
+  if (
+    !Array.isArray(candidate.toolsRequired) ||
+    !candidate.toolsRequired.every((value) => typeof value === "string")
+  ) {
+    throw new Error("catalog_invalid");
+  }
+  if (
+    !Array.isArray(candidate.composableWith) ||
+    !candidate.composableWith.every((value) => typeof value === "string")
+  ) {
+    throw new Error("catalog_invalid");
+  }
+  if (
+    !Array.isArray(candidate.consumes) ||
+    !candidate.consumes.every((value) => typeof value === "string")
+  ) {
+    throw new Error("catalog_invalid");
+  }
+  if (
+    !Array.isArray(candidate.requires) ||
+    !candidate.requires.every((value) => typeof value === "string")
+  ) {
+    throw new Error("catalog_invalid");
+  }
+  if (!isEffectLevel(candidate.effectLevel)) {
+    throw new Error("catalog_invalid");
+  }
 }
 
 export interface CatalogSkillBrokerOptions {
@@ -345,7 +399,9 @@ function assessCandidate(
   });
   score += scoreTerms({
     promptTokens,
-    terms: entry.consumes.flatMap((consume) => extractScoringTerms(consume)),
+    terms: [...new Set([...entry.requires, ...entry.consumes])].flatMap((consume) =>
+      extractScoringTerms(consume),
+    ),
     signal: "consume_token",
     delta: 3,
     cap: 6,
@@ -412,6 +468,8 @@ function buildJudgeCandidate(candidate: ScoredCandidate): SkillBrokerJudgeCandid
     description: candidate.entry.description,
     outputs: candidate.entry.outputs,
     consumes: candidate.entry.consumes,
+    requires: candidate.entry.requires,
+    effectLevel: candidate.entry.effectLevel,
     toolsRequired: candidate.entry.toolsRequired,
     score: candidate.selection.score,
     stageOneScore: candidate.stageOneScore,
@@ -424,13 +482,37 @@ function buildJudgeCandidate(candidate: ScoredCandidate): SkillBrokerJudgeCandid
   };
 }
 
+function buildJudgeOnlyCandidate(
+  entry: SkillsIndexEntry,
+  preview?: SkillBrokerPreview,
+): ScoredCandidate {
+  return {
+    entry,
+    selection: {
+      name: entry.name,
+      score: 0,
+      reason: "judge_full_catalog_fallback",
+      breakdown: [],
+    },
+    stageOneScore: 0,
+    previewScore: 0,
+    boundaryPenalty: 0,
+    distinctMatchCount: 0,
+    strongSignalMatchCount: 0,
+    exactNameMatch: false,
+    preview,
+  };
+}
+
 function appendJudgeReason(
   selection: SkillSelection,
   judge: SkillBrokerJudgeResult,
 ): SkillSelection {
   const judgeReason = `judge:${judge.strategy}:${judge.reason}`;
+  const judgeScore = judge.confidence === "high" ? 24 : judge.confidence === "medium" ? 18 : 12;
   return {
     ...selection,
+    score: Math.max(selection.score, judgeScore),
     reason: selection.reason ? `${selection.reason}, ${judgeReason}` : judgeReason,
   };
 }
@@ -543,17 +625,29 @@ export class CatalogSkillBroker implements SkillBroker {
         minScore: this.minScore,
         minMargin: this.minMargin,
       });
+      const judgePool =
+        shortlisted.length > 0
+          ? shortlisted
+          : catalog.skills
+              .filter((entry) => entry.name !== (input.activeSkillName?.trim() || ""))
+              .slice(0, MAX_JUDGE_FALLBACK_CANDIDATES)
+              .map((entry) => buildJudgeOnlyCandidate(entry, previewByName.get(entry.name)));
 
-      let selected = fallback.selected;
-      let reason = fallback.reason;
+      let selected = this.judge ? [] : fallback.selected;
+      let reason = this.judge ? "catalog_broker_waiting_for_judge" : fallback.reason;
       let judgeTrace: SkillBrokerDecision["trace"]["judge"];
+      let routingOutcome: SkillRoutingOutcome = this.judge
+        ? "empty"
+        : selected.length > 0
+          ? "selected"
+          : "empty";
 
       if (this.judge) {
         const judgeResult = await this.judge.judge({
           sessionId: input.sessionId,
           prompt: input.prompt,
           activeSkillName: input.activeSkillName,
-          candidates: shortlisted.map(buildJudgeCandidate),
+          candidates: judgePool.map(buildJudgeCandidate),
           judgeContext: input.judgeContext,
         });
         judgeTrace = {
@@ -567,20 +661,30 @@ export class CatalogSkillBroker implements SkillBroker {
         };
 
         if (judgeResult.status === "selected" && judgeResult.selectedName) {
-          const judged = shortlisted.find(
+          const judged = judgePool.find(
             (entry) => entry.selection.name === judgeResult.selectedName,
           );
           if (judged) {
             selected = [appendJudgeReason(judged.selection, judgeResult)];
-            reason = "catalog_broker_judge_selected";
+            reason =
+              shortlisted.length > 0
+                ? "catalog_broker_judge_selected"
+                : "catalog_broker_judge_selected_full_catalog";
+            routingOutcome = "selected";
           }
-        } else if (judgeResult.status === "rejected") {
+        } else if (judgeResult.status === "rejected" || judgeResult.status === "abstained") {
           selected = [];
-          reason = "catalog_broker_judge_rejected";
+          reason =
+            judgeResult.status === "rejected"
+              ? "catalog_broker_judge_rejected"
+              : "catalog_broker_judge_abstained";
+          routingOutcome = "empty";
+        } else if (judgeResult.status === "skipped" || judgeResult.status === "failed") {
+          selected = [];
+          reason = `catalog_broker_judge_${judgeResult.status}:${judgeResult.reason}`;
+          routingOutcome = "failed";
         }
       }
-
-      const routingOutcome: SkillRoutingOutcome = selected.length > 0 ? "selected" : "empty";
 
       const selectedNames = new Set(selected.map((entry) => entry.name));
       const trace = {
@@ -632,6 +736,9 @@ export class CatalogSkillBroker implements SkillBroker {
     const parsed = JSON.parse(readFileSync(this.catalogPath, "utf8")) as SkillBrokerCatalog;
     if (!parsed || !Array.isArray(parsed.skills)) {
       throw new Error("catalog_invalid");
+    }
+    for (const entry of parsed.skills) {
+      assertCatalogEntry(entry);
     }
     this.cache = {
       mtimeMs: currentMtimeMs,

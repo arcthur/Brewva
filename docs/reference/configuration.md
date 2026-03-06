@@ -36,7 +36,7 @@ Configuration files are patch overlays: omitted fields inherit defaults/lower-pr
 - `skills.overrides`: `{}`
 - `skills.selector.mode`: `deterministic` (`deterministic | external_only`)
 - `skills.selector.k`: `4`
-- `skills.selector.brokerJudgeMode`: `heuristic` (`heuristic | llm`)
+- `skills.selector.brokerJudgeMode`: `llm` (`heuristic | llm`)
 - `skills.cascade.mode`: `auto` (`off | assist | auto`)
 - `skills.cascade.enabledSources`: `["compose", "dispatch"]`
 - `skills.cascade.sourcePriority`: `["compose", "dispatch"]`
@@ -56,10 +56,10 @@ Use `deterministic` only when running without that broker path.
 
 `skills.selector.brokerJudgeMode` controls stage-two broker behavior for broker-enabled sessions:
 
-- `heuristic` (default): shortlist only; no control-plane model completion
-- `llm`: allow the broker to run the optional control-plane judge on the shortlist when the session model and API key are available
+- `heuristic`: shortlist only; no control-plane model completion
+- `llm` (default): run the control-plane judge and allow full-catalog semantic selection when shortlist confidence is low or empty
 
-`llm` is an explicit cost/latency trade-off. If model resolution, credentials, or parsing fail, broker selection falls back to the heuristic path and runtime governance remains unchanged.
+`llm` is an explicit cost/latency trade-off and is authoritative. If model resolution, credentials, or parsing fail, broker routing is marked failed instead of silently falling back to heuristic scoring. Use `heuristic` only when you intentionally want lexical-only routing.
 
 `skills.packs` is an optional allowlist for pack directories across all discovered skill roots
 (`global_root`, `project_root`, and `config_root`).

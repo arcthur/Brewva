@@ -2,6 +2,7 @@
 name: planning
 description: Use when task is ambiguous, multi-step across modules, or high risk — after design is approved and before implementation.
 stability: stable
+effect_level: read_only
 tools:
   required: [read]
   optional: [grep, ledger_query, skill_complete]
@@ -24,6 +25,7 @@ outputs:
     test_diagram,
     handoff_packet,
   ]
+requires: []
 consumes: [architecture_map, key_modules, unknowns, root_cause]
 ---
 

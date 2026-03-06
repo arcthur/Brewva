@@ -15,6 +15,7 @@ function createConfig(mode: BrewvaConfig["security"]["mode"]): BrewvaConfig {
   config.security.mode = mode;
   config.projection.enabled = false;
   config.infrastructure.toolFailureInjection.enabled = false;
+  config.skills.cascade.mode = "off";
   config.skills.overrides.review = {
     dispatch: {
       gateThreshold: 1,

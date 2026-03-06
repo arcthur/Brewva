@@ -2,6 +2,7 @@
 name: brewva-self-improve
 description: Capture learnings, errors, and corrections to enable continuous improvement. Use when a command fails, user corrects the agent, a knowledge gap is discovered, or a better approach emerges. Also review learnings before major tasks.
 stability: stable
+effect_level: mutation
 tools:
   required: [read, grep]
   optional: [exec, edit, skill_load, skill_complete]
@@ -10,6 +11,7 @@ budget:
   max_tool_calls: 40
   max_tokens: 80000
 outputs: [learning_entry, error_entry, feature_entry, promotion_action, skill_scaffold]
+requires: []
 consumes: [root_cause, fix_description, evidence, verification]
 ---
 

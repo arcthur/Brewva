@@ -2,6 +2,7 @@
 name: review
 description: Use when reviewing code changes for merge safety, pre-merge risk checks, or quality audits — read-only assessment with deterministic issue tables.
 stability: stable
+effect_level: read_only
 dispatch:
   gate_threshold: 10
   auto_threshold: 18
@@ -34,6 +35,7 @@ outputs:
     review_decision,
     testing_gaps,
   ]
+requires: []
 consumes:
   [change_summary, files_changed, verification, execution_steps, handoff_packet, test_diagram]
 ---

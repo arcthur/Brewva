@@ -2,6 +2,7 @@
 name: brainstorming
 description: Use when creating features, building components, adding functionality, or modifying behavior — before any implementation skill.
 stability: stable
+effect_level: read_only
 tools:
   required: [read, grep]
   optional:
@@ -20,6 +21,7 @@ budget:
   max_tool_calls: 60
   max_tokens: 130000
 outputs: [design_context, approach_options, design_spec]
+requires: []
 consumes: [architecture_map, tree_summary]
 ---
 

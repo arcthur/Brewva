@@ -2,6 +2,7 @@
 name: cartography
 description: Use when needing module dependency orientation, ownership discovery, or impact analysis before changes.
 stability: stable
+effect_level: read_only
 tools:
   required: [grep, read]
   optional: [glob, ledger_query, skill_complete]
@@ -10,6 +11,7 @@ budget:
   max_tool_calls: 80
   max_tokens: 150000
 outputs: [tree_summary, dependency_hotspots, ownership_hints, map_confidence]
+requires: []
 consumes: []
 ---
 

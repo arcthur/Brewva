@@ -53,6 +53,8 @@ function compactCandidate(candidate: SkillBrokerJudgeCandidate): Record<string, 
     description: candidate.description,
     outputs: candidate.outputs,
     consumes: candidate.consumes,
+    requires: candidate.requires,
+    effectLevel: candidate.effectLevel,
     toolsRequired: candidate.toolsRequired,
     stageOneScore: candidate.stageOneScore,
     score: candidate.score,
@@ -184,6 +186,17 @@ export class PiAiSkillBrokerJudge implements SkillBrokerJudge {
     }
 
     try {
+      const options: {
+        apiKey: string;
+        maxTokens: number;
+        temperature?: number;
+      } = {
+        apiKey,
+        maxTokens: this.maxTokens,
+      };
+      if (this.temperature !== 0) {
+        options.temperature = this.temperature;
+      }
       const response = await this.completeFn(
         model,
         {
@@ -196,11 +209,7 @@ export class PiAiSkillBrokerJudge implements SkillBrokerJudge {
             },
           ],
         },
-        {
-          apiKey,
-          maxTokens: this.maxTokens,
-          temperature: this.temperature,
-        },
+        options,
       );
 
       if (response.stopReason === "error" || response.stopReason === "aborted") {

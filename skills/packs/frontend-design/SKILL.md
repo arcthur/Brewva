@@ -2,6 +2,7 @@
 name: frontend-design
 description: Senior UI/UX engineering workflow with metric-driven design rules, strict component architecture, CSS hardware acceleration, and anti-slop guardrails for bold, production-ready interfaces.
 stability: stable
+effect_level: read_only
 tools:
   required: [read]
   optional: [look_at, lsp_diagnostics, ast_grep_search, skill_complete]
@@ -10,6 +11,7 @@ budget:
   max_tool_calls: 60
   max_tokens: 130000
 outputs: [design_direction, ui_changes, interaction_checks]
+requires: []
 consumes: [execution_steps, component_changes]
 ---
 

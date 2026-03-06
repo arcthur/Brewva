@@ -19,6 +19,7 @@ function writeCatalog(
       description: string;
       outputs?: string[];
       consumes?: string[];
+      requires?: string[];
       toolsRequired?: string[];
     }>;
   },
@@ -40,6 +41,8 @@ function writeCatalog(
           stability: "stable",
           composableWith: [],
           consumes: entry.consumes ?? [],
+          requires: entry.requires ?? [],
+          effectLevel: "read_only",
           dispatch: {
             gateThreshold: 10,
             autoThreshold: 16,
@@ -74,8 +77,40 @@ describe("external skill broker extension", () => {
     const { api, handlers } = createMockExtensionAPI();
     const runtime = new BrewvaRuntime({ cwd: repoRoot() });
     const sessionId = "skill-broker-ext";
+    const broker: SkillBroker = {
+      async select(input) {
+        return {
+          selected: [
+            {
+              name: "review",
+              score: 24,
+              reason: "test_preselection",
+              breakdown: [],
+            },
+          ],
+          routingOutcome: "selected",
+          trace: {
+            brokerVersion: "test",
+            prompt: input.prompt,
+            promptHash: "hash",
+            catalogPath: "/tmp/catalog.json",
+            routingOutcome: "selected",
+            reason: "test",
+            selected: [
+              {
+                name: "review",
+                score: 24,
+                reason: "test_preselection",
+                breakdown: [],
+              },
+            ],
+            shortlisted: [],
+          },
+        };
+      },
+    };
 
-    await createSkillBrokerExtension({ runtime })(api);
+    await createSkillBrokerExtension({ runtime, broker })(api);
     registerContextTransform(api, runtime);
 
     const beforeHandlers = handlers.get("before_agent_start") ?? [];

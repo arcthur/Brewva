@@ -2,6 +2,7 @@
 name: finishing
 description: Use when implementation is complete, all tasks pass, and you need to decide how to integrate the work.
 stability: stable
+effect_level: execute
 tools:
   required: [exec, read]
   optional: [grep, skill_complete]
@@ -10,6 +11,7 @@ budget:
   max_tool_calls: 40
   max_tokens: 80000
 outputs: [finish_readiness, finish_decision, finish_report]
+requires: []
 consumes: [execution_report, verification, change_summary]
 ---
 
