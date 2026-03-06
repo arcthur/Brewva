@@ -2,6 +2,7 @@
 name: tdd
 description: Use when implementing any feature, bugfix, or behavior change — before writing implementation code.
 stability: stable
+effect_level: mutation
 tools:
   required: [read, exec]
   optional: [grep, edit, lsp_diagnostics, skill_complete]
@@ -10,7 +11,8 @@ budget:
   max_tool_calls: 90
   max_tokens: 160000
 outputs: [tdd_target, tdd_cycle, tdd_report]
-consumes: [execution_steps, root_cause, fix_description]
+requires: [execution_steps]
+consumes: [root_cause, fix_description]
 ---
 
 # Test-Driven Development Skill

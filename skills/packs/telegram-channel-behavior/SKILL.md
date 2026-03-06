@@ -2,6 +2,7 @@
 name: telegram-channel-behavior
 description: Response behavior strategy for the Telegram channel. Constrains response pacing, interaction fallback behavior, text readability, and failure reporting in Telegram conversations, and works together with telegram-interactive-components.
 stability: stable
+effect_level: read_only
 tools:
   required: [skill_load]
   optional: [skill_complete]
@@ -10,6 +11,7 @@ budget:
   max_tool_calls: 20
   max_tokens: 60000
 outputs: [channel_response_plan, fallback_policy]
+requires: []
 consumes: [objective, inbound_event, constraints]
 composable_with: [telegram-interactive-components]
 ---

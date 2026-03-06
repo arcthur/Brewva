@@ -2,6 +2,7 @@
 name: execution
 description: Dispatch and coordinate plan execution via subagents, batched steps, or parallel domains. Use when you have an approved implementation plan with discrete tasks ready for execution.
 stability: stable
+effect_level: mutation
 tools:
   required: [read, exec]
   optional: [grep, lsp_symbols, lsp_find_references, lsp_diagnostics, edit, write, skill_complete]
@@ -19,7 +20,8 @@ outputs:
     review_gate,
     execution_report,
   ]
-consumes: [execution_steps, design_spec, handoff_packet]
+requires: [execution_steps]
+consumes: [design_spec, handoff_packet]
 ---
 
 # Execution Skill

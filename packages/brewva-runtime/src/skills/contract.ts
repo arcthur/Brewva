@@ -2,7 +2,13 @@ import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { CONTROL_PLANE_TOOLS } from "../security/control-plane-tools.js";
-import type { SkillContract, SkillContractOverride, SkillDocument, SkillTier } from "../types.js";
+import type {
+  SkillContract,
+  SkillContractOverride,
+  SkillDocument,
+  SkillEffectLevel,
+  SkillTier,
+} from "../types.js";
 import { normalizeToolName } from "../utils/tool-name.js";
 
 interface ParsedFrontmatter {
@@ -73,6 +79,17 @@ function requireStringArrayField(
     out.push(normalized);
   }
   return out;
+}
+
+function readOptionalStringArrayField(
+  data: Record<string, unknown>,
+  key: string,
+  filePath: string,
+): string[] {
+  if (!Object.prototype.hasOwnProperty.call(data, key)) {
+    return [];
+  }
+  return requireStringArrayField(data, key, filePath);
 }
 
 function requireNumericField(
@@ -190,6 +207,46 @@ function normalizeDispatchPolicy(
   };
 }
 
+const EFFECT_LEVEL_RANK: Record<SkillEffectLevel, number> = {
+  read_only: 0,
+  execute: 1,
+  mutation: 2,
+};
+
+function resolveDefaultEffectLevel(input: {
+  required: string[];
+  optional: string[];
+  denied: string[];
+}): SkillEffectLevel {
+  const denied = new Set(input.denied);
+  const allowed = [...input.required, ...input.optional].filter((tool) => !denied.has(tool));
+  if (allowed.some((tool) => tool === "edit" || tool === "write")) {
+    return "mutation";
+  }
+  if (allowed.some((tool) => tool === "exec" || tool === "process")) {
+    return "execute";
+  }
+  return "read_only";
+}
+
+function normalizeEffectLevel(
+  data: Record<string, unknown>,
+  filePath: string,
+  fallback: SkillEffectLevel,
+): SkillEffectLevel {
+  if (Object.prototype.hasOwnProperty.call(data, "effectLevel")) {
+    failSkillContract(filePath, "effectLevel is not supported. Use effect_level.");
+  }
+  if (!Object.prototype.hasOwnProperty.call(data, "effect_level")) {
+    return fallback;
+  }
+  const value = data.effect_level;
+  if (value === "read_only" || value === "execute" || value === "mutation") {
+    return value;
+  }
+  failSkillContract(filePath, "effect_level must be one of: read_only | execute | mutation.");
+}
+
 function normalizeContract(
   name: string,
   tier: SkillTier,
@@ -249,6 +306,12 @@ function normalizeContract(
     ? requireStringArrayField(data, "composable_with", filePath)
     : [];
   const consumes = requireStringArrayField(data, "consumes", filePath);
+  const requires = readOptionalStringArrayField(data, "requires", filePath);
+  const effectLevel = normalizeEffectLevel(
+    data,
+    filePath,
+    resolveDefaultEffectLevel({ required, optional, denied }),
+  );
   const dispatch = normalizeDispatchPolicy(data, filePath);
 
   return {
@@ -268,6 +331,7 @@ function normalizeContract(
     outputs,
     composableWith,
     consumes,
+    requires,
     maxParallel:
       typeof data.max_parallel === "number"
         ? Math.max(1, Math.trunc(data.max_parallel))
@@ -277,6 +341,7 @@ function normalizeContract(
         ? data.stability
         : "stable",
     costHint: data.cost_hint === "high" || data.cost_hint === "low" ? data.cost_hint : "medium",
+    effectLevel,
   };
 }
 
@@ -332,6 +397,11 @@ export function tightenContract(
     typeof override.maxParallel === "number"
       ? Math.min(base.maxParallel ?? override.maxParallel, override.maxParallel)
       : base.maxParallel;
+  const effectLevel =
+    override.effectLevel &&
+    EFFECT_LEVEL_RANK[override.effectLevel] > EFFECT_LEVEL_RANK[base.effectLevel ?? "read_only"]
+      ? override.effectLevel
+      : (base.effectLevel ?? "read_only");
 
   const dispatch = (() => {
     const baseDispatch = base.dispatch ?? {
@@ -368,7 +438,9 @@ export function tightenContract(
     outputs: override.outputs ?? base.outputs,
     composableWith: override.composableWith ?? base.composableWith,
     consumes: override.consumes ?? base.consumes,
+    requires: [...new Set([...(base.requires ?? []), ...(override.requires ?? [])])],
     maxParallel,
+    effectLevel,
     tools: {
       required: [...required],
       optional: [...optional],

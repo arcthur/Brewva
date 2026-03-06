@@ -12,7 +12,7 @@ export const DEFAULT_BREWVA_CONFIG: BrewvaConfig = {
     selector: {
       mode: "deterministic",
       k: 4,
-      brokerJudgeMode: "heuristic",
+      brokerJudgeMode: "llm",
     },
     cascade: {
       mode: "auto",

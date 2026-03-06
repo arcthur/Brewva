@@ -104,8 +104,10 @@ For complete CLI modes and gateway/onboard operations:
 - Skill routing defaults to deterministic governance-first selection
   (`skills.selector.mode=deterministic`), while broker-enabled sessions force
   `external_only`; runtime `skill_routing_selection` telemetry reflects the
-  final runtime routing result, and broker judge mode defaults to
-  `heuristic` unless `skills.selector.brokerJudgeMode=llm` is explicitly set.
+  final runtime routing result, and broker judge mode defaults to `llm`.
+  In `llm` mode the control-plane judge is authoritative: judge unavailability,
+  missing credentials, or parse failures mark broker routing as failed instead
+  of silently falling back to heuristic scoring.
 - Cascade missing consumes is deterministic pause (`reason=missing_consumes`);
   runtime no longer auto-replans dependency chains.
 - `compose` is planning-only and now has a higher read budget (`max_tool_calls: 120`).

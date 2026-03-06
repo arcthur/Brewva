@@ -2,6 +2,7 @@
 name: exploration
 description: Use when repository is unfamiliar, request references unknown modules, or design decision needs structural context — before planning or patching.
 stability: stable
+effect_level: read_only
 tools:
   required: [read, grep]
   optional: [glob, ledger_query, look_at, skill_complete]
@@ -10,6 +11,7 @@ budget:
   max_tool_calls: 100
   max_tokens: 200000
 outputs: [architecture_map, key_modules, unknowns]
+requires: []
 consumes: [tree_summary]
 ---
 

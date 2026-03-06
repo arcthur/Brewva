@@ -14,10 +14,13 @@ function formatSkillOutput(input: {
     budget: { maxToolCalls: number; maxTokens: number };
     outputs?: string[];
     consumes?: string[];
+    requires?: string[];
+    effectLevel?: string;
   };
   availableConsumedOutputs?: Record<string, unknown>;
 }): string {
   const outputs = input.contract.outputs?.length ? input.contract.outputs.join(", ") : "(none)";
+  const requires = input.contract.requires?.length ? input.contract.requires.join(", ") : "(none)";
   const consumes = input.contract.consumes?.length ? input.contract.consumes.join(", ") : "(none)";
 
   const lines = [
@@ -30,8 +33,10 @@ function formatSkillOutput(input: {
     `- denied tools: ${input.contract.tools.denied.join(", ") || "(none)"}`,
     `- max tool calls: ${input.contract.budget.maxToolCalls}`,
     `- max tokens: ${input.contract.budget.maxTokens}`,
+    `- effect level: ${input.contract.effectLevel ?? "read_only"}`,
     `- required outputs: ${outputs}`,
-    `- consumes: ${consumes}`,
+    `- required inputs: ${requires}`,
+    `- optional inputs: ${consumes}`,
   ];
 
   if (input.availableConsumedOutputs && Object.keys(input.availableConsumedOutputs).length > 0) {

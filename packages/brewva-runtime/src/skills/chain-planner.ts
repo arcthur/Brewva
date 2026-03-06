@@ -1,4 +1,4 @@
-import type { SkillsIndexEntry } from "../types.js";
+import type { SkillEffectLevel, SkillsIndexEntry } from "../types.js";
 
 export interface SkillChainPlannerInput {
   primary: SkillsIndexEntry;
@@ -12,6 +12,17 @@ export interface SkillChainPlannerResult {
   unresolvedConsumes: string[];
 }
 
+export interface SkillChainValidationInput {
+  chain: string[];
+  index: SkillsIndexEntry[];
+  availableOutputs?: Iterable<string>;
+}
+
+export interface SkillChainValidationResult {
+  valid: boolean;
+  missing: string[];
+}
+
 const COST_RANK: Record<SkillsIndexEntry["costHint"], number> = {
   low: 0,
   medium: 1,
@@ -22,6 +33,12 @@ const STABILITY_RANK: Record<SkillsIndexEntry["stability"], number> = {
   stable: 0,
   experimental: 1,
   deprecated: 2,
+};
+
+const EFFECT_RANK: Record<SkillEffectLevel, number> = {
+  read_only: 0,
+  execute: 1,
+  mutation: 2,
 };
 
 function normalizeStringArray(value: unknown): string[] {
@@ -46,26 +63,52 @@ function resolveStability(value: unknown): SkillsIndexEntry["stability"] {
   return "stable";
 }
 
+function resolveEffectLevel(value: unknown): SkillEffectLevel {
+  if (value === "read_only" || value === "execute" || value === "mutation") {
+    return value;
+  }
+  return "read_only";
+}
+
 function hasOutput(entry: SkillsIndexEntry, outputName: string): boolean {
   return normalizeStringArray(entry.outputs).some((value) => value === outputName);
 }
 
-function resolveComposableRank(primary: SkillsIndexEntry, candidate: SkillsIndexEntry): number {
-  const primaryAllows = normalizeStringArray(primary.composableWith).includes(candidate.name);
-  if (primaryAllows) return 0;
-  const candidateAllows = normalizeStringArray(candidate.composableWith).includes(primary.name);
+function resolveRequiredInputs(entry: SkillsIndexEntry): string[] {
+  return normalizeStringArray(entry.requires);
+}
+
+function resolveComposableRank(consumer: SkillsIndexEntry, candidate: SkillsIndexEntry): number {
+  const consumerAllows = normalizeStringArray(consumer.composableWith).includes(candidate.name);
+  if (consumerAllows) return 0;
+  const candidateAllows = normalizeStringArray(candidate.composableWith).includes(consumer.name);
   if (candidateAllows) return 1;
   return 2;
 }
 
-function compareProducer(
+function isProducerEffectCompatible(
   primary: SkillsIndexEntry,
+  candidate: SkillsIndexEntry,
+): boolean {
+  return (
+    EFFECT_RANK[resolveEffectLevel(candidate.effectLevel)] <=
+    EFFECT_RANK[resolveEffectLevel(primary.effectLevel)]
+  );
+}
+
+function compareProducer(
+  consumer: SkillsIndexEntry,
   left: SkillsIndexEntry,
   right: SkillsIndexEntry,
 ): number {
   const composableRankDiff =
-    resolveComposableRank(primary, left) - resolveComposableRank(primary, right);
+    resolveComposableRank(consumer, left) - resolveComposableRank(consumer, right);
   if (composableRankDiff !== 0) return composableRankDiff;
+
+  const effectDiff =
+    EFFECT_RANK[resolveEffectLevel(left.effectLevel)] -
+    EFFECT_RANK[resolveEffectLevel(right.effectLevel)];
+  if (effectDiff !== 0) return effectDiff;
 
   const costDiff =
     COST_RANK[resolveCostHint(left.costHint)] - COST_RANK[resolveCostHint(right.costHint)];
@@ -90,41 +133,126 @@ function normalizeOutputSet(input?: Iterable<string>): Set<string> {
   return out;
 }
 
-export function planSkillChain(input: SkillChainPlannerInput): SkillChainPlannerResult {
-  const availableOutputs = normalizeOutputSet(input.availableOutputs);
-  const prerequisites: string[] = [];
-  const unresolvedConsumes: string[] = [];
-  const plannedSkills = new Set<string>([input.primary.name]);
+function addProducedOutputs(availableOutputs: Set<string>, entry: SkillsIndexEntry): void {
+  for (const producedOutput of normalizeStringArray(entry.outputs)) {
+    availableOutputs.add(producedOutput);
+  }
+}
 
-  for (const consumedOutput of normalizeStringArray(input.primary.consumes)) {
-    const normalizedConsume = consumedOutput.trim();
-    if (!normalizedConsume) continue;
-    if (availableOutputs.has(normalizedConsume)) continue;
+function selectProducer(input: {
+  primary: SkillsIndexEntry;
+  consumer: SkillsIndexEntry;
+  outputName: string;
+  index: SkillsIndexEntry[];
+  excludedNames: Set<string>;
+}): SkillsIndexEntry | null {
+  const producers = input.index
+    .filter((entry) => !input.excludedNames.has(entry.name))
+    .filter((entry) => hasOutput(entry, input.outputName))
+    .filter((entry) => isProducerEffectCompatible(input.primary, entry))
+    .toSorted((left, right) => compareProducer(input.consumer, left, right));
+  return producers[0] ?? null;
+}
 
-    const producers = input.index
-      .filter((entry) => entry.name !== input.primary.name)
-      .filter((entry) => hasOutput(entry, normalizedConsume))
-      .toSorted((left, right) => compareProducer(input.primary, left, right));
-    const producer = producers[0];
-    if (!producer) {
-      unresolvedConsumes.push(normalizedConsume);
+interface ResolvePrerequisitesState {
+  readonly primary: SkillsIndexEntry;
+  readonly index: SkillsIndexEntry[];
+  readonly availableOutputs: Set<string>;
+  readonly plannedSkills: Set<string>;
+  readonly inProgress: Set<string>;
+  readonly prerequisites: string[];
+  readonly unresolvedConsumes: Set<string>;
+}
+
+function resolvePrerequisites(consumer: SkillsIndexEntry, state: ResolvePrerequisitesState): void {
+  for (const requiredInput of resolveRequiredInputs(consumer)) {
+    if (state.availableOutputs.has(requiredInput)) {
       continue;
     }
 
-    if (!plannedSkills.has(producer.name)) {
-      prerequisites.push(producer.name);
-      plannedSkills.add(producer.name);
+    const producer = selectProducer({
+      primary: state.primary,
+      consumer,
+      outputName: requiredInput,
+      index: state.index,
+      excludedNames: new Set([...state.plannedSkills, ...state.inProgress, consumer.name]),
+    });
+    if (!producer) {
+      state.unresolvedConsumes.add(requiredInput);
+      continue;
     }
-    for (const producedOutput of normalizeStringArray(producer.outputs)) {
-      const normalizedProduced = producedOutput.trim();
-      if (!normalizedProduced) continue;
-      availableOutputs.add(normalizedProduced);
+
+    if (state.inProgress.has(producer.name)) {
+      state.unresolvedConsumes.add(requiredInput);
+      continue;
+    }
+
+    state.inProgress.add(producer.name);
+    resolvePrerequisites(producer, state);
+    state.inProgress.delete(producer.name);
+
+    const producerReady = resolveRequiredInputs(producer).every((value) =>
+      state.availableOutputs.has(value),
+    );
+    if (!producerReady) {
+      state.unresolvedConsumes.add(requiredInput);
+      continue;
+    }
+
+    if (!state.plannedSkills.has(producer.name)) {
+      state.prerequisites.push(producer.name);
+      state.plannedSkills.add(producer.name);
+      addProducedOutputs(state.availableOutputs, producer);
+    }
+
+    if (!state.availableOutputs.has(requiredInput)) {
+      state.unresolvedConsumes.add(requiredInput);
     }
   }
+}
+
+export function validateSkillChain(input: SkillChainValidationInput): SkillChainValidationResult {
+  const entriesByName = new Map(input.index.map((entry) => [entry.name, entry] as const));
+  const availableOutputs = normalizeOutputSet(input.availableOutputs);
+  const missing = new Set<string>();
+
+  for (const skillName of input.chain) {
+    const entry = entriesByName.get(skillName);
+    if (!entry) continue;
+    for (const requiredInput of resolveRequiredInputs(entry)) {
+      if (!availableOutputs.has(requiredInput)) {
+        missing.add(requiredInput);
+      }
+    }
+    addProducedOutputs(availableOutputs, entry);
+  }
+
+  return {
+    valid: missing.size === 0,
+    missing: [...missing].toSorted((left, right) => left.localeCompare(right)),
+  };
+}
+
+export function planSkillChain(input: SkillChainPlannerInput): SkillChainPlannerResult {
+  const availableOutputs = normalizeOutputSet(input.availableOutputs);
+  const prerequisites: string[] = [];
+  const state: ResolvePrerequisitesState = {
+    primary: input.primary,
+    index: input.index,
+    availableOutputs,
+    plannedSkills: new Set<string>(),
+    inProgress: new Set<string>([input.primary.name]),
+    prerequisites,
+    unresolvedConsumes: new Set<string>(),
+  };
+
+  resolvePrerequisites(input.primary, state);
 
   return {
     chain: [...prerequisites, input.primary.name],
     prerequisites,
-    unresolvedConsumes,
+    unresolvedConsumes: [...state.unresolvedConsumes].toSorted((left, right) =>
+      left.localeCompare(right),
+    ),
   };
 }

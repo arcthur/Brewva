@@ -13,6 +13,7 @@ function writeCatalog(
       description: string;
       outputs?: string[];
       consumes?: string[];
+      requires?: string[];
       toolsRequired?: string[];
     }>;
   },
@@ -35,6 +36,8 @@ function writeCatalog(
           stability: "stable",
           composableWith: [],
           consumes: entry.consumes ?? [],
+          requires: entry.requires ?? [],
+          effectLevel: "read_only",
           dispatch: {
             gateThreshold: 10,
             autoThreshold: 16,
@@ -119,7 +122,7 @@ describe("catalog skill broker", () => {
       },
     ];
 
-    const broker = new CatalogSkillBroker({ workspaceRoot: workspace, documents });
+    const broker = new CatalogSkillBroker({ workspaceRoot: workspace, documents, judge: null });
     const decision = await broker.select({
       sessionId: "preview-rerank",
       prompt: "run a quality audit and review merge safety before ship",
@@ -147,7 +150,7 @@ describe("catalog skill broker", () => {
       ],
     });
 
-    const broker = new CatalogSkillBroker({ workspaceRoot: workspace });
+    const broker = new CatalogSkillBroker({ workspaceRoot: workspace, judge: null });
     const decision = await broker.select({
       sessionId: "generic-collision",
       prompt: "看下现在项目的skill 触发机制是否合理",
@@ -174,7 +177,7 @@ describe("catalog skill broker", () => {
       ],
     });
 
-    const broker = new CatalogSkillBroker({ workspaceRoot: workspace });
+    const broker = new CatalogSkillBroker({ workspaceRoot: workspace, judge: null });
     const decision = await broker.select({
       sessionId: "description-only",
       prompt: "analyze project mechanism problem",
@@ -202,7 +205,7 @@ describe("catalog skill broker", () => {
       ],
     });
 
-    const broker = new CatalogSkillBroker({ workspaceRoot: workspace });
+    const broker = new CatalogSkillBroker({ workspaceRoot: workspace, judge: null });
     const decision = await broker.select({
       sessionId: "review-route",
       prompt: "Review architecture risks, merge safety, and quality audit gaps",
@@ -211,6 +214,81 @@ describe("catalog skill broker", () => {
     expect(decision.routingOutcome).toBe("selected");
     expect(decision.selected[0]?.name).toBe("review");
     expect(decision.trace.reason).toBe("catalog_broker_selected");
+  });
+
+  test("uses judge full-catalog fallback when lexical shortlist is empty", async () => {
+    const workspace = createTestWorkspace("skill-broker-judge-full-catalog");
+    writeCatalog(workspace, {
+      skills: [
+        {
+          name: "review",
+          description: "Read-only merge safety and quality review workflow.",
+          outputs: ["findings", "review_decision"],
+        },
+        {
+          name: "planning",
+          description: "Break engineering work into executable steps.",
+          outputs: ["execution_steps"],
+        },
+      ],
+    });
+
+    const judge: SkillBrokerJudge = {
+      async judge(input) {
+        expect(input.candidates.map((entry) => entry.name)).toEqual(["review", "planning"]);
+        return {
+          strategy: "mock_judge",
+          status: "selected",
+          selectedName: "review",
+          confidence: "high",
+          reason: "semantic multilingual match",
+        };
+      },
+    };
+
+    const broker = new CatalogSkillBroker({ workspaceRoot: workspace, judge });
+    const decision = await broker.select({
+      sessionId: "review-route-zh",
+      prompt: "帮我审查一下这个重构有没有合并风险",
+    });
+
+    expect(decision.routingOutcome).toBe("selected");
+    expect(decision.selected[0]?.name).toBe("review");
+    expect((decision.selected[0]?.score ?? 0) >= 18).toBe(true);
+    expect(decision.trace.reason).toBe("catalog_broker_judge_selected_full_catalog");
+  });
+
+  test("does not fall back to heuristic when llm judge is skipped", async () => {
+    const workspace = createTestWorkspace("skill-broker-no-fallback");
+    writeCatalog(workspace, {
+      skills: [
+        {
+          name: "review",
+          description: "Review architecture risks, merge safety, and quality audit gaps.",
+          outputs: ["findings", "review_decision"],
+        },
+      ],
+    });
+
+    const judge: SkillBrokerJudge = {
+      async judge() {
+        return {
+          strategy: "mock_judge",
+          status: "skipped",
+          reason: "no_model",
+        };
+      },
+    };
+
+    const broker = new CatalogSkillBroker({ workspaceRoot: workspace, judge });
+    const decision = await broker.select({
+      sessionId: "no-fallback-session",
+      prompt: "Review architecture risks, merge safety, and quality audit gaps",
+    });
+
+    expect(decision.routingOutcome).toBe("failed");
+    expect(decision.selected).toEqual([]);
+    expect(decision.trace.reason).toBe("catalog_broker_judge_skipped:no_model");
   });
 
   test("writes broker trace under project .brewva", async () => {
@@ -225,7 +303,7 @@ describe("catalog skill broker", () => {
       ],
     });
 
-    const broker = new CatalogSkillBroker({ workspaceRoot: workspace });
+    const broker = new CatalogSkillBroker({ workspaceRoot: workspace, judge: null });
     const decision = await broker.select({
       sessionId: "trace-session",
       prompt: "review merge safety",

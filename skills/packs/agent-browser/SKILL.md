@@ -2,6 +2,7 @@
 name: agent-browser
 description: Browser automation workflow for navigation, interaction, extraction, and visual verification.
 stability: stable
+effect_level: execute
 tools:
   required: [exec, read]
   optional: [look_at, ledger_query, skill_complete]
@@ -10,7 +11,8 @@ budget:
   max_tool_calls: 70
   max_tokens: 140000
 outputs: [browser_plan, action_log, extraction_result, troubleshooting]
-consumes: [execution_steps]
+requires: [execution_steps]
+consumes: []
 ---
 
 # Agent Browser Pack Skill

@@ -12,7 +12,8 @@ Skill parsing, merge, and selection logic:
 Skill frontmatter supports dispatch-focused metadata:
 
 - `dispatch.gate_threshold/auto_threshold/default_mode` for routing policy
-- `outputs/consumes/composable_with` for deterministic chain planning
+- `outputs/requires/consumes/composable_with` for deterministic chain planning
+- `effect_level` for planner safety (`read_only | execute | mutation`)
 
 Selector execution is governance-first for runtime routing:
 
@@ -28,15 +29,16 @@ That means CLI/gateway turns normally arrive at runtime as `external_preselectio
 The current broker is two-stage:
 
 - stage 1: catalog shortlist from `.brewva/skills_index.json`
-- stage 2: candidate preview judge using the shortlisted skills' `Intent` / `Trigger` / boundary sections, optionally followed by a control-plane `pi-ai complete()` judge on the same shortlist when `skills.selector.brokerJudgeMode=llm`
+- stage 2: candidate preview judge using the shortlisted skills' `Intent` / `Trigger` / boundary sections, or a control-plane `pi-ai complete()` judge when `skills.selector.brokerJudgeMode=llm`
 
-The default broker judge mode is `heuristic`, which stops after preview scoring.
-The optional control-plane judge uses the current session model and `ctx.modelRegistry.getApiKey(...)` when available.
-If model resolution, credentials, or parsing fail, broker selection falls back to the preview-only heuristic and the runtime kernel remains unchanged.
+The default broker judge mode is `llm`.
+When lexical shortlist confidence is low or empty, the broker can ask the control-plane judge to evaluate the catalog candidate set directly using the current session model and `ctx.modelRegistry.getApiKey(...)`.
+`llm` mode is authoritative: if model resolution, credentials, or parsing fail, broker routing is marked failed instead of silently falling back to lexical heuristic.
+Use `skills.selector.brokerJudgeMode=heuristic` only when you explicitly want lexical-only routing.
 
 Broker-enabled sessions are forced to `skills.selector.mode=external_only`, so runtime kernel selection is closed off and the runtime remains governance-only for dispatch, gate, and replay semantics.
 
-`skills_index.json` now carries normalized contract metadata for each skill entry (including `outputs`, `consumes`, and `dispatch`).
+`skills_index.json` now carries normalized contract metadata for each skill entry (including `outputs`, `requires`, `consumes`, `effectLevel`, and `dispatch`).
 
 ## Cascade Orchestration
 
@@ -46,7 +48,8 @@ Skill cascading is policy-driven via `skills.cascade.*`:
 - `mode=assist`: runtime records/plans chains but waits for manual continuation
 - `mode=auto`: runtime auto-advances to next steps after `skill_completed` events
 
-Chain intent can come from dispatch planning (`outputs/consumes/composable_with`) or compose output (`skill_sequence`).
+Dispatch planning uses only `requires` as hard prerequisites; `consumes` remain optional context for loading/scoring.
+Chain intent can come from dispatch planning (`outputs/requires/consumes/composable_with`) or compose output (`skill_sequence`).
 Source arbitration uses:
 
 - `skills.cascade.enabledSources` as allowlist

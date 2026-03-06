@@ -42,7 +42,7 @@ function buildRegistryStep(
   return {
     id: `${prefix}:${skill.name}`,
     skill: skill.name,
-    consumes: [...(skill.contract.consumes ?? [])],
+    consumes: [...(skill.contract.requires ?? [])],
     produces: [...(skill.contract.outputs ?? [])],
   };
 }
@@ -138,7 +138,7 @@ export class ComposeSkillCascadeChainSource implements SkillCascadeChainSource {
       steps.push({
         id: stepId,
         skill: skillName,
-        consumes: consumes.length > 0 ? consumes : [...(skill.contract.consumes ?? [])],
+        consumes: consumes.length > 0 ? consumes : [...(skill.contract.requires ?? [])],
         produces: produces.length > 0 ? produces : [...(skill.contract.outputs ?? [])],
         lane,
       });

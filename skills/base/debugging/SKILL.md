@@ -2,6 +2,7 @@
 name: debugging
 description: Use when encountering any bug, test failure, or unexpected behavior — before proposing fixes.
 stability: stable
+effect_level: mutation
 tools:
   required: [read, exec, grep]
   optional: [lsp_diagnostics, ast_grep_search, edit, ledger_query, skill_complete]
@@ -10,6 +11,7 @@ budget:
   max_tool_calls: 100
   max_tokens: 180000
 outputs: [oracle_brief, oracle_synthesis, root_cause, fix_description, evidence, verification]
+requires: []
 consumes: [architecture_map, execution_steps]
 ---
 

@@ -2,6 +2,7 @@
 name: patching
 description: Use when applying code changes to fix a known issue or implement a scoped requirement — after root cause is confirmed or plan is approved.
 stability: stable
+effect_level: mutation
 tools:
   required: [read, edit]
   optional: [grep, lsp_diagnostics, ledger_query, exec, skill_complete]
@@ -10,7 +11,8 @@ budget:
   max_tool_calls: 70
   max_tokens: 130000
 outputs: [change_summary, files_changed, verification]
-consumes: [execution_steps, root_cause, fix_description]
+requires: [execution_steps]
+consumes: [root_cause, fix_description]
 ---
 
 # Patching Skill

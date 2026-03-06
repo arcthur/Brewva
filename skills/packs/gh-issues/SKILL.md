@@ -2,6 +2,7 @@
 name: gh-issues
 description: GitHub issue triage and issue-to-PR execution workflow via `gh` CLI. Use when processing filtered issues, writing actionable issue specs, converting selected issues into PRs, and tracking review follow-ups.
 stability: stable
+effect_level: execute
 tools:
   required: [exec, read]
   optional: [grep, ledger_query, skill_complete]
@@ -10,6 +11,7 @@ budget:
   max_tool_calls: 120
   max_tokens: 180000
 outputs: [issue_triage, issue_spec, issue_execution_plan, review_followup]
+requires: []
 consumes: [github_context, verification]
 ---
 

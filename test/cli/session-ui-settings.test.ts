@@ -257,7 +257,7 @@ describe("brewva session ui settings wiring", () => {
     }
   });
 
-  test("no-extensions session bootstrap still enables broker with heuristic judge by default", async () => {
+  test("no-extensions session bootstrap still enables broker with llm judge by default", async () => {
     const workspace = createWorkspace("skill-broker-no-extensions");
     const result = await createBrewvaSession({
       cwd: workspace,
@@ -265,7 +265,7 @@ describe("brewva session ui settings wiring", () => {
     });
     try {
       expect(result.runtime.config.skills.selector.mode).toBe("external_only");
-      expect(result.runtime.config.skills.selector.brokerJudgeMode).toBe("heuristic");
+      expect(result.runtime.config.skills.selector.brokerJudgeMode).toBe("llm");
       const sessionId = result.session.sessionManager.getSessionId();
       const bootstrap = result.runtime.events.query(sessionId, {
         type: "session_bootstrap",
@@ -284,7 +284,7 @@ describe("brewva session ui settings wiring", () => {
       expect(payload.extensionsEnabled).toBe(false);
       expect(payload.skillBroker?.enabled).toBe(true);
       expect(payload.skillBroker?.selectorMode).toBe("external_only");
-      expect(payload.skillBroker?.judgeMode).toBe("heuristic");
+      expect(payload.skillBroker?.judgeMode).toBe("llm");
     } finally {
       result.session.dispose();
     }

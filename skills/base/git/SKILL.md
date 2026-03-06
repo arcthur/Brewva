@@ -2,6 +2,7 @@
 name: git
 description: Use when creating commits, rebasing branches, or searching git history — covers commit architecture, rebase surgery, and blame/bisect workflows.
 stability: stable
+effect_level: execute
 tools:
   required: [exec, read]
   optional: [grep, process, ledger_query, skill_complete]
@@ -10,6 +11,7 @@ budget:
   max_tool_calls: 80
   max_tokens: 140000
 outputs: [branch_state, style_detection, commit_plan, safety_checks]
+requires: []
 consumes: [change_summary, files_changed, verification]
 ---
 

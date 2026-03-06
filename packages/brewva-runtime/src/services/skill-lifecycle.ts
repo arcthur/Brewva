@@ -386,10 +386,13 @@ export class SkillLifecycleService {
   getAvailableConsumedOutputs(sessionId: string, targetSkillName: string): Record<string, unknown> {
     const targetSkill = this.skills.get(targetSkillName);
     if (!targetSkill) return {};
-    const consumes = targetSkill.contract.consumes ?? [];
-    if (consumes.length === 0) return {};
+    const requestedInputs = [
+      ...(targetSkill.contract.requires ?? []),
+      ...(targetSkill.contract.consumes ?? []),
+    ];
+    if (requestedInputs.length === 0) return {};
 
-    const consumeSet = new Set(consumes);
+    const consumeSet = new Set(requestedInputs);
     const result: Record<string, unknown> = {};
     const sessionOutputs = this.sessionState.skillOutputsBySession.get(sessionId);
     if (!sessionOutputs) return {};

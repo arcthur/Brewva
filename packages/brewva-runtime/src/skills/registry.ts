@@ -377,6 +377,8 @@ export class SkillRegistry {
       stability: skill.contract.stability ?? "stable",
       composableWith: skill.contract.composableWith ?? [],
       consumes: skill.contract.consumes ?? [],
+      requires: skill.contract.requires ?? [],
+      effectLevel: skill.contract.effectLevel ?? "read_only",
       dispatch: {
         gateThreshold: skill.contract.dispatch?.gateThreshold ?? 10,
         autoThreshold: skill.contract.dispatch?.autoThreshold ?? 16,

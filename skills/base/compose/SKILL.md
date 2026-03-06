@@ -2,6 +2,8 @@
 name: compose
 description: Use when task spans 2+ skill domains and output of one skill is a required input for another — single skill insufficient.
 stability: stable
+effect_level: execute
+requires: []
 consumes: []
 tools:
   required: [read]

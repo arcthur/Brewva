@@ -2,6 +2,7 @@
 name: brewva-project
 description: Project orchestration skill for Brewva source analysis, governance-kernel runtime diagnosis, and issue/PR delivery.
 stability: stable
+effect_level: execute
 tools:
   required: [read, grep]
   optional:
@@ -48,6 +49,7 @@ outputs:
     verification_matrix,
     delivery_report,
   ]
+requires: []
 consumes: [architecture_map, execution_steps, findings, verification, runtime_artifacts]
 ---
 

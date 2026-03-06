@@ -4,6 +4,7 @@ import type { JsonValue } from "./utils/json.js";
 export type VerificationLevel = "quick" | "standard" | "strict";
 export type SkillTier = "base" | "pack" | "project";
 export type SkillCostHint = "low" | "medium" | "high";
+export type SkillEffectLevel = "read_only" | "execute" | "mutation";
 export type SkillDispatchMode = "suggest" | "gate" | "auto";
 export type SkillCascadeMode = "off" | "assist" | "auto";
 export type SkillCascadeSource = "dispatch" | "compose" | "explicit";
@@ -32,10 +33,12 @@ export interface SkillContract {
   outputs?: string[];
   composableWith?: string[];
   consumes?: string[];
+  requires?: string[];
   maxParallel?: number;
   stability?: "experimental" | "stable" | "deprecated";
   description?: string;
   costHint?: SkillCostHint;
+  effectLevel?: SkillEffectLevel;
 }
 
 export interface SkillContractOverride extends Omit<Partial<SkillContract>, "tools" | "budget"> {
@@ -67,6 +70,8 @@ export interface SkillsIndexEntry {
   stability: "experimental" | "stable" | "deprecated";
   composableWith: string[];
   consumes: string[];
+  requires: string[];
+  effectLevel: SkillEffectLevel;
   dispatch?: SkillDispatchPolicy;
 }
 

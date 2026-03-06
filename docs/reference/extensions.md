@@ -93,9 +93,9 @@ That broker:
 
 - reads `.brewva/skills_index.json`
 - reranks the shortlist against candidate skill previews (`Intent` / `Trigger` / boundary sections)
-- runs only preview heuristics by default
-- when `skills.selector.brokerJudgeMode=llm` and the current session model plus API key are available, runs a control-plane `pi-ai complete()` judge over the shortlist before selecting
-- falls back to preview-only heuristics when the judge is disabled, unavailable, abstains, or fails
+- runs only preview heuristics when `skills.selector.brokerJudgeMode=heuristic`
+- when `skills.selector.brokerJudgeMode=llm` and the current session model plus API key are available, runs a control-plane `pi-ai complete()` judge over the shortlist or full catalog candidate set before selecting
+- treats `llm` mode as authoritative; if the judge is unavailable or fails, routing is marked failed instead of silently falling back to preview heuristics
 - writes control-plane traces under `.brewva/skill-broker/<sessionId>/`
 - injects explicit preselection via `runtime.skills.setNextSelection(...)` before `registerContextTransform` runs
 - forces broker-enabled sessions onto `skills.selector.mode=external_only`

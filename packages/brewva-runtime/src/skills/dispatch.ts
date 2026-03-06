@@ -7,7 +7,7 @@ import type {
   SkillSelection,
   SkillsIndexEntry,
 } from "../types.js";
-import { planSkillChain } from "./chain-planner.js";
+import { planSkillChain, validateSkillChain } from "./chain-planner.js";
 
 export interface ResolveSkillDispatchInput {
   selected: SkillSelection[];
@@ -178,13 +178,22 @@ export function resolveSkillDispatchDecision(
     index: input.index,
     availableOutputs: input.availableOutputs,
   });
+  const chainValidation = validateSkillChain({
+    chain: chainPlan.chain,
+    index: input.index,
+    availableOutputs: input.availableOutputs,
+  });
+  const chain = chainValidation.valid ? chainPlan.chain : [primary.name];
+  const unresolvedConsumes = [
+    ...new Set([...chainPlan.unresolvedConsumes, ...chainValidation.missing]),
+  ].toSorted((left, right) => left.localeCompare(right));
 
   return {
     mode,
     primary,
     selected: input.selected,
-    chain: chainPlan.chain,
-    unresolvedConsumes: chainPlan.unresolvedConsumes,
+    chain,
+    unresolvedConsumes,
     confidence: Number(
       resolveConfidence({
         score: primary.score,

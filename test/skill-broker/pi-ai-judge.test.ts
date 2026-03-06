@@ -11,6 +11,8 @@ function buildInput(): SkillBrokerJudgeInput {
         description: "Create or update reusable skills for the agent.",
         outputs: ["skill_package", "skill_spec"],
         consumes: ["objective"],
+        requires: [],
+        effectLevel: "mutation",
         toolsRequired: ["read", "edit"],
         score: 12,
         stageOneScore: 12,
@@ -30,6 +32,8 @@ function buildInput(): SkillBrokerJudgeInput {
         description: "Break implementation work into executable steps.",
         outputs: ["execution_steps"],
         consumes: ["objective"],
+        requires: [],
+        effectLevel: "read_only",
         toolsRequired: ["read"],
         score: 8,
         stageOneScore: 8,
@@ -142,5 +146,44 @@ describe("pi-ai skill broker judge", () => {
     const result = await judge.judge(buildInput());
     expect(result.status).toBe("rejected");
     expect(result.selectedName).toBeNull();
+  });
+
+  test("omits the default temperature from complete() options", async () => {
+    let seenTemperature: number | undefined;
+    const judge = new PiAiSkillBrokerJudge({
+      async completeFn(_model, _prompt, options) {
+        seenTemperature = options?.temperature;
+        return {
+          role: "assistant",
+          api: "openai-responses",
+          provider: "openai",
+          model: "gpt-5.3-codex",
+          usage: {
+            input: 1,
+            output: 1,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 2,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+          stopReason: "stop",
+          timestamp: Date.now(),
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                decision: "none",
+                selectedName: null,
+                confidence: "low",
+                reason: "irrelevant",
+              }),
+            },
+          ],
+        };
+      },
+    });
+
+    await judge.judge(buildInput());
+    expect(seenTemperature).toBeUndefined();
   });
 });

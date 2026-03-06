@@ -2,6 +2,7 @@
 name: recovery
 description: Evidence-driven bounded recovery skill for stalled or misaligned execution. Use when a loop or active skill is blocked by repeated failures, convergence guard pressure, or plan-reality mismatch and needs a concrete next move.
 stability: experimental
+effect_level: read_only
 tools:
   required: [read, grep]
   optional:
@@ -17,7 +18,8 @@ budget:
   max_tool_calls: 60
   max_tokens: 120000
 outputs: [recovery_plan, blocker_evidence, next_skill_hint]
-consumes: [iteration_report, failure_evidence, current_plan, constraints]
+requires: [iteration_report]
+consumes: [failure_evidence, current_plan, constraints]
 composable_with: [goal-loop, planning, debugging, verification]
 ---
 
