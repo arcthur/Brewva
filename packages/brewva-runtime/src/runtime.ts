@@ -159,6 +159,17 @@ type RuntimeServiceDependencies = {
   toolGateService: ToolGateService;
 };
 
+type BaseServiceContext = {
+  getCurrentTurn(this: void, sessionId: string): number;
+  getTaskState(this: void, sessionId: string): TaskState;
+  getTruthState(this: void, sessionId: string): TruthState;
+  recordEvent(this: void, input: RuntimeRecordEventInput): BrewvaEventRecord | undefined;
+};
+
+type SkillAwareServiceContext = BaseServiceContext & {
+  getActiveSkill(this: void, sessionId: string): SkillDocument | undefined;
+};
+
 export class BrewvaRuntime {
   readonly cwd: string;
   readonly workspaceRoot: string;
@@ -633,40 +644,64 @@ export class BrewvaRuntime {
     };
   }
 
+  private createBaseServiceContext(): BaseServiceContext {
+    return {
+      getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),
+      getTaskState: (sessionId) => this.getTaskState(sessionId),
+      getTruthState: (sessionId) => this.getTruthState(sessionId),
+      recordEvent: (input) => this.recordEvent(input),
+    };
+  }
+
+  private withActiveSkillServiceContext(
+    context: BaseServiceContext,
+    getActiveSkill: (sessionId: string) => SkillDocument | undefined,
+  ): SkillAwareServiceContext {
+    return {
+      ...context,
+      getActiveSkill,
+    };
+  }
+
   private createServiceDependencies(options: BrewvaRuntimeOptions): RuntimeServiceDependencies {
+    const baseServiceContext = this.createBaseServiceContext();
     const taskService = new TaskService({
       config: this.config,
       isContextBudgetEnabled: () => this.isContextBudgetEnabled(),
-      getTaskState: (sessionId) => this.getTaskState(sessionId),
-      getTruthState: (sessionId) => this.getTruthState(sessionId),
+      getTaskState: baseServiceContext.getTaskState,
+      getTruthState: baseServiceContext.getTruthState,
       evaluateCompletion: (sessionId, level) => this.evaluateCompletion(sessionId, level),
-      recordEvent: (input) => this.recordEvent(input),
+      recordEvent: baseServiceContext.recordEvent,
     });
     const skillLifecycleService = new SkillLifecycleService({
       skills: this.skillRegistry,
       sessionState: this.sessionState,
-      getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),
-      getTaskState: (sessionId) => this.getTaskState(sessionId),
-      recordEvent: (input) => this.recordEvent(input),
+      getCurrentTurn: baseServiceContext.getCurrentTurn,
+      getTaskState: baseServiceContext.getTaskState,
+      recordEvent: baseServiceContext.recordEvent,
       setTaskSpec: (sessionId, spec) => taskService.setTaskSpec(sessionId, spec),
     });
+    const skillAwareServiceContext = this.withActiveSkillServiceContext(
+      baseServiceContext,
+      (sessionId) => skillLifecycleService.getActiveSkill(sessionId),
+    );
     const skillCascadeService = new SkillCascadeService({
       config: this.config.skills.cascade,
       skills: this.skillRegistry,
       sessionState: this.sessionState,
-      getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),
-      getActiveSkill: (sessionId) => skillLifecycleService.getActiveSkill(sessionId),
+      getCurrentTurn: baseServiceContext.getCurrentTurn,
+      getActiveSkill: skillAwareServiceContext.getActiveSkill,
       activateSkill: (sessionId, name) => skillLifecycleService.activateSkill(sessionId, name),
       getSkillOutputs: (sessionId, skillName) =>
         skillLifecycleService.getSkillOutputs(sessionId, skillName),
       listProducedOutputKeys: (sessionId) =>
         skillLifecycleService.listProducedOutputKeys(sessionId),
-      recordEvent: (input) => this.recordEvent(input),
+      recordEvent: baseServiceContext.recordEvent,
       chainSources: options.skillCascadeChainSources,
     });
     const truthService = new TruthService({
-      getTruthState: (sessionId) => this.getTruthState(sessionId),
-      recordEvent: (input) => this.recordEvent(input),
+      getTruthState: baseServiceContext.getTruthState,
+      recordEvent: baseServiceContext.recordEvent,
     });
     const ledgerService = new LedgerService({
       cwd: this.cwd,
@@ -674,44 +709,44 @@ export class BrewvaRuntime {
       ledger: this.evidenceLedger,
       verification: this.verificationGate,
       sessionState: this.sessionState,
-      getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),
-      getActiveSkill: (sessionId) => skillLifecycleService.getActiveSkill(sessionId),
-      getTaskState: (sessionId) => this.getTaskState(sessionId),
-      getTruthState: (sessionId) => this.getTruthState(sessionId),
+      getCurrentTurn: baseServiceContext.getCurrentTurn,
+      getActiveSkill: skillAwareServiceContext.getActiveSkill,
+      getTaskState: baseServiceContext.getTaskState,
+      getTruthState: baseServiceContext.getTruthState,
       upsertTruthFact: (sessionId, input) => truthService.upsertTruthFact(sessionId, input),
       resolveTruthFact: (sessionId, truthFactId) =>
         truthService.resolveTruthFact(sessionId, truthFactId),
       recordTaskBlocker: (sessionId, input) => taskService.recordTaskBlocker(sessionId, input),
       resolveTaskBlocker: (sessionId, blockerId) =>
         taskService.resolveTaskBlocker(sessionId, blockerId),
-      recordEvent: (input) => this.recordEvent(input),
+      recordEvent: baseServiceContext.recordEvent,
     });
     const parallelService = new ParallelService({
       securityConfig: this.config.security,
       parallel: this.parallel,
       parallelResults: this.parallelResults,
       sessionState: this.sessionState,
-      getActiveSkill: (sessionId) => skillLifecycleService.getActiveSkill(sessionId),
-      getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),
-      recordEvent: (input) => this.recordEvent(input),
+      getActiveSkill: skillAwareServiceContext.getActiveSkill,
+      getCurrentTurn: baseServiceContext.getCurrentTurn,
+      recordEvent: baseServiceContext.recordEvent,
     });
     const costService = new CostService({
       costTracker: this.costTracker,
       recordInfrastructureRow: (input) => ledgerService.recordInfrastructureRow(input),
       governancePort: options.governancePort,
-      getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),
-      getActiveSkill: (sessionId) => skillLifecycleService.getActiveSkill(sessionId),
-      recordEvent: (input) => this.recordEvent(input),
+      getCurrentTurn: baseServiceContext.getCurrentTurn,
+      getActiveSkill: skillAwareServiceContext.getActiveSkill,
+      recordEvent: baseServiceContext.recordEvent,
     });
     const verificationService = new VerificationService({
       cwd: this.cwd,
       config: this.config,
       verification: this.verificationGate,
       governancePort: options.governancePort,
-      getTaskState: (sessionId) => this.getTaskState(sessionId),
-      getTruthState: (sessionId) => this.getTruthState(sessionId),
-      getActiveSkillName: (sessionId) => skillLifecycleService.getActiveSkill(sessionId)?.name,
-      recordEvent: (input) => this.recordEvent(input),
+      getTaskState: baseServiceContext.getTaskState,
+      getTruthState: baseServiceContext.getTruthState,
+      getActiveSkillName: (sessionId) => skillAwareServiceContext.getActiveSkill(sessionId)?.name,
+      recordEvent: baseServiceContext.recordEvent,
       upsertTruthFact: (sessionId, input) => truthService.upsertTruthFact(sessionId, input),
       resolveTruthFact: (sessionId, truthFactId) =>
         truthService.resolveTruthFact(sessionId, truthFactId),
@@ -723,8 +758,8 @@ export class BrewvaRuntime {
     const proposalAdmissionService = new ProposalAdmissionService({
       listDecisionReceiptEvents: (sessionId) =>
         this.eventStore.list(sessionId, { type: DECISION_RECEIPT_RECORDED_EVENT_TYPE }),
-      recordEvent: (input) => this.recordEvent(input),
-      getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),
+      recordEvent: baseServiceContext.recordEvent,
+      getCurrentTurn: baseServiceContext.getCurrentTurn,
       getSkill: (name) => this.skillRegistry.get(name),
       setPendingDispatch: (sessionId, decision) =>
         this.skillLifecycleService.setPendingDispatch(sessionId, decision, { emitEvent: true }),
@@ -742,8 +777,8 @@ export class BrewvaRuntime {
       projectionEngine: this.projectionEngine,
       recordInfrastructureRow: (input) => ledgerService.recordInfrastructureRow(input),
       sessionState: this.sessionState,
-      getTaskState: (sessionId) => this.getTaskState(sessionId),
-      getTruthState: (sessionId) => this.getTruthState(sessionId),
+      getTaskState: baseServiceContext.getTaskState,
+      getTruthState: baseServiceContext.getTruthState,
       getLatestSkillSelectionProposal: (sessionId) =>
         proposalAdmissionService.getLatestProposalRecord(sessionId, "skill_selection", "accept") as
           | ProposalRecord<"skill_selection">
@@ -758,33 +793,33 @@ export class BrewvaRuntime {
       buildSkillCascadeGateBlock: (intent) => buildSkillCascadeGateBlock(intent),
       buildTaskStateBlock: (state) => buildTaskStateBlock(state),
       maybeAlignTaskStatus: (input) => taskService.maybeAlignTaskStatus(input),
-      getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),
-      getActiveSkill: (sessionId) => skillLifecycleService.getActiveSkill(sessionId),
+      getCurrentTurn: baseServiceContext.getCurrentTurn,
+      getActiveSkill: skillAwareServiceContext.getActiveSkill,
       sanitizeInput: (text) => this.sanitizeInput(text),
       getFoldedToolFailures: (sessionId) => this.turnReplay.getRecentToolFailures(sessionId, 12),
       getRecentToolOutputDistillations: (sessionId) =>
         this.getRecentToolOutputDistillations(sessionId, 12),
-      recordEvent: (input) => this.recordEvent(input),
+      recordEvent: baseServiceContext.recordEvent,
       governancePort: options.governancePort,
     });
     const scanConvergenceService = new ScanConvergenceService({
       sessionState: this.sessionState,
       listEvents: (sessionId, query) => this.eventStore.list(sessionId, query),
-      getTaskState: (sessionId) => this.getTaskState(sessionId),
-      getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),
-      getActiveSkillName: (sessionId) => skillLifecycleService.getActiveSkill(sessionId)?.name,
+      getTaskState: baseServiceContext.getTaskState,
+      getCurrentTurn: baseServiceContext.getCurrentTurn,
+      getActiveSkillName: (sessionId) => skillAwareServiceContext.getActiveSkill(sessionId)?.name,
       recordTaskBlocker: (sessionId, input) => taskService.recordTaskBlocker(sessionId, input),
       resolveTaskBlocker: (sessionId, blockerId) =>
         taskService.resolveTaskBlocker(sessionId, blockerId),
-      recordEvent: (input) => this.recordEvent(input),
+      recordEvent: baseServiceContext.recordEvent,
     });
     const tapeService = new TapeService({
       tapeConfig: this.config.tape,
       sessionState: this.sessionState,
       queryEvents: (sessionId, query) => this.eventStore.list(sessionId, query),
-      getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),
-      getTaskState: (sessionId) => this.getTaskState(sessionId),
-      getTruthState: (sessionId) => this.getTruthState(sessionId),
+      getCurrentTurn: baseServiceContext.getCurrentTurn,
+      getTaskState: baseServiceContext.getTaskState,
+      getTruthState: baseServiceContext.getTruthState,
       getCostSummary: (sessionId) => this.resolveCheckpointCostSummary(sessionId),
       getCostSkillLastTurnByName: (sessionId) =>
         this.resolveCheckpointCostSkillLastTurnByName(sessionId),
@@ -792,7 +827,7 @@ export class BrewvaRuntime {
         this.turnReplay.getCheckpointEvidenceState(sessionId),
       getCheckpointProjectionState: (sessionId) =>
         this.turnReplay.getCheckpointProjectionState(sessionId),
-      recordEvent: (input) => this.recordEvent(input),
+      recordEvent: baseServiceContext.recordEvent,
     });
     const eventPipeline = new EventPipelineService({
       events: this.eventStore,
@@ -812,8 +847,8 @@ export class BrewvaRuntime {
             listEvents: (sessionId, query) => this.eventStore.list(sessionId, query),
             recordEvent: (input) => eventPipeline.recordEvent(input),
             subscribeEvents: (listener) => eventPipeline.subscribeEvents(listener),
-            getTruthState: (sessionId) => this.getTruthState(sessionId),
-            getTaskState: (sessionId) => this.getTaskState(sessionId),
+            getTruthState: baseServiceContext.getTruthState,
+            getTaskState: baseServiceContext.getTaskState,
             turnWal: {
               appendPending: (envelope, source, walOptions) =>
                 this.turnWalStore.appendPending(envelope, source, walOptions),
@@ -833,9 +868,9 @@ export class BrewvaRuntime {
       costTracker: this.costTracker,
       verification: this.verificationGate,
       recordInfrastructureRow: (input) => ledgerService.recordInfrastructureRow(input),
-      getActiveSkill: (sessionId) => skillLifecycleService.getActiveSkill(sessionId),
-      getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),
-      recordEvent: (input) => this.recordEvent(input),
+      getActiveSkill: skillAwareServiceContext.getActiveSkill,
+      getCurrentTurn: baseServiceContext.getCurrentTurn,
+      recordEvent: baseServiceContext.recordEvent,
     });
     const sessionLifecycleService = new SessionLifecycleService({
       sessionState: this.sessionState,
@@ -854,17 +889,17 @@ export class BrewvaRuntime {
       ledger: this.evidenceLedger,
       resolveTaskBlocker: (sessionId, blockerId) =>
         taskService.resolveTaskBlocker(sessionId, blockerId),
-      recordEvent: (input) => this.recordEvent(input),
+      recordEvent: baseServiceContext.recordEvent,
     });
     const toolGateService = new ToolGateService({
       securityConfig: this.config.security,
       costTracker: this.costTracker,
       sessionState: this.sessionState,
       alwaysAllowedTools: CONTROL_PLANE_TOOLS,
-      getActiveSkill: (sessionId) => skillLifecycleService.getActiveSkill(sessionId),
+      getActiveSkill: skillAwareServiceContext.getActiveSkill,
       getPendingDispatch: (sessionId) => skillLifecycleService.getPendingDispatch(sessionId),
-      getCurrentTurn: (sessionId) => this.getCurrentTurn(sessionId),
-      recordEvent: (input) => this.recordEvent(input),
+      getCurrentTurn: baseServiceContext.getCurrentTurn,
+      recordEvent: baseServiceContext.recordEvent,
       checkContextCompactionGate: (sessionId, toolName, usage) =>
         contextService.checkContextCompactionGate(sessionId, toolName, usage),
       observeContextUsage: (sessionId, usage) =>

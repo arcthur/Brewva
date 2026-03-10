@@ -5,8 +5,25 @@ import { resolve } from "node:path";
 function collectPublicRuntimeMethods(source: string): string[] {
   const lines = source.split("\n");
   const methods: string[] = [];
+  let insideRuntimeClass = false;
+  let classDepth = 0;
 
   for (const line of lines) {
+    if (!insideRuntimeClass) {
+      if (!line.startsWith("export class BrewvaRuntime ")) {
+        continue;
+      }
+      insideRuntimeClass = true;
+      classDepth = 1;
+      continue;
+    }
+
+    classDepth += (line.match(/{/g) ?? []).length;
+    classDepth -= (line.match(/}/g) ?? []).length;
+    if (classDepth <= 0) {
+      break;
+    }
+
     if (!line.startsWith("  ")) continue;
     if (line.startsWith("  private ")) continue;
     if (line.startsWith("  constructor(")) continue;

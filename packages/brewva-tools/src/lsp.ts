@@ -1,9 +1,11 @@
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, extname, resolve } from "node:path";
 import { parseTscDiagnostics, type TscDiagnostic } from "@brewva/brewva-runtime";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { differenceInMilliseconds } from "date-fns";
+import { escapeRegexLiteral } from "./shared/query.js";
+import { walkWorkspaceFiles } from "./shared/workspace-walk.js";
 import type { BrewvaToolRuntime } from "./types.js";
 import { runCommand } from "./utils/exec.js";
 import {
@@ -30,8 +32,6 @@ const CODE_EXTENSIONS = new Set([
   ".rs",
   ".java",
 ]);
-const SKIP_DIRS = new Set([".git", "node_modules", "dist", "build", ".next", "coverage"]);
-
 interface LspParallelReadContext {
   runtime?: BrewvaToolRuntime;
   sessionId?: string;
@@ -44,42 +44,12 @@ function isCodeFile(path: string): boolean {
 }
 
 function walkCodeFiles(rootDir: string, maxFiles = 4000): string[] {
-  const out: string[] = [];
-  const walk = (dir: string): void => {
-    let entries: Array<import("node:fs").Dirent>;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (out.length >= maxFiles) return;
-      if (entry.name.startsWith(".") && entry.name !== ".config") continue;
-      if (entry.isDirectory() && SKIP_DIRS.has(entry.name)) continue;
-
-      const full = join(dir, entry.name);
-      let isDir = entry.isDirectory();
-      let isFile = entry.isFile();
-      if (entry.isSymbolicLink()) {
-        try {
-          const st = statSync(full);
-          isDir = st.isDirectory();
-          isFile = st.isFile();
-        } catch {
-          continue;
-        }
-      }
-
-      if (isDir) {
-        walk(full);
-      } else if (isFile && isCodeFile(full)) {
-        out.push(full);
-      }
-    }
-  };
-
-  walk(rootDir);
-  return out;
+  return walkWorkspaceFiles({
+    roots: [rootDir],
+    maxFiles,
+    isMatch: (filePath) => isCodeFile(filePath),
+    includeRootFiles: false,
+  }).files;
 }
 
 function lineAt(filePath: string, line: number): string {
@@ -110,7 +80,7 @@ function wordAt(filePath: string, line: number, character: number): string {
 }
 
 function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return escapeRegexLiteral(text);
 }
 
 async function findDefinition(

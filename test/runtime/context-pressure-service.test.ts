@@ -148,6 +148,41 @@ describe("ContextPressureService", () => {
     expect(decision.allowed).toBe(true);
   });
 
+  test("explaining the compaction gate does not emit blocked-tool telemetry", () => {
+    const config = structuredClone(DEFAULT_BREWVA_CONFIG);
+    config.infrastructure.contextBudget.enabled = true;
+    config.infrastructure.contextBudget.hardLimitPercent = 0.8;
+
+    const events: Array<{
+      sessionId: string;
+      type: string;
+      turn?: number;
+      payload?: Record<string, unknown>;
+    }> = [];
+
+    const budget = new ContextBudgetManager(config.infrastructure.contextBudget);
+    budget.beginTurn("pressure-session", 12);
+
+    const service = new ContextPressureService({
+      config,
+      contextBudget: budget,
+      getCurrentTurn: () => 12,
+      recordEvent: (eventInput) => {
+        events.push(eventInput);
+        return undefined as BrewvaEventRecord | undefined;
+      },
+    });
+
+    const usage = createUsage(0.9);
+    service.observeContextUsage("pressure-session", usage);
+
+    const explanation = service.explainContextCompactionGate("pressure-session", "exec", usage);
+    expect(explanation.allowed).toBe(false);
+    expect(events.some((event) => event.type === "context_compaction_gate_blocked_tool")).toBe(
+      false,
+    );
+  });
+
   test("allows control-plane tools during critical pressure when configured as always allowed", () => {
     const config = structuredClone(DEFAULT_BREWVA_CONFIG);
     config.infrastructure.contextBudget.enabled = true;

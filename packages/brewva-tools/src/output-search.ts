@@ -3,6 +3,7 @@ import { isAbsolute, resolve, sep } from "node:path";
 import type { BrewvaEventRecord } from "@brewva/brewva-runtime";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { tokenizeSearchTerms } from "./shared/query.js";
 import type { BrewvaToolOptions } from "./types.js";
 import { inconclusiveTextResult, textResult } from "./utils/result.js";
 import { getSessionId } from "./utils/session.js";
@@ -183,32 +184,12 @@ function extractArtifactCandidates(input: {
   return candidates;
 }
 
-function tokenizeQuery(query: string): string[] {
-  return [
-    ...new Set(
-      query
-        .toLowerCase()
-        .split(/[^\p{L}\p{N}_-]+/u)
-        .map((item) => item.trim())
-        .filter((item) => item.length >= 2),
-    ),
-  ];
-}
-
 function tokenizeLineWords(line: string): string[] {
-  return [
-    ...new Set(
-      line
-        .toLowerCase()
-        .split(/[^\p{L}\p{N}_-]+/u)
-        .map((word) => word.trim())
-        .filter((word) => word.length >= 3),
-    ),
-  ];
+  return tokenizeSearchTerms(line, { minLength: 3 });
 }
 
 function createQueryProfile(query: string): QueryProfile | null {
-  const tokens = tokenizeQuery(query);
+  const tokens = tokenizeSearchTerms(query);
   if (tokens.length === 0) return null;
 
   const partialTokens = [

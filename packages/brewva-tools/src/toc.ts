@@ -1,8 +1,10 @@
-import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { basename, extname, join, relative, resolve } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { basename, extname, relative, resolve } from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import ts from "typescript";
+import { escapeRegexLiteral, tokenizeSearchTerms } from "./shared/query.js";
+import { DEFAULT_SKIPPED_WORKSPACE_DIRS, walkWorkspaceFiles } from "./shared/workspace-walk.js";
 import {
   readSourceTextWithCache,
   registerTocSourceCacheRuntime,
@@ -15,7 +17,6 @@ import { defineTool } from "./utils/tool.js";
 
 const TOC_EVENT_TYPE = "tool_toc_query";
 const JS_TS_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
-const SKIP_DIRS = new Set([".git", "node_modules", "dist", "build", ".next", "coverage"]);
 const MAX_CACHE_SESSIONS = 64;
 const MAX_CACHE_ENTRIES_PER_SESSION = 512;
 const DEFAULT_TOC_SEARCH_LIMIT = 8;
@@ -630,72 +631,13 @@ function resolveAbsolutePath(baseDir: string, target: string): string {
 }
 
 function walkTocFiles(paths: string[]): { files: string[]; scopeOverflow: boolean } {
-  const seen = new Set<string>();
-  const files: string[] = [];
-  let scopeOverflow = false;
-  const visit = (target: string): void => {
-    if (scopeOverflow) return;
-    let canonicalTarget = target;
-    try {
-      canonicalTarget = realpathSync(target);
-    } catch {
-      canonicalTarget = target;
-    }
-    if (seen.has(canonicalTarget)) return;
-    seen.add(canonicalTarget);
-
-    let stats: import("node:fs").Stats;
-    try {
-      stats = statSync(canonicalTarget);
-    } catch {
-      return;
-    }
-
-    if (stats.isDirectory()) {
-      let entries: Array<import("node:fs").Dirent>;
-      try {
-        entries = readdirSync(canonicalTarget, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const entry of entries) {
-        if (scopeOverflow) return;
-        if (entry.name.startsWith(".") && entry.name !== ".config") continue;
-        if (entry.isDirectory() && SKIP_DIRS.has(entry.name)) continue;
-        visit(join(canonicalTarget, entry.name));
-      }
-      return;
-    }
-
-    if (stats.isFile() && supportsToc(canonicalTarget)) {
-      if (files.length >= MAX_TOC_SEARCH_CANDIDATE_FILES) {
-        scopeOverflow = true;
-        return;
-      }
-      files.push(canonicalTarget);
-    }
-  };
-
-  for (const path of paths) {
-    visit(path);
-  }
-  return { files: files.toSorted(), scopeOverflow };
-}
-
-function tokenizeQuery(query: string): string[] {
-  return [
-    ...new Set(
-      query
-        .toLowerCase()
-        .split(/[^\p{L}\p{N}_-]+/u)
-        .map((token) => token.trim())
-        .filter((token) => token.length >= 2),
-    ),
-  ];
-}
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const { files, overflow } = walkWorkspaceFiles({
+    roots: paths,
+    maxFiles: MAX_TOC_SEARCH_CANDIDATE_FILES,
+    isMatch: (filePath) => supportsToc(filePath),
+    skippedDirs: DEFAULT_SKIPPED_WORKSPACE_DIRS,
+  });
+  return { files: files.toSorted(), scopeOverflow: overflow };
 }
 
 function splitSearchTerms(value: string): string[] {
@@ -713,9 +655,10 @@ function splitSearchTerms(value: string): string[] {
 
 function hasWordBoundaryMatch(value: string, token: string): boolean {
   if (!value || !token) return false;
-  return new RegExp(`(^|[^\\p{L}\\p{N}_-])${escapeRegex(token)}($|[^\\p{L}\\p{N}_-])`, "iu").test(
-    value,
-  );
+  return new RegExp(
+    `(^|[^\\p{L}\\p{N}_-])${escapeRegexLiteral(token)}($|[^\\p{L}\\p{N}_-])`,
+    "iu",
+  ).test(value);
 }
 
 function scoreField(query: string, tokens: string[], field: string | null | undefined): number {
@@ -1224,7 +1167,7 @@ export function createTocTools(options?: { runtime?: BrewvaToolRuntime }): ToolD
       const sessionId = getToolSessionId(ctx);
       const sessionKey = resolveTocSessionKey(sessionId);
       const query = params.query.trim().toLowerCase();
-      const tokens = tokenizeQuery(query);
+      const tokens = tokenizeSearchTerms(query);
       const limit = params.limit ?? DEFAULT_TOC_SEARCH_LIMIT;
 
       if (tokens.length === 0) {
