@@ -318,6 +318,31 @@ describe("deliberation cognition artifacts", () => {
     ).toBeNull();
   });
 
+  test("parseReferenceNoteContent stops field parsing before the free-form body", () => {
+    const parsed = parseReferenceNoteContent(
+      [
+        "[ReferenceNote]",
+        "profile: reference_note",
+        "title: Verification Notes",
+        "summary: Keep the checklist short",
+        "",
+        "body text without separators",
+        "another free-form line",
+      ].join("\n"),
+    );
+
+    expect(parsed).toEqual({
+      profile: "reference_note",
+      title: "Verification Notes",
+      summary: "Keep the checklist short",
+      fields: {
+        profile: "reference_note",
+        title: "Verification Notes",
+        summary: "Keep the checklist short",
+      },
+    });
+  });
+
   test("selectCognitionArtifactsForPrompt uses BM25-style local ranking instead of raw overlap count", async () => {
     const workspace = createTestWorkspace("deliberation-cognition-ranking");
 

@@ -66,6 +66,11 @@ export interface CognitionArtifactSelection {
   matchedTerms: string[];
 }
 
+interface SectionedPacketLine {
+  key: string;
+  value: string | string[] | null | undefined;
+}
+
 // Cognition artifacts live outside the kernel, so their persistence should not
 // block the runtime event loop while proposals are being admitted.
 
@@ -267,93 +272,21 @@ function extractSelectionTerms(text: string, options: { dedupe?: boolean } = {})
   return terms;
 }
 
-export function buildStatusSummaryPacketContent(input: {
-  summaryKind: string;
-  status: string;
+function buildSectionedPacketContent(input: {
+  header: string;
+  lines: readonly SectionedPacketLine[];
   fields?: StatusSummaryField[];
-}): string {
-  const lines = [
-    "[StatusSummary]",
-    "profile: status_summary",
-    `summary_kind: ${normalizeSummaryValue(input.summaryKind)}`,
-    `status: ${normalizeSummaryValue(input.status)}`,
-  ];
-
-  for (const field of input.fields ?? []) {
-    const key = field.key.trim();
-    if (key.length === 0) continue;
-    lines.push(`${key}: ${normalizeSummaryValue(field.value)}`);
-  }
-
-  return lines.join("\n");
-}
-
-export function buildProcedureNoteContent(input: {
-  noteKind: string;
-  lessonKey?: string | null;
-  pattern?: string | null;
-  recommendation: string;
-  fields?: StatusSummaryField[];
-}): string {
-  const lines = [
-    "[ProcedureNote]",
-    "profile: procedure_note",
-    `note_kind: ${normalizeSummaryValue(input.noteKind)}`,
-    `lesson_key: ${normalizeSummaryValue(input.lessonKey ?? null)}`,
-    `pattern: ${normalizeSummaryValue(input.pattern ?? null)}`,
-    `recommendation: ${normalizeSummaryValue(input.recommendation)}`,
-  ];
-
-  for (const field of input.fields ?? []) {
-    const key = field.key.trim();
-    if (key.length === 0) continue;
-    lines.push(`${key}: ${normalizeSummaryValue(field.value)}`);
-  }
-
-  return lines.join("\n");
-}
-
-export function buildEpisodeNoteContent(input: {
-  episodeKind: string;
-  focus?: string | null;
-  nextAction?: string | null;
-  blockedOn?: string | string[] | null;
-  fields?: StatusSummaryField[];
-}): string {
-  const lines = [
-    "[EpisodeNote]",
-    "profile: episode_note",
-    `episode_kind: ${normalizeSummaryValue(input.episodeKind)}`,
-    `focus: ${normalizeSummaryValue(input.focus ?? null)}`,
-    `next_action: ${normalizeSummaryValue(input.nextAction ?? null)}`,
-    `blocked_on: ${normalizeSummaryValue(input.blockedOn ?? null)}`,
-  ];
-
-  for (const field of input.fields ?? []) {
-    const key = field.key.trim();
-    if (key.length === 0) continue;
-    lines.push(`${key}: ${normalizeSummaryValue(field.value)}`);
-  }
-
-  return lines.join("\n");
-}
-
-export function buildReferenceNoteContent(input: {
-  title: string;
-  summary?: string | null;
   body?: string | null;
-  fields?: StatusSummaryField[];
 }): string {
-  const lines = [
-    "[ReferenceNote]",
-    "profile: reference_note",
-    `title: ${normalizeSummaryValue(input.title)}`,
-    `summary: ${normalizeSummaryValue(input.summary ?? null)}`,
-  ];
-
+  const lines = [`[${input.header}]`];
+  for (const line of input.lines) {
+    lines.push(`${line.key}: ${normalizeSummaryValue(line.value)}`);
+  }
   for (const field of input.fields ?? []) {
     const key = field.key.trim();
-    if (key.length === 0) continue;
+    if (key.length === 0) {
+      continue;
+    }
     lines.push(`${key}: ${normalizeSummaryValue(field.value)}`);
   }
 
@@ -365,28 +298,119 @@ export function buildReferenceNoteContent(input: {
   return lines.join("\n");
 }
 
-export function parseStatusSummaryPacketContent(content: string): ParsedStatusSummaryPacket | null {
+function parseSectionedPacketFields(
+  content: string,
+  expectedHeader: string,
+  options: {
+    stopOnInvalidLine?: boolean;
+  } = {},
+): Record<string, string> | null {
   const text = content.trim();
-  if (!text.startsWith("[StatusSummary]")) {
+  if (!text.startsWith(`[${expectedHeader}]`)) {
     return null;
   }
 
   const fields: Record<string, string> = {};
-  let profile: string | null = null;
-  let summaryKind: string | null = null;
-  let status: string | null = null;
-
   for (const line of text.split("\n").slice(1)) {
     const separatorIndex = line.indexOf(":");
-    if (separatorIndex <= 0) continue;
+    if (separatorIndex <= 0) {
+      if (options.stopOnInvalidLine) {
+        break;
+      }
+      continue;
+    }
     const key = line.slice(0, separatorIndex).trim();
     const value = line.slice(separatorIndex + 1).trim();
-    if (!key) continue;
+    if (!key) {
+      continue;
+    }
     fields[key] = value;
-    if (key === "profile") profile = value || null;
-    if (key === "summary_kind") summaryKind = value || null;
-    if (key === "status") status = value || null;
   }
+  return fields;
+}
+
+export function buildStatusSummaryPacketContent(input: {
+  summaryKind: string;
+  status: string;
+  fields?: StatusSummaryField[];
+}): string {
+  return buildSectionedPacketContent({
+    header: "StatusSummary",
+    lines: [
+      { key: "profile", value: "status_summary" },
+      { key: "summary_kind", value: input.summaryKind },
+      { key: "status", value: input.status },
+    ],
+    fields: input.fields,
+  });
+}
+
+export function buildProcedureNoteContent(input: {
+  noteKind: string;
+  lessonKey?: string | null;
+  pattern?: string | null;
+  recommendation: string;
+  fields?: StatusSummaryField[];
+}): string {
+  return buildSectionedPacketContent({
+    header: "ProcedureNote",
+    lines: [
+      { key: "profile", value: "procedure_note" },
+      { key: "note_kind", value: input.noteKind },
+      { key: "lesson_key", value: input.lessonKey ?? null },
+      { key: "pattern", value: input.pattern ?? null },
+      { key: "recommendation", value: input.recommendation },
+    ],
+    fields: input.fields,
+  });
+}
+
+export function buildEpisodeNoteContent(input: {
+  episodeKind: string;
+  focus?: string | null;
+  nextAction?: string | null;
+  blockedOn?: string | string[] | null;
+  fields?: StatusSummaryField[];
+}): string {
+  return buildSectionedPacketContent({
+    header: "EpisodeNote",
+    lines: [
+      { key: "profile", value: "episode_note" },
+      { key: "episode_kind", value: input.episodeKind },
+      { key: "focus", value: input.focus ?? null },
+      { key: "next_action", value: input.nextAction ?? null },
+      { key: "blocked_on", value: input.blockedOn ?? null },
+    ],
+    fields: input.fields,
+  });
+}
+
+export function buildReferenceNoteContent(input: {
+  title: string;
+  summary?: string | null;
+  body?: string | null;
+  fields?: StatusSummaryField[];
+}): string {
+  return buildSectionedPacketContent({
+    header: "ReferenceNote",
+    lines: [
+      { key: "profile", value: "reference_note" },
+      { key: "title", value: input.title },
+      { key: "summary", value: input.summary ?? null },
+    ],
+    fields: input.fields,
+    body: input.body,
+  });
+}
+
+export function parseStatusSummaryPacketContent(content: string): ParsedStatusSummaryPacket | null {
+  const fields = parseSectionedPacketFields(content, "StatusSummary");
+  if (!fields) {
+    return null;
+  }
+  const profile = fields.profile || null;
+  const summaryKind = fields.summary_kind || null;
+  const status = fields.status || null;
 
   if (profile !== "status_summary") {
     return null;
@@ -401,31 +425,15 @@ export function parseStatusSummaryPacketContent(content: string): ParsedStatusSu
 }
 
 export function parseProcedureNoteContent(content: string): ParsedProcedureNotePacket | null {
-  const text = content.trim();
-  if (!text.startsWith("[ProcedureNote]")) {
+  const fields = parseSectionedPacketFields(content, "ProcedureNote");
+  if (!fields) {
     return null;
   }
-
-  const fields: Record<string, string> = {};
-  let profile: string | null = null;
-  let noteKind: string | null = null;
-  let lessonKey: string | null = null;
-  let pattern: string | null = null;
-  let recommendation: string | null = null;
-
-  for (const line of text.split("\n").slice(1)) {
-    const separatorIndex = line.indexOf(":");
-    if (separatorIndex <= 0) continue;
-    const key = line.slice(0, separatorIndex).trim();
-    const value = line.slice(separatorIndex + 1).trim();
-    if (!key) continue;
-    fields[key] = value;
-    if (key === "profile") profile = value || null;
-    if (key === "note_kind") noteKind = value || null;
-    if (key === "lesson_key") lessonKey = value || null;
-    if (key === "pattern") pattern = value || null;
-    if (key === "recommendation") recommendation = value || null;
-  }
+  const profile = fields.profile || null;
+  const noteKind = fields.note_kind || null;
+  const lessonKey = fields.lesson_key || null;
+  const pattern = fields.pattern || null;
+  const recommendation = fields.recommendation || null;
 
   if (profile !== "procedure_note") {
     return null;
@@ -442,31 +450,15 @@ export function parseProcedureNoteContent(content: string): ParsedProcedureNoteP
 }
 
 export function parseEpisodeNoteContent(content: string): ParsedEpisodeNotePacket | null {
-  const text = content.trim();
-  if (!text.startsWith("[EpisodeNote]")) {
+  const fields = parseSectionedPacketFields(content, "EpisodeNote");
+  if (!fields) {
     return null;
   }
-
-  const fields: Record<string, string> = {};
-  let profile: string | null = null;
-  let episodeKind: string | null = null;
-  let focus: string | null = null;
-  let nextAction: string | null = null;
-  let blockedOn: string | null = null;
-
-  for (const line of text.split("\n").slice(1)) {
-    const separatorIndex = line.indexOf(":");
-    if (separatorIndex <= 0) continue;
-    const key = line.slice(0, separatorIndex).trim();
-    const value = line.slice(separatorIndex + 1).trim();
-    if (!key) continue;
-    fields[key] = value;
-    if (key === "profile") profile = value || null;
-    if (key === "episode_kind") episodeKind = value || null;
-    if (key === "focus") focus = value || null;
-    if (key === "next_action") nextAction = value || null;
-    if (key === "blocked_on") blockedOn = value || null;
-  }
+  const profile = fields.profile || null;
+  const episodeKind = fields.episode_kind || null;
+  const focus = fields.focus || null;
+  const nextAction = fields.next_action || null;
+  const blockedOn = fields.blocked_on || null;
 
   if (profile !== "episode_note") {
     return null;
@@ -483,27 +475,15 @@ export function parseEpisodeNoteContent(content: string): ParsedEpisodeNotePacke
 }
 
 export function parseReferenceNoteContent(content: string): ParsedReferenceNotePacket | null {
-  const text = content.trim();
-  if (!text.startsWith("[ReferenceNote]")) {
+  const fields = parseSectionedPacketFields(content, "ReferenceNote", {
+    stopOnInvalidLine: true,
+  });
+  if (!fields) {
     return null;
   }
-
-  const fields: Record<string, string> = {};
-  let profile: string | null = null;
-  let title: string | null = null;
-  let summary: string | null = null;
-
-  for (const line of text.split("\n").slice(1)) {
-    const separatorIndex = line.indexOf(":");
-    if (separatorIndex <= 0) break;
-    const key = line.slice(0, separatorIndex).trim();
-    const value = line.slice(separatorIndex + 1).trim();
-    if (!key) continue;
-    fields[key] = value;
-    if (key === "profile") profile = value || null;
-    if (key === "title") title = value || null;
-    if (key === "summary") summary = value || null;
-  }
+  const profile = fields.profile || null;
+  const title = fields.title || null;
+  const summary = fields.summary || null;
 
   if (profile !== "reference_note") {
     return null;
