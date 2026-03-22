@@ -22,6 +22,143 @@ function event(input: {
 }
 
 describe("workflow derivation", () => {
+  test("derives discovery, strategy, qa, ship, and retro artifacts from skill outputs", () => {
+    const status = deriveWorkflowStatus({
+      sessionId: "workflow-expanded-stages",
+      events: [
+        event({
+          id: "evt-discovery",
+          type: "skill_completed",
+          sessionId: "workflow-expanded-stages",
+          timestamp: 100,
+          payload: {
+            skillName: "discovery",
+            outputKeys: [
+              "problem_frame",
+              "user_pains",
+              "scope_recommendation",
+              "design_seed",
+              "open_questions",
+            ],
+            outputs: {
+              problem_frame: "Operators need a fast view of workflow readiness drift.",
+              user_pains: ["Hard to see missing stages", "Runtime state is easy to misread"],
+              scope_recommendation: "Start with advisory-only state.",
+              design_seed: "Project workflow state from durable events.",
+              open_questions: ["Should ship depend on explicit QA?"],
+            },
+          },
+        }),
+        event({
+          id: "evt-strategy",
+          type: "skill_completed",
+          sessionId: "workflow-expanded-stages",
+          timestamp: 110,
+          payload: {
+            skillName: "strategy-review",
+            outputKeys: ["strategy_review", "scope_decision", "strategic_risks"],
+            outputs: {
+              strategy_review: "Hold scope around advisory workflow visibility first.",
+              scope_decision: "Do not build a kernel-owned planner.",
+              strategic_risks: ["Too much duplicated workflow state"],
+            },
+          },
+        }),
+        event({
+          id: "evt-review",
+          type: "skill_completed",
+          sessionId: "workflow-expanded-stages",
+          timestamp: 120,
+          payload: {
+            skillName: "review",
+            outputKeys: ["review_report", "review_findings", "merge_decision"],
+            outputs: {
+              review_report: "Review is clean.",
+              review_findings: [],
+              merge_decision: "ready",
+            },
+          },
+        }),
+        event({
+          id: "evt-qa",
+          type: "skill_completed",
+          sessionId: "workflow-expanded-stages",
+          timestamp: 130,
+          payload: {
+            skillName: "qa",
+            outputKeys: ["qa_report", "qa_findings", "qa_verdict", "qa_artifacts"],
+            outputs: {
+              qa_report: "Exercised the main path and confirmed the UI state.",
+              qa_findings: [],
+              qa_verdict: "pass",
+              qa_artifacts: ["snapshots/main-flow.json"],
+            },
+          },
+        }),
+        event({
+          id: "evt-verify",
+          type: "verification_outcome_recorded",
+          sessionId: "workflow-expanded-stages",
+          timestamp: 140,
+          payload: {
+            outcome: "pass",
+            level: "standard",
+            failedChecks: [],
+            evidenceFreshness: "fresh",
+          },
+        }),
+        event({
+          id: "evt-ship",
+          type: "skill_completed",
+          sessionId: "workflow-expanded-stages",
+          timestamp: 150,
+          payload: {
+            skillName: "ship",
+            outputKeys: ["ship_report", "release_checklist", "ship_decision"],
+            outputs: {
+              ship_report: "Ready for PR handoff.",
+              release_checklist: ["CI green", "Review ready"],
+              ship_decision: "ready",
+            },
+          },
+        }),
+        event({
+          id: "evt-retro",
+          type: "skill_completed",
+          sessionId: "workflow-expanded-stages",
+          timestamp: 160,
+          payload: {
+            skillName: "retro",
+            outputKeys: ["retro_summary", "retro_findings", "followup_recommendation"],
+            outputs: {
+              retro_summary: "The workflow chain stayed visible end-to-end.",
+              retro_findings: ["Need a stronger QA protocol next."],
+              followup_recommendation: "Make QA consume risk_register by default.",
+            },
+          },
+        }),
+      ],
+    });
+
+    expect(status.readiness.discovery).toBe("ready");
+    expect(status.readiness.strategy).toBe("ready");
+    expect(status.readiness.review).toBe("ready");
+    expect(status.readiness.qa).toBe("ready");
+    expect(status.readiness.verification).toBe("ready");
+    expect(status.readiness.ship).toBe("ready");
+    expect(status.readiness.retro).toBe("ready");
+    expect(status.artifacts.map((artifact) => artifact.kind)).toEqual(
+      expect.arrayContaining([
+        "discovery",
+        "strategy_review",
+        "qa",
+        "ship",
+        "retro",
+        "release_readiness",
+      ]),
+    );
+  });
+
   test("marks superseded planning artifacts as stale and links the replacement", () => {
     const artifacts = deriveWorkflowArtifacts([
       event({
@@ -104,8 +241,9 @@ describe("workflow derivation", () => {
 
     expect(status.readiness.implementation).toBe("ready");
     expect(status.readiness.review).toBe("stale");
+    expect(status.readiness.qa).toBe("missing");
     expect(status.readiness.verification).toBe("stale");
-    expect(status.readiness.release).toBe("blocked");
+    expect(status.readiness.ship).toBe("blocked");
     expect(status.readiness.blockers).toContain(
       "Review artifact is stale after later workspace mutations.",
     );
@@ -152,8 +290,9 @@ describe("workflow derivation", () => {
 
     expect(status.readiness.implementation).toBe("pending");
     expect(status.readiness.review).toBe("ready");
+    expect(status.readiness.qa).toBe("missing");
     expect(status.readiness.verification).toBe("ready");
-    expect(status.readiness.release).toBe("blocked");
+    expect(status.readiness.ship).toBe("blocked");
     expect(status.readiness.blockers).toContain(
       "Pending worker results require merge/apply (2 results).",
     );
@@ -206,13 +345,13 @@ describe("workflow derivation", () => {
     });
 
     expect(status.readiness.implementation).toBe("pending");
-    expect(status.readiness.release).toBe("blocked");
+    expect(status.readiness.ship).toBe("blocked");
     expect(status.readiness.blockers).toContain(
       "Worker patch result is pending parent merge/apply.",
     );
   });
 
-  test("does not mark release freshness stale from unrelated blocker wording", () => {
+  test("does not mark release readiness freshness stale from unrelated blocker wording", () => {
     const status = deriveWorkflowStatus({
       sessionId: "workflow-release-freshness",
       blockers: [
@@ -253,9 +392,67 @@ describe("workflow derivation", () => {
     });
 
     expect(status.readiness.review).toBe("ready");
+    expect(status.readiness.qa).toBe("missing");
     expect(status.readiness.verification).toBe("ready");
-    expect(status.readiness.release).toBe("blocked");
+    expect(status.readiness.ship).toBe("blocked");
     expect(status.artifacts[0]?.kind).toBe("release_readiness");
     expect(status.artifacts[0]?.freshness).toBe("unknown");
+  });
+
+  test("marks ship artifacts stale when later QA or verification evidence changes release posture", () => {
+    const status = deriveWorkflowStatus({
+      sessionId: "workflow-ship-stale",
+      events: [
+        event({
+          id: "evt-review",
+          type: "skill_completed",
+          sessionId: "workflow-ship-stale",
+          timestamp: 100,
+          payload: {
+            skillName: "review",
+            outputKeys: ["review_report", "review_findings", "merge_decision"],
+            outputs: {
+              review_report: "Looks good.",
+              review_findings: [],
+              merge_decision: "ready",
+            },
+          },
+        }),
+        event({
+          id: "evt-ship",
+          type: "skill_completed",
+          sessionId: "workflow-ship-stale",
+          timestamp: 110,
+          payload: {
+            skillName: "ship",
+            outputKeys: ["ship_report", "release_checklist", "ship_decision"],
+            outputs: {
+              ship_report: "Ready for merge.",
+              release_checklist: ["Merge after verification"],
+              ship_decision: "ready",
+            },
+          },
+        }),
+        event({
+          id: "evt-verify",
+          type: "verification_outcome_recorded",
+          sessionId: "workflow-ship-stale",
+          timestamp: 120,
+          payload: {
+            outcome: "pass",
+            level: "standard",
+            failedChecks: [],
+            evidenceFreshness: "fresh",
+          },
+        }),
+      ],
+    });
+
+    expect(status.readiness.ship).toBe("stale");
+    expect(status.readiness.blockers).toContain(
+      "Ship artifact is stale after later workflow evidence changed.",
+    );
+    const shipArtifact = status.artifacts.find((artifact) => artifact.kind === "ship");
+    expect(shipArtifact?.freshness).toBe("stale");
   });
 });

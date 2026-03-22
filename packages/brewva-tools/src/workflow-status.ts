@@ -25,13 +25,15 @@ function laneVerdict(status: WorkflowLaneStatus): "pass" | "fail" | "inconclusiv
 
 function overallVerdict(input: {
   review: WorkflowLaneStatus;
+  qa: WorkflowLaneStatus;
   verification: WorkflowLaneStatus;
-  release: "missing" | "ready" | "blocked";
+  ship: WorkflowLaneStatus;
 }): "pass" | "fail" | "inconclusive" {
-  if (input.release === "ready") return "pass";
+  if (input.ship === "ready") return "pass";
   if (
-    input.release === "blocked" ||
+    input.ship === "blocked" ||
     laneVerdict(input.review) === "fail" ||
+    laneVerdict(input.qa) === "fail" ||
     laneVerdict(input.verification) === "fail"
   ) {
     return "fail";
@@ -67,7 +69,7 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
     promptSnippet:
       "Inspect workflow readiness, blockers, and the latest derived artifacts before deciding the next move.",
     promptGuidelines: [
-      "Use this to understand whether planning is present, implementation is blocked, and whether review, verification, or release readiness is missing, stale, or blocked.",
+      "Use this to understand whether discovery and strategy are present, whether implementation is blocked or pending, and whether review, QA, verification, ship, or retro state needs attention.",
       "Treat the result as advisory state; it does not force a workflow path.",
     ],
     parameters: Type.Object({
@@ -93,8 +95,9 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
       const readiness = snapshot.readiness;
       const verdict = overallVerdict({
         review: readiness.review,
+        qa: readiness.qa,
         verification: readiness.verification,
-        release: readiness.release,
+        ship: readiness.ship,
       });
       const includeArtifacts = params.include_artifacts === true;
       const historyLimit = Math.max(1, Math.min(20, params.history_limit ?? 5));
@@ -103,11 +106,15 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
         "[WorkflowStatus]",
         `updated_at: ${formatTimestamp(snapshot.updatedAt)}`,
         `current_workspace_revision: ${snapshot.currentWorkspaceRevision ?? "unavailable"}`,
+        `discovery: ${readiness.discovery}`,
+        `strategy: ${readiness.strategy}`,
         `planning: ${readiness.planning}`,
         `implementation: ${readiness.implementation}`,
         `review: ${readiness.review}`,
+        `qa: ${readiness.qa}`,
         `verification: ${readiness.verification}`,
-        `release: ${readiness.release}`,
+        `ship: ${readiness.ship}`,
+        `retro: ${readiness.retro}`,
         `pending_worker_results: ${snapshot.pendingWorkerResults}`,
       ];
 

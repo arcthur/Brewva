@@ -21,8 +21,13 @@ describe("repository catalog contracts", () => {
     const runtime = createCleanRuntime();
 
     expect(runtime.skills.get("repository-analysis")).toBeDefined();
+    expect(runtime.skills.get("discovery")).toBeDefined();
+    expect(runtime.skills.get("strategy-review")).toBeDefined();
     expect(runtime.skills.get("design")).toBeDefined();
     expect(runtime.skills.get("implementation")).toBeDefined();
+    expect(runtime.skills.get("qa")).toBeDefined();
+    expect(runtime.skills.get("ship")).toBeDefined();
+    expect(runtime.skills.get("retro")).toBeDefined();
     expect(runtime.skills.get("runtime-forensics")).toBeDefined();
     expect(runtime.skills.get("skill-authoring")).toBeDefined();
   });
@@ -58,5 +63,52 @@ describe("repository catalog contracts", () => {
     });
 
     expect(missing).toEqual([]);
+  });
+
+  test("core workflow skills declare the documented handoff graph", () => {
+    const discovery = parseSkillDocument(`${repoRoot()}/skills/core/discovery/SKILL.md`, "core");
+    const strategyReview = parseSkillDocument(
+      `${repoRoot()}/skills/core/strategy-review/SKILL.md`,
+      "core",
+    );
+    const design = parseSkillDocument(`${repoRoot()}/skills/core/design/SKILL.md`, "core");
+    const qa = parseSkillDocument(`${repoRoot()}/skills/core/qa/SKILL.md`, "core");
+    const ship = parseSkillDocument(`${repoRoot()}/skills/core/ship/SKILL.md`, "core");
+    const retro = parseSkillDocument(`${repoRoot()}/skills/core/retro/SKILL.md`, "core");
+    const selfImprove = parseSkillDocument(
+      `${repoRoot()}/skills/meta/self-improve/SKILL.md`,
+      "meta",
+    );
+
+    expect(listSkillOutputs(discovery.contract)).toEqual(
+      expect.arrayContaining(["problem_frame", "scope_recommendation", "design_seed"]),
+    );
+    expect(strategyReview.contract.consumes).toEqual(
+      expect.arrayContaining([
+        "problem_frame",
+        "user_pains",
+        "scope_recommendation",
+        "design_seed",
+        "open_questions",
+      ]),
+    );
+    expect(design.contract.consumes).toEqual(
+      expect.arrayContaining(["strategy_review", "scope_decision", "strategic_risks"]),
+    );
+    expect(qa.contract.consumes).toEqual(
+      expect.arrayContaining(["risk_register", "review_report", "review_findings"]),
+    );
+    expect(ship.contract.consumes).toEqual(
+      expect.arrayContaining(["qa_report", "qa_verdict", "review_report", "verification_evidence"]),
+    );
+    expect(retro.contract.consumes).toEqual(
+      expect.arrayContaining(["ship_report", "ship_decision", "qa_report"]),
+    );
+    expect(selfImprove.contract.consumes).toEqual(
+      expect.arrayContaining(["retro_findings", "ship_report"]),
+    );
+    expect(listSkillOutputs(strategyReview.contract)).toEqual(
+      expect.arrayContaining(["strategy_review", "scope_decision", "strategic_risks"]),
+    );
   });
 });

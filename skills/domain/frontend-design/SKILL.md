@@ -38,6 +38,7 @@ execution_hints:
     - grep
     - skill_complete
 references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
   - references/bento-paradigm.md
   - references/creative-arsenal.md
 consumes:
@@ -77,6 +78,32 @@ Produce:
 - `ui_direction`: visual thesis and interaction posture
 - `ui_spec`: structure, state behavior, and implementation-critical details
 
+## Interaction Protocol
+
+- Re-ground on the product goal, user moment, and existing visual language
+  before proposing a new direction.
+- Ask only when the design system constraints, target surface, or product intent
+  are too ambiguous to support a confident recommendation.
+- Recommend one clear direction instead of presenting several interchangeable UI
+  moods.
+
+## Design Protocol
+
+- Start from user goal and interaction pressure, not from aesthetics in
+  isolation.
+- Define hierarchy, density, state behavior, and motion as one system.
+- Avoid generic polish language. If a choice matters, say what it should look
+  like, how it should behave, and what problem it solves.
+- When the product already has a strong design language, extend it instead of
+  showing off novelty for its own sake.
+
+## Handoff Expectations
+
+- `ui_direction` should capture the visual thesis, interaction posture, and the
+  product feeling implementation must preserve.
+- `ui_spec` should be concrete enough that implementation can build the screen
+  or component without reinventing layout, hierarchy, or state transitions.
+
 ## Stop Conditions
 
 - the request is pure implementation with no design ambiguity
@@ -88,6 +115,7 @@ Produce:
 - defaulting to generic UI patterns with no point of view
 - describing aesthetics without state behavior
 - ignoring existing product language when working inside an established surface
+- treating component names as a substitute for real visual direction
 
 ## Example
 

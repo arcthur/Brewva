@@ -88,8 +88,10 @@ describe("system: workflow recovery", () => {
       expect(injected.text).toContain("planning: ready");
       expect(injected.text).toContain("implementation: ready");
       expect(injected.text).toContain("review: ready");
+      expect(injected.text).toContain("qa: missing");
       expect(injected.text).toContain("verification: ready");
-      expect(injected.text).toContain("release: ready");
+      expect(injected.text).toContain("ship: ready");
+      expect(injected.text).toContain("retro: missing");
       expect(injected.text).toContain("[WorkingProjection]");
       expect(injected.text).toContain(
         "workflow.design: state=ready; freshness=unknown; Recover workflow artifacts from tape.",

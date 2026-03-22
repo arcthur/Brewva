@@ -37,11 +37,15 @@ export function buildWorkflowAdvisoryBlock(snapshot: WorkflowStatusSnapshot): st
   const lines = [
     "[WorkflowAdvisory]",
     "advisory_only: true",
+    `discovery: ${snapshot.readiness.discovery}`,
+    `strategy: ${snapshot.readiness.strategy}`,
     `planning: ${snapshot.readiness.planning}`,
     `implementation: ${snapshot.readiness.implementation}`,
     `review: ${snapshot.readiness.review}`,
+    `qa: ${snapshot.readiness.qa}`,
     `verification: ${snapshot.readiness.verification}`,
-    `release: ${snapshot.readiness.release}`,
+    `ship: ${snapshot.readiness.ship}`,
+    `retro: ${snapshot.readiness.retro}`,
   ];
 
   if (snapshot.pendingWorkerResults > 0) {

@@ -41,6 +41,7 @@ execution_hints:
     - ledger_query
     - skill_complete
 references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
   - references/conventional-commits.md
   - references/history-search-cheatsheet.md
   - references/rebase-workflow.md
@@ -86,6 +87,35 @@ Produce:
 - `commit_plan`: atomic grouping and message approach
 - `git_operation_report`: what changed and what remains risky
 
+## Interaction Protocol
+
+- Re-ground on branch, worktree cleanliness, upstream relationship, and the
+  exact Git outcome requested before running commands.
+- Ask only when the requested operation is ambiguous, likely destructive, or
+  would affect unrelated work in the tree.
+- Prefer the safest operation that still satisfies the request. Do not default
+  to history rewriting because it produces a prettier graph.
+
+## Safety Protocol
+
+- Treat destructive or hard-to-rollback operations as explicit exceptions, not
+  as routine follow-ups.
+- Separate history inspection, commit shaping, and branch mutation conceptually.
+  Each should have its own justification.
+- Keep unrelated edits out of one commit plan unless the user explicitly wants a
+  squash-style result and the work is genuinely inseparable.
+- Explain residual risk clearly when the worktree is dirty, upstream is unclear,
+  or branch history has already diverged.
+
+## Handoff Expectations
+
+- `git_context` should capture branch position, worktree state, upstream status,
+  and any constraints that affect safe Git operations.
+- `commit_plan` should define atomic groupings, commit order, and message shape
+  so the operator can execute without recomputing intent.
+- `git_operation_report` should record what was done, what remains risky, and
+  what follow-up action is still needed.
+
 ## Stop Conditions
 
 - the requested operation is destructive or hard to roll back without explicit intent
@@ -97,6 +127,7 @@ Produce:
 - rewriting history by default
 - mixing unrelated changes into one commit plan
 - treating Git style detection as a substitute for change review
+- using Git cleanup to paper over unclear engineering boundaries
 
 ## Example
 

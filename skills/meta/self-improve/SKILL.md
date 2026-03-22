@@ -48,6 +48,7 @@ execution_hints:
     - process
     - skill_complete
 references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
   - references/promotion-targets.md
 scripts:
   - scripts/activator.sh
@@ -58,6 +59,8 @@ scripts:
   - scripts/setup.sh
 consumes:
   - review_report
+  - retro_findings
+  - ship_report
   - runtime_trace
   - artifact_findings
 requires: []
@@ -95,6 +98,35 @@ Produce:
 - `learning_backlog`: ranked fixes or experiments
 - `improvement_plan`: the smallest next iteration to test
 
+## Interaction Protocol
+
+- Re-ground on the repeated failure pattern or recurring friction before naming
+  a systemic lesson.
+- Ask only when the repetition claim, scope of the learning loop, or intended
+  improvement target is too weak to support a credible hypothesis.
+- Do not interrupt active incident response with learning work unless the user
+  explicitly wants retrospective analysis now.
+
+## Learning Protocol
+
+- Require repetition or a clearly recurring pattern. One-off bugs are not
+  automatically system lessons.
+- Distinguish evidence, hypothesis, and intervention. The fact that something
+  hurt twice does not yet prove the root process flaw.
+- Prefer the smallest next improvement that can validate the hypothesis instead
+  of proposing broad architecture rewrites.
+- Route high-value improvements toward the right home: skill instructions,
+  shared project rules, runtime docs, or targeted tooling.
+
+## Handoff Expectations
+
+- `improvement_hypothesis` should name the recurring weakness, the evidence for
+  repetition, and why it is systemic rather than isolated.
+- `learning_backlog` should rank concrete fixes or experiments by leverage and
+  implementation cost.
+- `improvement_plan` should define the smallest next change that can test the
+  hypothesis or reduce repeated waste.
+
 ## Stop Conditions
 
 - there is only a single isolated incident
@@ -106,6 +138,7 @@ Produce:
 - calling every bug a system-level lesson
 - proposing broad rewrites without evidence of repetition
 - mixing retrospective learning with immediate incident response
+- turning vague dissatisfaction into a fake systemic pattern
 
 ## Example
 

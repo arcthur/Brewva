@@ -81,7 +81,7 @@ Tool registry source: `packages/brewva-tools/src/index.ts`
 
 ## Skill Surface
 
-- Core capability skills: `repository-analysis`, `design`, `implementation`, `debugging`, `review`
+- Core capability skills: `repository-analysis`, `discovery`, `strategy-review`, `design`, `implementation`, `debugging`, `review`, `qa`, `ship`, `retro`
 - Domain capability skills: `agent-browser`, `frontend-design`, `github`, `telegram`, `structured-extraction`, `goal-loop`
 - Operator skills: `runtime-forensics`, `git-ops`
 - Meta skills: `skill-authoring`, `self-improve`
@@ -94,6 +94,13 @@ Runtime-owned phases, not public skills:
 - finishing
 - recovery
 - compose-style chain planning
+
+One common public delivery chain is:
+
+`discovery -> strategy-review -> design -> implementation -> review -> qa -> ship -> retro`
+
+The chain is a skill-layer convention, not a runtime-owned DAG. Verification,
+workflow readiness, and ship advisories remain kernel-derived surfaces.
 
 Skill roots:
 

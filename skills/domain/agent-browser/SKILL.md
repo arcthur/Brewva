@@ -50,6 +50,7 @@ execution_hints:
     - exec
     - skill_complete
 references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
   - references/diff-verification.md
   - references/eval-safe-mode.md
   - references/security-baseline.md
@@ -106,6 +107,32 @@ Produce:
 - `browser_observations`: what was seen, what changed, and what that implies
 - `browser_artifacts`: snapshots, screenshots, PDFs, saved state files, or captured evidence references
 
+## Interaction Protocol
+
+- Re-ground on the URL, user goal, and exact evidence target before opening or
+  mutating the browser state.
+- Ask only when auth, target environment, or the intended workflow cannot be
+  inferred safely from the request.
+- Prefer one observation or action per loop step. If uncertainty increases,
+  refresh the snapshot instead of pushing forward blindly.
+
+## Evidence Protocol
+
+- Treat screenshots and snapshots as raw evidence, not conclusions by
+  themselves.
+- Explain what changed, what was expected, and why the observed state matters.
+- Use browser actions to answer a specific question. Do not browse just to see
+  what happens.
+- Save artifacts when they will help downstream implementation, review, or bug
+  reports continue from the same observed state.
+
+## Handoff Expectations
+
+- `browser_observations` should tell downstream skills what was seen, what was
+  attempted, what changed, and what the evidence implies.
+- `browser_artifacts` should include the concrete evidence handles that a later
+  step can reopen, compare, or cite without repeating the same browser session.
+
 ## Stop Conditions
 
 - the environment cannot access the target page
@@ -118,6 +145,7 @@ Produce:
 - taking multiple browser actions without a fresh snapshot after uncertainty increases
 - treating screenshots as proof without explanation
 - replacing repository analysis with page poking
+- continuing UI exploration when static code or docs already answer the question
 
 ## Example
 

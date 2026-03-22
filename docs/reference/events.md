@@ -120,11 +120,12 @@ Instead, workflow artifacts and readiness are derived from existing durable
 events and session state:
 
 - `skill_completed`
-  - design, execution-plan, implementation, and review artifacts
+  - discovery, strategy-review, design, execution-plan, implementation,
+    review, QA, ship, and retro artifacts
 - `verification_outcome_recorded`
   - verification artifact freshness and block/ready outcome
 - `verification_write_marked`
-  - implementation-side write signal that can stale downstream review and
+  - implementation-side write signal that can stale downstream review, QA, and
     verification artifacts
 - `subagent_*`
   - delegated patch-worker lifecycle signals
@@ -195,8 +196,10 @@ properties such as:
 parent-controlled adoption outcome for child-produced patches.
 
 Workflow readiness is computed from those durable families plus current task
-blockers and pending worker-result state. The resulting readiness summary is
-advisory-only and may not prescribe a single legal workflow path.
+blockers and pending worker-result state. The resulting advisory summary covers
+discovery, strategy, planning, implementation, review, QA, verification, ship,
+and retro visibility. It remains advisory-only and may not prescribe a single
+legal workflow path.
 
 `tool_call_normalized` and `tool_call_normalization_failed` record whether the
 pre-parse compatibility layer repaired or rejected a tool call.

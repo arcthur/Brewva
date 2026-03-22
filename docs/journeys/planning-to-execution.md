@@ -4,6 +4,13 @@
 
 Move from intent to verifiable completion with explicit skill contracts.
 
+One common public-skill chain is:
+
+`discovery -> strategy-review -> design -> implementation -> review -> qa -> ship -> retro`
+
+The runtime does not force this sequence. It derives readiness and verification
+state while the model chooses when to move between these skills.
+
 ```mermaid
 flowchart TD
   A["User Intent"] --> B["Select Skill Candidates"]
@@ -23,7 +30,7 @@ flowchart TD
 2. Execute tool calls under contract constraints
 3. Collect evidence and satisfy verification requirements
 4. Complete the active skill with required outputs
-5. Let derived workflow artifacts update planning/review/verification state
+5. Let derived workflow artifacts update discovery/strategy/planning/review/QA/verification/ship state
 6. Use `workflow_status` or the default advisory context to inspect the current
    chain without forcing the next step
 

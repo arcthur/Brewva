@@ -124,8 +124,9 @@ Notes:
 
 These tools are the preferred path for evidence reuse and replay inspection.
 
-`workflow_status` is advisory only. It derives readiness from runtime events and
-session state, but it does not prescribe or enforce a workflow path.
+`workflow_status` is advisory only. It derives stage visibility and ship
+readiness from runtime events and session state, but it does not prescribe or
+enforce a workflow path.
 
 ### Browser Automation
 
@@ -321,12 +322,12 @@ There is no public skill-cascade or chain-control tool.
 
 Derived workflow inspection surface.
 
-- summarizes planning, implementation, review, verification, and release
-  readiness
+- summarizes discovery, strategy, planning, implementation, review, QA,
+  verification, ship, and retro state
 - implementation may be `pending` when delegated patch results still await
   parent merge/apply
-- reports blockers such as stale review/verification, task blockers, and
-  pending worker results
+- reports blockers such as stale review/QA/verification/ship evidence, task
+  blockers, and pending worker results
 - optionally includes recent derived workflow artifacts
 
 This tool is advisory. It does not create a runtime-owned chain planner and it

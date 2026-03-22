@@ -47,6 +47,7 @@ execution_hints:
     - skill_chain_control
     - skill_complete
 references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
   - references/convergence-patterns.md
   - references/handoff-patterns.md
 consumes:
@@ -90,6 +91,53 @@ On each pass, produce:
 - `iteration_report`: slice attempted, evidence, status
 - `convergence_report`: converged, blocked, or max-runs reached
 
+### Step 4: Decide ownership of the next move
+
+Explicitly decide whether the next move remains in `goal-loop` or should be
+handed to design, implementation, debugging, runtime-forensics, or a runtime
+verification/scheduling path.
+
+## Interaction Protocol
+
+- Ask only when the user has not defined the objective, cadence, convergence
+  signal, or termination rule well enough to make the loop safe.
+- Re-ground every loop proposal in concrete observables: what each run will try,
+  what evidence counts as progress, and what condition ends the loop.
+- Do not sell continuity as magic persistence. Explain what the runtime will
+  observe and why repeated execution is justified.
+
+## Convergence Protocol
+
+- Use explicit, observable convergence predicates. If no predicate exists, stop
+  and route back to design.
+- Treat `maxRuns` as a safety rail, not the business definition of done.
+- Prefer loops only when the work truly spans multiple bounded runs. If one
+  normal execution can finish the task, do not create a loop.
+- Each run must either narrow uncertainty, advance the objective, or produce a
+  better handoff packet. If it does none of these, the loop is not converging.
+
+## Handoff Expectations
+
+- `loop_contract` should name the goal, cadence, convergence condition, run
+  limit, and recovery path so later runs do not reinterpret the loop.
+- `continuation_plan` should define what the next run attempts, what evidence it
+  must gather, and what owner takes over if that run fails.
+- `iteration_report` should capture the objective slice attempted, evidence
+  observed, and whether the run changed the convergence state.
+- `convergence_report` should say one of three things clearly: converged,
+  blocked with reason, or still active with the next narrowing step.
+
+## Exit And Ownership Protocol
+
+- Stay in `goal-loop` only while it is coordinating bounded continuity.
+- Hand off to `design` when the contract or success definition is unclear.
+- Hand off to `implementation` when the next run is straightforward execution
+  work.
+- Hand off to `debugging` or `runtime-forensics` when failure evidence, not loop
+  coordination, is the primary problem.
+- Return to `goal-loop` only when a new plan, new evidence, or a narrower next
+  action justifies another run.
+
 ## Stop Conditions
 
 - the task should finish in one normal execution pass
@@ -101,6 +149,7 @@ On each pass, produce:
 - routing ordinary complex implementation here by default
 - writing "keep trying until done" with no explicit convergence logic
 - using continuity as a substitute for clear delivery boundaries
+- bouncing ownership between skills without new evidence or a changed plan
 
 ## Example
 

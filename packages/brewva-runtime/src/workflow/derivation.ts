@@ -12,11 +12,16 @@ import type { BrewvaEventRecord } from "../types.js";
 import type { JsonValue } from "../utils/json.js";
 
 export const WORKFLOW_ARTIFACT_KINDS = [
+  "discovery",
+  "strategy_review",
   "design",
   "execution_plan",
   "implementation",
   "review",
+  "qa",
   "verification",
+  "ship",
+  "retro",
   "worker_patch",
   "release_readiness",
 ] as const;
@@ -24,7 +29,8 @@ export const WORKFLOW_ARTIFACT_KINDS = [
 export type WorkflowArtifactKind = (typeof WORKFLOW_ARTIFACT_KINDS)[number];
 export type WorkflowArtifactFreshness = "fresh" | "stale" | "unknown";
 export type WorkflowArtifactState = "ready" | "blocked" | "pending";
-export type WorkflowLaneStatus = "missing" | "ready" | "stale" | "blocked";
+export type WorkflowPresenceStatus = "missing" | "ready";
+export type WorkflowLaneStatus = "missing" | "ready" | "stale" | "blocked" | "pending";
 export type WorkflowPlanningStatus = "missing" | "ready";
 export type WorkflowImplementationStatus = "missing" | "pending" | "ready" | "blocked";
 
@@ -46,11 +52,15 @@ export interface WorkflowArtifact {
 
 export interface WorkflowReadiness {
   sessionId: string;
+  discovery: WorkflowPresenceStatus;
+  strategy: WorkflowPresenceStatus;
   planning: WorkflowPlanningStatus;
   implementation: WorkflowImplementationStatus;
   review: WorkflowLaneStatus;
+  qa: WorkflowLaneStatus;
   verification: WorkflowLaneStatus;
-  release: Exclude<WorkflowLaneStatus, "stale">;
+  ship: WorkflowLaneStatus;
+  retro: WorkflowPresenceStatus;
   blockers: string[];
   latestArtifactIds: string[];
   updatedAt: number;
@@ -198,6 +208,87 @@ function extractSkillCompletedArtifacts(event: BrewvaEventRecord): WorkflowDraft
     ...Object.keys(outputs).map((key) => key.trim()),
   ]);
   const drafts: WorkflowDraftArtifact[] = [];
+  const problemFrame = outputs.problem_frame;
+  const userPains = outputs.user_pains;
+  const scopeRecommendation = outputs.scope_recommendation;
+  const designSeed = outputs.design_seed;
+  const openQuestions = outputs.open_questions;
+  if (
+    problemFrame !== undefined ||
+    userPains !== undefined ||
+    scopeRecommendation !== undefined ||
+    designSeed !== undefined ||
+    openQuestions !== undefined
+  ) {
+    const painCount = readStringArray(userPains).length;
+    const questionCount = readStringArray(openQuestions).length;
+    const discoverySummaryParts = [
+      compactJsonValue(problemFrame) ??
+        compactJsonValue(scopeRecommendation) ??
+        "Discovery artifact recorded.",
+    ];
+    if (painCount > 0) {
+      discoverySummaryParts.push(`user_pains=${painCount}`);
+    }
+    if (questionCount > 0) {
+      discoverySummaryParts.push(`open_questions=${questionCount}`);
+    }
+    drafts.push(
+      createDraftArtifact({
+        event,
+        kind: "discovery",
+        summary: discoverySummaryParts.join("; "),
+        sourceSkillNames: skillName ? [skillName] : [],
+        outputKeys: [
+          "problem_frame",
+          "user_pains",
+          "scope_recommendation",
+          "design_seed",
+          "open_questions",
+        ].filter((key) => outputs[key] !== undefined),
+        metadata: {
+          source: "skill_completed",
+          sourceSkillName: skillName ?? null,
+          outputKeys,
+          userPainCount: painCount,
+          openQuestionCount: questionCount,
+        },
+      }),
+    );
+  }
+
+  const strategyReview = outputs.strategy_review;
+  const scopeDecision = outputs.scope_decision;
+  const strategicRisks = outputs.strategic_risks;
+  if (strategyReview !== undefined || scopeDecision !== undefined || strategicRisks !== undefined) {
+    const riskCount = readStringArray(strategicRisks).length;
+    const strategySummaryParts = [
+      compactJsonValue(strategyReview) ??
+        compactJsonValue(scopeDecision) ??
+        "Strategy review artifact recorded.",
+    ];
+    if (riskCount > 0) {
+      strategySummaryParts.push(`strategic_risks=${riskCount}`);
+    }
+    drafts.push(
+      createDraftArtifact({
+        event,
+        kind: "strategy_review",
+        summary: strategySummaryParts.join("; "),
+        sourceSkillNames: skillName ? [skillName] : [],
+        outputKeys: ["strategy_review", "scope_decision", "strategic_risks"].filter(
+          (key) => outputs[key] !== undefined,
+        ),
+        metadata: {
+          source: "skill_completed",
+          sourceSkillName: skillName ?? null,
+          outputKeys,
+          strategicRiskCount: riskCount,
+        },
+      }),
+    );
+  }
+
   const designSpec = outputs.design_spec;
   if (designSpec !== undefined) {
     drafts.push(
@@ -295,6 +386,116 @@ function extractSkillCompletedArtifacts(event: BrewvaEventRecord): WorkflowDraft
           sourceSkillName: skillName ?? null,
           outputKeys,
           mergeDecision: mergeDecision ?? null,
+        },
+      }),
+    );
+  }
+
+  const qaReport = outputs.qa_report;
+  const qaFindings = outputs.qa_findings;
+  const qaVerdict = readString(outputs.qa_verdict);
+  const qaArtifacts = outputs.qa_artifacts;
+  if (
+    qaReport !== undefined ||
+    qaFindings !== undefined ||
+    qaVerdict ||
+    qaArtifacts !== undefined
+  ) {
+    const qaSummaryParts = [];
+    if (qaVerdict) {
+      qaSummaryParts.push(`verdict=${qaVerdict}`);
+    }
+    const qaText =
+      compactJsonValue(qaReport) ??
+      compactJsonValue(qaFindings) ??
+      compactJsonValue(qaArtifacts) ??
+      "QA artifact recorded.";
+    qaSummaryParts.push(qaText);
+    drafts.push(
+      createDraftArtifact({
+        event,
+        kind: "qa",
+        summary: qaSummaryParts.join("; "),
+        sourceSkillNames: skillName ? [skillName] : [],
+        outputKeys: ["qa_report", "qa_findings", "qa_verdict", "qa_artifacts"].filter(
+          (key) => outputs[key] !== undefined,
+        ),
+        freshness: "fresh",
+        state: qaVerdict === "pass" || !qaVerdict ? "ready" : "blocked",
+        metadata: {
+          source: "skill_completed",
+          sourceSkillName: skillName ?? null,
+          outputKeys,
+          qaVerdict: qaVerdict ?? null,
+        },
+      }),
+    );
+  }
+
+  const shipReport = outputs.ship_report;
+  const releaseChecklist = outputs.release_checklist;
+  const shipDecision = readString(outputs.ship_decision);
+  if (shipReport !== undefined || releaseChecklist !== undefined || shipDecision) {
+    const shipSummaryParts = [];
+    if (shipDecision) {
+      shipSummaryParts.push(`decision=${shipDecision}`);
+    }
+    const shipText =
+      compactJsonValue(shipReport) ??
+      compactJsonValue(releaseChecklist) ??
+      "Ship artifact recorded.";
+    shipSummaryParts.push(shipText);
+    drafts.push(
+      createDraftArtifact({
+        event,
+        kind: "ship",
+        summary: shipSummaryParts.join("; "),
+        sourceSkillNames: skillName ? [skillName] : [],
+        outputKeys: ["ship_report", "release_checklist", "ship_decision"].filter(
+          (key) => outputs[key] !== undefined,
+        ),
+        freshness: "fresh",
+        state:
+          shipDecision === "blocked"
+            ? "blocked"
+            : shipDecision === "needs_follow_up"
+              ? "pending"
+              : "ready",
+        metadata: {
+          source: "skill_completed",
+          sourceSkillName: skillName ?? null,
+          outputKeys,
+          shipDecision: shipDecision ?? null,
+        },
+      }),
+    );
+  }
+
+  const retroSummary = outputs.retro_summary;
+  const retroFindings = outputs.retro_findings;
+  const followupRecommendation = outputs.followup_recommendation;
+  if (
+    retroSummary !== undefined ||
+    retroFindings !== undefined ||
+    followupRecommendation !== undefined
+  ) {
+    drafts.push(
+      createDraftArtifact({
+        event,
+        kind: "retro",
+        summary:
+          compactJsonValue(retroSummary) ??
+          compactJsonValue(followupRecommendation) ??
+          compactJsonValue(retroFindings) ??
+          "Retro artifact recorded.",
+        sourceSkillNames: skillName ? [skillName] : [],
+        outputKeys: ["retro_summary", "retro_findings", "followup_recommendation"].filter(
+          (key) => outputs[key] !== undefined,
+        ),
+        metadata: {
+          source: "skill_completed",
+          sourceSkillName: skillName ?? null,
+          outputKeys,
         },
       }),
     );
@@ -492,6 +693,16 @@ export function deriveWorkflowArtifacts(events: readonly BrewvaEventRecord[]): W
       (artifact.kind === "worker_patch" && source === WORKER_RESULTS_APPLIED_EVENT_TYPE);
     return isWriteSide ? Math.max(max, artifact.producedAt) : max;
   }, 0);
+  const latestShipDependencyAt = drafts.reduce((max, artifact) => {
+    const source = artifact.metadata?.source;
+    const isShipDependency =
+      artifact.kind === "implementation" ||
+      artifact.kind === "review" ||
+      artifact.kind === "qa" ||
+      artifact.kind === "verification" ||
+      (artifact.kind === "worker_patch" && source === WORKER_RESULTS_APPLIED_EVENT_TYPE);
+    return isShipDependency ? Math.max(max, artifact.producedAt) : max;
+  }, 0);
 
   const byKind = new Map<WorkflowArtifactKind, WorkflowArtifact[]>();
   for (const artifact of drafts) {
@@ -518,16 +729,26 @@ export function deriveWorkflowArtifacts(events: readonly BrewvaEventRecord[]): W
       }
 
       if (
-        (artifact.kind === "review" || artifact.kind === "verification") &&
+        (artifact.kind === "review" ||
+          artifact.kind === "qa" ||
+          artifact.kind === "verification") &&
         latestWriteAt > artifact.producedAt
       ) {
         artifact.freshness = "stale";
         continue;
       }
 
+      if (artifact.kind === "ship" && latestShipDependencyAt > artifact.producedAt) {
+        artifact.freshness = "stale";
+        continue;
+      }
+
       if (
+        artifact.kind === "discovery" ||
+        artifact.kind === "strategy_review" ||
         artifact.kind === "design" ||
         artifact.kind === "execution_plan" ||
+        artifact.kind === "retro" ||
         artifact.kind === "release_readiness"
       ) {
         artifact.freshness = artifact.freshness === "stale" ? "stale" : "unknown";
@@ -569,6 +790,10 @@ function determinePlanningStatus(
   return "ready";
 }
 
+function determinePresenceStatus(artifact: WorkflowArtifact | undefined): WorkflowPresenceStatus {
+  return artifact ? "ready" : "missing";
+}
+
 function determineImplementationStatus(
   latestArtifacts: Partial<Record<WorkflowArtifactKind, WorkflowArtifact>>,
 ): WorkflowImplementationStatus {
@@ -589,7 +814,55 @@ function determineLaneStatus(
 ): WorkflowLaneStatus {
   if (!artifact) return missingStatus;
   if (artifact.state === "blocked") return "blocked";
+  if (artifact.state === "pending") return "pending";
   if (artifact.freshness === "stale") return "stale";
+  return "ready";
+}
+
+function determineShipStatus(input: {
+  latestArtifacts: Partial<Record<WorkflowArtifactKind, WorkflowArtifact>>;
+  implementation: WorkflowImplementationStatus;
+  review: WorkflowLaneStatus;
+  qa: WorkflowLaneStatus;
+  verification: WorkflowLaneStatus;
+  hasBlockers: boolean;
+}): WorkflowLaneStatus {
+  const shipArtifact = input.latestArtifacts.ship;
+  const prerequisitesMissing = input.review === "missing" || input.verification === "missing";
+  const prerequisitesBlocked =
+    input.implementation === "blocked" ||
+    input.implementation === "pending" ||
+    input.review === "blocked" ||
+    input.review === "stale" ||
+    input.qa === "blocked" ||
+    input.qa === "stale" ||
+    input.verification === "blocked" ||
+    input.verification === "stale" ||
+    input.hasBlockers;
+
+  if (!shipArtifact) {
+    if (prerequisitesMissing) return "missing";
+    if (prerequisitesBlocked) return "blocked";
+    return "ready";
+  }
+
+  if (shipArtifact.state === "blocked") return "blocked";
+  if (shipArtifact.state === "pending") return "pending";
+  if (shipArtifact.freshness === "stale") return "stale";
+  if (prerequisitesMissing) return "missing";
+  if (prerequisitesBlocked) return "blocked";
+  return "ready";
+}
+
+function determineRetroStatus(
+  latestArtifacts: Partial<Record<WorkflowArtifactKind, WorkflowArtifact>>,
+): WorkflowPresenceStatus {
+  const retro = latestArtifacts.retro;
+  if (!retro) return "missing";
+  const ship = latestArtifacts.ship;
+  if (ship && retro.producedAt < ship.producedAt) {
+    return "missing";
+  }
   return "ready";
 }
 
@@ -605,11 +878,16 @@ function createReleaseArtifact(input: {
   latestArtifacts: Partial<Record<WorkflowArtifactKind, WorkflowArtifact>>;
 }): WorkflowArtifact {
   const latestCoreArtifacts = [
+    input.latestArtifacts.discovery,
+    input.latestArtifacts.strategy_review,
     input.latestArtifacts.design,
     input.latestArtifacts.execution_plan,
     input.latestArtifacts.implementation,
     input.latestArtifacts.review,
+    input.latestArtifacts.qa,
     input.latestArtifacts.verification,
+    input.latestArtifacts.ship,
+    input.latestArtifacts.retro,
     input.latestArtifacts.worker_patch,
   ].filter((artifact): artifact is WorkflowArtifact => Boolean(artifact));
 
@@ -624,7 +902,7 @@ function createReleaseArtifact(input: {
     input.readiness.blockers.length > 0
       ? ` Blockers: ${formatPreviewList(input.readiness.blockers, 2)}.`
       : "";
-  const summary = `Release readiness is ${input.readiness.release}.${blockerPreview}`;
+  const summary = `Ship readiness is ${input.readiness.ship}.${blockerPreview}`;
 
   return {
     artifactId: `wfart:release_readiness:${input.sessionId}:${input.updatedAt}`,
@@ -636,21 +914,24 @@ function createReleaseArtifact(input: {
     outputKeys: [],
     producedAt: input.updatedAt,
     freshness:
-      input.readiness.release === "ready"
+      input.readiness.ship === "ready"
         ? "fresh"
-        : input.readiness.review === "stale" || input.readiness.verification === "stale"
+        : input.readiness.ship === "stale" ||
+            input.readiness.review === "stale" ||
+            input.readiness.qa === "stale" ||
+            input.readiness.verification === "stale"
           ? "stale"
           : "unknown",
     state:
-      input.readiness.release === "ready"
+      input.readiness.ship === "ready"
         ? "ready"
-        : input.readiness.release === "blocked"
+        : input.readiness.ship === "blocked"
           ? "blocked"
           : "pending",
     workspaceRevision: input.currentWorkspaceRevision,
     metadata: {
       source: "workflow_status",
-      release: input.readiness.release,
+      ship: input.readiness.ship,
       blockers: input.readiness.blockers,
     },
   };
@@ -729,8 +1010,11 @@ export function deriveWorkflowStatus(input: DeriveWorkflowStatusInput): Workflow
   );
 
   const planning = determinePlanningStatus(latestArtifacts);
+  const discovery = determinePresenceStatus(latestArtifacts.discovery);
+  const strategy = determinePresenceStatus(latestArtifacts.strategy_review);
   let implementation = determineImplementationStatus(latestArtifacts);
   const review = determineLaneStatus(latestArtifacts.review);
+  const qa = determineLaneStatus(latestArtifacts.qa);
   const verification = determineLaneStatus(latestArtifacts.verification);
 
   if (pendingWorkerResults > 0 && implementation !== "blocked") {
@@ -759,6 +1043,17 @@ export function deriveWorkflowStatus(input: DeriveWorkflowStatusInput): Workflow
     blockers.push("Verification artifact is stale after later workspace mutations.");
   }
 
+  if (latestArtifacts.qa?.state === "blocked") {
+    const qaVerdict = readString(latestArtifacts.qa.metadata?.qaVerdict);
+    blockers.push(
+      qaVerdict === "needs_fixes"
+        ? "QA verdict requires fixes before shipping."
+        : "QA lane is blocked.",
+    );
+  } else if (qa === "stale") {
+    blockers.push("QA artifact is stale after later workspace mutations.");
+  }
+
   if (latestArtifacts.worker_patch?.state === "blocked") {
     blockers.push(compactText(latestArtifacts.worker_patch.summary, 200));
   } else if (latestArtifacts.worker_patch?.state === "pending" && pendingWorkerResults === 0) {
@@ -771,12 +1066,25 @@ export function deriveWorkflowStatus(input: DeriveWorkflowStatusInput): Workflow
   }
 
   const dedupedBlockers = dedupeBlockers(blockers);
-  const release: WorkflowReadiness["release"] =
-    review === "missing" || verification === "missing"
-      ? "missing"
-      : dedupedBlockers.length > 0 || implementation === "blocked" || implementation === "pending"
-        ? "blocked"
-        : "ready";
+  const ship = determineShipStatus({
+    latestArtifacts,
+    implementation,
+    review,
+    qa,
+    verification,
+    hasBlockers: dedupedBlockers.length > 0,
+  });
+  const retro = determineRetroStatus(latestArtifacts);
+
+  if (latestArtifacts.ship?.state === "blocked") {
+    blockers.push(compactText(latestArtifacts.ship.summary, 200));
+  } else if (latestArtifacts.ship?.state === "pending") {
+    blockers.push(compactText(latestArtifacts.ship.summary, 200));
+  } else if (ship === "stale") {
+    blockers.push("Ship artifact is stale after later workflow evidence changed.");
+  }
+
+  const finalBlockers = dedupeBlockers(blockers);
   const latestObservedAt = Math.max(
     input.events.reduce((max, event) => Math.max(max, event.timestamp), 0),
     artifacts[0]?.producedAt ?? 0,
@@ -785,19 +1093,28 @@ export function deriveWorkflowStatus(input: DeriveWorkflowStatusInput): Workflow
 
   const readiness: WorkflowReadiness = {
     sessionId: input.sessionId,
+    discovery,
+    strategy,
     planning,
     implementation,
     review,
+    qa,
     verification,
-    release,
-    blockers: dedupedBlockers,
+    ship,
+    retro,
+    blockers: finalBlockers,
     latestArtifactIds: uniqueStrings(
       [
+        latestArtifacts.discovery?.artifactId,
+        latestArtifacts.strategy_review?.artifactId,
         latestArtifacts.design?.artifactId,
         latestArtifacts.execution_plan?.artifactId,
         latestArtifacts.implementation?.artifactId,
         latestArtifacts.review?.artifactId,
+        latestArtifacts.qa?.artifactId,
         latestArtifacts.verification?.artifactId,
+        latestArtifacts.ship?.artifactId,
+        latestArtifacts.retro?.artifactId,
         latestArtifacts.worker_patch?.artifactId,
       ].filter((value): value is string => Boolean(value)),
     ),

@@ -45,6 +45,8 @@ execution_hints:
     - grep
     - ledger_query
     - skill_complete
+references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
 consumes:
   - change_set
   - verification_evidence
@@ -84,6 +86,35 @@ Produce:
 - `issue_brief` or `pr_brief`: actionable artifact draft
 - `ci_findings`: failed checks and next actions when CI is involved
 
+## Interaction Protocol
+
+- Re-ground on repository, branch or PR, and requested GitHub action before
+  issuing `gh` commands.
+- Ask only when repository identity, permissions, or the intended write action
+  are ambiguous enough to risk operating on the wrong target.
+- Prefer one coherent GitHub workflow per request instead of mixing issue, PR,
+  and CI actions opportunistically.
+
+## Mode Selection Protocol
+
+- Use `issue` when the main artifact is problem framing, triage, or actionable
+  follow-up work.
+- Use `pull_request` when the center of gravity is a diff, merge path, or PR
+  communication.
+- Use `ci` when the decisive evidence lives in checks, workflow runs, or job
+  logs.
+- Use `api_query` only when the request is metadata-heavy and not well served by
+  the higher-level workflows.
+
+## Handoff Expectations
+
+- `github_context` should identify the exact repository, auth posture, and
+  target object so later steps do not risk drifting to a different repo or PR.
+- `issue_brief` and `pr_brief` should be concrete, actionable, and tied to real
+  acceptance or verification signals.
+- `ci_findings` should separate failing checks, likely causes, and recommended
+  next actions instead of dumping raw workflow output.
+
 ## Stop Conditions
 
 - `gh` is unavailable or unauthenticated
@@ -95,6 +126,7 @@ Produce:
 - splitting issue triage and PR flow into separate public skills
 - acting on the wrong repository context
 - creating vague issues or PRs with no acceptance or verification signal
+- treating raw CI logs as the final artifact instead of synthesizing next actions
 
 ## Example
 

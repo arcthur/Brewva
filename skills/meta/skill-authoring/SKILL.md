@@ -45,6 +45,7 @@ execution_hints:
     - ledger_query
     - skill_complete
 references:
+  - references/authored-behavior.md
   - references/output-patterns.md
   - references/workflows.md
 scripts:
@@ -62,7 +63,8 @@ requires: []
 
 ## Intent
 
-Create or revise skills so they have clear semantic territory, stable artifacts, and the right routing posture.
+Create or revise skills so they have clear semantic territory, stable artifacts,
+behavior-rich instructions, and the right routing posture.
 
 ## Trigger
 
@@ -87,7 +89,17 @@ Produce:
   `hard_ceiling`, and execution hints
 - `skill_scaffold`: a minimal SKILL skeleton and required resources
 
-### Step 3: Use the current scaffolding tools when structure matters
+### Step 3: Author the behavior, not just the schema
+
+Ensure the skill body makes the specialist usable in practice:
+
+- define the role posture and what it optimizes for
+- add an interaction protocol for when to ask, proceed, or re-ground
+- add a decision protocol so the model knows how to choose, rank, or classify
+- add handoff expectations so downstream skills receive useful artifacts
+- make stop conditions and escalation behavior explicit
+
+### Step 4: Use the current scaffolding tools when structure matters
 
 Use:
 
@@ -95,6 +107,24 @@ Use:
 - `scripts/fork_skill.py` to fork an existing skill into `project/overlays/<name>`
 - `scripts/quick_validate.py` before packaging
 - `scripts/package_skill.py` when a distributable bundle is needed
+
+## Interaction Protocol
+
+- Re-ground on the target skill territory, current contract shape, and why the
+  existing skill is insufficient before redesigning anything.
+- Ask only when the semantic boundary, routing posture, or intended outputs are
+  too unclear to produce a stable skill contract.
+- Prefer tightening an existing skill or overlay when it preserves catalog
+  clarity better than creating a new public skill.
+
+## Handoff Expectations
+
+- `skill_spec` should make the semantic territory and non-goals obvious to the
+  next maintainer.
+- `skill_contract` should capture the runtime-facing boundary cleanly enough
+  that implementation does not need to infer missing authority rules.
+- `skill_scaffold` should give a maintainer enough structure to finish the skill
+  body without reinventing workflow, resources, or artifact semantics.
 
 ## Stop Conditions
 
@@ -107,6 +137,8 @@ Use:
 - encoding lifecycle steps as public skills
 - creating a new skill when a mode or overlay would suffice
 - writing prompts with no durable artifact semantics
+- shipping contract-only skeletons that tell runtime what outputs exist but do
+  not tell the model how the specialist should behave
 
 ## Example
 

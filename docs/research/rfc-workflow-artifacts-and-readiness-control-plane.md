@@ -27,13 +27,14 @@ Stable implementation now includes:
 
 - derived workflow artifacts from durable events such as `skill_completed`,
   verification events, subagent lifecycle events, and worker adoption outcomes
-- readiness summaries for planning, implementation, review, verification, and
-  release
+- advisory workflow summaries for discovery, strategy, planning,
+  implementation, review, QA, verification, ship, and retro visibility
 - default `[WorkflowAdvisory]` context injection for model-facing advisory
   visibility
 - `workflow_status` as an explicit operator/model inspection tool
-- working projection entries such as `workflow.design`,
-  `workflow.execution_plan`, `workflow.review`, and `workflow.verification`
+- working projection entries such as `workflow.discovery`,
+  `workflow.strategy_review`, `workflow.design`, `workflow.review`,
+  `workflow.qa`, and `workflow.ship`
 - replay and restart rebuild coverage for workflow artifacts and readiness
 
 Stable references:

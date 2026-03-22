@@ -77,12 +77,20 @@ Implementation detail and system boundaries:
 
 ## Skill Surface
 
-- Core skills: `repository-analysis`, `design`, `implementation`, `debugging`, `review`
+- Core skills: `repository-analysis`, `discovery`, `strategy-review`, `design`, `implementation`, `debugging`, `review`, `qa`, `ship`, `retro`
 - Domain skills: `agent-browser`, `frontend-design`, `github`, `goal-loop`, `structured-extraction`, `telegram`
 - Operator skills: `git-ops`, `runtime-forensics`
 - Meta skills: `self-improve`, `skill-authoring`
 
 For taxonomy details and project overlays, see `docs/guide/features.md` and `docs/reference/skills.md`.
+
+One common delivery chain is:
+
+`discovery -> strategy-review -> design -> implementation -> review -> qa -> ship -> retro`
+
+This remains advisory and model-native. Runtime still owns verification,
+readiness, replay, and effect governance rather than a kernel-managed stage
+planner.
 
 ## Quick Start
 
