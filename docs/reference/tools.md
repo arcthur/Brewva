@@ -38,6 +38,7 @@ Default tools registered by `buildBrewvaTools()`:
 - `obs_slo_assert`
 - `obs_snapshot`
 - `ledger_query`
+- `iteration_fact`
 - `output_search`
 - `workflow_status`
 - `schedule_intent`
@@ -116,6 +117,7 @@ Notes:
 - `obs_slo_assert`
 - `obs_snapshot`
 - `ledger_query`
+- `iteration_fact`
 - `output_search`
 - `workflow_status`
 - `tape_handoff`
@@ -246,6 +248,46 @@ Behavior:
 - leases are budget-only
 - leases never widen effect authority
 - lease requests are clamped by the skill hard ceiling
+
+## `iteration_fact`
+
+Records or inspects durable objective iteration facts without creating a
+runtime-owned optimizer.
+
+Supported actions:
+
+- `record_metric`
+- `record_guard`
+- `record_decision`
+- `record_convergence`
+- `list`
+
+Canonical parameters vary by action:
+
+- `record_metric`
+  - `metric_key`, `value`, optional `unit`, `aggregation`, `sample_count`,
+    `iteration_key`, `evidence_refs`, `source`, `summary`
+- `record_guard`
+  - `guard_key`, `status`, optional `iteration_key`, `evidence_refs`, `source`,
+    `summary`
+- `record_decision`
+  - `iteration_key`, `decision`, `reason_code`, optional
+    `metric_observation_refs`, `guard_result_refs`, `rollback_receipt_ref`,
+    `mutation_receipt_ref`, `source`, `summary`
+- `record_convergence`
+  - `run_key`, `status`, `reason_code`, optional `predicate_ref`,
+    `evidence_refs`, `source`, `summary`
+- `list`
+  - optional `fact_kind`, `history_limit`, `metric_key`, `guard_key`,
+    `iteration_key`, `run_key`, `reason_code`
+
+Behavior:
+
+- only objective facts should be recorded
+- this tool does not prescribe the next step in a loop
+- fact history is durable and replay-visible through `runtime.events.*`
+- derived workflow artifacts may surface the latest fact family as advisory
+  working state
 
 ## `subagent_run` And `subagent_fanout`
 

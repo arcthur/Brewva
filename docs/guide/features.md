@@ -12,6 +12,7 @@
 - Event-first runtime persistence and replay
 - Cost observability and threshold-based budget alerts
 - Derived workflow artifacts and advisory readiness inspection
+- Objective iteration fact persistence and query for model-native optimization loops
 
 ## Tool Surface
 
@@ -47,6 +48,7 @@
 - `obs_slo_assert`
 - `obs_snapshot`
 - `ledger_query`
+- `iteration_fact`
 - `output_search`
 - `workflow_status`
 - `schedule_intent`

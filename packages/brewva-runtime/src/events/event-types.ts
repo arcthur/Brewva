@@ -10,6 +10,10 @@ export const TOOL_OUTPUT_ARTIFACT_PERSISTED_EVENT_TYPE = "tool_output_artifact_p
 export const OBSERVABILITY_QUERY_EXECUTED_EVENT_TYPE = "observability_query_executed" as const;
 export const OBSERVABILITY_ASSERTION_RECORDED_EVENT_TYPE =
   "observability_assertion_recorded" as const;
+export const ITERATION_METRIC_OBSERVED_EVENT_TYPE = "iteration_metric_observed" as const;
+export const ITERATION_GUARD_RECORDED_EVENT_TYPE = "iteration_guard_recorded" as const;
+export const ITERATION_DECISION_RECORDED_EVENT_TYPE = "iteration_decision_recorded" as const;
+export const ITERATION_CONVERGENCE_RECORDED_EVENT_TYPE = "iteration_convergence_recorded" as const;
 export const PROPOSAL_RECEIVED_EVENT_TYPE = "proposal_received" as const;
 export const PROPOSAL_DECIDED_EVENT_TYPE = "proposal_decided" as const;
 export const DECISION_RECEIPT_RECORDED_EVENT_TYPE = "decision_receipt_recorded" as const;
@@ -90,6 +94,10 @@ export const BREWVA_REGISTERED_EVENT_TYPES = [
   TOOL_OUTPUT_ARTIFACT_PERSISTED_EVENT_TYPE,
   OBSERVABILITY_QUERY_EXECUTED_EVENT_TYPE,
   OBSERVABILITY_ASSERTION_RECORDED_EVENT_TYPE,
+  ITERATION_METRIC_OBSERVED_EVENT_TYPE,
+  ITERATION_GUARD_RECORDED_EVENT_TYPE,
+  ITERATION_DECISION_RECORDED_EVENT_TYPE,
+  ITERATION_CONVERGENCE_RECORDED_EVENT_TYPE,
   PROPOSAL_RECEIVED_EVENT_TYPE,
   PROPOSAL_DECIDED_EVENT_TYPE,
   DECISION_RECEIPT_RECORDED_EVENT_TYPE,

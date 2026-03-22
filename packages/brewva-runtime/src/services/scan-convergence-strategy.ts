@@ -35,6 +35,7 @@ export const SCAN_CONVERGENCE_TOOL_RULES_BY_NAME = {
   ledger_query: staticRule("evidence_reuse"),
   output_search: staticRule("evidence_reuse"),
   workflow_status: staticRule("evidence_reuse"),
+  iteration_fact: staticRule("progress"),
   cost_view: staticRule("evidence_reuse"),
   obs_query: staticRule("evidence_reuse"),
   obs_slo_assert: staticRule("evidence_reuse"),

@@ -16,6 +16,10 @@ import {
 import type { ToolOutputDistillationEntry } from "./context/tool-output-distilled.js";
 import { SessionCostTracker } from "./cost/tracker.js";
 import {
+  ITERATION_CONVERGENCE_RECORDED_EVENT_TYPE,
+  ITERATION_DECISION_RECORDED_EVENT_TYPE,
+  ITERATION_GUARD_RECORDED_EVENT_TYPE,
+  ITERATION_METRIC_OBSERVED_EVENT_TYPE,
   TOOL_OUTPUT_DISTILLED_EVENT_TYPE,
   VERIFICATION_OUTCOME_RECORDED_EVENT_TYPE,
 } from "./events/event-types.js";
@@ -25,6 +29,41 @@ import {
   createToolGovernanceRegistry,
   getToolGovernanceResolution,
 } from "./governance/tool-governance.js";
+import {
+  applyFactWindow,
+  buildConvergenceReasonPayload,
+  buildGuardResultPayload,
+  buildIterationDecisionPayload,
+  buildMetricObservationPayload,
+  coerceConvergenceReasonPayload,
+  coerceGuardResultPayload,
+  coerceIterationDecisionPayload,
+  coerceMetricObservationPayload,
+  filterConvergenceReasonRecords,
+  filterGuardResultRecords,
+  filterIterationDecisionRecords,
+  filterMetricObservationRecords,
+  getConvergenceReasonEventQuery,
+  getGuardResultEventQuery,
+  getIterationDecisionEventQuery,
+  getMetricObservationEventQuery,
+  toConvergenceReasonRecord,
+  toGuardResultRecord,
+  toIterationDecisionRecord,
+  toMetricObservationRecord,
+  type ConvergenceReasonInput,
+  type ConvergenceReasonQuery,
+  type ConvergenceReasonRecord,
+  type GuardResultInput,
+  type GuardResultQuery,
+  type GuardResultRecord,
+  type IterationDecisionInput,
+  type IterationDecisionQuery,
+  type IterationDecisionRecord,
+  type MetricObservationInput,
+  type MetricObservationQuery,
+  type MetricObservationRecord,
+} from "./iteration/facts.js";
 import { EvidenceLedger } from "./ledger/evidence-ledger.js";
 import { ParallelBudgetManager } from "./parallel/budget.js";
 import { ParallelResultStore } from "./parallel/results.js";
@@ -478,6 +517,32 @@ export class BrewvaRuntime {
     record(input: RuntimeRecordEventInput): BrewvaEventRecord | undefined;
     query(sessionId: string, query?: BrewvaEventQuery): BrewvaEventRecord[];
     queryStructured(sessionId: string, query?: BrewvaEventQuery): BrewvaStructuredEvent[];
+    recordMetricObservation(
+      sessionId: string,
+      input: MetricObservationInput,
+    ): BrewvaEventRecord | undefined;
+    listMetricObservations(
+      sessionId: string,
+      query?: MetricObservationQuery,
+    ): MetricObservationRecord[];
+    recordGuardResult(sessionId: string, input: GuardResultInput): BrewvaEventRecord | undefined;
+    listGuardResults(sessionId: string, query?: GuardResultQuery): GuardResultRecord[];
+    recordIterationDecision(
+      sessionId: string,
+      input: IterationDecisionInput,
+    ): BrewvaEventRecord | undefined;
+    listIterationDecisions(
+      sessionId: string,
+      query?: IterationDecisionQuery,
+    ): IterationDecisionRecord[];
+    recordConvergenceReason(
+      sessionId: string,
+      input: ConvergenceReasonInput,
+    ): BrewvaEventRecord | undefined;
+    listConvergenceReasons(
+      sessionId: string,
+      query?: ConvergenceReasonQuery,
+    ): ConvergenceReasonRecord[];
     getTapeStatus(sessionId: string): TapeStatusState;
     getTapePressureThresholds(): TapeStatusState["thresholds"];
     recordTapeHandoff(
@@ -926,6 +991,17 @@ export class BrewvaRuntime {
         query: (sessionId, query) => this.eventPipeline.queryEvents(sessionId, query),
         queryStructured: (sessionId, query) =>
           this.eventPipeline.queryStructuredEvents(sessionId, query),
+        recordMetricObservation: (sessionId, input) =>
+          this.recordMetricObservation(sessionId, input),
+        listMetricObservations: (sessionId, query) => this.listMetricObservations(sessionId, query),
+        recordGuardResult: (sessionId, input) => this.recordGuardResult(sessionId, input),
+        listGuardResults: (sessionId, query) => this.listGuardResults(sessionId, query),
+        recordIterationDecision: (sessionId, input) =>
+          this.recordIterationDecision(sessionId, input),
+        listIterationDecisions: (sessionId, query) => this.listIterationDecisions(sessionId, query),
+        recordConvergenceReason: (sessionId, input) =>
+          this.recordConvergenceReason(sessionId, input),
+        listConvergenceReasons: (sessionId, query) => this.listConvergenceReasons(sessionId, query),
         getTapeStatus: (sessionId) => this.tapeService.getTapeStatus(sessionId),
         getTapePressureThresholds: () => this.tapeService.getPressureThresholds(),
         recordTapeHandoff: (sessionId, input) =>
@@ -1134,6 +1210,115 @@ export class BrewvaRuntime {
       commandsFresh,
       commandsStale,
     };
+  }
+
+  private recordMetricObservation(
+    sessionId: string,
+    input: MetricObservationInput,
+  ): BrewvaEventRecord | undefined {
+    const payload = coerceMetricObservationPayload(buildMetricObservationPayload(input));
+    if (!payload) return undefined;
+    return this.recordEvent({
+      sessionId,
+      type: ITERATION_METRIC_OBSERVED_EVENT_TYPE,
+      turn: input.turn,
+      timestamp: input.timestamp,
+      payload: payload as unknown as Record<string, unknown>,
+    });
+  }
+
+  private listMetricObservations(
+    sessionId: string,
+    query: MetricObservationQuery = {},
+  ): MetricObservationRecord[] {
+    const records = this.eventStore
+      .list(sessionId, getMetricObservationEventQuery(query))
+      .flatMap((event) => {
+        const record = toMetricObservationRecord(event);
+        return record ? [record] : [];
+      });
+    return applyFactWindow(filterMetricObservationRecords(records, query), query);
+  }
+
+  private recordGuardResult(
+    sessionId: string,
+    input: GuardResultInput,
+  ): BrewvaEventRecord | undefined {
+    const payload = coerceGuardResultPayload(buildGuardResultPayload(input));
+    if (!payload) return undefined;
+    return this.recordEvent({
+      sessionId,
+      type: ITERATION_GUARD_RECORDED_EVENT_TYPE,
+      turn: input.turn,
+      timestamp: input.timestamp,
+      payload: payload as unknown as Record<string, unknown>,
+    });
+  }
+
+  private listGuardResults(sessionId: string, query: GuardResultQuery = {}): GuardResultRecord[] {
+    const records = this.eventStore
+      .list(sessionId, getGuardResultEventQuery(query))
+      .flatMap((event) => {
+        const record = toGuardResultRecord(event);
+        return record ? [record] : [];
+      });
+    return applyFactWindow(filterGuardResultRecords(records, query), query);
+  }
+
+  private recordIterationDecision(
+    sessionId: string,
+    input: IterationDecisionInput,
+  ): BrewvaEventRecord | undefined {
+    const payload = coerceIterationDecisionPayload(buildIterationDecisionPayload(input));
+    if (!payload) return undefined;
+    return this.recordEvent({
+      sessionId,
+      type: ITERATION_DECISION_RECORDED_EVENT_TYPE,
+      turn: input.turn,
+      timestamp: input.timestamp,
+      payload: payload as unknown as Record<string, unknown>,
+    });
+  }
+
+  private listIterationDecisions(
+    sessionId: string,
+    query: IterationDecisionQuery = {},
+  ): IterationDecisionRecord[] {
+    const records = this.eventStore
+      .list(sessionId, getIterationDecisionEventQuery(query))
+      .flatMap((event) => {
+        const record = toIterationDecisionRecord(event);
+        return record ? [record] : [];
+      });
+    return applyFactWindow(filterIterationDecisionRecords(records, query), query);
+  }
+
+  private recordConvergenceReason(
+    sessionId: string,
+    input: ConvergenceReasonInput,
+  ): BrewvaEventRecord | undefined {
+    const payload = coerceConvergenceReasonPayload(buildConvergenceReasonPayload(input));
+    if (!payload) return undefined;
+    return this.recordEvent({
+      sessionId,
+      type: ITERATION_CONVERGENCE_RECORDED_EVENT_TYPE,
+      turn: input.turn,
+      timestamp: input.timestamp,
+      payload: payload as unknown as Record<string, unknown>,
+    });
+  }
+
+  private listConvergenceReasons(
+    sessionId: string,
+    query: ConvergenceReasonQuery = {},
+  ): ConvergenceReasonRecord[] {
+    const records = this.eventStore
+      .list(sessionId, getConvergenceReasonEventQuery(query))
+      .flatMap((event) => {
+        const record = toConvergenceReasonRecord(event);
+        return record ? [record] : [];
+      });
+    return applyFactWindow(filterConvergenceReasonRecords(records, query), query);
   }
 
   private isContextBudgetEnabled(): boolean {

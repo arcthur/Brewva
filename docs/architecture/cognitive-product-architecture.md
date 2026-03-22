@@ -114,6 +114,11 @@ Current responsibilities:
   - summarizes derived discovery/strategy/planning/implementation/review/QA/verification/ship/retro state
   - exposes latest workflow artifact signals and blockers
   - stays advisory-only instead of turning product UX into a hidden planner
+- optimization protocol presentation
+  - exposes objective iteration facts such as metric observations, guard
+    results, explicit keep/discard decisions, and convergence reasons
+  - keeps loop strategy and sequencing in the model-native layer rather than
+    moving them into kernel authority
 
 This plane may read kernel state, but it does not mutate kernel state directly.
 
@@ -127,12 +132,15 @@ Current product surfaces:
 - `[WorkflowAdvisory]` in default context injection
 - `workflow_status` as an explicit inspection tool
 - working projection entries such as `workflow.discovery`, `workflow.strategy_review`,
-  `workflow.design`, `workflow.review`, `workflow.qa`, and `workflow.ship`
+  `workflow.design`, `workflow.review`, `workflow.qa`, `workflow.ship`,
+  `workflow.iteration_metric`, and `workflow.iteration_decision`
 
 These surfaces are derived from durable events and session state such as:
 
 - `skill_completed` outputs
 - verification outcome and write-mark events
+- iteration fact events such as metric observations, guard results, decisions,
+  and convergence reasons
 - worker patch adoption or failure events
 - pending delegated worker results
 

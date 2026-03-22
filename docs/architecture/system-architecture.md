@@ -89,6 +89,8 @@ Important distinctions:
 - projection is working state, not long-term memory
 - workflow artifacts/readiness are derived working-state views, not new
   commitment-memory event families
+- iteration facts are durable event evidence for model-native optimization
+  loops, not a runtime-owned optimizer state machine
 - context arena is an injection planner, not a memory system
 - tool surface should reflect the current commitment boundary, not the whole
   static capability catalog
@@ -120,6 +122,19 @@ Important distinctions:
 - event tape
 - checkpoint + delta replay
 - turn WAL
+
+## Iteration-Fact Substrate
+
+Runtime may persist a small set of objective optimization facts:
+
+- metric observations
+- guard results
+- iteration decisions
+- convergence reasons
+
+These facts are durable evidence that can be replayed, queried, and surfaced
+through advisory projections. They do not give the runtime authority to choose
+the next experiment, define loop strategy, or own an optimizer state machine.
 
 ## Context Model
 
