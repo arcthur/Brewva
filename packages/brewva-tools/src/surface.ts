@@ -60,6 +60,7 @@ export const BREWVA_TOOL_SURFACE_BY_NAME = {
   obs_query: "operator",
   obs_slo_assert: "operator",
   obs_snapshot: "operator",
+  iteration_fact: "skill",
   rollback_last_patch: "operator",
 } as const satisfies Record<string, BrewvaToolSurface>;
 

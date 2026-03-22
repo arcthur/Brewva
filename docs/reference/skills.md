@@ -168,6 +168,10 @@ Current derived workflow artifact sources include:
 - `ship_report` / `release_checklist` / `ship_decision` -> `workflow.ship`
 - `retro_summary` / `retro_findings` / `followup_recommendation` -> `workflow.retro`
 - delegated patch adoption or failure -> `workflow.worker_patch`
+- metric observations -> `workflow.iteration_metric`
+- guard results -> `workflow.iteration_guard`
+- iteration decisions -> `workflow.iteration_decision`
+- convergence reasons -> `workflow.iteration_convergence`
 
 Important boundary rules:
 

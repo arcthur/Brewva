@@ -455,4 +455,92 @@ describe("workflow derivation", () => {
     const shipArtifact = status.artifacts.find((artifact) => artifact.kind === "ship");
     expect(shipArtifact?.freshness).toBe("stale");
   });
+
+  test("derives iteration metric, guard, decision, and convergence artifacts from durable events", () => {
+    const artifacts = deriveWorkflowArtifacts([
+      event({
+        id: "evt-metric",
+        type: "iteration_metric_observed",
+        timestamp: 100,
+        payload: {
+          schema: "brewva.iteration-facts.v1",
+          kind: "metric_observation",
+          metricKey: "latency_ms",
+          value: 94,
+          unit: "ms",
+          aggregation: "p95",
+          iterationKey: "iter-2",
+          source: "goal-loop",
+          evidenceRefs: ["verification:latency"],
+          summary: "Latency dropped after the second causal unit.",
+        },
+      }),
+      event({
+        id: "evt-guard",
+        type: "iteration_guard_recorded",
+        timestamp: 110,
+        payload: {
+          schema: "brewva.iteration-facts.v1",
+          kind: "guard_result",
+          guardKey: "error_budget",
+          status: "pass",
+          iterationKey: "iter-2",
+          source: "goal-loop",
+          evidenceRefs: ["slo:error-budget"],
+          summary: "Error budget stayed green.",
+        },
+      }),
+      event({
+        id: "evt-decision",
+        type: "iteration_decision_recorded",
+        timestamp: 120,
+        payload: {
+          schema: "brewva.iteration-facts.v1",
+          kind: "iteration_decision",
+          iterationKey: "iter-2",
+          decision: "keep",
+          reasonCode: "metric_improved_guard_green",
+          source: "goal-loop",
+          metricObservationRefs: ["evt-metric"],
+          guardResultRefs: ["evt-guard"],
+          summary: "Keep this iteration because objective signals improved.",
+        },
+      }),
+      event({
+        id: "evt-convergence",
+        type: "iteration_convergence_recorded",
+        timestamp: 130,
+        payload: {
+          schema: "brewva.iteration-facts.v1",
+          kind: "convergence_reason",
+          runKey: "goal-loop/run-2",
+          status: "continue",
+          reasonCode: "budget_available",
+          source: "goal-loop",
+          predicateRef: "maxRuns<5",
+          evidenceRefs: ["evt-decision"],
+          summary: "Continue while budget remains.",
+        },
+      }),
+    ]);
+
+    expect(artifacts.map((artifact) => artifact.kind)).toEqual(
+      expect.arrayContaining([
+        "iteration_metric",
+        "iteration_guard",
+        "iteration_decision",
+        "iteration_convergence",
+      ]),
+    );
+    expect(artifacts.find((artifact) => artifact.kind === "iteration_metric")?.summary).toContain(
+      "Metric latency_ms observed at 94 ms",
+    );
+    expect(artifacts.find((artifact) => artifact.kind === "iteration_guard")?.state).toBe("ready");
+    expect(artifacts.find((artifact) => artifact.kind === "iteration_decision")?.state).toBe(
+      "ready",
+    );
+    expect(artifacts.find((artifact) => artifact.kind === "iteration_convergence")?.state).toBe(
+      "pending",
+    );
+  });
 });

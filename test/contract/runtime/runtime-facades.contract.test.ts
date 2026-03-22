@@ -296,6 +296,107 @@ describe("runtime facade coverage", () => {
     });
   });
 
+  test("events facade records typed iteration facts and exposes them as state events", () => {
+    const runtime = new BrewvaRuntime({
+      cwd: createTestWorkspace("runtime-facade-iteration-facts"),
+    });
+    const sessionId = "runtime-facade-iteration-facts-1";
+
+    const metricEvent = runtime.events.recordMetricObservation(sessionId, {
+      metricKey: "latency_ms",
+      value: 118,
+      unit: "ms",
+      aggregation: "p95",
+      iterationKey: "iter-1",
+      source: "goal-loop",
+      evidenceRefs: ["verification:latency"],
+      summary: "Measured after the first causal unit.",
+    });
+    const guardEvent = runtime.events.recordGuardResult(sessionId, {
+      guardKey: "error_budget",
+      status: "pass",
+      iterationKey: "iter-1",
+      source: "goal-loop",
+      evidenceRefs: ["slo:error-budget"],
+      summary: "Error budget stayed green.",
+    });
+    const decisionEvent = runtime.events.recordIterationDecision(sessionId, {
+      iterationKey: "iter-1",
+      decision: "keep",
+      reasonCode: "metric_improved_guard_green",
+      source: "goal-loop",
+      metricObservationRefs: metricEvent ? [metricEvent.id] : [],
+      guardResultRefs: guardEvent ? [guardEvent.id] : [],
+      summary: "Latency improved without guard regressions.",
+    });
+    runtime.events.recordConvergenceReason(sessionId, {
+      runKey: "goal-loop/run-1",
+      status: "continue",
+      reasonCode: "budget_available",
+      source: "goal-loop",
+      predicateRef: "maxRuns<5",
+      evidenceRefs: decisionEvent ? [decisionEvent.id] : [],
+      summary: "Continue with the next bounded iteration.",
+    });
+
+    expect(metricEvent?.type).toBe("iteration_metric_observed");
+    expect(guardEvent?.type).toBe("iteration_guard_recorded");
+    expect(decisionEvent?.type).toBe("iteration_decision_recorded");
+
+    expect(runtime.events.listMetricObservations(sessionId, { metricKey: "latency_ms" })).toEqual([
+      expect.objectContaining({
+        metricKey: "latency_ms",
+        value: 118,
+        unit: "ms",
+        aggregation: "p95",
+        iterationKey: "iter-1",
+        source: "goal-loop",
+      }),
+    ]);
+    expect(runtime.events.listGuardResults(sessionId, { guardKey: "error_budget" })).toEqual([
+      expect.objectContaining({
+        guardKey: "error_budget",
+        status: "pass",
+        iterationKey: "iter-1",
+        source: "goal-loop",
+      }),
+    ]);
+    expect(
+      runtime.events.listIterationDecisions(sessionId, {
+        decision: "keep",
+        iterationKey: "iter-1",
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        iterationKey: "iter-1",
+        decision: "keep",
+        reasonCode: "metric_improved_guard_green",
+      }),
+    ]);
+    expect(runtime.events.listConvergenceReasons(sessionId, { runKey: "goal-loop/run-1" })).toEqual(
+      [
+        expect.objectContaining({
+          runKey: "goal-loop/run-1",
+          status: "continue",
+          reasonCode: "budget_available",
+        }),
+      ],
+    );
+
+    const structuredMetric = runtime.events.queryStructured(sessionId, {
+      type: "iteration_metric_observed",
+    })[0];
+    expect(structuredMetric).toMatchObject({
+      type: "iteration_metric_observed",
+      category: "state",
+      payload: {
+        schema: "brewva.iteration-facts.v1",
+        kind: "metric_observation",
+        metricKey: "latency_ms",
+      },
+    });
+  });
+
   test("context facade normalizes usage ratios, reads stored pressure, and exposes compaction window turns", () => {
     const config = structuredClone(DEFAULT_BREWVA_CONFIG);
     setStaticContextPressureThresholds(config, {

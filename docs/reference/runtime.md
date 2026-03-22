@@ -94,9 +94,9 @@ Default injected sources:
 There is no default proposal-backed context source anymore.
 
 `brewva.workflow-advisory` is advisory-only. It summarizes derived discovery,
-strategy, planning, implementation, review, QA, verification, ship, and retro
-state from durable events plus session state. It does not prescribe a required
-next skill.
+strategy, planning, implementation, review, QA, verification, ship, retro, and
+iteration-fact state from durable events plus session state. It does not
+prescribe a required next skill.
 
 ### `runtime.tools.*`
 
@@ -185,6 +185,14 @@ Tool-governance note:
 - `record(input)`
 - `query(sessionId, query?)`
 - `queryStructured(sessionId, query?)`
+- `recordMetricObservation(sessionId, input)`
+- `listMetricObservations(sessionId, query?)`
+- `recordGuardResult(sessionId, input)`
+- `listGuardResults(sessionId, query?)`
+- `recordIterationDecision(sessionId, input)`
+- `listIterationDecisions(sessionId, query?)`
+- `recordConvergenceReason(sessionId, input)`
+- `listConvergenceReasons(sessionId, query?)`
 - `getTapeStatus(sessionId)`
 - `getTapePressureThresholds()`
 - `recordTapeHandoff(sessionId, input)`
@@ -199,6 +207,9 @@ Hosted-session event boundary notes:
 
 - `runtime.events.query(...)` and `runtime.events.queryStructured(...)` expose
   the durable tape, not the ephemeral hosted live stream
+- iteration fact helpers persist and query receipt-grade objective facts:
+  metric observations, guard results, iteration decisions, and convergence
+  reasons
 - live-only hosted events such as `message_update` and `tool_execution_update`
   are intentionally not replay-visible through the runtime event API
 - pre-parse compatibility evidence surfaces through durable events such as

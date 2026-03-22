@@ -140,6 +140,10 @@ export const TOOL_GOVERNANCE_BY_NAME: Record<string, ToolGovernanceDescriptor> =
     effects: ["runtime_observe"],
     defaultRisk: "low",
   }),
+  iteration_fact: descriptor({
+    effects: ["runtime_observe"],
+    defaultRisk: "low",
+  }),
   ledger_query: descriptor({
     effects: ["runtime_observe"],
     defaultRisk: "low",

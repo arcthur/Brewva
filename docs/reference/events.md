@@ -68,6 +68,13 @@ The authoritative registry lives in
 - `reversible_mutation_recorded`
 - `reversible_mutation_rolled_back`
 
+### Iteration Facts
+
+- `iteration_metric_observed`
+- `iteration_guard_recorded`
+- `iteration_decision_recorded`
+- `iteration_convergence_recorded`
+
 ### Proposal And Governance
 
 - `proposal_received`
@@ -127,6 +134,14 @@ events and session state:
 - `verification_write_marked`
   - implementation-side write signal that can stale downstream review, QA, and
     verification artifacts
+- `iteration_metric_observed`
+  - `workflow.iteration_metric`
+- `iteration_guard_recorded`
+  - `workflow.iteration_guard`
+- `iteration_decision_recorded`
+  - `workflow.iteration_decision`
+- `iteration_convergence_recorded`
+  - `workflow.iteration_convergence`
 - `subagent_*`
   - delegated patch-worker lifecycle signals
 - `worker_results_applied` / `worker_results_apply_failed`
@@ -147,6 +162,10 @@ The audit-retained core includes:
 - `tool_result_recorded`
 - `tool_call_normalized`
 - `tool_call_normalization_failed`
+- `iteration_metric_observed`
+- `iteration_guard_recorded`
+- `iteration_decision_recorded`
+- `iteration_convergence_recorded`
 - `verification_write_marked`
 - `verification_outcome_recorded`
 - `proposal_received`
@@ -195,11 +214,22 @@ properties such as:
 `worker_results_applied` and `worker_results_apply_failed` record the
 parent-controlled adoption outcome for child-produced patches.
 
+Iteration fact events record objective optimization evidence only:
+
+- `iteration_metric_observed`
+  - measured value, optional aggregation, optional sample count, evidence refs
+- `iteration_guard_recorded`
+  - guard key, pass/fail-like status, and evidence refs
+- `iteration_decision_recorded`
+  - explicit keep/discard/block/crash/inconclusive outcome for one iteration
+- `iteration_convergence_recorded`
+  - explicit continue/converged/escalated/stopped reason for a bounded run
+
 Workflow readiness is computed from those durable families plus current task
 blockers and pending worker-result state. The resulting advisory summary covers
 discovery, strategy, planning, implementation, review, QA, verification, ship,
-and retro visibility. It remains advisory-only and may not prescribe a single
-legal workflow path.
+retro, and iteration-fact visibility. It remains advisory-only and may not
+prescribe a single legal workflow path.
 
 `tool_call_normalized` and `tool_call_normalization_failed` record whether the
 pre-parse compatibility layer repaired or rejected a tool call.

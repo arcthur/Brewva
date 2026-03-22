@@ -4,6 +4,7 @@ import { createBrowserTools } from "./browser.js";
 import { createCostViewTool } from "./cost-view.js";
 import { createExecTool } from "./exec.js";
 import { createGrepTool } from "./grep.js";
+import { createIterationFactTool } from "./iteration-fact.js";
 import { createLedgerQueryTool } from "./ledger-query.js";
 import { createLookAtTool } from "./look-at.js";
 import { createLspTools } from "./lsp.js";
@@ -56,6 +57,7 @@ export function buildBrewvaTools(options: BuildBrewvaToolsOptions): ToolDefiniti
     createObsSloAssertTool({ runtime }),
     createObsSnapshotTool({ runtime }),
     createLedgerQueryTool({ runtime }),
+    createIterationFactTool({ runtime }),
     createOutputSearchTool({ runtime }),
     createWorkflowStatusTool({ runtime }),
     createScheduleIntentTool({ runtime }),
@@ -116,6 +118,7 @@ export { createObsQueryTool } from "./observability/obs-query.js";
 export { createObsSloAssertTool } from "./observability/obs-slo-assert.js";
 export { createObsSnapshotTool } from "./observability/obs-snapshot.js";
 export { createLedgerQueryTool } from "./ledger-query.js";
+export { createIterationFactTool } from "./iteration-fact.js";
 export { createOutputSearchTool } from "./output-search.js";
 export { createWorkflowStatusTool } from "./workflow-status.js";
 export { createTocTools } from "./toc.js";

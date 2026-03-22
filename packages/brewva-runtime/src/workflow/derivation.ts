@@ -1,6 +1,10 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
+  ITERATION_CONVERGENCE_RECORDED_EVENT_TYPE,
+  ITERATION_DECISION_RECORDED_EVENT_TYPE,
+  ITERATION_GUARD_RECORDED_EVENT_TYPE,
+  ITERATION_METRIC_OBSERVED_EVENT_TYPE,
   SUBAGENT_COMPLETED_EVENT_TYPE,
   SUBAGENT_FAILED_EVENT_TYPE,
   VERIFICATION_OUTCOME_RECORDED_EVENT_TYPE,
@@ -8,6 +12,12 @@ import {
   WORKER_RESULTS_APPLIED_EVENT_TYPE,
   WORKER_RESULTS_APPLY_FAILED_EVENT_TYPE,
 } from "../events/event-types.js";
+import {
+  coerceConvergenceReasonPayload,
+  coerceGuardResultPayload,
+  coerceIterationDecisionPayload,
+  coerceMetricObservationPayload,
+} from "../iteration/facts.js";
 import type { BrewvaEventRecord } from "../types.js";
 import type { JsonValue } from "../utils/json.js";
 
@@ -23,6 +33,10 @@ export const WORKFLOW_ARTIFACT_KINDS = [
   "ship",
   "retro",
   "worker_patch",
+  "iteration_metric",
+  "iteration_guard",
+  "iteration_decision",
+  "iteration_convergence",
   "release_readiness",
 ] as const;
 
@@ -640,9 +654,169 @@ function extractSubagentPatchArtifact(event: BrewvaEventRecord): WorkflowDraftAr
   ];
 }
 
+function extractIterationMetricArtifact(event: BrewvaEventRecord): WorkflowDraftArtifact[] {
+  const payload = coerceMetricObservationPayload(event.payload);
+  if (!payload) return [];
+
+  const valueText = payload.unit ? `${payload.value} ${payload.unit}` : String(payload.value);
+  const summaryParts = [
+    `Metric ${payload.metricKey} observed at ${valueText}${payload.aggregation ? ` (${payload.aggregation})` : ""}.`,
+  ];
+  if (payload.iterationKey) {
+    summaryParts.push(`iteration=${payload.iterationKey}.`);
+  }
+  if (payload.summary) {
+    summaryParts.push(compactText(payload.summary, 160));
+  }
+
+  return [
+    createDraftArtifact({
+      event,
+      kind: "iteration_metric",
+      summary: summaryParts.join(" "),
+      outputKeys: ["metric_observation"],
+      freshness: "fresh",
+      state: "ready",
+      metadata: {
+        source: ITERATION_METRIC_OBSERVED_EVENT_TYPE,
+        factSource: payload.source,
+        metricKey: payload.metricKey,
+        value: payload.value,
+        unit: payload.unit ?? null,
+        aggregation: payload.aggregation ?? null,
+        iterationKey: payload.iterationKey ?? null,
+        evidenceRefs: payload.evidenceRefs,
+      },
+    }),
+  ];
+}
+
+function extractIterationGuardArtifact(event: BrewvaEventRecord): WorkflowDraftArtifact[] {
+  const payload = coerceGuardResultPayload(event.payload);
+  if (!payload) return [];
+
+  const summaryParts = [`Guard ${payload.guardKey} recorded ${payload.status}.`];
+  if (payload.iterationKey) {
+    summaryParts.push(`iteration=${payload.iterationKey}.`);
+  }
+  if (payload.summary) {
+    summaryParts.push(compactText(payload.summary, 160));
+  }
+
+  return [
+    createDraftArtifact({
+      event,
+      kind: "iteration_guard",
+      summary: summaryParts.join(" "),
+      outputKeys: ["guard_result"],
+      freshness: "fresh",
+      state:
+        payload.status === "fail"
+          ? "blocked"
+          : payload.status === "inconclusive"
+            ? "pending"
+            : "ready",
+      metadata: {
+        source: ITERATION_GUARD_RECORDED_EVENT_TYPE,
+        factSource: payload.source,
+        guardKey: payload.guardKey,
+        status: payload.status,
+        iterationKey: payload.iterationKey ?? null,
+        evidenceRefs: payload.evidenceRefs,
+      },
+    }),
+  ];
+}
+
+function extractIterationDecisionArtifact(event: BrewvaEventRecord): WorkflowDraftArtifact[] {
+  const payload = coerceIterationDecisionPayload(event.payload);
+  if (!payload) return [];
+
+  const summaryParts = [
+    `Iteration ${payload.iterationKey} decided ${payload.decision} (${payload.reasonCode}).`,
+  ];
+  if (payload.summary) {
+    summaryParts.push(compactText(payload.summary, 160));
+  }
+
+  return [
+    createDraftArtifact({
+      event,
+      kind: "iteration_decision",
+      summary: summaryParts.join(" "),
+      outputKeys: ["iteration_decision"],
+      freshness: "fresh",
+      state:
+        payload.decision === "blocked" || payload.decision === "crash"
+          ? "blocked"
+          : payload.decision === "inconclusive"
+            ? "pending"
+            : "ready",
+      metadata: {
+        source: ITERATION_DECISION_RECORDED_EVENT_TYPE,
+        factSource: payload.source,
+        iterationKey: payload.iterationKey,
+        decision: payload.decision,
+        reasonCode: payload.reasonCode,
+        metricObservationRefs: payload.metricObservationRefs,
+        guardResultRefs: payload.guardResultRefs,
+        rollbackReceiptRef: payload.rollbackReceiptRef ?? null,
+        mutationReceiptRef: payload.mutationReceiptRef ?? null,
+      },
+    }),
+  ];
+}
+
+function extractIterationConvergenceArtifact(event: BrewvaEventRecord): WorkflowDraftArtifact[] {
+  const payload = coerceConvergenceReasonPayload(event.payload);
+  if (!payload) return [];
+
+  const summaryParts = [`Run ${payload.runKey} marked ${payload.status} (${payload.reasonCode}).`];
+  if (payload.summary) {
+    summaryParts.push(compactText(payload.summary, 160));
+  }
+
+  return [
+    createDraftArtifact({
+      event,
+      kind: "iteration_convergence",
+      summary: summaryParts.join(" "),
+      outputKeys: ["convergence_reason"],
+      freshness: "fresh",
+      state:
+        payload.status === "continue"
+          ? "pending"
+          : payload.status === "escalated"
+            ? "blocked"
+            : "ready",
+      metadata: {
+        source: ITERATION_CONVERGENCE_RECORDED_EVENT_TYPE,
+        factSource: payload.source,
+        runKey: payload.runKey,
+        status: payload.status,
+        reasonCode: payload.reasonCode,
+        predicateRef: payload.predicateRef ?? null,
+        evidenceRefs: payload.evidenceRefs,
+      },
+    }),
+  ];
+}
+
 export function deriveWorkflowArtifactsFromEvent(event: BrewvaEventRecord): WorkflowArtifact[] {
   const drafts = (() => {
     if (event.type === "skill_completed") return extractSkillCompletedArtifacts(event);
+    if (event.type === ITERATION_METRIC_OBSERVED_EVENT_TYPE) {
+      return extractIterationMetricArtifact(event);
+    }
+    if (event.type === ITERATION_GUARD_RECORDED_EVENT_TYPE) {
+      return extractIterationGuardArtifact(event);
+    }
+    if (event.type === ITERATION_DECISION_RECORDED_EVENT_TYPE) {
+      return extractIterationDecisionArtifact(event);
+    }
+    if (event.type === ITERATION_CONVERGENCE_RECORDED_EVENT_TYPE) {
+      return extractIterationConvergenceArtifact(event);
+    }
     if (event.type === VERIFICATION_OUTCOME_RECORDED_EVENT_TYPE) {
       return extractVerificationArtifact(event);
     }

@@ -9,6 +9,7 @@ function collectToolNames(sourceRoot: string): string[] {
     "cost-view.ts",
     "exec.ts",
     "grep.ts",
+    "iteration-fact.ts",
     "ledger-query.ts",
     "look-at.ts",
     "lsp.ts",
