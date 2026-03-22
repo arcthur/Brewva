@@ -1,7 +1,7 @@
 ---
 name: self-improve
-description: Distill recurring failures, weak heuristics, or review patterns into
-  explicit improvement hypotheses and follow-up changes.
+description: Distill recurring failures, weak heuristics, or loop friction into
+  explicit improvement hypotheses and evidence-backed follow-up changes.
 stability: experimental
 intent:
   outputs:
@@ -23,7 +23,6 @@ intent:
 effects:
   allowed_effects:
     - workspace_read
-    - workspace_write
     - local_exec
     - runtime_observe
   denied_effects:
@@ -38,18 +37,20 @@ resources:
 execution_hints:
   preferred_tools:
     - read
+    - iteration_fact
     - grep
   fallback_tools:
     - ledger_query
     - tape_search
     - cost_view
+    - task_view_state
     - exec
-    - edit
     - process
     - skill_complete
 references:
   - skills/meta/skill-authoring/references/authored-behavior.md
   - references/promotion-targets.md
+  - references/stuck-signals.md
 scripts:
   - scripts/activator.sh
   - scripts/error-detector.sh
@@ -70,11 +71,12 @@ requires: []
 
 ## Intent
 
-Turn repeated mistakes or friction into explicit learning loops instead of one-off observations.
+Turn repeated mistakes, stuck loops, or review friction into explicit learning
+loops instead of one-off observations.
 
-Use the helper scripts to initialize workspace learning logs, mine repeated failures,
-and promote high-value patterns into current skill categories, project overlays, or shared project rules. Templates for
-workspace learning files live under `assets/`.
+Use the helper scripts when they help with workspace learning hygiene, but
+build the hypothesis from durable evidence first. That evidence may come from
+review artifacts, runtime traces, or lineage-scoped iteration facts.
 
 ## Trigger
 
@@ -83,12 +85,28 @@ Use this skill when:
 - the same failure pattern keeps recurring
 - review findings reveal a systemic weakness
 - runtime forensics show repeated operational waste
+- a bounded loop keeps discarding, escalating, or stalling for the same reason
 
 ## Workflow
 
-### Step 1: Collect repeated signals
+### Step 1: Collect repeated signals with bounded evidence
 
-Identify patterns across reviews, runtime traces, or failure artifacts.
+Identify patterns across reviews, runtime traces, failure artifacts, or
+iteration-fact history.
+
+When the learning target is one bounded optimization lineage:
+
+- query `iteration_fact` with `session_scope = parent_lineage`
+- narrow with `source = "goal-loop:<loop_key>"`
+- collect the concrete metric, guard, decision, and convergence records before
+  naming a system lesson
+
+Treat the evidence as clustered signals, not as one undifferentiated pile:
+
+- repeat findings
+- repeat fact references
+- repeat escalation or rollback outcomes
+- repeat user or operator intervention points
 
 ### Step 2: Distill improvement candidates
 
@@ -98,6 +116,20 @@ Produce:
 - `learning_backlog`: ranked fixes or experiments
 - `improvement_plan`: the smallest next iteration to test
 
+Each artifact must remain traceable to evidence. A convincing lesson names the
+repeated pattern, the bounded evidence set, and the smallest corrective change
+that can falsify or validate the hypothesis.
+
+### Step 3: Route the lesson to the right home
+
+Decide whether the improvement should land in:
+
+- a public skill contract or authored-behavior section
+- a project overlay or shared project rule
+- runtime or tool documentation
+- a small workflow or tooling improvement
+- a bounded follow-up experiment instead of an immediate permanent rule
+
 ## Interaction Protocol
 
 - Re-ground on the repeated failure pattern or recurring friction before naming
@@ -106,6 +138,8 @@ Produce:
   improvement target is too weak to support a credible hypothesis.
 - Do not interrupt active incident response with learning work unless the user
   explicitly wants retrospective analysis now.
+- If the supposed lesson depends on one ambiguous event, say that the evidence
+  is too thin rather than inflating it into a systemic story.
 
 ## Learning Protocol
 
@@ -113,19 +147,26 @@ Produce:
   automatically system lessons.
 - Distinguish evidence, hypothesis, and intervention. The fact that something
   hurt twice does not yet prove the root process flaw.
+- When loop history is involved, prefer objective stuck signals over narrative
+  memory: discard streaks, guard flakiness, convergence stalls, and repeated
+  escalations are stronger than "it felt stuck".
 - Prefer the smallest next improvement that can validate the hypothesis instead
   of proposing broad architecture rewrites.
+- Every systemic claim should point back to concrete fact references, report
+  ids, or runtime evidence anchors.
 - Route high-value improvements toward the right home: skill instructions,
   shared project rules, runtime docs, or targeted tooling.
+- No broad remediation without bounded evidence. If the evidence is narrow, the
+  improvement should stay narrow too.
 
 ## Handoff Expectations
 
 - `improvement_hypothesis` should name the recurring weakness, the evidence for
   repetition, and why it is systemic rather than isolated.
 - `learning_backlog` should rank concrete fixes or experiments by leverage and
-  implementation cost.
+  implementation cost, with evidence references for each item.
 - `improvement_plan` should define the smallest next change that can test the
-  hypothesis or reduce repeated waste.
+  hypothesis or reduce repeated waste, plus the home where that change belongs.
 
 ## Stop Conditions
 
@@ -139,9 +180,13 @@ Produce:
 - proposing broad rewrites without evidence of repetition
 - mixing retrospective learning with immediate incident response
 - turning vague dissatisfaction into a fake systemic pattern
+- treating iteration-fact event kinds as if they were ordinary skill outputs
+- naming a systemic failure without traceable fact or report references
 
 ## Example
 
-Input: "We keep shipping weak skill boundaries; distill what should change in the catalog design rules."
+Input: "We keep stalling in the same bounded loop; use the recorded iteration
+facts and review artifacts to decide what protocol or catalog rule should
+change."
 
 Output: `improvement_hypothesis`, `learning_backlog`, `improvement_plan`.

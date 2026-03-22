@@ -78,9 +78,18 @@ Implementation detail and system boundaries:
 ## Skill Surface
 
 - Core skills: `repository-analysis`, `discovery`, `strategy-review`, `design`, `implementation`, `debugging`, `review`, `qa`, `ship`, `retro`
-- Domain skills: `agent-browser`, `frontend-design`, `github`, `goal-loop`, `structured-extraction`, `telegram`
+- Domain skills: `agent-browser`, `frontend-design`, `github`, `goal-loop`, `predict-review`, `structured-extraction`, `telegram`
 - Operator skills: `git-ops`, `runtime-forensics`
 - Meta skills: `self-improve`, `skill-authoring`
+
+Protocol-oriented skills:
+
+- `goal-loop` coordinates bounded continuity, explicit cadence, and objective
+  iteration facts across repeated runs
+- `predict-review` provides read-only multi-perspective debate and ranked
+  hypotheses through public delegation tools
+- `self-improve` distills repeated evidence, including loop-history facts, into
+  improvement hypotheses and backlog items
 
 For taxonomy details and project overlays, see `docs/guide/features.md` and `docs/reference/skills.md`.
 

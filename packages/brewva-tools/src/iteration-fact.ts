@@ -1,6 +1,7 @@
 import {
   ITERATION_CONVERGENCE_STATUS_VALUES,
   ITERATION_DECISION_VALUES,
+  ITERATION_FACT_SESSION_SCOPE_VALUES,
   ITERATION_GUARD_STATUS_VALUES,
   ITERATION_METRIC_AGGREGATION_VALUES,
 } from "@brewva/brewva-runtime";
@@ -24,6 +25,7 @@ const IterationActionSchema = buildStringEnumSchema(ITERATION_ACTION_VALUES, {},
 const MetricAggregationSchema = buildStringEnumSchema(ITERATION_METRIC_AGGREGATION_VALUES, {}, {});
 const GuardStatusSchema = buildStringEnumSchema(ITERATION_GUARD_STATUS_VALUES, {}, {});
 const DecisionSchema = buildStringEnumSchema(ITERATION_DECISION_VALUES, {}, {});
+const SessionScopeSchema = buildStringEnumSchema(ITERATION_FACT_SESSION_SCOPE_VALUES, {}, {});
 
 function readMetricAggregation(
   value: unknown,
@@ -60,6 +62,17 @@ function readConvergenceStatus(
       value as (typeof ITERATION_CONVERGENCE_STATUS_VALUES)[number],
     )
     ? (value as (typeof ITERATION_CONVERGENCE_STATUS_VALUES)[number])
+    : undefined;
+}
+
+function readSessionScope(
+  value: unknown,
+): (typeof ITERATION_FACT_SESSION_SCOPE_VALUES)[number] | undefined {
+  return typeof value === "string" &&
+    ITERATION_FACT_SESSION_SCOPE_VALUES.includes(
+      value as (typeof ITERATION_FACT_SESSION_SCOPE_VALUES)[number],
+    )
+    ? (value as (typeof ITERATION_FACT_SESSION_SCOPE_VALUES)[number])
     : undefined;
 }
 
@@ -147,6 +160,7 @@ export function createIterationFactTool(options: BrewvaToolOptions): ToolDefinit
       mutation_receipt_ref: Type.Optional(Type.String()),
       summary: Type.Optional(Type.String()),
       history_limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+      session_scope: Type.Optional(SessionScopeSchema),
       fact_kind: Type.Optional(
         buildStringEnumSchema(
           ["metric", "guard", "decision", "convergence", "all"] as const,
@@ -162,6 +176,7 @@ export function createIterationFactTool(options: BrewvaToolOptions): ToolDefinit
       const guardStatus = readGuardStatus(params.status);
       const decision = readDecision(params.decision);
       const convergenceStatus = readConvergenceStatus(params.status);
+      const sessionScope = readSessionScope(params.session_scope);
 
       if (params.action === "record_metric") {
         if (!params.metric_key?.trim() || typeof params.value !== "number") {
@@ -318,6 +333,8 @@ export function createIterationFactTool(options: BrewvaToolOptions): ToolDefinit
           last: historyLimit,
           iterationKey: params.iteration_key,
           metricKey: params.metric_key,
+          source: params.source,
+          sessionScope,
         });
         lines.push(`metrics: ${metrics.length}`);
         for (const record of metrics) {
@@ -332,6 +349,8 @@ export function createIterationFactTool(options: BrewvaToolOptions): ToolDefinit
           iterationKey: params.iteration_key,
           guardKey: params.guard_key,
           status: guardStatus,
+          source: params.source,
+          sessionScope,
         });
         lines.push(`guards: ${guards.length}`);
         for (const record of guards) {
@@ -346,6 +365,8 @@ export function createIterationFactTool(options: BrewvaToolOptions): ToolDefinit
           iterationKey: params.iteration_key,
           decision,
           reasonCode: params.reason_code,
+          source: params.source,
+          sessionScope,
         });
         lines.push(`decisions: ${decisions.length}`);
         for (const record of decisions) {
@@ -360,6 +381,8 @@ export function createIterationFactTool(options: BrewvaToolOptions): ToolDefinit
           runKey: params.run_key,
           status: convergenceStatus,
           reasonCode: params.reason_code,
+          source: params.source,
+          sessionScope,
         });
         lines.push(`convergence: ${convergence.length}`);
         for (const record of convergence) {
@@ -373,6 +396,9 @@ export function createIterationFactTool(options: BrewvaToolOptions): ToolDefinit
       }
       if (params.guard_result_refs?.length) {
         lines.push(`guard_result_refs: ${joinRefs(params.guard_result_refs)}`);
+      }
+      if (sessionScope) {
+        lines.push(`session_scope: ${sessionScope}`);
       }
 
       return textResult(lines.join("\n"), {

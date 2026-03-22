@@ -41,6 +41,9 @@ export const ITERATION_CONVERGENCE_STATUS_VALUES = [
 ] as const;
 export type IterationConvergenceStatus = (typeof ITERATION_CONVERGENCE_STATUS_VALUES)[number];
 
+export const ITERATION_FACT_SESSION_SCOPE_VALUES = ["current_session", "parent_lineage"] as const;
+export type IterationFactSessionScope = (typeof ITERATION_FACT_SESSION_SCOPE_VALUES)[number];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -248,6 +251,7 @@ export type IterationFactRecord =
 
 interface IterationFactQueryBase extends BrewvaEventQuery {
   source?: string;
+  sessionScope?: IterationFactSessionScope;
 }
 
 export interface MetricObservationQuery extends IterationFactQueryBase {

@@ -57,6 +57,7 @@ import {
   type GuardResultInput,
   type GuardResultQuery,
   type GuardResultRecord,
+  type IterationFactSessionScope,
   type IterationDecisionInput,
   type IterationDecisionQuery,
   type IterationDecisionRecord,
@@ -74,6 +75,7 @@ import {
   createRuntimeServiceDependencies as assembleRuntimeServiceDependencies,
 } from "./runtime-assembler.js";
 import type { RuntimeKernelContext } from "./runtime-kernel.js";
+import { parseScheduleIntentEvent, SCHEDULE_EVENT_TYPE } from "./schedule/events.js";
 import { sanitizeContextText } from "./security/sanitize.js";
 import { ContextService } from "./services/context.js";
 import { CostService } from "./services/cost.js";
@@ -147,6 +149,7 @@ import type {
   ProposalKind,
   ProposalListQuery,
   ProposalRecord,
+  ScheduleIntentEventPayload,
   SessionHydrationState,
   SessionCostSummary,
   TapeSearchResult,
@@ -1231,12 +1234,12 @@ export class BrewvaRuntime {
     sessionId: string,
     query: MetricObservationQuery = {},
   ): MetricObservationRecord[] {
-    const records = this.eventStore
-      .list(sessionId, getMetricObservationEventQuery(query))
-      .flatMap((event) => {
-        const record = toMetricObservationRecord(event);
-        return record ? [record] : [];
-      });
+    const records = this.listIterationFactRecords(
+      sessionId,
+      query,
+      getMetricObservationEventQuery,
+      toMetricObservationRecord,
+    );
     return applyFactWindow(filterMetricObservationRecords(records, query), query);
   }
 
@@ -1256,12 +1259,12 @@ export class BrewvaRuntime {
   }
 
   private listGuardResults(sessionId: string, query: GuardResultQuery = {}): GuardResultRecord[] {
-    const records = this.eventStore
-      .list(sessionId, getGuardResultEventQuery(query))
-      .flatMap((event) => {
-        const record = toGuardResultRecord(event);
-        return record ? [record] : [];
-      });
+    const records = this.listIterationFactRecords(
+      sessionId,
+      query,
+      getGuardResultEventQuery,
+      toGuardResultRecord,
+    );
     return applyFactWindow(filterGuardResultRecords(records, query), query);
   }
 
@@ -1284,12 +1287,12 @@ export class BrewvaRuntime {
     sessionId: string,
     query: IterationDecisionQuery = {},
   ): IterationDecisionRecord[] {
-    const records = this.eventStore
-      .list(sessionId, getIterationDecisionEventQuery(query))
-      .flatMap((event) => {
-        const record = toIterationDecisionRecord(event);
-        return record ? [record] : [];
-      });
+    const records = this.listIterationFactRecords(
+      sessionId,
+      query,
+      getIterationDecisionEventQuery,
+      toIterationDecisionRecord,
+    );
     return applyFactWindow(filterIterationDecisionRecords(records, query), query);
   }
 
@@ -1312,13 +1315,118 @@ export class BrewvaRuntime {
     sessionId: string,
     query: ConvergenceReasonQuery = {},
   ): ConvergenceReasonRecord[] {
-    const records = this.eventStore
-      .list(sessionId, getConvergenceReasonEventQuery(query))
-      .flatMap((event) => {
-        const record = toConvergenceReasonRecord(event);
-        return record ? [record] : [];
-      });
+    const records = this.listIterationFactRecords(
+      sessionId,
+      query,
+      getConvergenceReasonEventQuery,
+      toConvergenceReasonRecord,
+    );
     return applyFactWindow(filterConvergenceReasonRecords(records, query), query);
+  }
+
+  private listIterationFactRecords<
+    TRecord extends { eventId: string; timestamp: number },
+    TQuery extends { sessionScope?: IterationFactSessionScope },
+  >(
+    sessionId: string,
+    query: TQuery,
+    buildEventQuery: (query: TQuery) => BrewvaEventQuery,
+    toRecord: (event: BrewvaEventRecord) => TRecord | undefined,
+  ): TRecord[] {
+    const records: TRecord[] = [];
+    const sessionIds = this.resolveIterationFactSessionIds(sessionId, query.sessionScope);
+    for (const candidateSessionId of sessionIds) {
+      for (const event of this.eventStore.list(candidateSessionId, buildEventQuery(query))) {
+        const record = toRecord(event);
+        if (record) {
+          records.push(record);
+        }
+      }
+    }
+    return records.toSorted(
+      (left, right) =>
+        left.timestamp - right.timestamp || left.eventId.localeCompare(right.eventId),
+    );
+  }
+
+  private resolveIterationFactSessionIds(
+    sessionId: string,
+    sessionScope: IterationFactSessionScope | undefined,
+  ): string[] {
+    if (sessionScope !== "parent_lineage") {
+      return [sessionId];
+    }
+
+    const scheduleEvents = this.collectScheduleIntentEvents();
+    const rootSessionId = this.resolveIterationLineageRootSessionId(sessionId, scheduleEvents);
+    const sessionIds = new Set<string>([rootSessionId]);
+
+    let progressed = true;
+    while (progressed) {
+      progressed = false;
+      for (const payload of scheduleEvents) {
+        if (payload.kind !== "intent_fired" || payload.continuityMode !== "inherit") {
+          continue;
+        }
+        const childSessionId =
+          typeof payload.childSessionId === "string" ? payload.childSessionId.trim() : "";
+        if (
+          !childSessionId ||
+          !sessionIds.has(payload.parentSessionId) ||
+          sessionIds.has(childSessionId)
+        ) {
+          continue;
+        }
+        sessionIds.add(childSessionId);
+        progressed = true;
+      }
+    }
+
+    return [...sessionIds];
+  }
+
+  private collectScheduleIntentEvents(): ScheduleIntentEventPayload[] {
+    const rows: BrewvaEventRecord[] = [];
+    for (const sessionId of this.eventStore.listSessionIds()) {
+      rows.push(...this.eventStore.list(sessionId, { type: SCHEDULE_EVENT_TYPE }));
+    }
+    return rows
+      .toSorted(
+        (left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id),
+      )
+      .flatMap((row) => {
+        const payload = parseScheduleIntentEvent(row);
+        return payload ? [payload] : [];
+      });
+  }
+
+  private resolveIterationLineageRootSessionId(
+    sessionId: string,
+    scheduleEvents: readonly ScheduleIntentEventPayload[],
+  ): string {
+    const visited = new Set<string>();
+    let currentSessionId = sessionId;
+
+    while (!visited.has(currentSessionId)) {
+      visited.add(currentSessionId);
+      let parentSessionId: string | undefined;
+      for (let index = scheduleEvents.length - 1; index >= 0; index -= 1) {
+        const payload = scheduleEvents[index];
+        if (!payload || payload.kind !== "intent_fired" || payload.continuityMode !== "inherit") {
+          continue;
+        }
+        if (payload.childSessionId?.trim() === currentSessionId) {
+          parentSessionId = payload.parentSessionId;
+          break;
+        }
+      }
+      if (!parentSessionId || parentSessionId === currentSessionId) {
+        break;
+      }
+      currentSessionId = parentSessionId;
+    }
+
+    return currentSessionId;
   }
 
   private isContextBudgetEnabled(): boolean {

@@ -210,6 +210,10 @@ Hosted-session event boundary notes:
 - iteration fact helpers persist and query receipt-grade objective facts:
   metric observations, guard results, iteration decisions, and convergence
   reasons
+- iteration fact list helpers accept optional `source` and `sessionScope`
+  filters; `sessionScope=parent_lineage` resolves the owning parent session
+  plus scheduler-created `continuityMode=inherit` child sessions while keeping
+  each record's true `sessionId`
 - live-only hosted events such as `message_update` and `tool_execution_update`
   are intentionally not replay-visible through the runtime event API
 - pre-parse compatibility evidence surfaces through durable events such as

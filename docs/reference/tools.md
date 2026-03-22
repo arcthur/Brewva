@@ -279,13 +279,20 @@ Canonical parameters vary by action:
     `evidence_refs`, `source`, `summary`
 - `list`
   - optional `fact_kind`, `history_limit`, `metric_key`, `guard_key`,
-    `iteration_key`, `run_key`, `reason_code`
+    `iteration_key`, `run_key`, `reason_code`, `source`, `session_scope`
 
 Behavior:
 
 - only objective facts should be recorded
 - this tool does not prescribe the next step in a loop
 - fact history is durable and replay-visible through `runtime.events.*`
+- `session_scope` defaults to `current_session`
+- `session_scope=parent_lineage` resolves the owning parent session plus
+  `continuityMode=inherit` child sessions created by the scheduler
+- lineage queries do not mirror events into the parent; each returned record
+  keeps its true `sessionId`
+- `source` is the stable protocol filter for one loop or experiment lineage;
+  bounded `goal-loop` runs should reuse `goal-loop:<loop_key>`
 - derived workflow artifacts may surface the latest fact family as advisory
   working state
 

@@ -31,18 +31,28 @@ work off to the next skill.
 Typical defaults are `core` and `domain`; operator/meta stay loaded but hidden
 unless scopes explicitly opt in.
 
-Bounded multi-run skills are still gated by routing context and required
-artifacts. For example, `goal-loop` is not auto-routed for ordinary one-shot
-implementation prompts.
+Bounded or advisory protocol skills are still gated by routing context and
+required artifacts. For example, `goal-loop` is not auto-routed for ordinary
+one-shot implementation prompts, and `predict-review` is not a generic review
+replacement.
 
 ## Current Inventory
 
 - Core: `repository-analysis`, `discovery`, `strategy-review`, `design`, `implementation`, `debugging`, `review`, `qa`, `ship`, `retro`
-- Domain: `agent-browser`, `frontend-design`, `github`, `telegram`, `structured-extraction`, `goal-loop`
+- Domain: `agent-browser`, `frontend-design`, `github`, `telegram`, `structured-extraction`, `goal-loop`, `predict-review`
 - Operator: `runtime-forensics`, `git-ops`
 - Meta: `skill-authoring`, `self-improve`
 - Overlays: `repository-analysis`, `design`, `implementation`, `debugging`, `review`, `runtime-forensics`
 - Shared project context: `critical-rules`, `migration-priority-matrix`, `package-boundaries`, `runtime-artifacts`
+
+Special protocol posture:
+
+- `goal-loop` owns bounded continuity, explicit cadence, and objective
+  iteration-fact discipline
+- `predict-review` owns advisory multi-perspective debate and hypothesis
+  ranking, not runtime authority
+- `self-improve` mines repeated evidence into learning backlog items rather
+  than acting as a hidden optimizer
 
 One common software-delivery chain is:
 
