@@ -37,6 +37,8 @@ execution_hints:
     - grep
     - look_at
     - skill_complete
+references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
 consumes:
   - structured_payload
   - review_report
@@ -74,6 +76,34 @@ Produce:
 - `telegram_response_plan`: tone, density, CTA strategy
 - `telegram_payload`: channel-ready structure for the chosen interaction
 
+## Interaction Protocol
+
+- Re-ground on audience, urgency, and the exact action the Telegram message is
+  meant to drive.
+- Ask only when the target user action, safety posture, or channel constraints
+  are too ambiguous to design a responsible interaction.
+- Recommend one primary interaction pattern instead of offering several equally
+  vague message shapes.
+
+## Channel Design Protocol
+
+- Design copy, buttons, and decision load as one unit.
+- Bias toward concise, high-signal messages that survive Telegram reading
+  conditions: small screens, interrupted attention, and low tolerance for dense
+  menus.
+- If an action is risky, make the confirmation flow explicit instead of hiding
+  it in verbose text.
+- Keep payload structure aligned with channel constraints rather than mirroring
+  desktop or web UI habits.
+
+## Handoff Expectations
+
+- `telegram_response_plan` should explain the intended interaction posture,
+  message density, and CTA strategy so downstream channel delivery stays on
+  purpose.
+- `telegram_payload` should be a concrete, channel-ready structure that maps the
+  chosen strategy into text, buttons, and interaction flow.
+
 ## Stop Conditions
 
 - the target channel is not Telegram
@@ -85,6 +115,7 @@ Produce:
 - separating channel strategy from payload generation
 - mirroring desktop UX patterns without Telegram constraints
 - overloading one message with too many decisions
+- using channel payload structure without a clear decision model for the user
 
 ## Example
 

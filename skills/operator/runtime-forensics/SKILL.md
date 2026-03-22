@@ -45,6 +45,8 @@ execution_hints:
     - tape_search
     - cost_view
     - skill_complete
+references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
 consumes: []
 requires: []
 ---
@@ -71,17 +73,53 @@ Use this skill when:
 
 Identify the session, files, and event families needed for the question.
 
-### Step 2: Reconstruct the trace
+### Step 2: Separate artifact layers
+
+Distinguish authoritative event history, derived projections, ledger summaries,
+and supplemental diagnostics before drawing conclusions.
+
+### Step 3: Reconstruct the trace
 
 Correlate events, ledger rows, and projection artifacts into one narrative.
 
-### Step 3: Emit forensic artifacts
+### Step 4: Emit forensic artifacts
 
 Produce:
 
 - `runtime_trace`: ordered causal trace
 - `session_summary`: high-level runtime state
 - `artifact_findings`: anomalies, integrity issues, or useful evidence
+
+## Interaction Protocol
+
+- Re-ground on the exact session, turn range, or runtime boundary being
+  investigated before expanding the search.
+- Ask questions only when the session identity, target time window, or expected
+  runtime contract is genuinely ambiguous.
+- If the evidence is insufficient, say so directly instead of drifting into
+  source-level speculation.
+
+## Evidence Protocol
+
+- Start from authoritative artifacts first: event store, ledger, projection
+  outputs, WAL or persisted session state.
+- Treat derived or summarized artifacts as helpful views, not stronger truth
+  than their sources.
+- Explain mismatches explicitly: whether the contradiction is between source
+  artifacts, between a source and a projection, or between runtime evidence and
+  user expectation.
+- Keep causal ordering visible. A good runtime explanation tells the reader what
+  happened first, what changed later, and where the decisive transition occurred.
+
+## Handoff Expectations
+
+- `runtime_trace` should be a time-ordered causal account that another skill can
+  rely on without replaying the entire artifact graph mentally.
+- `session_summary` should capture the current runtime posture, active blockers,
+  and the most relevant artifact state at a glance.
+- `artifact_findings` should identify anomalies, missing evidence, integrity
+  risks, or decisive signals with enough precision to hand off to debugging,
+  review, or a recovery path.
 
 ## Stop Conditions
 
@@ -94,6 +132,7 @@ Produce:
 - mixing runtime forensics with source-level debugging guesses
 - quoting raw JSONL without interpretation
 - ignoring causal ordering across artifacts
+- treating projections or summaries as authoritative when source artifacts disagree
 
 ## Example
 

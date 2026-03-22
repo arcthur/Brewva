@@ -46,6 +46,7 @@ execution_hints:
     - ledger_query
     - skill_complete
 references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
   - references/failure-triage.md
 consumes:
   - repository_snapshot
@@ -83,13 +84,47 @@ If the failure looks like a regression or ownership drift, check recent history
 before settling on a hypothesis. Use `git-ops` history-search patterns for
 introducer lookup, blame, and similar-fix archaeology.
 
-### Step 3: Confirm the cause
+### Step 3: Separate symptom from cause
+
+Make clear which observations are direct evidence, which are hypotheses, and
+which single explanation best fits the full signal.
+
+### Step 4: Confirm the cause
 
 Do not patch. Produce:
 
 - `root_cause`: single dominant cause
 - `fix_strategy`: minimum valid repair approach
 - `failure_evidence`: before-state evidence and commands
+
+## Interaction Protocol
+
+- Ask only when reproduction or acceptance criteria are impossible to infer from
+  available evidence.
+- Re-ground on the exact failing path, command, or user-visible symptom before
+  presenting hypotheses.
+- If the issue is not yet reproducible, say that explicitly instead of acting as
+  if a plausible narrative were proof.
+
+## Hypothesis Protocol
+
+- Keep at most three active hypotheses.
+- Rank them by fit to the current evidence, not by ease of patching.
+- Falsify the strongest one first.
+- If a hypothesis survives, tighten it into a concrete causal statement before
+  writing `root_cause`.
+- If all three fail, stop and escalate rather than inventing a fourth wave of
+  speculative fixes.
+
+## Handoff Expectations
+
+- `root_cause` should name one dominant cause, the boundary where it lives, and
+  why competing explanations were rejected.
+- `fix_strategy` should describe the smallest credible repair path and the
+  verification needed to prove the repair.
+- `failure_evidence` should preserve commands, traces, diagnostics, and observed
+  conditions so implementation or runtime-forensics can continue from the actual
+  failing state.
 
 ## Stop Conditions
 
@@ -102,6 +137,7 @@ Do not patch. Produce:
 - patching on the first plausible explanation
 - expanding into broad refactor before confirming the cause
 - treating flaky symptoms as proof of root cause
+- collapsing symptom description and causal proof into the same statement
 
 ## Example
 

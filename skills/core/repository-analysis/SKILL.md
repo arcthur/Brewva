@@ -44,6 +44,8 @@ execution_hints:
     - lsp_find_references
     - ledger_query
     - skill_complete
+references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
 consumes: []
 requires: []
 ---
@@ -68,7 +70,12 @@ Use this skill when:
 
 Identify entrypoints, main packages, ownership boundaries, and the hot path relevant to the request.
 
-### Step 2: Build the reusable snapshot
+### Step 2: Narrow to the task-bearing path
+
+Prefer the smallest set of files and boundaries that explain the request. Keep
+expanding only while uncertainty is still material.
+
+### Step 3: Build the reusable snapshot
 
 Produce:
 
@@ -76,9 +83,37 @@ Produce:
 - `impact_map`: likely affected files, boundaries, and high-risk touchpoints
 - `unknowns`: gaps that still block confident action
 
-### Step 3: Stop broad scanning
+### Step 4: Stop broad scanning
 
 Once the hot path and boundary map are clear, stop expanding and hand off.
+
+## Interaction Protocol
+
+- Re-ground the user on the specific path you are mapping, not on the whole
+  repository.
+- Ask questions only when the target surface is genuinely ambiguous or when
+  multiple product boundaries could own the request.
+- Prefer a recommended reading path over a giant inventory dump. The goal is to
+  reduce future uncertainty, not to prove you scanned many files.
+
+## Search Protocol
+
+- Start from likely entrypoints, public boundaries, and ownership seams.
+- Expand outward only when the current evidence cannot explain responsibility,
+  coupling, or expected impact.
+- Treat directory listings, symbol searches, and grep results as routing aids.
+  They are not the analysis itself.
+- Stop once downstream design, debugging, or review can act without repeating
+  the same exploration.
+
+## Handoff Expectations
+
+- `repository_snapshot` should explain the main zones, their responsibilities,
+  and the specific path relevant to the request.
+- `impact_map` should identify likely touchpoints, ownership boundaries, and
+  blast-radius concerns so downstream skills know where to look first.
+- `unknowns` should be concrete and decision-relevant. Record what is still
+  unclear and why it blocks confident action.
 
 ## Stop Conditions
 
@@ -91,6 +126,7 @@ Once the hot path and boundary map are clear, stop expanding and hand off.
 - reading random files without a hypothesis
 - dumping directory trees without explaining why they matter
 - confusing file count with architectural importance
+- continuing to scan after the hot path is already clear
 
 ## Example
 

@@ -48,6 +48,7 @@ execution_hints:
     - ledger_query
     - skill_complete
 references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
   - references/boundary-failure.md
   - references/contract-drift.md
   - references/security-concurrency.md
@@ -83,13 +84,54 @@ Summarize scope, intent, critical paths, and available evidence.
 
 Inspect correctness, compatibility, data mutation, external exposure, and operational failure modes.
 
-### Step 3: Emit findings-first output
+### Step 3: Decide the actual next action
+
+Determine whether the change is ready, needs implementation follow-up, or is
+blocked on missing evidence or a deeper design problem.
+
+### Step 4: Emit findings-first output
 
 Produce:
 
 - `review_findings`: ordered issues with evidence
 - `review_report`: scope, assumptions, gaps, residual risk
 - `merge_decision`: `ready`, `needs_changes`, or `blocked`
+
+## Interaction Protocol
+
+- Do not spend review budget on compliments or stylistic trivia before checking
+  correctness and merge safety.
+- Re-ground on the intended design and available verification before judging the
+  diff in isolation.
+- If a user-facing decision is needed, recommend the merge path you actually
+  believe is safest instead of presenting symmetric options.
+
+## Findings Protocol
+
+- Prioritize behavior risk over style.
+- Each finding should make four things clear: the condition, the impact, the
+  evidence, and the expected next action.
+- Treat missing verification, stale design conformance, and runtime-boundary
+  violations as first-class findings, not footnotes.
+- If the real problem is an unconfirmed bug rather than a review issue, say so
+  and direct the next step toward debugging.
+
+## Merge Decision Protocol
+
+- `ready`: no material correctness, safety, or evidence gaps remain.
+- `needs_changes`: the change is salvageable, but concrete issues must be fixed
+  before merge.
+- `blocked`: merge safety cannot be established because the design is wrong, the
+  evidence is missing, or the risk is outside acceptable bounds.
+
+## Handoff Expectations
+
+- `review_findings` should be ordered from highest to lowest value and should be
+  actionable by implementation without reinterpreting the review.
+- `review_report` should record assumptions, blind spots, and residual risk so
+  ship-readiness consumers know what was and was not covered.
+- `merge_decision` should match the findings and evidence; it should never be a
+  detached summary label.
 
 ## Stop Conditions
 
@@ -102,6 +144,7 @@ Produce:
 - leading with summaries before findings
 - focusing on style while skipping behavior risk
 - claiming merge safety without evidence or assumptions
+- turning review into silent redesign without naming the design gap
 
 ## Example
 

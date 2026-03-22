@@ -38,6 +38,7 @@ execution_hints:
     - grep
     - skill_complete
 references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
   - references/contract-validation.md
   - references/projection-patterns.md
   - references/repair-loop-protocol.md
@@ -78,6 +79,32 @@ Produce:
 - `structured_payload`: the structured result
 - `extraction_report`: confidence, repairs, and unresolved gaps
 
+## Interaction Protocol
+
+- Re-ground on the target schema, required fields, and acceptable repair rules
+  before extracting.
+- Ask only when the output shape, source authority, or ambiguity policy is too
+  unclear to extract safely.
+- If the source cannot support a stable schema, say so directly instead of
+  forcing a shape that only looks valid.
+
+## Extraction Protocol
+
+- Separate three things clearly: source evidence, repaired normalization, and
+  unresolved ambiguity.
+- Repair only obvious, well-justified shape problems. Do not invent semantic
+  content to make a schema look complete.
+- Prefer stable keys and explicit null or missing-state handling over prose
+  escape hatches.
+- Validation is part of the skill, not an optional cleanup pass.
+
+## Handoff Expectations
+
+- `structured_payload` should be stable enough for downstream tools or skills to
+  consume without reparsing the original text.
+- `extraction_report` should explain confidence, repairs applied, ambiguities
+  left unresolved, and any fields that need human or downstream judgment.
+
 ## Stop Conditions
 
 - no stable schema can be defined from the request
@@ -89,6 +116,7 @@ Produce:
 - returning prose when a schema was requested
 - silently inventing fields to satisfy shape requirements
 - mixing extraction with downstream business decisions
+- hiding source ambiguity behind confident-looking JSON
 
 ## Example
 

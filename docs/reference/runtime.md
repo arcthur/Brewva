@@ -93,6 +93,11 @@ Default injected sources:
 
 There is no default proposal-backed context source anymore.
 
+`brewva.workflow-advisory` is advisory-only. It summarizes derived discovery,
+strategy, planning, implementation, review, QA, verification, ship, and retro
+state from durable events plus session state. It does not prescribe a required
+next skill.
+
 ### `runtime.tools.*`
 
 - `checkAccess(sessionId, toolName)`

@@ -51,10 +51,19 @@ execution_hints:
     - ledger_query
     - skill_complete
 references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
   - references/executable-evidence-bridge.md
   - references/oracle-consultation-protocol.md
   - references/plan-output-template.md
 consumes:
+  - problem_frame
+  - user_pains
+  - scope_recommendation
+  - design_seed
+  - open_questions
+  - strategy_review
+  - scope_decision
+  - strategic_risks
   - repository_snapshot
   - impact_map
   - root_cause
@@ -86,7 +95,12 @@ Determine whether the request is a trivial local change or a real design problem
 
 Offer 1-3 materially different approaches with trade-offs, then choose one.
 
-### Step 3: Emit bounded artifacts
+### Step 3: Force the key decisions into the open
+
+Make boundary ownership, migration posture, verification posture, and rollback
+assumptions explicit before emitting the final plan.
+
+### Step 4: Emit bounded artifacts
 
 Produce:
 
@@ -94,6 +108,37 @@ Produce:
 - `execution_plan`: ordered steps and verification intent
 - `execution_mode_hint`: `direct_patch`, `test_first`, or `coordinated_rollout`
 - `risk_register`: concrete risks and mitigations
+
+## Interaction Protocol
+
+- Ask questions only when the answer changes the primary architecture choice,
+  effect boundary, or acceptance criteria.
+- If context may be stale, briefly re-ground the request in current repository
+  reality before recommending a path.
+- When user input is needed, recommend one primary path and one bounded
+  alternative instead of presenting an open menu of possibilities.
+
+## Decision Protocol
+
+- Start with at most three viable approaches.
+- Compare them on boundary ownership, blast radius, migration or rollback cost,
+  verification strength, and operational risk.
+- Choose one path explicitly. Do not leave the main design undecided unless the
+  missing choice genuinely belongs to the user.
+- Prefer complete but bounded work over shortcut plans that defer obvious edge
+  cases into follow-up churn.
+
+## Handoff Expectations
+
+- `design_spec` should tell implementation what is changing, what is not
+  changing, which modules own the work, and which constraints are non-negotiable.
+- `execution_plan` should be ordered, concrete, and verification-aware so the
+  implementation skill can execute without redesigning the task.
+- `execution_mode_hint` should be evidence-based. Use `direct_patch` only for
+  truly local work, `test_first` when behavior needs pinning, and
+  `coordinated_rollout` when change spans multiple boundaries.
+- `risk_register` should be ranked by likely impact and should name the signals
+  that review or verification must watch later.
 
 ## Stop Conditions
 
@@ -106,6 +151,7 @@ Produce:
 - forcing design on an obvious one-file fix
 - skipping trade-offs and presenting one option as inevitable
 - producing a plan that is not tied to real files or modules
+- emitting generic architecture prose that does not help the next skill act
 
 ## Example
 

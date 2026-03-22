@@ -85,6 +85,21 @@ contract.
 Current output contract kinds are intentionally limited to `text`, `enum`, and
 `json`.
 
+## Authored Behavior
+
+Frontmatter is only half of skill quality. Strong skills also encode authored
+behavior in the markdown body:
+
+- role posture: what the specialist is optimizing for
+- interaction protocol: when to ask, proceed, or re-ground
+- decision protocol: how choices are ranked or classified
+- handoff expectations: what each artifact must teach the next skill
+- completion and escalation behavior: when to stop instead of guessing
+
+This is intentionally prompt-side guidance, not kernel authority. Runtime
+enforces contracts, policy, replay, and commitment boundaries; skill-authored
+behavior improves specialist quality without creating a second control loop.
+
 ## Routing Scopes And Profiles
 
 Skill discovery and deliberation are now separated from kernel commitment:
@@ -127,6 +142,13 @@ Deliberation-side recovery flows such as debug or review may still publish
 non-authoritative artifacts, but they do not create a second public
 skill-sequencing API in the runtime.
 
+One common delivery chain now present in the catalog is:
+
+`discovery -> strategy-review -> design -> implementation -> review -> qa -> ship -> retro`
+
+This remains a prompt-side and control-plane convention. Runtime still owns
+verification, replay, readiness derivation, and effect governance.
+
 ## Workflow Artifacts And Readiness
 
 Skill lifecycle remains the authoritative semantic contract boundary, but the
@@ -135,11 +157,16 @@ adjacent evidence signals.
 
 Current derived workflow artifact sources include:
 
+- `problem_frame` / `user_pains` / `scope_recommendation` -> `workflow.discovery`
+- `strategy_review` / `scope_decision` / `strategic_risks` -> `workflow.strategy_review`
 - `design_spec` -> `workflow.design`
 - `execution_plan` -> `workflow.execution_plan`
 - `change_set` / `files_changed` and write markers -> `workflow.implementation`
 - `review_report` / `review_findings` / `merge_decision` -> `workflow.review`
+- `qa_report` / `qa_findings` / `qa_verdict` -> `workflow.qa`
 - verification outcomes -> `workflow.verification`
+- `ship_report` / `release_checklist` / `ship_decision` -> `workflow.ship`
+- `retro_summary` / `retro_findings` / `followup_recommendation` -> `workflow.retro`
 - delegated patch adoption or failure -> `workflow.worker_patch`
 
 Important boundary rules:
@@ -159,10 +186,15 @@ Control-plane and operator surfaces may inspect this state through
 ### Core
 
 - `repository-analysis`
+- `discovery`
+- `strategy-review`
 - `design`
 - `implementation`
 - `debugging`
 - `review`
+- `qa`
+- `ship`
+- `retro`
 
 ### Domain
 

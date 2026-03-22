@@ -42,6 +42,8 @@ execution_hints:
     - lsp_diagnostics
     - ledger_query
     - skill_complete
+references:
+  - skills/meta/skill-authoring/references/authored-behavior.md
 composable_with:
   - debugging
   - runtime-forensics
@@ -84,7 +86,12 @@ Respect `execution_mode_hint` when present, but override it if the actual scope 
 
 Read before editing, keep the diff local, and avoid incidental cleanup.
 
-### Step 3: Emit execution artifacts
+### Step 3: Verify before claiming completion
+
+Treat verification as part of implementation. Capture commands, diagnostics, and
+runtime evidence while the change context is still fresh.
+
+### Step 4: Emit execution artifacts
 
 Produce:
 
@@ -95,6 +102,35 @@ Produce:
 If verification blocks completion, expect runtime to hand control to the debug
 loop. Preserve the attempted evidence so `runtime-forensics` or `debugging` can
 continue from the failure snapshot instead of re-deriving context from scratch.
+
+## Interaction Protocol
+
+- Proceed without asking when the next edit is obvious from the plan and local
+  evidence.
+- Ask only when the requested behavior, risk tolerance, or effect boundary is
+  genuinely ambiguous.
+- If the change expands materially beyond the active plan, stop and hand control
+  back to design instead of silently widening scope.
+
+## Mode Selection Protocol
+
+- Use `direct_patch` for bounded local edits where verification is straightforward.
+- Use `test_first` when current behavior is disputed, brittle, or easy to
+  regress without pinning.
+- Use `coordinated_rollout` when the work crosses packages, contracts, or
+  runtime boundaries and needs ordered sequencing.
+- Do not pick the simplest mode by habit. Pick the mode that makes the change
+  safest to verify.
+
+## Handoff Expectations
+
+- `change_set` should explain what changed, why this shape was chosen, and any
+  intentional non-changes that matter to review.
+- `files_changed` should be the concrete touched file list, not a category
+  summary.
+- `verification_evidence` should preserve enough detail for review or debugging
+  to continue from the actual post-change state without re-running the whole
+  investigation mentally.
 
 ## Stop Conditions
 
@@ -107,6 +143,7 @@ continue from the failure snapshot instead of re-deriving context from scratch.
 - treating execution mode as a routing problem for another public skill
 - rewriting large surfaces for a local change
 - claiming completion without concrete verification evidence
+- treating verification as optional follow-up cleanup
 
 ## Example
 

@@ -19,6 +19,11 @@ The important distinction is semantic:
 - project overlay = project-specific tightening plus shared context
 - operator/meta = loaded, but hidden from standard routing by default
 
+Skills should also remain behavior-rich, not just contract-rich. The frontmatter
+defines runtime authority and artifact shape; the markdown body should still
+teach the model how the specialist behaves, decides, asks questions, and hands
+work off to the next skill.
+
 ## Routing Scopes
 
 `skills.routing.enabled=false` by default. When enabled,
@@ -32,12 +37,18 @@ implementation prompts.
 
 ## Current Inventory
 
-- Core: `repository-analysis`, `design`, `implementation`, `debugging`, `review`
+- Core: `repository-analysis`, `discovery`, `strategy-review`, `design`, `implementation`, `debugging`, `review`, `qa`, `ship`, `retro`
 - Domain: `agent-browser`, `frontend-design`, `github`, `telegram`, `structured-extraction`, `goal-loop`
 - Operator: `runtime-forensics`, `git-ops`
 - Meta: `skill-authoring`, `self-improve`
 - Overlays: `repository-analysis`, `design`, `implementation`, `debugging`, `review`, `runtime-forensics`
 - Shared project context: `critical-rules`, `migration-priority-matrix`, `package-boundaries`, `runtime-artifacts`
+
+One common software-delivery chain is:
+
+`discovery -> strategy-review -> design -> implementation -> review -> qa -> ship -> retro`
+
+This is a catalog convention, not a kernel-owned stage machine.
 
 ## Overlay Semantics
 

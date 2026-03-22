@@ -186,6 +186,50 @@ describe("projection extractor", () => {
     expect(result.resolves).toHaveLength(0);
   });
 
+  test("extracts expanded specialist workflow artifacts from skill completion outputs", () => {
+    const result = extractProjectionFromEvent(
+      event({
+        id: "evt-skill-complete-expanded-workflow",
+        type: "skill_completed",
+        payload: {
+          skillName: "ship",
+          outputKeys: [
+            "strategy_review",
+            "scope_decision",
+            "qa_report",
+            "qa_verdict",
+            "ship_report",
+            "ship_decision",
+            "retro_summary",
+          ],
+          outputs: {
+            strategy_review: "Hold scope around advisory workflow state first.",
+            scope_decision: "Defer release automation.",
+            qa_report: "Smoke-tested the main operator flow.",
+            qa_verdict: "pass",
+            ship_report: "Ready for PR handoff.",
+            ship_decision: "ready",
+            retro_summary: "The chain stayed visible end-to-end.",
+          },
+        },
+      }),
+    );
+
+    expect(result.upserts.map((unit) => unit.projectionKey).toSorted()).toEqual([
+      "workflow_artifact:qa",
+      "workflow_artifact:retro",
+      "workflow_artifact:ship",
+      "workflow_artifact:strategy_review",
+    ]);
+    expect(
+      result.upserts.find((unit) => unit.projectionKey === "workflow_artifact:qa")?.statement,
+    ).toContain("state=ready; freshness=fresh;");
+    expect(
+      result.upserts.find((unit) => unit.projectionKey === "workflow_artifact:ship")?.statement,
+    ).toContain("state=ready; freshness=fresh;");
+    expect(result.resolves).toHaveLength(0);
+  });
+
   test("extracts workflow verification candidate from verification outcome events", () => {
     const result = extractProjectionFromEvent(
       event({
