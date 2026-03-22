@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { BrewvaRuntime, buildScheduleIntentFiredEvent } from "@brewva/brewva-runtime";
 import { createIterationFactTool } from "@brewva/brewva-tools";
 import { extractTextContent, mergeContext } from "./tools-flow.helpers.js";
 
@@ -126,5 +126,105 @@ describe("iteration_fact contract", () => {
     expect(
       runtime.events.listConvergenceReasons(sessionId, { runKey: "goal-loop/run-2" }),
     ).toHaveLength(1);
+  });
+
+  test("lists lineage-scoped facts through the managed tool surface", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-tools-iteration-lineage-"));
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const parentSessionId = "iteration-lineage-parent";
+    const childSessionId = "iteration-lineage-child-a";
+    const siblingSessionId = "iteration-lineage-child-b";
+    const loopSource = "goal-loop:coverage-raise-2026-03-22";
+    const tool = createIterationFactTool({ runtime });
+
+    runtime.events.record({
+      sessionId: parentSessionId,
+      type: "schedule_intent",
+      timestamp: 10,
+      payload: {
+        ...buildScheduleIntentFiredEvent({
+          intentId: "lineage-intent-a",
+          parentSessionId,
+          reason: "continue bounded optimization",
+          goalRef: loopSource,
+          continuityMode: "inherit",
+          maxRuns: 5,
+          runIndex: 1,
+          firedAt: 10,
+          nextRunAt: 20,
+          childSessionId,
+        }),
+      },
+    });
+    runtime.events.record({
+      sessionId: parentSessionId,
+      type: "schedule_intent",
+      timestamp: 11,
+      payload: {
+        ...buildScheduleIntentFiredEvent({
+          intentId: "lineage-intent-b",
+          parentSessionId,
+          reason: "continue bounded optimization",
+          goalRef: loopSource,
+          continuityMode: "inherit",
+          maxRuns: 5,
+          runIndex: 2,
+          firedAt: 11,
+          nextRunAt: 21,
+          childSessionId: siblingSessionId,
+        }),
+      },
+    });
+
+    runtime.events.recordMetricObservation(parentSessionId, {
+      metricKey: "coverage_pct",
+      value: 72,
+      unit: "%",
+      aggregation: "last",
+      iterationKey: "coverage-loop/run-0/iter-0",
+      source: loopSource,
+      timestamp: 100,
+    });
+    runtime.events.recordMetricObservation(childSessionId, {
+      metricKey: "coverage_pct",
+      value: 74,
+      unit: "%",
+      aggregation: "last",
+      iterationKey: "coverage-loop/run-1/iter-1",
+      source: loopSource,
+      timestamp: 110,
+    });
+    runtime.events.recordMetricObservation(siblingSessionId, {
+      metricKey: "coverage_pct",
+      value: 76,
+      unit: "%",
+      aggregation: "last",
+      iterationKey: "coverage-loop/run-2/iter-1",
+      source: loopSource,
+      timestamp: 120,
+    });
+
+    const listResult = await tool.execute(
+      "tc-iteration-lineage-list",
+      {
+        action: "list",
+        fact_kind: "metric",
+        metric_key: "coverage_pct",
+        source: loopSource,
+        session_scope: "parent_lineage",
+        history_limit: 10,
+      },
+      undefined,
+      undefined,
+      mergeContext(childSessionId, { cwd: workspace }),
+    );
+
+    expect(extractTextContent(listResult)).toContain("session_scope: parent_lineage");
+    const details = listResult.details as { metrics?: Array<{ sessionId: string; value: number }> };
+    expect(details.metrics).toEqual([
+      expect.objectContaining({ sessionId: parentSessionId, value: 72 }),
+      expect.objectContaining({ sessionId: childSessionId, value: 74 }),
+      expect.objectContaining({ sessionId: siblingSessionId, value: 76 }),
+    ]);
   });
 });

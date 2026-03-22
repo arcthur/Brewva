@@ -53,6 +53,16 @@ Those facts remain advisory evidence for the protocol running inside the child
 session. Scheduler semantics stay limited to explicit convergence predicates,
 intent state, retry policy, and operator-controlled updates.
 
+Lineage boundary notes:
+
+- each child session records its own iteration facts; the scheduler does not
+  mirror those events back into the parent session
+- later inherited runs that need loop history must query `iteration_fact` with
+  `session_scope=parent_lineage` and a stable `source` such as
+  `goal-loop:<loop_key>`
+- `continuityMode=fresh` sessions are intentionally excluded from lineage-scoped
+  fact queries
+
 ## Recovery and Safety
 
 - `maxRecoveryCatchUps` limits startup catch-up volume; overflow intents are deferred.

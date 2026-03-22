@@ -27,6 +27,7 @@ describe("skill authored behavior coverage", () => {
     "skills/domain/frontend-design/SKILL.md",
     "skills/domain/github/SKILL.md",
     "skills/domain/goal-loop/SKILL.md",
+    "skills/domain/predict-review/SKILL.md",
     "skills/domain/structured-extraction/SKILL.md",
     "skills/domain/telegram/SKILL.md",
     "skills/operator/git-ops/SKILL.md",

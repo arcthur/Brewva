@@ -2,7 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
+import {
+  BrewvaRuntime,
+  DEFAULT_BREWVA_CONFIG,
+  buildScheduleIntentFiredEvent,
+} from "@brewva/brewva-runtime";
 import { setStaticContextPressureThresholds } from "../../fixtures/config.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
@@ -395,6 +399,203 @@ describe("runtime facade coverage", () => {
         metricKey: "latency_ms",
       },
     });
+  });
+
+  test("iteration fact helpers can query parent lineage across inherited child sessions", () => {
+    const runtime = new BrewvaRuntime({
+      cwd: createTestWorkspace("runtime-facade-iteration-lineage"),
+    });
+    const parentSessionId = "runtime-facade-iteration-lineage-parent";
+    const childSessionId = "runtime-facade-iteration-lineage-child-a";
+    const siblingSessionId = "runtime-facade-iteration-lineage-child-b";
+    const freshChildSessionId = "runtime-facade-iteration-lineage-fresh";
+    const loopSource = "goal-loop:coverage-raise-2026-03-22";
+
+    runtime.events.record({
+      sessionId: parentSessionId,
+      type: "schedule_intent",
+      timestamp: 10,
+      payload: {
+        ...buildScheduleIntentFiredEvent({
+          intentId: "coverage-lineage-inherit-a",
+          parentSessionId,
+          reason: "continue bounded optimization",
+          goalRef: loopSource,
+          continuityMode: "inherit",
+          maxRuns: 5,
+          runIndex: 1,
+          firedAt: 10,
+          nextRunAt: 20,
+          childSessionId,
+        }),
+      },
+    });
+    runtime.events.record({
+      sessionId: parentSessionId,
+      type: "schedule_intent",
+      timestamp: 11,
+      payload: {
+        ...buildScheduleIntentFiredEvent({
+          intentId: "coverage-lineage-inherit-b",
+          parentSessionId,
+          reason: "continue bounded optimization",
+          goalRef: loopSource,
+          continuityMode: "inherit",
+          maxRuns: 5,
+          runIndex: 2,
+          firedAt: 11,
+          nextRunAt: 21,
+          childSessionId: siblingSessionId,
+        }),
+      },
+    });
+    runtime.events.record({
+      sessionId: parentSessionId,
+      type: "schedule_intent",
+      timestamp: 12,
+      payload: {
+        ...buildScheduleIntentFiredEvent({
+          intentId: "coverage-lineage-fresh",
+          parentSessionId,
+          reason: "detached follow-up",
+          goalRef: loopSource,
+          continuityMode: "fresh",
+          maxRuns: 5,
+          runIndex: 3,
+          firedAt: 12,
+          nextRunAt: 22,
+          childSessionId: freshChildSessionId,
+        }),
+      },
+    });
+
+    const metricSessions = [
+      {
+        sessionId: parentSessionId,
+        value: 72,
+        iterationKey: "coverage-loop/run-0/iter-0",
+        timestamp: 100,
+      },
+      {
+        sessionId: childSessionId,
+        value: 74,
+        iterationKey: "coverage-loop/run-1/iter-1",
+        timestamp: 110,
+      },
+      {
+        sessionId: siblingSessionId,
+        value: 76,
+        iterationKey: "coverage-loop/run-2/iter-1",
+        timestamp: 120,
+      },
+      {
+        sessionId: freshChildSessionId,
+        value: 99,
+        iterationKey: "coverage-loop/run-fresh/iter-1",
+        timestamp: 130,
+      },
+    ] as const;
+
+    for (const entry of metricSessions) {
+      runtime.events.recordMetricObservation(entry.sessionId, {
+        metricKey: "coverage_pct",
+        value: entry.value,
+        unit: "%",
+        aggregation: "last",
+        iterationKey: entry.iterationKey,
+        source: loopSource,
+        timestamp: entry.timestamp,
+      });
+      runtime.events.recordGuardResult(entry.sessionId, {
+        guardKey: "typecheck",
+        status: "pass",
+        iterationKey: entry.iterationKey,
+        source: loopSource,
+        timestamp: entry.timestamp + 1,
+      });
+      runtime.events.recordIterationDecision(entry.sessionId, {
+        iterationKey: entry.iterationKey,
+        decision: "keep",
+        reasonCode: "metric_improved_guard_green",
+        source: loopSource,
+        timestamp: entry.timestamp + 2,
+      });
+      runtime.events.recordConvergenceReason(entry.sessionId, {
+        runKey: entry.iterationKey.replace(/\/iter-\d+$/, ""),
+        status: "continue",
+        reasonCode: "budget_available",
+        source: loopSource,
+        timestamp: entry.timestamp + 3,
+      });
+    }
+
+    runtime.events.recordMetricObservation(childSessionId, {
+      metricKey: "coverage_pct",
+      value: 55,
+      unit: "%",
+      aggregation: "last",
+      iterationKey: "other-loop/run-1/iter-1",
+      source: "goal-loop:other-loop",
+      timestamp: 140,
+    });
+
+    expect(
+      runtime.events.listMetricObservations(childSessionId, {
+        metricKey: "coverage_pct",
+        source: loopSource,
+        sessionScope: "current_session",
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        sessionId: childSessionId,
+        value: 74,
+      }),
+    ]);
+
+    expect(
+      runtime.events.listMetricObservations(childSessionId, {
+        metricKey: "coverage_pct",
+        source: loopSource,
+        sessionScope: "parent_lineage",
+      }),
+    ).toEqual([
+      expect.objectContaining({ sessionId: parentSessionId, value: 72 }),
+      expect.objectContaining({ sessionId: childSessionId, value: 74 }),
+      expect.objectContaining({ sessionId: siblingSessionId, value: 76 }),
+    ]);
+
+    expect(
+      runtime.events.listMetricObservations(parentSessionId, {
+        metricKey: "coverage_pct",
+        source: loopSource,
+        sessionScope: "parent_lineage",
+      }),
+    ).toEqual([
+      expect.objectContaining({ sessionId: parentSessionId, value: 72 }),
+      expect.objectContaining({ sessionId: childSessionId, value: 74 }),
+      expect.objectContaining({ sessionId: siblingSessionId, value: 76 }),
+    ]);
+
+    expect(
+      runtime.events.listGuardResults(childSessionId, {
+        guardKey: "typecheck",
+        source: loopSource,
+        sessionScope: "parent_lineage",
+      }),
+    ).toHaveLength(3);
+    expect(
+      runtime.events.listIterationDecisions(childSessionId, {
+        decision: "keep",
+        source: loopSource,
+        sessionScope: "parent_lineage",
+      }),
+    ).toHaveLength(3);
+    expect(
+      runtime.events.listConvergenceReasons(childSessionId, {
+        source: loopSource,
+        sessionScope: "parent_lineage",
+      }),
+    ).toHaveLength(3);
   });
 
   test("context facade normalizes usage ratios, reads stored pressure, and exposes compaction window turns", () => {

@@ -185,6 +185,13 @@ Important boundary rules:
 Control-plane and operator surfaces may inspect this state through
 `workflow_status` and the default `[WorkflowAdvisory]` context source.
 
+Protocol skills may sit beside the common delivery chain without becoming
+runtime-owned planners:
+
+- `goal-loop` for bounded continuity plus objective iteration evidence
+- `predict-review` for multi-perspective advisory debate before the next owner
+  takes over
+
 ## Public Routable Skills
 
 ### Core
@@ -205,12 +212,18 @@ Control-plane and operator surfaces may inspect this state through
 - `agent-browser`
 - `frontend-design`
 - `github`
+- `predict-review`
 - `telegram`
 - `structured-extraction`
 - `goal-loop`
 
-`goal-loop` should be treated as a bounded multi-run skill, not a
-general-purpose implementation skill.
+`goal-loop` should be treated as a bounded multi-run continuity skill with
+explicit cadence, lineage-aware iteration-fact history, and objective
+keep/discard discipline. It is not a general-purpose implementation skill.
+
+`predict-review` is an advisory multi-perspective skill. It uses public
+delegation tools and existing built-in subagent profiles to generate competing
+hypotheses, but it does not create runtime authority or bypass verification.
 
 ## Hidden-By-Default Skills
 
@@ -226,6 +239,11 @@ general-purpose implementation skill.
 
 These skills are loaded by the registry but excluded from standard routing
 unless routing scopes explicitly include them.
+
+`self-improve` remains a meta skill rather than a kernel optimizer. It may
+inspect lineage-scoped iteration facts as evidence, but its outputs are still
+improvement hypotheses and learning backlog artifacts rather than runtime
+control state.
 
 ## Project Overlays
 

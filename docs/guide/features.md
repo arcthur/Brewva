@@ -12,7 +12,8 @@
 - Event-first runtime persistence and replay
 - Cost observability and threshold-based budget alerts
 - Derived workflow artifacts and advisory readiness inspection
-- Objective iteration fact persistence and query for model-native optimization loops
+- Objective iteration fact persistence and lineage-aware query for
+  model-native optimization loops
 
 ## Tool Surface
 
@@ -84,9 +85,15 @@ Tool registry source: `packages/brewva-tools/src/index.ts`
 ## Skill Surface
 
 - Core capability skills: `repository-analysis`, `discovery`, `strategy-review`, `design`, `implementation`, `debugging`, `review`, `qa`, `ship`, `retro`
-- Domain capability skills: `agent-browser`, `frontend-design`, `github`, `telegram`, `structured-extraction`, `goal-loop`
+- Domain capability skills: `agent-browser`, `frontend-design`, `github`, `telegram`, `structured-extraction`, `goal-loop`, `predict-review`
 - Operator skills: `runtime-forensics`, `git-ops`
 - Meta skills: `skill-authoring`, `self-improve`
+- `goal-loop` is the bounded continuity and objective optimization protocol,
+  not a generic implementation skill
+- `predict-review` is an advisory multi-perspective debate skill built on
+  public delegation tools and existing subagent profiles
+- `self-improve` distills repeated evidence, including iteration-fact history,
+  into explicit improvement hypotheses
 - Project overlays: `repository-analysis`, `design`, `implementation`, `debugging`, `review`, `runtime-forensics`
 - Shared project context: `critical-rules`, `migration-priority-matrix`, `package-boundaries`, `runtime-artifacts`
 
