@@ -8,6 +8,8 @@
   },
   "references": [
     { "path": "../packages/brewva-runtime" },
+    { "path": "../packages/brewva-deliberation" },
+    { "path": "../packages/brewva-skill-broker" },
     { "path": "../packages/brewva-channels-telegram" },
     { "path": "../packages/brewva-ingress" },
     { "path": "../packages/brewva-tools" },

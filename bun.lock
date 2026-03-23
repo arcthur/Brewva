@@ -7,9 +7,11 @@
       "devDependencies": {
         "@brewva/brewva-channels-telegram": "workspace:*",
         "@brewva/brewva-cli": "workspace:*",
+        "@brewva/brewva-deliberation": "workspace:*",
         "@brewva/brewva-gateway": "workspace:*",
         "@brewva/brewva-ingress": "workspace:*",
         "@brewva/brewva-runtime": "workspace:*",
+        "@brewva/brewva-skill-broker": "workspace:*",
         "@brewva/brewva-tools": "workspace:*",
         "@mariozechner/pi-coding-agent": "^0.61.1",
         "@types/node": "^25.2.3",
@@ -110,13 +112,22 @@
         "date-fns": "^4.1.0",
       },
     },
+    "packages/brewva-deliberation": {
+      "name": "@brewva/brewva-deliberation",
+      "version": "0.1.0",
+      "dependencies": {
+        "@brewva/brewva-runtime": "workspace:*",
+      },
+    },
     "packages/brewva-gateway": {
       "name": "@brewva/brewva-gateway",
       "version": "0.1.0",
       "dependencies": {
         "@brewva/brewva-channels-telegram": "workspace:*",
+        "@brewva/brewva-deliberation": "workspace:*",
         "@brewva/brewva-ingress": "workspace:*",
         "@brewva/brewva-runtime": "workspace:*",
+        "@brewva/brewva-skill-broker": "workspace:*",
         "@brewva/brewva-tools": "workspace:*",
         "@mariozechner/pi-ai": "^0.61.1",
         "@mariozechner/pi-coding-agent": "^0.61.1",
@@ -141,11 +152,19 @@
         "yaml": "^2.8.2",
       },
     },
+    "packages/brewva-skill-broker": {
+      "name": "@brewva/brewva-skill-broker",
+      "version": "0.1.0",
+      "dependencies": {
+        "@brewva/brewva-runtime": "workspace:*",
+      },
+    },
     "packages/brewva-tools": {
       "name": "@brewva/brewva-tools",
       "version": "0.1.0",
       "dependencies": {
         "@brewva/brewva-runtime": "workspace:*",
+        "@brewva/brewva-skill-broker": "workspace:*",
         "@mariozechner/pi-coding-agent": "^0.61.1",
         "@sinclair/typebox": "^0.34.48",
         "date-fns": "^4.1.0",
@@ -239,6 +258,8 @@
 
     "@brewva/brewva-darwin-x64": ["@brewva/brewva-darwin-x64@workspace:distribution/brewva-darwin-x64"],
 
+    "@brewva/brewva-deliberation": ["@brewva/brewva-deliberation@workspace:packages/brewva-deliberation"],
+
     "@brewva/brewva-gateway": ["@brewva/brewva-gateway@workspace:packages/brewva-gateway"],
 
     "@brewva/brewva-ingress": ["@brewva/brewva-ingress@workspace:packages/brewva-ingress"],
@@ -252,6 +273,8 @@
     "@brewva/brewva-linux-x64-musl": ["@brewva/brewva-linux-x64-musl@workspace:distribution/brewva-linux-x64-musl"],
 
     "@brewva/brewva-runtime": ["@brewva/brewva-runtime@workspace:packages/brewva-runtime"],
+
+    "@brewva/brewva-skill-broker": ["@brewva/brewva-skill-broker@workspace:packages/brewva-skill-broker"],
 
     "@brewva/brewva-tools": ["@brewva/brewva-tools@workspace:packages/brewva-tools"],
 

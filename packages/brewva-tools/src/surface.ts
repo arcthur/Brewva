@@ -13,6 +13,7 @@ export const BREWVA_TOOL_SURFACE_BY_NAME = {
   session_compact: "base",
   resource_lease: "base",
   exec: "base",
+  deliberation_memory: "skill",
   browser_open: "skill",
   browser_wait: "skill",
   browser_snapshot: "skill",
@@ -47,6 +48,7 @@ export const BREWVA_TOOL_SURFACE_BY_NAME = {
   worker_results_apply: "skill",
   schedule_intent: "skill",
   skill_complete: "skill",
+  skill_promotion: "skill",
   subagent_run: "skill",
   subagent_fanout: "skill",
   subagent_status: "skill",
@@ -60,6 +62,7 @@ export const BREWVA_TOOL_SURFACE_BY_NAME = {
   obs_query: "operator",
   obs_slo_assert: "operator",
   obs_snapshot: "operator",
+  optimization_continuity: "skill",
   iteration_fact: "skill",
   rollback_last_patch: "operator",
 } as const satisfies Record<string, BrewvaToolSurface>;

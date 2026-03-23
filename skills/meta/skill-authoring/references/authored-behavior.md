@@ -98,6 +98,28 @@ least explicit interaction, decision, and handoff guidance.
 - vague instructions such as "be thorough" without a concrete protocol
 - duplicating runtime authority in skill prose
 
+## Memory Nudge
+
+When a skill completes work that produces reusable insight, the model should
+actively consider whether the lesson belongs in deliberation memory.
+
+Good memory candidates:
+
+- a verification strategy that worked reliably in this repository
+- a user preference or collaboration pattern observed across interactions
+- a recurring failure mode and its proven fix
+- a constraint or convention that was not obvious from code alone
+
+The `deliberation_memory` tool is read-only inspection. Memory artifacts are
+derived automatically from durable evidence such as skill completions,
+verification outcomes, iteration facts, and task specs. The model does not need
+to write memory explicitly. But the model should use `self-improve` or `retro`
+to surface lessons worth preserving, because those skill outputs feed the
+derivation pipeline.
+
+Do not treat every observation as a systemic lesson. One-off findings stay in
+skill outputs; only repeated, evidence-backed patterns earn long-term memory.
+
 ## Brewva-Specific Boundary
 
 Absorb authored-behavior patterns aggressively, but keep kernel authority in the

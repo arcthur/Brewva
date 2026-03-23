@@ -112,6 +112,7 @@ describe("effect governance policy modes", () => {
     expect(runtime.tools.checkAccess(sessionId, "tape_handoff").allowed).toBe(true);
     expect(runtime.tools.checkAccess(sessionId, "tape_info").allowed).toBe(true);
     expect(runtime.tools.checkAccess(sessionId, "tape_search").allowed).toBe(true);
+    expect(runtime.tools.checkAccess(sessionId, "optimization_continuity").allowed).toBe(true);
     expect(runtime.tools.checkAccess(sessionId, "session_compact").allowed).toBe(true);
     expect(runtime.tools.checkAccess(sessionId, "rollback_last_patch").allowed).toBe(true);
   });

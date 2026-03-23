@@ -147,6 +147,8 @@ Current responsibilities:
 - optimization protocol presentation
   - exposes objective iteration facts such as metric observations, guard
     results
+  - may present hosted deliberation artifacts such as memory, optimization
+    continuity, and promotion drafts after kernel admission
   - keeps loop strategy and sequencing in the model-native layer rather than
     moving them into kernel authority
 

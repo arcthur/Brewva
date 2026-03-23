@@ -179,6 +179,36 @@ describe("event pipeline level classification", () => {
     ).toBe("governance");
   });
 
+  test("keeps skill promotion lifecycle events visible at audit level", () => {
+    const runtime = new BrewvaRuntime({
+      cwd: mkdtempSync(join(tmpdir(), "brewva-events-audit-skill-promotion-")),
+      config: createAuditConfig(),
+    });
+    const sessionId = "audit-level-skill-promotion-session";
+
+    const promotionTypes = [
+      "skill_promotion_draft_derived",
+      "skill_promotion_reviewed",
+      "skill_promotion_promoted",
+      "skill_promotion_materialized",
+    ] as const;
+
+    for (const type of promotionTypes) {
+      runtime.events.record({
+        sessionId,
+        type,
+        payload: {
+          draftId: "spd:test",
+        },
+      });
+    }
+
+    for (const type of promotionTypes) {
+      expect(runtime.events.query(sessionId, { type })).toHaveLength(1);
+      expect(runtime.events.queryStructured(sessionId, { type })[0]?.type).toBe(type);
+    }
+  });
+
   test("isolates listener failures and records durable telemetry at audit level", () => {
     const runtime = new BrewvaRuntime({
       cwd: mkdtempSync(join(tmpdir(), "brewva-events-audit-listener-")),

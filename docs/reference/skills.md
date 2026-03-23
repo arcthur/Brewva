@@ -196,6 +196,15 @@ runtime-owned planners:
 - `predict-review` for multi-perspective advisory debate before the next owner
   takes over
 
+Related control-plane products now sit beside those skills instead of hiding in
+prompt-only behavior:
+
+- `deliberation_memory` for explicit inspection of retained repository, user,
+  agent, and loop memory artifacts
+- `skill_promotion` for post-execution draft review and promotion
+- `optimization_continuity` for explicit inspection of loop continuation,
+  convergence, escalation, and attention-worthy lineage state
+
 ## Public Routable Skills
 
 ### Core
@@ -226,6 +235,14 @@ explicit cadence, lineage-aware iteration-fact history, and objective
 metric/guard evidence discipline. It is not a general-purpose implementation
 skill.
 
+`goal-loop` remains the protocol skill. Deliberation-owned continuity artifacts
+are folded after execution and exposed through `optimization_continuity`; the
+runtime still does not own loop strategy or choose the next experiment.
+
+Deliberation-owned memory artifacts are likewise explicit. Hosted sessions may
+inject them when relevant, but `deliberation_memory` remains the inspection
+surface for reviewing retained artifacts, scores, and evidence.
+
 `predict-review` is an advisory multi-perspective skill. It uses public
 delegation tools and existing built-in subagent profiles to generate competing
 hypotheses, but it does not create runtime authority or bypass verification.
@@ -249,6 +266,10 @@ unless routing scopes explicitly include them.
 inspect lineage-scoped iteration facts as evidence, but its outputs are still
 improvement hypotheses and learning backlog artifacts rather than runtime
 control state.
+
+Promotion remains explicit. `self-improve` may help derive repeat-backed
+lessons, but `skill_promotion` is the control-plane path that reviews and
+materializes those drafts.
 
 ## Project Overlays
 

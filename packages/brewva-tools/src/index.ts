@@ -2,6 +2,7 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { createAstGrepTools } from "./ast-grep.js";
 import { createBrowserTools } from "./browser.js";
 import { createCostViewTool } from "./cost-view.js";
+import { createDeliberationMemoryTool } from "./deliberation-memory.js";
 import { createExecTool } from "./exec.js";
 import { createGrepTool } from "./grep.js";
 import { createIterationFactTool } from "./iteration-fact.js";
@@ -11,6 +12,7 @@ import { createLspTools } from "./lsp.js";
 import { createObsQueryTool } from "./observability/obs-query.js";
 import { createObsSloAssertTool } from "./observability/obs-slo-assert.js";
 import { createObsSnapshotTool } from "./observability/obs-snapshot.js";
+import { createOptimizationContinuityTool } from "./optimization-continuity.js";
 import { createOutputSearchTool } from "./output-search.js";
 import { createProcessTool } from "./process.js";
 import { createReadSpansTool } from "./read-spans.js";
@@ -20,6 +22,7 @@ import { createScheduleIntentTool } from "./schedule-intent.js";
 import { createSessionCompactTool } from "./session-compact.js";
 import { createSkillCompleteTool } from "./skill-complete.js";
 import { createSkillLoadTool } from "./skill-load.js";
+import { createSkillPromotionTool } from "./skill-promotion.js";
 import { createSubagentCancelTool, createSubagentStatusTool } from "./subagent-control.js";
 import { createSubagentFanoutTool, createSubagentRunTool } from "./subagent-run.js";
 import { createTapeTools } from "./tape.js";
@@ -53,9 +56,11 @@ export function buildBrewvaTools(options: BuildBrewvaToolsOptions): ToolDefiniti
     ...createBrowserTools({ runtime }),
     createProcessTool(),
     createCostViewTool({ runtime }),
+    createDeliberationMemoryTool({ runtime }),
     createObsQueryTool({ runtime }),
     createObsSloAssertTool({ runtime }),
     createObsSnapshotTool({ runtime }),
+    createOptimizationContinuityTool({ runtime }),
     createLedgerQueryTool({ runtime }),
     createIterationFactTool({ runtime }),
     createOutputSearchTool({ runtime }),
@@ -69,6 +74,7 @@ export function buildBrewvaTools(options: BuildBrewvaToolsOptions): ToolDefiniti
     createWorkerResultsApplyTool({ runtime }),
     createSkillLoadTool({ runtime }),
     createSkillCompleteTool({ runtime }),
+    createSkillPromotionTool({ runtime }),
     createSubagentRunTool({ runtime }),
     createSubagentFanoutTool({ runtime }),
     createSubagentStatusTool({ runtime }),
@@ -87,6 +93,7 @@ export function buildBrewvaTools(options: BuildBrewvaToolsOptions): ToolDefiniti
 export { createLspTools } from "./lsp.js";
 export { createAstGrepTools } from "./ast-grep.js";
 export { createBrowserTools } from "./browser.js";
+export { createDeliberationMemoryTool } from "./deliberation-memory.js";
 export { createResourceLeaseTool } from "./resource-lease.js";
 export { defineBrewvaTool, getBrewvaAgentParameters, getBrewvaToolMetadata } from "./utils/tool.js";
 export {
@@ -117,6 +124,7 @@ export { createCostViewTool } from "./cost-view.js";
 export { createObsQueryTool } from "./observability/obs-query.js";
 export { createObsSloAssertTool } from "./observability/obs-slo-assert.js";
 export { createObsSnapshotTool } from "./observability/obs-snapshot.js";
+export { createOptimizationContinuityTool } from "./optimization-continuity.js";
 export { createLedgerQueryTool } from "./ledger-query.js";
 export { createIterationFactTool } from "./iteration-fact.js";
 export { createOutputSearchTool } from "./output-search.js";
@@ -129,6 +137,7 @@ export { createWorkerResultsMergeTool, createWorkerResultsApplyTool } from "./wo
 export { createScheduleIntentTool } from "./schedule-intent.js";
 export { createSkillLoadTool } from "./skill-load.js";
 export { createSkillCompleteTool } from "./skill-complete.js";
+export { createSkillPromotionTool } from "./skill-promotion.js";
 export { createSubagentStatusTool, createSubagentCancelTool } from "./subagent-control.js";
 export { createSubagentRunTool, createSubagentFanoutTool } from "./subagent-run.js";
 export { createTaskLedgerTools } from "./task-ledger.js";

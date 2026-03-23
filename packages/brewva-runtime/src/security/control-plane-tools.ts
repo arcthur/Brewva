@@ -3,6 +3,8 @@
 export const CONTROL_PLANE_TOOLS = [
   "skill_complete",
   "skill_load",
+  "skill_promotion",
+  "optimization_continuity",
   "resource_lease",
   "ledger_query",
   "cost_view",
@@ -18,6 +20,7 @@ export const CONTROL_PLANE_TOOLS = [
 // Keep this list minimal: anything allowed here can bypass "compact-first" recovery.
 export const CONTEXT_CRITICAL_ALLOWED_TOOLS = [
   "skill_complete",
+  "optimization_continuity",
   "ledger_query",
   "cost_view",
   "tape_info",

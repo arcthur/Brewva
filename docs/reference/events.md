@@ -107,6 +107,10 @@ The authoritative registry lives in
 - `skill_completed`
 - `skill_budget_warning`
 - `skill_parallel_warning`
+- `skill_promotion_draft_derived`
+- `skill_promotion_reviewed`
+- `skill_promotion_promoted`
+- `skill_promotion_materialized`
 
 ### Iteration Facts
 
@@ -221,6 +225,10 @@ The audit-retained core includes:
 - `worker_results_apply_failed`
 - `skill_activated`
 - `skill_completed`
+- `skill_promotion_draft_derived`
+- `skill_promotion_reviewed`
+- `skill_promotion_promoted`
+- `skill_promotion_materialized`
 - `cost_update`
 - `budget_alert`
 - `rollback`

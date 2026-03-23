@@ -44,9 +44,11 @@
   "devDependencies": {
     "@brewva/brewva-channels-telegram": "workspace:*",
     "@brewva/brewva-cli": "workspace:*",
+    "@brewva/brewva-deliberation": "workspace:*",
     "@brewva/brewva-gateway": "workspace:*",
     "@brewva/brewva-ingress": "workspace:*",
     "@brewva/brewva-runtime": "workspace:*",
+    "@brewva/brewva-skill-broker": "workspace:*",
     "@brewva/brewva-tools": "workspace:*",
     "@mariozechner/pi-coding-agent": "^0.61.1",
     "@types/node": "^25.2.3",
