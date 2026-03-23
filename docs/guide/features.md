@@ -14,6 +14,8 @@
 - Derived workflow artifacts and explicit advisory inspection surfaces
 - Objective iteration fact persistence and lineage-aware query for
   model-native optimization loops
+- Deliberation memory retention, pruning, and explicit inspection surfaces for
+  durable evidence-backed artifacts
 
 ## Tool Surface
 
@@ -45,6 +47,7 @@
 - `browser_close`
 - `process`
 - `cost_view`
+- `deliberation_memory`
 - `obs_query`
 - `obs_slo_assert`
 - `obs_snapshot`
@@ -53,6 +56,7 @@
 - `output_search`
 - `workflow_status`
 - `schedule_intent`
+- `optimization_continuity`
 - `tape_handoff`
 - `tape_info`
 - `tape_search`
@@ -62,6 +66,7 @@
 - `worker_results_apply`
 - `skill_load`
 - `skill_complete`
+- `skill_promotion`
 - `subagent_run`
 - `subagent_fanout`
 - `subagent_status`
@@ -90,10 +95,17 @@ Tool registry source: `packages/brewva-tools/src/index.ts`
 - Meta skills: `skill-authoring`, `self-improve`
 - `goal-loop` is the bounded continuity and objective optimization protocol,
   not a generic implementation skill
+- `deliberation_memory` is the explicit surface for inspecting retained
+  repository, user, agent, and loop memory artifacts
+- `optimization_continuity` is the inspection surface for deliberation-owned
+  loop continuity, not a runtime-owned optimizer; its `attention` view surfaces
+  overdue or long-running lineages for explicit review
 - `predict-review` is an advisory multi-perspective debate skill built on
   public delegation tools and existing subagent profiles
 - `self-improve` distills repeated evidence, including iteration-fact history,
   into explicit improvement hypotheses
+- `skill_promotion` exposes the post-execution promotion pipeline for reviewing
+  and materializing evidence-backed skill or rule drafts
 - Project overlays: `repository-analysis`, `design`, `implementation`, `debugging`, `review`, `runtime-forensics`
 - Shared project context: `critical-rules`, `migration-priority-matrix`, `package-boundaries`, `runtime-artifacts`
 

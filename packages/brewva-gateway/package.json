@@ -27,8 +27,10 @@
   },
   "dependencies": {
     "@brewva/brewva-channels-telegram": "workspace:*",
+    "@brewva/brewva-deliberation": "workspace:*",
     "@brewva/brewva-ingress": "workspace:*",
     "@brewva/brewva-runtime": "workspace:*",
+    "@brewva/brewva-skill-broker": "workspace:*",
     "@brewva/brewva-tools": "workspace:*",
     "@mariozechner/pi-ai": "^0.61.1",
     "@mariozechner/pi-coding-agent": "^0.61.1",

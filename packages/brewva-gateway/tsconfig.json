@@ -4,6 +4,11 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "references": [{ "path": "../brewva-runtime" }, { "path": "../brewva-tools" }],
+  "references": [
+    { "path": "../brewva-runtime" },
+    { "path": "../brewva-tools" },
+    { "path": "../brewva-deliberation" },
+    { "path": "../brewva-skill-broker" }
+  ],
   "include": ["src/**/*.ts"]
 }

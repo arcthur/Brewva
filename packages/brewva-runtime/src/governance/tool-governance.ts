@@ -172,6 +172,10 @@ export const TOOL_GOVERNANCE_BY_NAME: Record<string, ToolGovernanceDescriptor> =
     effects: ["runtime_observe"],
     defaultRisk: "low",
   }),
+  deliberation_memory: descriptor({
+    effects: ["runtime_observe"],
+    defaultRisk: "low",
+  }),
   obs_query: descriptor({
     effects: ["runtime_observe"],
     defaultRisk: "low",
@@ -181,6 +185,10 @@ export const TOOL_GOVERNANCE_BY_NAME: Record<string, ToolGovernanceDescriptor> =
     defaultRisk: "low",
   }),
   obs_snapshot: descriptor({
+    effects: ["runtime_observe"],
+    defaultRisk: "low",
+  }),
+  optimization_continuity: descriptor({
     effects: ["runtime_observe"],
     defaultRisk: "low",
   }),
@@ -251,6 +259,10 @@ export const TOOL_GOVERNANCE_BY_NAME: Record<string, ToolGovernanceDescriptor> =
   skill_complete: descriptor({
     effects: ["runtime_observe"],
     defaultRisk: "low",
+  }),
+  skill_promotion: descriptor({
+    effects: ["memory_write", "workspace_write"],
+    defaultRisk: "medium",
   }),
   worker_results_merge: descriptor({
     effects: ["runtime_observe"],

@@ -65,6 +65,10 @@ Lineage boundary notes:
   `goal-loop:<loop_key>`
 - `continuityMode=fresh` sessions are intentionally excluded from lineage-scoped
   fact queries
+- `optimization_continuity` is the explicit inspection surface for folded loop
+  continuity, so operators or later runs can inspect continuation,
+  convergence, escalation, and branch separation without turning the scheduler
+  into a hidden optimizer
 
 ## Recovery and Safety
 

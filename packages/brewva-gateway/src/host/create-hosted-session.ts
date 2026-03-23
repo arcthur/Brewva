@@ -1,11 +1,17 @@
 import { join, resolve } from "node:path";
 import {
+  createDeliberationMemoryContextProvider,
+  createOptimizationContinuityContextProvider,
+} from "@brewva/brewva-deliberation";
+import {
   BrewvaRuntime,
+  CONTEXT_SOURCES,
   createTrustedLocalGovernancePort,
   resolveBrewvaAgentDir,
   type CreateBrewvaSessionOptions as RuntimeCreateBrewvaSessionOptions,
   type ManagedToolMode,
 } from "@brewva/brewva-runtime";
+import { createSkillPromotionContextProvider } from "@brewva/brewva-skill-broker";
 import {
   buildBrewvaTools,
   resolveBrewvaModelSelection,
@@ -106,6 +112,40 @@ export async function createHostedSession(
       governancePort: createTrustedLocalGovernancePort({ profile: "team" }),
       routingScopes: options.routingScopes,
     });
+
+  if (
+    !runtime.context
+      .listProviders()
+      .some((provider) => provider.source === CONTEXT_SOURCES.deliberationMemory)
+  ) {
+    runtime.context.registerProvider(
+      createDeliberationMemoryContextProvider({
+        runtime,
+      }),
+    );
+  }
+  if (
+    !runtime.context
+      .listProviders()
+      .some((provider) => provider.source === CONTEXT_SOURCES.optimizationContinuity)
+  ) {
+    runtime.context.registerProvider(
+      createOptimizationContinuityContextProvider({
+        runtime,
+      }),
+    );
+  }
+  if (
+    !runtime.context
+      .listProviders()
+      .some((provider) => provider.source === CONTEXT_SOURCES.skillPromotionDrafts)
+  ) {
+    runtime.context.registerProvider(
+      createSkillPromotionContextProvider({
+        runtime,
+      }),
+    );
+  }
 
   const hasRoutingOverride = Boolean(options.routingScopes && options.routingScopes.length > 0);
   const requestedRoutingScopes = options.routingScopes ? [...new Set(options.routingScopes)] : [];

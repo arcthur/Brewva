@@ -82,7 +82,7 @@ Reference: `docs/reference/proposal-boundary.md`.
 budgeting, deduplication, and source governance. Extensions may compose those
 entries for the model, but they do not bypass kernel admission.
 
-Default injected sources:
+Default runtime-owned injected sources:
 
 - `brewva.identity`
 - `brewva.runtime-status`
@@ -90,9 +90,18 @@ Default injected sources:
 - `brewva.projection-working`
 - `brewva.tool-outputs-distilled` (optional)
 
-There is no default proposal-backed context source anymore.
-There is no default injected workflow advisory or `workflow_status` context
-source.
+Hosted sessions additionally register these internal deliberation sources:
+
+- `brewva.deliberation-memory`
+- `brewva.optimization-continuity`
+- `brewva.skill-promotion-drafts`
+
+These hosted sources fold existing evidence into reusable context, but they do
+not become kernel authority. Runtime truth, task state, schedule events,
+receipts, and turn durability remain the authoritative replay surfaces.
+
+There is no default proposal-backed context source anymore. There is no default
+injected workflow advisory or `workflow_status` context source.
 
 ### `runtime.tools.*`
 

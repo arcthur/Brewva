@@ -313,6 +313,9 @@ describe("ContextPressureService", () => {
     expect(runtime.context.checkCompactionGate(sessionId, "tape_info", usage).allowed).toBe(true);
     expect(runtime.context.checkCompactionGate(sessionId, "tape_search", usage).allowed).toBe(true);
     expect(runtime.context.checkCompactionGate(sessionId, "cost_view", usage).allowed).toBe(true);
+    expect(
+      runtime.context.checkCompactionGate(sessionId, "optimization_continuity", usage).allowed,
+    ).toBe(true);
     expect(runtime.context.checkCompactionGate(sessionId, "ledger_query", usage).allowed).toBe(
       true,
     );

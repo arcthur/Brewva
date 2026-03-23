@@ -43,6 +43,8 @@ The composer returns ordered blocks in three categories:
   - runtime status
   - task state
   - working projection
+  - hosted deliberation artifacts such as deliberation memory, optimization
+    continuity, and pending promotion drafts
   - optional distilled tool output
   - same-turn supplemental return blocks
 - `constraint`
@@ -98,6 +100,39 @@ strings:
 - hidden planning hints
 
 Those stay in runtime services and lifecycle plumbing.
+
+Hosted deliberation reminder:
+
+- hosted sessions may register internal sources such as
+  `brewva.deliberation-memory`, `brewva.optimization-continuity`, and
+  `brewva.skill-promotion-drafts`
+- these blocks are already-admitted narrative context, not new kernel
+  authority
+- `ContextComposer` presents them, but it does not fold, refresh, or interpret
+  them into a hidden planner
+
+## Frozen Snapshot Invariant
+
+Deliberation memory, optimization continuity, and skill promotion context
+providers use cached state (`retrieveCached`, `listCached`) during context
+collection. State is synced once during session setup by the hosted lifecycle
+adapter, then frozen for the remainder of the session.
+
+This is intentional. Mid-session writes such as new skill completions,
+verification outcomes, or iteration facts update the durable store on disk but
+do not change the context snapshot that was injected at session start. The
+snapshot refreshes on the next session.
+
+Rationale:
+
+- preserves prompt cache stability across the full session
+- prevents context oscillation from mid-turn event activity
+- matches the design principle that deliberation memory is derived and
+  advisory, not a live authority channel
+
+This pattern follows the same discipline as Brewva's existing context injection
+model: sources are admitted once per turn via the deterministic injection path,
+not reactively mutated mid-conversation.
 
 ## Metrics
 

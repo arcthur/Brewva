@@ -14,6 +14,7 @@ import {
 import type { ExtensionFactory } from "@mariozechner/pi-coding-agent";
 import { createCompletionGuardLifecycle, registerCompletionGuard } from "./completion-guard.js";
 import { createContextTransformLifecycle, registerContextTransform } from "./context-transform.js";
+import { createDeliberationMaintenanceLifecycle } from "./deliberation-maintenance.js";
 import { registerEventStream } from "./event-stream.js";
 import { registerLedgerWriter } from "./ledger-writer.js";
 import { createQualityGateLifecycle, registerQualityGate } from "./quality-gate.js";
@@ -70,6 +71,7 @@ function registerHostedPipeline(
 ): void {
   const toolDefinitionsByName = new Map(tools.map((tool) => [tool.name, tool] as const));
   const contextTransform = createContextTransformLifecycle(pi, runtime);
+  const deliberationMaintenance = createDeliberationMaintenanceLifecycle(runtime);
   const qualityGate = createQualityGateLifecycle(runtime, {
     toolDefinitionsByName,
   });
@@ -84,6 +86,10 @@ function registerHostedPipeline(
   registerLedgerWriter(pi, runtime);
   registerToolResultDistiller(pi, runtime);
   registerTurnLifecyclePorts(pi, [
+    {
+      beforeAgentStart: deliberationMaintenance.beforeAgentStart,
+      agentEnd: deliberationMaintenance.agentEnd,
+    },
     {
       turnStart: contextTransform.turnStart,
       beforeAgentStart: toolSurface.beforeAgentStart,

@@ -139,13 +139,13 @@ Allowed interaction pattern:
 
 ## State Taxonomy
 
-| Category                 | Role                                                           | Authority                    | Typical carriers                                     |
-| ------------------------ | -------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------- |
-| `Kernel Commitments`     | authoritative system commitments                               | authoritative                | tape, receipts, task, truth, ledger                  |
-| `Working State`          | session-local working view and injection planning              | non-authoritative            | projection, context arena, active tool surface       |
-| `Deliberation Artifacts` | non-kernel planning and operator sediment                      | non-authoritative            | operator notes, schedule prompts, delegation packets |
-| `Tool Surface`           | turn-visible action surface                                    | policy-governed              | base tools, skill-scoped tools, operator tools       |
-| `Control Plane`          | scheduling, ranking, delegation, operator-facing orchestration | non-authoritative by default | schedulers, wake prompts, child-run controllers      |
+| Category                 | Role                                                           | Authority                    | Typical carriers                                                                         |
+| ------------------------ | -------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------- |
+| `Kernel Commitments`     | authoritative system commitments                               | authoritative                | tape, receipts, task, truth, ledger                                                      |
+| `Working State`          | session-local working view and injection planning              | non-authoritative            | projection, context arena, active tool surface                                           |
+| `Deliberation Artifacts` | non-kernel planning and operator sediment                      | non-authoritative            | operator notes, deliberation memory, promotion drafts, optimization continuity artifacts |
+| `Tool Surface`           | turn-visible action surface                                    | policy-governed              | base tools, skill-scoped tools, operator tools                                           |
+| `Control Plane`          | scheduling, ranking, delegation, operator-facing orchestration | non-authoritative by default | schedulers, wake prompts, child-run controllers                                          |
 
 Important distinctions:
 

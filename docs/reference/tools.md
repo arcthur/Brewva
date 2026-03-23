@@ -34,9 +34,11 @@ Default tools registered by `buildBrewvaTools()`:
 - `browser_close`
 - `process`
 - `cost_view`
+- `deliberation_memory`
 - `obs_query`
 - `obs_slo_assert`
 - `obs_snapshot`
+- `optimization_continuity`
 - `ledger_query`
 - `iteration_fact`
 - `output_search`
@@ -52,6 +54,7 @@ Default tools registered by `buildBrewvaTools()`:
 - `worker_results_apply`
 - `skill_load`
 - `skill_complete`
+- `skill_promotion`
 - `subagent_run`
 - `subagent_fanout`
 - `subagent_status`
@@ -113,6 +116,7 @@ Notes:
 - `browser_close`
 - `process`
 - `cost_view`
+- `deliberation_memory`
 - `obs_query`
 - `obs_slo_assert`
 - `obs_snapshot`
@@ -131,6 +135,11 @@ from runtime events and session state, but it does not prescribe or
 enforce a workflow path. The default hosted path does not maintain a hidden
 workflow brief; inspection happens when the model or operator explicitly reads
 this surface.
+
+`deliberation_memory` is the explicit inspection surface for deliberation
+artifacts that would otherwise only appear through hosted context injection.
+It lists retained artifacts, shows retention metadata, and runs query-scored
+retrieval without creating new memory or mutating runtime truth.
 
 ### Browser Automation
 
@@ -164,7 +173,9 @@ Current posture:
 
 - `resource_lease`
 - `session_compact`
+- `deliberation_memory`
 - `rollback_last_patch`
+- `optimization_continuity`
 - `schedule_intent`
 - `task_set_spec`
 - `task_add_item`
@@ -177,12 +188,25 @@ Current posture:
 
 - `skill_load`
 - `skill_complete`
+- `skill_promotion`
 - `subagent_run`
 - `subagent_fanout`
 - `subagent_status`
 - `subagent_cancel`
 - `worker_results_merge`
 - `worker_results_apply`
+
+`skill_promotion` operates on post-execution promotion drafts derived from
+`skill_completed` evidence. Promotion materializes review packets under
+`.brewva/skill-broker/materialized/<draft-id>/` and does not patch the live
+skill catalog automatically.
+
+`optimization_continuity` exposes deliberation-owned continuity artifacts folded
+from `goal-loop` outputs, `schedule_intent`, and `iteration_fact` evidence. It
+is inspection-only: use it to inspect continuation, convergence, and escalation
+helpers without turning runtime execution into a hidden optimizer. The
+`attention` action is the operator-oriented view for overdue, escalated, or
+long-running lineages.
 
 ## Governance Metadata
 
@@ -354,14 +378,41 @@ Patch-producing delegated runs return `WorkerResult` artifacts for the parent.
 - `worker_results_apply` mutates the parent workspace only after the parent
   explicitly adopts the merged result
 
-## `skill_load` And `skill_complete`
+## `skill_load`, `skill_complete`, And `skill_promotion`
 
 Skill sequencing is model-native.
 
 - `skill_load` activates the next skill explicitly
 - `skill_complete` records output and runs completion/verification policy
+- `skill_promotion` inspects or advances post-execution promotion drafts
 
 There is no public skill-cascade or chain-control tool.
+
+## `optimization_continuity`
+
+Deliberation-owned bounded optimization inspection surface.
+
+- folds `goal-loop` outputs, `schedule_intent`, and lineage-scoped
+  `iteration_fact` evidence into reviewable continuity artifacts
+- exposes continuation, convergence, escalation, and metric/guard trajectory
+  without creating runtime-owned optimizer state
+- exposes an `attention` view for overdue, stale, or long-running lineages that
+  merit explicit operator review
+- remains read-only even when used during recovery or critical context pressure
+- treats `continuityMode=fresh` child sessions as separate branches instead of
+  folding them into inherited lineage history
+
+## `deliberation_memory`
+
+Explicit inspection surface for deliberation memory artifacts.
+
+- lists retained repository, user, agent, and loop memory artifacts
+- shows evidence-backed retention metadata such as band, decay, and retention
+  score
+- supports query-scored retrieval so the model or operator can inspect why a
+  memory artifact would be injected, instead of relying on hidden recall
+- remains read-only and non-authoritative; it does not write new memory or
+  widen kernel truth
 
 ## `workflow_status`
 
