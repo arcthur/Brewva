@@ -62,10 +62,10 @@ authority, durable control state, or default-path prescriptions.
   - verification
   - replay and recovery
 - `Deliberation Ring`
-  - planning
-  - ranking
-  - sequencing
-  - delegation decisions
+  - evidence-backed artifact folding and retrieval
+  - deliberation memory, promotion drafts, and optimization continuity
+  - optional search or delegation assistance outside kernel authority
+  - future multi-model reasoning products
 - `Experience Ring`
   - CLI
   - gateway
@@ -95,7 +95,7 @@ Boundary rule:
   - heartbeat triggers
   - scheduling triggers
   - subagent orchestration
-  - future planners
+  - future orchestration helpers
 
 Rings define authority. Planes define product behavior.
 
@@ -139,13 +139,13 @@ Allowed interaction pattern:
 
 ## State Taxonomy
 
-| Category                 | Role                                                           | Authority                    | Typical carriers                                                                         |
-| ------------------------ | -------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------- |
-| `Kernel Commitments`     | authoritative system commitments                               | authoritative                | tape, receipts, task, truth, ledger                                                      |
-| `Working State`          | session-local working view and injection planning              | non-authoritative            | projection, context arena, active tool surface                                           |
-| `Deliberation Artifacts` | non-kernel planning and operator sediment                      | non-authoritative            | operator notes, deliberation memory, promotion drafts, optimization continuity artifacts |
-| `Tool Surface`           | turn-visible action surface                                    | policy-governed              | base tools, skill-scoped tools, operator tools                                           |
-| `Control Plane`          | scheduling, ranking, delegation, operator-facing orchestration | non-authoritative by default | schedulers, wake prompts, child-run controllers                                          |
+| Category                 | Role                                                      | Authority                    | Typical carriers                                                                         |
+| ------------------------ | --------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------- |
+| `Kernel Commitments`     | authoritative system commitments                          | authoritative                | tape, receipts, task, truth, ledger                                                      |
+| `Working State`          | session-local working view and budgeted context admission | non-authoritative            | projection, context arena, active tool surface                                           |
+| `Deliberation Artifacts` | non-kernel evidence, memory, and optimization sediment    | non-authoritative            | operator notes, deliberation memory, promotion drafts, optimization continuity artifacts |
+| `Tool Surface`           | turn-visible action surface                               | policy-governed              | base tools, skill-scoped tools, operator tools                                           |
+| `Control Plane`          | scheduling, delegation, and operator-facing orchestration | non-authoritative by default | schedulers, wake prompts, child-run controllers                                          |
 
 Important distinctions:
 
@@ -159,6 +159,15 @@ Important distinctions:
 - context arena is an injection planner, not a memory system
 - tool surface should reflect the current commitment boundary, not the whole
   static capability catalog
+
+State visibility rule:
+
+- behavior-changing state should be replay-derived when it affects admission,
+  authorization, or recovery semantics
+- visibility-changing state should surface through projection or explicit
+  inspection products
+- performance-only caches may remain local, but losing them must not widen
+  authority or change replayable commitments
 
 ## Core Kernel
 
@@ -204,14 +213,14 @@ the next experiment, define loop strategy, or own an optimizer state machine.
 Context injection is single-path and deterministic:
 
 - governed source registration
-- arena planning
+- arena budgeting and deduplication
 - global budget clamp
 - hard-limit compaction gate
 
 Projection and arena are not parallel memories:
 
 - projection provides one deterministic working snapshot
-- arena plans which sources fit the current turn
+- arena budgets which admitted sources fit the current turn
 - working projection and `workflow_status` read from durable events and working
   state, but they remain explicit/advisory rather than prescribing a path
 

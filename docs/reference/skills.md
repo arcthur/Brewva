@@ -74,7 +74,7 @@ not in a second base skill definition that relies on load order.
 
 `skills/internal/` is currently a reserved documentation slot for runtime-owned
 workflow or recovery semantics. Verification, finishing, recovery, and
-compose-style planning live in runtime/control-plane code today rather than
+compose-style workflow assistance live in runtime/control-plane code today rather than
 structured `SKILL.md` documents.
 
 `intent.output_contracts` makes artifact quality explicit in the skill contract
@@ -105,7 +105,8 @@ behavior improves specialist quality without creating a second control loop.
 
 Skill discovery and deliberation are now separated from kernel commitment:
 
-1. Deliberation layers may rank skills, judge candidates, and suggest the next step.
+1. Deliberation layers may surface candidate sets, evidence, or packets that
+   help the model choose skills.
 2. Runtime does not emit a dedicated durable `skill_routing_*` family in the
    default path.
 3. Activation remains explicit through `skill_load`.
@@ -120,7 +121,8 @@ Routing is disabled by default (`skills.routing.enabled=false`). When enabled,
 The runtime kernel and the optional control plane have different jobs:
 
 - kernel/runtime: activation state, output validation, evidence, replay, policy enforcement, and effect commitment
-- control plane: optional candidate generation, selection assistance, chain planning, delegation, and model-assisted judging
+- control plane: optional candidate generation, selection assistance,
+  delegation, artifact presentation, and model-assisted judging
 
 `skills_index.json` carries normalized contract metadata for each routable skill
 entry, including `category`, `routingScope`, `outputs`, `requires`, `consumes`,
@@ -137,8 +139,8 @@ This keeps the kernel boundary narrow:
 
 - runtime owns durable skill activation/completion state
 - runtime validates declared outputs and records replayable receipts
-- model-side planning decides whether to continue with another skill, verify,
-  repair, or stop
+- model-side path choice decides whether to continue with another skill,
+  verify, repair, or stop
 
 Deliberation-side recovery flows such as debug or review may still publish
 non-authoritative artifacts, but they do not create a second public

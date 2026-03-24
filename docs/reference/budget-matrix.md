@@ -50,7 +50,15 @@ runtime decision loop:
 
 ## Notes On Replay Precision
 
+- Behavior-changing budget state should be replay-derived when it affects
+  admission, authorization, or recovery semantics.
+- Visibility-only budget state should surface through projection or explicit
+  inspection products rather than hiding inside local planners.
+- Performance-only counters, fingerprints, and caches may remain local if
+  losing them changes efficiency only and does not alter replayable outcomes.
 - Context-injection and compaction observability events improve diagnostics, but
   they do not currently rebuild the arena or compaction planner from tape.
+- Parallel slot state likewise remains implementation-local today and should
+  not be interpreted as commitment memory.
 - `context_arena_slo_enforced` records that the ceiling was hit; it is not a
   replay contract for reconstructing exact prior arena contents.
