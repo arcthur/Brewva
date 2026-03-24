@@ -13,7 +13,10 @@ import { createRuntimeFixture } from "../../helpers/runtime.js";
 
 type SessionLike = {
   subscribe: (listener: (event: AgentSessionEvent) => void) => () => void;
-  sendUserMessage: (content: string, options?: { deliverAs?: "followUp" }) => Promise<void>;
+  prompt: (
+    content: string,
+    options?: { streamingBehavior?: "followUp" | "steer" },
+  ) => Promise<void>;
   agent: {
     waitForIdle: () => Promise<void>;
   };
@@ -28,7 +31,7 @@ function createSessionMock(eventsToEmit: AgentSessionEvent[]): SessionLike {
         listener = undefined;
       };
     },
-    async sendUserMessage(_content: string): Promise<void> {
+    async prompt(_content: string): Promise<void> {
       for (const event of eventsToEmit) {
         listener?.(event);
       }
@@ -134,7 +137,7 @@ describe("channel mode prompt output collector", () => {
           sessionListener = undefined;
         };
       },
-      async sendUserMessage(content): Promise<void> {
+      async prompt(content): Promise<void> {
         sentMessages.push(content);
         if (sentMessages.length === 1) {
           for (const listener of listeners) {

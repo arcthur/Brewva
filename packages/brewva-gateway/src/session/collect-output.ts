@@ -6,7 +6,7 @@ import type { ToolDisplayVerdict } from "@brewva/brewva-gateway/runtime-plugins"
 import type { BrewvaRuntime } from "@brewva/brewva-runtime";
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import { sendPromptWithCompactionRecovery } from "./compaction-recovery.js";
-import type { GatewaySessionResult } from "./create-session.js";
+import type { SubscribablePromptSession } from "./contracts.js";
 
 export interface GatewayToolOutput {
   toolCallId: string;
@@ -44,6 +44,8 @@ export interface CollectSessionPromptOutputOptions {
   runtime?: BrewvaRuntime;
   sessionId?: string;
 }
+
+export interface CollectSessionPromptOutputSession extends SubscribablePromptSession {}
 
 function normalizeText(value: string | undefined): string {
   return (value ?? "").trim();
@@ -175,7 +177,7 @@ function emitChunk(
 }
 
 export async function collectSessionPromptOutput(
-  session: GatewaySessionResult["session"],
+  session: CollectSessionPromptOutputSession,
   prompt: string,
   options?: CollectSessionPromptOutputOptions,
 ): Promise<SessionPromptOutput> {
