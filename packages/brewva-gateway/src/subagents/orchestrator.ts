@@ -23,6 +23,7 @@ import type {
   SubagentStatusResult,
 } from "@brewva/brewva-tools";
 import { collectSessionPromptOutput } from "../session/collect-output.js";
+import type { SubscribablePromptSession } from "../session/contracts.js";
 import type { HostedSubagentBackgroundController } from "./background-controller.js";
 import {
   loadHostedSubagentProfiles,
@@ -62,17 +63,12 @@ export interface HostedSubagentSessionOptions {
 
 export interface HostedSubagentSessionResult {
   runtime: BrewvaRuntime;
-  session: {
+  session: SubscribablePromptSession & {
     dispose(): void;
     abort?(): Promise<void>;
-    sendUserMessage(content: string, options?: { deliverAs?: "followUp" }): Promise<void>;
-    agent: {
-      waitForIdle(): Promise<void>;
-    };
     sessionManager: {
       getSessionId(): string;
     };
-    subscribe: Parameters<typeof collectSessionPromptOutput>[0]["subscribe"];
   };
 }
 
@@ -669,10 +665,7 @@ export function createHostedSubagentAdapter(
         }
 
         const prompt = buildDelegationPrompt(input.profile, input.packet);
-        const output = await collectSessionPromptOutput(
-          child.session as Parameters<typeof collectSessionPromptOutput>[0],
-          prompt,
-        );
+        const output = await collectSessionPromptOutput(child.session, prompt);
         const childCostSummary = child.runtime.cost.getSummary(childSessionId);
         aggregateChildCost(options.runtime, input.parentSessionId, childCostSummary);
         childCostAggregated = true;

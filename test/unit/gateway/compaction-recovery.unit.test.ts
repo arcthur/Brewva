@@ -194,6 +194,45 @@ describe("compaction recovery controller", () => {
     ).toHaveLength(2);
   });
 
+  test("queued streaming prompts do not wait for idle settlement", async () => {
+    const eventBridge = createRuntimeEventBridge();
+    let resolveIdle: (() => void) | undefined;
+    const idleReleased = new Promise<void>((resolve) => {
+      resolveIdle = resolve;
+    });
+
+    const session = {
+      isStreaming: true,
+      sessionManager: {
+        getSessionId: () => "agent-session-queued",
+      },
+      async prompt(): Promise<void> {
+        return;
+      },
+      agent: {
+        async waitForIdle(): Promise<void> {
+          await idleReleased;
+        },
+      },
+    };
+
+    const queuedPromptResult = await Promise.race([
+      sendPromptWithCompactionRecovery(session, "queued prompt", {
+        runtime: eventBridge.runtime as any,
+        sessionId: "agent-session-queued",
+        promptOptions: {
+          streamingBehavior: "followUp",
+        },
+      }).then(() => "resolved"),
+      new Promise<string>((resolve) => {
+        setTimeout(() => resolve("timed_out"), 20);
+      }),
+    ]);
+
+    resolveIdle?.();
+    expect(queuedPromptResult).toBe("resolved");
+  });
+
   test("settled prompt wrapper is reserved for synchronous consumers and preserves bound methods", async () => {
     const eventBridge = createRuntimeEventBridge();
     const promptedMessages: string[] = [];

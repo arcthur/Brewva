@@ -1,5 +1,6 @@
 import type { BrewvaRuntime } from "@brewva/brewva-runtime";
 import type { AgentSession, PromptOptions } from "@mariozechner/pi-coding-agent";
+import type { PromptDispatchSession } from "./contracts.js";
 
 const COMPACTION_RESUME_PROMPT =
   "Context compaction completed. Resume the interrupted turn from the current task and evidence state. Do not repeat completed tool side effects unless required for correctness. Finish the pending response.";
@@ -8,18 +9,7 @@ const SESSION_COMPACTION_RECOVERY = Symbol("brewva.sessionCompactionRecovery");
 
 type PromptDispatchOptions = PromptOptions;
 
-interface CompactionRecoverySessionLike {
-  prompt: AgentSession["prompt"];
-  agent: {
-    waitForIdle: () => Promise<void>;
-  };
-  sessionManager?: {
-    getSessionId?: () => string;
-  };
-  isStreaming?: boolean;
-  isCompacting?: boolean;
-  dispose?: () => void;
-}
+export type CompactionRecoverySessionLike = PromptDispatchSession;
 
 interface CompactionRecoveryController {
   readonly sessionId: string;
@@ -290,6 +280,12 @@ export async function sendPromptWithCompactionRecovery(
 
   await session.prompt(prompt, options.promptOptions);
   if (!controller) {
+    return;
+  }
+  if (
+    session.isStreaming === true &&
+    typeof options.promptOptions?.streamingBehavior === "string"
+  ) {
     return;
   }
   await controller.waitForSettled(afterGeneration);

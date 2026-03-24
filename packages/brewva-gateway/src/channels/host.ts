@@ -26,6 +26,7 @@ import {
   type ToolDisplayVerdict,
 } from "../runtime-plugins/index.js";
 import { sendPromptWithCompactionRecovery } from "../session/compaction-recovery.js";
+import type { SubscribablePromptSession } from "../session/contracts.js";
 import { clampText, ensureSessionShutdownRecorded } from "../utils/runtime.js";
 import { isOwnerAuthorized } from "./acl.js";
 import { AgentRegistry } from "./agent-registry.js";
@@ -113,6 +114,8 @@ interface PromptTurnOutputs {
   toolOutputs: ToolTurnOutput[];
 }
 
+export interface PromptTurnOutputSession extends SubscribablePromptSession {}
+
 interface DispatchToAgentResult {
   ok: boolean;
   agentId: string;
@@ -192,7 +195,7 @@ export interface RunChannelModeDependencies {
     options?: Parameters<typeof createHostedSession>[0],
   ) => Promise<HostedSessionResult>;
   collectPromptTurnOutputs?: (
-    session: HostedSessionResult["session"],
+    session: PromptTurnOutputSession,
     prompt: string,
   ) => Promise<PromptTurnOutputs>;
   handleInsightCommand?: (
@@ -797,7 +800,7 @@ export function canonicalizeInboundTurnSession(
 }
 
 export async function collectPromptTurnOutputs(
-  session: HostedSessionResult["session"],
+  session: PromptTurnOutputSession,
   prompt: string,
   options?: {
     runtime?: BrewvaRuntime;

@@ -36,7 +36,7 @@ describe("hosted subagent orchestrator", () => {
           runtime: childRuntime,
           session: {
             dispose() {},
-            async sendUserMessage() {
+            async prompt() {
               await writeFile(
                 join(childWorkspaceRoot, "src", "message.ts"),
                 "export const message = 'after';\n",
@@ -180,7 +180,7 @@ describe("hosted subagent orchestrator", () => {
           runtime: childRuntime,
           session: {
             dispose() {},
-            async sendUserMessage() {
+            async prompt() {
               for (const listener of listeners) {
                 listener({
                   type: "message_end",
@@ -264,7 +264,7 @@ describe("hosted subagent orchestrator", () => {
             async abort() {
               rejectPendingPrompt?.(new Error("aborted"));
             },
-            async sendUserMessage() {
+            async prompt() {
               await new Promise<void>((_, reject) => {
                 rejectPendingPrompt = (error) => reject(error);
               });
@@ -397,7 +397,7 @@ describe("hosted subagent orchestrator", () => {
           runtime: childRuntime,
           session: {
             dispose() {},
-            async sendUserMessage() {
+            async prompt() {
               childRuntime.cost.recordAssistantUsage({
                 sessionId: childSessionId,
                 model: "test-child-model",
