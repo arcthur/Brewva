@@ -51,8 +51,8 @@ In other words:
 
 - the kernel constrains effect boundaries, commit boundaries, verification
   boundaries, and replay boundaries
-- deliberation optimizes search paths, decomposition, retry strategy, and
-  context restructuring
+- deliberation folds reusable artifacts, retrieval signals, continuity state,
+  and any optional search assistance outside kernel authority
 - the control plane handles dynamic negotiation across cost, risk, and latency
 
 The following two problem classes should no longer be collapsed into one hard
@@ -108,8 +108,8 @@ Properties:
 - non-authoritative
 - discardable
 - freer to rearrange context and explore alternate paths
-- allowed to use heuristics, ranking, judging, memory rehydration, and
-  temporary packets
+- allowed to use heuristics, retrieval ranking, judging, memory rehydration,
+  and temporary packets
 
 ### `commitment lane`
 

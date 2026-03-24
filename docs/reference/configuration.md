@@ -65,8 +65,8 @@ do not add new authority. Use project overlays for project-specific execution
 hints and shared-context extension.
 
 There is no longer a public `skills.selector.*` config surface. Candidate
-ranking and chain planning, when present, belong to higher-level helper layers,
-not the kernel.
+selection assistance, judging, and any optional path helpers belong to
+higher-level helper layers, not the kernel.
 
 There is no longer a public `skills.cascade.*` config surface. If present in a
 config file, runtime normalization fails fast because model path sequencing is

@@ -34,10 +34,10 @@ Brewva keeps two taxonomies separate:
   - effect authorization
   - verification, replay, WAL, receipts
 - `Deliberation Ring`
-  - planning
-  - ranking
-  - sequencing
-  - delegation decisions
+  - evidence-backed artifact folding and retrieval
+  - deliberation memory, promotion, and continuity products
+  - optional search or delegation assistance outside kernel authority
+  - future multi-model reasoning products
 - `Experience Ring`
   - CLI
   - gateway
@@ -47,8 +47,8 @@ Brewva keeps two taxonomies separate:
 ### Planes
 
 - `Working State Plane`
-  - projection
-  - context arena
+  - projection-backed readable working snapshot
+  - context-budget trimming and deduplication
   - current visible tool surface
 - `Cognitive Product Plane`
   - context composition for the model
@@ -149,8 +149,8 @@ Current responsibilities:
     results
   - may present hosted deliberation artifacts such as memory, optimization
     continuity, and promotion drafts after kernel admission
-  - keeps loop strategy and sequencing in the model-native layer rather than
-    moving them into kernel authority
+  - keeps loop strategy and any optional sequencing decisions in the
+    model-native layer rather than moving them into kernel authority
 
 This plane may read kernel state, but it does not mutate kernel state directly.
 

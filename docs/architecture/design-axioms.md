@@ -14,8 +14,8 @@ can be judged against a stable standard instead of local convenience.
 ## Axioms
 
 1. `Adaptive logic stays out of the kernel.`
-   Ranking, planning, summarization, and heuristic inference belong to
-   deliberation/control-plane layers.
+   Retrieval ranking, artifact curation, summarization, and any optional path
+   helpers belong to deliberation/control-plane layers.
 2. `Subtraction beats switches.`
    When a control-plane layer stops earning its keep, delete it from the
    default product path instead of hiding it behind a compatibility toggle.
@@ -73,9 +73,9 @@ Implementation note:
   - verification
   - replay, WAL, recovery
 - `Deliberation Ring`
-  - planning
-  - ranking
-  - sequencing
+  - evidence-backed artifact folding and retrieval
+  - deliberation memory, promotion, and continuity products
+  - optional search or delegation assistance outside kernel authority
   - future multi-model reasoning flows
 - `Experience Ring`
   - CLI, gateway, channels
@@ -108,6 +108,10 @@ Additional rule:
 
 `Deliberation searches for paths. Kernel judges effects.`
 
+State visibility rule:
+
+`Behavior-changing state should be replay-derived. Visibility-changing state should be projection-visible. Performance-only state may remain local.`
+
 ## Kernel Admission Rules
 
 The kernel may:
@@ -121,7 +125,7 @@ The kernel may:
 The kernel may not:
 
 - silently invent proposals on behalf of missing deliberation layers
-- perform adaptive ranking inside the commitment path
+- perform adaptive ranking or path orchestration inside the commitment path
 - treat lossy summaries as authoritative state
 - hide commitment reasons behind opaque heuristics
 
