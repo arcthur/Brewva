@@ -5,6 +5,7 @@ export type ChannelCommandMatch =
   | { kind: "error"; message: string }
   | { kind: "agents" }
   | { kind: "insight"; agentId?: string; directory?: string }
+  | { kind: "update"; instructions?: string }
   | { kind: "new-agent"; agentId: string; model?: string }
   | { kind: "del-agent"; agentId: string }
   | { kind: "focus"; agentId: string }
@@ -107,6 +108,13 @@ export class CommandRouter {
       return {
         kind: "insight",
         directory: body || undefined,
+      };
+    }
+
+    if (command === "/update") {
+      return {
+        kind: "update",
+        instructions: body || undefined,
       };
     }
 

@@ -1,0 +1,15 @@
+import { describe, expect, test } from "bun:test";
+import {
+  BREWVA_REGISTERED_EVENT_TYPE_SET,
+  CHANNEL_COMMAND_RECEIVED_EVENT_TYPE,
+  CHANNEL_UPDATE_LOCK_BLOCKED_EVENT_TYPE,
+  CHANNEL_UPDATE_REQUESTED_EVENT_TYPE,
+} from "@brewva/brewva-runtime";
+
+describe("runtime event type registry", () => {
+  test("registers channel update orchestration events", () => {
+    expect(BREWVA_REGISTERED_EVENT_TYPE_SET.has(CHANNEL_COMMAND_RECEIVED_EVENT_TYPE)).toBe(true);
+    expect(BREWVA_REGISTERED_EVENT_TYPE_SET.has(CHANNEL_UPDATE_REQUESTED_EVENT_TYPE)).toBe(true);
+    expect(BREWVA_REGISTERED_EVENT_TYPE_SET.has(CHANNEL_UPDATE_LOCK_BLOCKED_EVENT_TYPE)).toBe(true);
+  });
+});

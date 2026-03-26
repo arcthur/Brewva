@@ -34,6 +34,7 @@ import { runInsightCli } from "./insight.js";
 import { resolveTargetSession, runInspectCli } from "./inspect.js";
 import { writeJsonLine } from "./json-lines.js";
 import { createBrewvaSession } from "./session.js";
+import { createUpdateCommandRuntimePlugin } from "./update-command-runtime-plugin.js";
 
 const NODE_VERSION_RANGE = "^20.19.0 || >=22.12.0";
 const BREWVA_SKIP_VERSION_CHECK_ENV = "BREWVA_SKIP_VERSION_CHECK";
@@ -1044,7 +1045,10 @@ async function run(): Promise<void> {
     model: parsed.model,
     agentId: parsed.agentId,
     managedToolMode: parsed.managedToolMode,
-    runtimePlugins: [createInsightCommandRuntimePlugin(runtime)],
+    runtimePlugins: [
+      createInsightCommandRuntimePlugin(runtime),
+      createUpdateCommandRuntimePlugin(runtime),
+    ],
   });
   const printSession = wrapSessionWithSettledPrompts(session, { runtime });
 
@@ -1154,6 +1158,7 @@ if (isBunMain ?? isNodeMain) {
 export { parseArgs };
 export { handleInsightChannelCommand } from "./insight-channel-command.js";
 export { createInsightCommandRuntimePlugin } from "./insight-command-runtime-plugin.js";
+export { createUpdateCommandRuntimePlugin } from "./update-command-runtime-plugin.js";
 export { JsonLineWriter, type JsonLineWritable, writeJsonLine } from "./json-lines.js";
 export {
   resolveBackendWorkingCwd,

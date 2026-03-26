@@ -291,6 +291,7 @@ channel text commands are available:
 - `/insight [dir]` (inline deterministic review of the focused agent session)
 - `/insight @agent [dir]` (inline deterministic review of a specific agent session in the current conversation scope)
   - Channel replies use a concise chat-friendly summary rather than the full CLI text layout.
+- `/update [operator hints]` (route the focused agent through the shared Brewva upgrade workflow; changelog review and validation are required before completion)
 - `/focus @<agent>`
 - `/run @a,@b <task>`
 - `/discuss @a,@b [maxRounds=N] <topic>`

@@ -326,4 +326,193 @@ describe("gateway contract: telegram channel dispatch", () => {
     expect(text).toContain("Focus: @analyst · explicit target: @default");
     expect(text).toContain("Dir: src");
   });
+
+  test("channel orchestration routes /update through the focused agent with the shared upgrade workflow", async () => {
+    const workspace = createTestWorkspace("channel-telegram-update");
+    const configPath = writeChannelConfig(workspace, { orchestrationEnabled: true });
+    const channelConfig = {
+      telegram: {
+        token: "bot-token",
+      },
+    };
+    const capturedPrompts: string[] = [];
+    const outboundTurns: TurnEnvelope[] = [];
+    const abortController = new AbortController();
+
+    const launcher: ChannelModeLauncher = (input) => {
+      const bridge = {
+        async start(): Promise<void> {
+          await input.onInboundTurn(
+            createInboundTurn({
+              turnId: "turn-update-1",
+              text: "/update target=latest safe rollout",
+            }),
+          );
+          await waitUntil(
+            () => outboundTurns.length >= 1,
+            5_000,
+            "timed out waiting for channel update reply",
+          );
+          abortController.abort();
+        },
+        async stop(): Promise<void> {
+          return;
+        },
+        async sendTurn(turn: TurnEnvelope): Promise<Record<string, never>> {
+          outboundTurns.push(turn);
+          return {};
+        },
+      };
+      return {
+        bridge: bridge as unknown as ChannelTurnBridge,
+      };
+    };
+
+    const dependencies: RunChannelModeDependencies = {
+      collectPromptTurnOutputs: async (_session, prompt) => {
+        capturedPrompts.push(prompt);
+        return {
+          assistantText: "UPDATE_ACK_FROM_FAKE_PROMPT_EXECUTOR",
+          toolOutputs: [],
+        };
+      },
+      handleInsightCommand: handleInsightChannelCommand,
+      launchers: {
+        telegram: launcher,
+      },
+    };
+
+    try {
+      await runChannelMode({
+        cwd: workspace,
+        configPath,
+        managedToolMode: "direct",
+        verbose: false,
+        channel: "telegram",
+        channelConfig,
+        shutdownSignal: abortController.signal,
+        dependencies,
+      });
+    } finally {
+      cleanupTestWorkspace(workspace);
+    }
+
+    expect(capturedPrompts).toHaveLength(1);
+    expect(capturedPrompts[0]).toContain("Run a Brewva update workflow for this environment.");
+    expect(capturedPrompts[0]).toContain("Review the relevant changelog or release notes");
+    expect(capturedPrompts[0]).toContain("target=latest safe rollout");
+    expect(outboundTurns[0]?.parts).toEqual([
+      { type: "text", text: "UPDATE_ACK_FROM_FAKE_PROMPT_EXECUTOR" },
+    ]);
+  });
+
+  test("channel orchestration blocks a duplicate /update while an earlier update is still pending", async () => {
+    const workspace = createTestWorkspace("channel-telegram-update-lock");
+    const configPath = writeChannelConfig(workspace, { orchestrationEnabled: true });
+    const channelConfig = {
+      telegram: {
+        token: "bot-token",
+      },
+    };
+    const capturedPrompts: string[] = [];
+    const outboundTurns: TurnEnvelope[] = [];
+    const abortController = new AbortController();
+    let releaseFirstUpdate: (() => void) | undefined;
+    const firstUpdateGate = new Promise<void>((resolve) => {
+      releaseFirstUpdate = resolve;
+    });
+
+    const launcher: ChannelModeLauncher = (input) => {
+      const bridge = {
+        async start(): Promise<void> {
+          const firstInbound = input.onInboundTurn(
+            createInboundTurn({
+              turnId: "turn-update-lock-1",
+              text: "/update target=latest",
+            }),
+          );
+          await waitUntil(
+            () => capturedPrompts.length === 1,
+            5_000,
+            "timed out waiting for the first update prompt",
+          );
+          await input.onInboundTurn(
+            createInboundTurn({
+              turnId: "turn-update-lock-2",
+              text: "/update target=latest",
+            }),
+          );
+          await waitUntil(
+            () =>
+              outboundTurns.some((turn) => {
+                const part = turn.parts[0];
+                return part?.type === "text" && part.text.includes("Update already in progress");
+              }),
+            5_000,
+            "timed out waiting for the duplicate update rejection",
+          );
+          releaseFirstUpdate?.();
+          await firstInbound;
+          await waitUntil(
+            () =>
+              outboundTurns.some((turn) => {
+                const part = turn.parts[0];
+                return part?.type === "text" && part.text === "UPDATE_ACK_AFTER_LOCK";
+              }),
+            5_000,
+            "timed out waiting for the original update completion",
+          );
+          abortController.abort();
+        },
+        async stop(): Promise<void> {
+          return;
+        },
+        async sendTurn(turn: TurnEnvelope): Promise<Record<string, never>> {
+          outboundTurns.push(turn);
+          return {};
+        },
+      };
+      return {
+        bridge: bridge as unknown as ChannelTurnBridge,
+      };
+    };
+
+    const dependencies: RunChannelModeDependencies = {
+      collectPromptTurnOutputs: async (_session, prompt) => {
+        capturedPrompts.push(prompt);
+        await firstUpdateGate;
+        return {
+          assistantText: "UPDATE_ACK_AFTER_LOCK",
+          toolOutputs: [],
+        };
+      },
+      handleInsightCommand: handleInsightChannelCommand,
+      launchers: {
+        telegram: launcher,
+      },
+    };
+
+    try {
+      await runChannelMode({
+        cwd: workspace,
+        configPath,
+        managedToolMode: "direct",
+        verbose: false,
+        channel: "telegram",
+        channelConfig,
+        shutdownSignal: abortController.signal,
+        dependencies,
+      });
+    } finally {
+      cleanupTestWorkspace(workspace);
+    }
+
+    expect(capturedPrompts).toHaveLength(1);
+    const outboundTexts = outboundTurns.flatMap((turn) => {
+      const part = turn.parts[0];
+      return part?.type === "text" ? [part.text] : [];
+    });
+    expect(outboundTexts.some((text) => text.includes("Update already in progress"))).toBe(true);
+    expect(outboundTexts).toContain("UPDATE_ACK_AFTER_LOCK");
+  });
 });

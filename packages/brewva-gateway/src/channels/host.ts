@@ -3,6 +3,9 @@ import { TelegramWebhookTransport } from "@brewva/brewva-channels-telegram";
 import { createTelegramIngressServer, type TelegramIngressAuth } from "@brewva/brewva-ingress";
 import {
   BrewvaRuntime,
+  CHANNEL_COMMAND_RECEIVED_EVENT_TYPE,
+  CHANNEL_UPDATE_LOCK_BLOCKED_EVENT_TYPE,
+  CHANNEL_UPDATE_REQUESTED_EVENT_TYPE,
   createTrustedLocalGovernancePort,
   type ManagedToolMode,
 } from "@brewva/brewva-runtime";
@@ -27,6 +30,7 @@ import {
 } from "../runtime-plugins/index.js";
 import { sendPromptWithCompactionRecovery } from "../session/compaction-recovery.js";
 import type { SubscribablePromptSession } from "../session/contracts.js";
+import { buildBrewvaUpdatePrompt, resolveBrewvaUpdateExecutionScope } from "../update-workflow.js";
 import { clampText, ensureSessionShutdownRecorded } from "../utils/runtime.js";
 import { isOwnerAuthorized } from "./acl.js";
 import { AgentRegistry } from "./agent-registry.js";
@@ -115,6 +119,15 @@ interface ToolTurnOutput {
 interface PromptTurnOutputs {
   assistantText: string;
   toolOutputs: ToolTurnOutput[];
+}
+
+interface PendingUpdateReservation {
+  scopeKey: string;
+  turnId: string;
+  conversationId: string;
+  sessionId: string;
+  agentId?: string;
+  requestedAt: number;
 }
 
 export interface PromptTurnOutputSession extends SubscribablePromptSession {}
@@ -731,6 +744,7 @@ function rewriteTurnText(turn: TurnEnvelope, text: string): TurnEnvelope {
 function isControlCommand(match: ChannelCommandMatch): boolean {
   return (
     match.kind === "insight" ||
+    match.kind === "update" ||
     match.kind === "new-agent" ||
     match.kind === "del-agent" ||
     match.kind === "focus" ||
@@ -1019,6 +1033,8 @@ export async function runChannelMode(options: RunChannelModeOptions): Promise<vo
   const sessionByAgentSessionId = new Map<string, ConversationSessionState>();
   const createSessionTasks = new Map<string, Promise<ConversationSessionState>>();
   const scopeQueues = new Map<string, Promise<void>>();
+  const updateExecutionScope = resolveBrewvaUpdateExecutionScope(runtime);
+  const pendingUpdateReservations = new Map<string, PendingUpdateReservation>();
   const lastTurnByScope = new Map<string, TurnEnvelope>();
   let shuttingDown = false;
 
@@ -1632,7 +1648,7 @@ export async function runChannelMode(options: RunChannelModeOptions): Promise<vo
 
     runtime.events.record({
       sessionId: turn.sessionId,
-      type: "channel_command_received",
+      type: CHANNEL_COMMAND_RECEIVED_EVENT_TYPE,
       payload: {
         scopeKey,
         command: match.kind,
@@ -1732,6 +1748,44 @@ export async function runChannelMode(options: RunChannelModeOptions): Promise<vo
       );
       await sendControllerReply(turn, scopeKey, result.text, result.meta);
       return { handled: true };
+    }
+
+    if (match.kind === "update") {
+      const targetAgentId = registry.resolveFocus(scopeKey);
+      if (!registry.isActive(targetAgentId)) {
+        await sendControllerReply(
+          turn,
+          scopeKey,
+          `Update unavailable: agent @${targetAgentId} is not active in this workspace.`,
+          {
+            command: "update",
+            agentId: targetAgentId,
+            status: "agent_not_active",
+          },
+        );
+        return { handled: true };
+      }
+
+      runtime.events.record({
+        sessionId: turn.sessionId,
+        type: CHANNEL_UPDATE_REQUESTED_EVENT_TYPE,
+        payload: {
+          scopeKey,
+          agentId: targetAgentId,
+          instructions: match.instructions ?? null,
+          turnId: turn.turnId,
+          lockKey: updateExecutionScope.lockKey,
+          lockTarget: updateExecutionScope.lockTarget,
+        },
+      });
+      return {
+        handled: false,
+        routeAgentId: targetAgentId,
+        routeTask: buildBrewvaUpdatePrompt({
+          runtime,
+          rawArgs: match.instructions,
+        }),
+      };
     }
 
     if (match.kind === "new-agent") {
@@ -1971,11 +2025,115 @@ export async function runChannelMode(options: RunChannelModeOptions): Promise<vo
       }).walId;
 
     const scopeKey = resolveScopeKey(turn);
+    const updateReservation =
+      orchestrationConfig.enabled && turn.kind === "user"
+        ? (() => {
+            const text = extractInboundText(turn);
+            if (text.length === 0) return undefined;
+            const match = commandRouter.match(text);
+            if (match.kind !== "update") return undefined;
+
+            const authorized = isOwnerAuthorized(
+              turn,
+              orchestrationConfig.owners.telegram,
+              orchestrationConfig.aclModeWhenOwnersEmpty,
+            );
+            if (!authorized) return undefined;
+
+            const targetAgentId = registry.resolveFocus(scopeKey);
+            if (!registry.isActive(targetAgentId)) return undefined;
+
+            const existing = pendingUpdateReservations.get(updateExecutionScope.lockKey);
+            if (existing) {
+              return { blocked: existing } as const;
+            }
+
+            const reservation: PendingUpdateReservation = {
+              scopeKey,
+              turnId: turn.turnId,
+              conversationId: turn.conversationId,
+              sessionId: turn.sessionId,
+              agentId: targetAgentId,
+              requestedAt: Date.now(),
+            };
+            pendingUpdateReservations.set(updateExecutionScope.lockKey, reservation);
+            return {
+              lockKey: updateExecutionScope.lockKey,
+              reservation,
+            } as const;
+          })()
+        : undefined;
+
+    if (updateReservation && "blocked" in updateReservation) {
+      const blocked = updateReservation.blocked;
+      if (!blocked) {
+        return;
+      }
+      runtime.events.record({
+        sessionId: turn.sessionId,
+        type: CHANNEL_UPDATE_LOCK_BLOCKED_EVENT_TYPE,
+        payload: {
+          scopeKey,
+          turnId: turn.turnId,
+          conversationId: turn.conversationId,
+          agentId: registry.resolveFocus(scopeKey),
+          lockKey: updateExecutionScope.lockKey,
+          lockTarget: updateExecutionScope.lockTarget,
+          blockingScopeKey: blocked.scopeKey,
+          blockingTurnId: blocked.turnId,
+          blockingConversationId: blocked.conversationId,
+          blockingAgentId: blocked.agentId ?? null,
+          blockingSessionId: blocked.sessionId,
+          blockingRequestedAt: blocked.requestedAt,
+        },
+      });
+      const holder = blocked.agentId ? ` by @${blocked.agentId}` : "";
+      try {
+        await sendControllerReply(
+          turn,
+          scopeKey,
+          `Update already in progress for ${updateExecutionScope.lockTarget}${holder} (scope=${blocked.scopeKey}, turn=${blocked.turnId}). Wait for that run to finish before requesting another /update.`,
+          {
+            command: "update",
+            status: "lock_blocked",
+            lockKey: updateExecutionScope.lockKey,
+            lockTarget: updateExecutionScope.lockTarget,
+            blockingScopeKey: blocked.scopeKey,
+            blockingTurnId: blocked.turnId,
+            blockingAgentId: blocked.agentId ?? null,
+          },
+        );
+        turnWalStore.markDone(walId);
+      } catch (error) {
+        turnWalStore.markFailed(walId, toErrorMessage(error));
+        throw error;
+      }
+      return;
+    }
+
+    const releaseUpdateReservation = () => {
+      if (!updateReservation || !("reservation" in updateReservation)) {
+        return;
+      }
+      const current = pendingUpdateReservations.get(updateReservation.lockKey);
+      if (
+        current &&
+        current.turnId === updateReservation.reservation.turnId &&
+        current.sessionId === updateReservation.reservation.sessionId
+      ) {
+        pendingUpdateReservations.delete(updateReservation.lockKey);
+      }
+    };
+
     const previous = scopeQueues.get(scopeKey) ?? Promise.resolve();
     const next = previous
       .catch(() => undefined)
       .then(async () => {
-        await processInboundTurn(turn, walId, scopeKey);
+        try {
+          await processInboundTurn(turn, walId, scopeKey);
+        } finally {
+          releaseUpdateReservation();
+        }
       });
     const settled = next.then(
       () => undefined,
