@@ -65,7 +65,7 @@ This is a catalog convention, not a kernel-owned stage machine.
 Project overlays do not create new semantic territory. They:
 
 - can add project-specific execution hints and shared context
-- tighten allowed/denied effects, resource ceilings, and dispatch/routing constraints
+- tighten allowed/denied effects, resource ceilings, and routing constraints
 - keep base outputs/consumes unless the overlay explicitly replaces them
 - prepend shared project context from `skills/project/shared`
 

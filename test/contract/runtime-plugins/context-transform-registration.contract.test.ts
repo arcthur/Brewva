@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   CONTEXT_SOURCES,
   createHostedTurnPipeline,
-  createMockExtensionAPI,
+  createMockRuntimePluginApi,
   createRuntimeConfig,
   createRuntimeFixture,
   invokeHandlerAsync,
@@ -13,7 +13,7 @@ import {
 
 describe("context transform registration contract", () => {
   test("registers handlers and injects a hidden context message before agent start", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const runtime = createRuntimeFixture({
       context: {
         onTurnStart: () => undefined,
@@ -78,7 +78,7 @@ describe("context transform registration contract", () => {
   });
 
   test("surfaces capabilityView detailNames in hidden context metadata", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const extensionApi = api as unknown as {
       registerTool: (tool: { name: string; description: string; parameters?: unknown }) => void;
     };
@@ -146,7 +146,7 @@ describe("context transform registration contract", () => {
   });
 
   test("does not emit deprecated routing telemetry from the real runtime path", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const runtime = createRuntimeFixture({
       config: createRuntimeConfig((config) => {
         config.projection.enabled = false;
@@ -186,7 +186,7 @@ describe("context transform registration contract", () => {
   });
 
   test("preserves async context injection through createHostedTurnPipeline", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const calls: string[] = [];
     const runtime = createRuntimeFixture({
       context: {
@@ -214,11 +214,11 @@ describe("context transform registration contract", () => {
       },
     });
 
-    const extension = createHostedTurnPipeline({
+    const runtimePlugin = createHostedTurnPipeline({
       runtime,
       registerTools: false,
     });
-    await extension(api);
+    await runtimePlugin(api);
 
     const results = await invokeHandlersAsync<{
       message: {

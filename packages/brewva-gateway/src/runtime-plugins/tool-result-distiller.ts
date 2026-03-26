@@ -21,8 +21,11 @@ function extractTextOnlyContent(content: unknown): string | undefined {
   return lines.join("\n");
 }
 
-export function registerToolResultDistiller(_pi: ExtensionAPI, _runtime: BrewvaRuntime): void {
-  _pi.on("tool_result", (event) => {
+export function registerToolResultDistiller(
+  extensionApi: ExtensionAPI,
+  _runtime: BrewvaRuntime,
+): void {
+  extensionApi.on("tool_result", (event) => {
     const outputText = extractTextOnlyContent(event.content);
     if (outputText === undefined) {
       return undefined;

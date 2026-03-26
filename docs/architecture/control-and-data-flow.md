@@ -15,7 +15,7 @@ Use this file to understand current wiring. Use `docs/architecture/*.md`,
 `docs/reference/*.md`, and runtime code to decide what authority or persistence
 semantics are actually allowed.
 
-## Default Session Flow (Extensions Enabled)
+## Default Session Flow (Runtime Plugins Enabled)
 
 ```mermaid
 sequenceDiagram
@@ -96,7 +96,7 @@ flowchart TD
   C --> D["provider request patching"]
   D --> E["model/provider response"]
   E --> F{"structured tool call admissible?"}
-  F -->|yes| G["emit normalized completion into Pi session"]
+  F -->|yes| G["emit normalized completion into hosted session"]
   F -->|no| H["emit normalization failure error"]
   G --> I["quality-gate tool_call admission"]
 ```

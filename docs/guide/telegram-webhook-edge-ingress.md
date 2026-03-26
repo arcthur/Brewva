@@ -3,7 +3,7 @@
 This guide documents a minimal, production-oriented layered deployment:
 
 - Cloudflare Worker as the edge ingress adapter (signature validation, ACL, rate limiting, edge dedupe)
-- Fly-hosted `brewva --channel telegram` as the control plane (session lifecycle, agent orchestration, tool execution)
+- Fly-hosted `brewva --channel telegram` as the channel host (session lifecycle, agent orchestration, tool execution)
 
 Implementation references:
 
@@ -99,7 +99,7 @@ If `BREWVA_TELEGRAM_EXPECTED_PATH` is set in Worker config, the webhook path mus
 - Worker returns `429 rate_limited`: throttled, Telegram retries per provider behavior
 - Worker returns `502 forward_failed/forward_rejected`: ingress unavailable/rejected, Telegram retries
 
-When forwarding to Fly ingress, `2xx` and `409` are both treated as success (`409` = control-plane idempotency hit).
+When forwarding to Fly ingress, `2xx` and `409` are both treated as success (`409` = channel-host idempotency hit).
 
 ## 5) Production Recommendations
 
@@ -145,4 +145,4 @@ bun run test:webhook-smoke:live
 The strict check passes when the second request is handled as:
 
 - edge duplicate (`code=duplicate`), or
-- control-plane idempotency (`code=accepted`, `ingressStatus=409`).
+- channel-host idempotency (`code=accepted`, `ingressStatus=409`).

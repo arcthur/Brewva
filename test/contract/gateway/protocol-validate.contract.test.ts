@@ -95,14 +95,14 @@ describe("gateway protocol validator", () => {
       configPath: ".brewva/brewva.json",
       model: "openai/gpt-5",
       agentId: "code-reviewer",
-      managedToolMode: "extension",
+      managedToolMode: "runtime_plugin",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) {
       return;
     }
     expect(result.params.agentId).toBe("code-reviewer");
-    expect(result.params.managedToolMode).toBe("extension");
+    expect(result.params.managedToolMode).toBe("runtime_plugin");
   });
 
   test("given sessions.unsubscribe with extra property, when validating params, then validation fails", () => {

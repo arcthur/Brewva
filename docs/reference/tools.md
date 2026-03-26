@@ -198,6 +198,14 @@ Current posture:
 - `worker_results_merge`
 - `worker_results_apply`
 
+Naming taxonomy:
+
+- `subagent_*` is the stable agent-facing tool family for delegated child runs
+- runtime/session APIs use `delegation` for the durable child-run ledger and
+  delivery handoff state
+- `worker_results_*` operates only on `WorkerResult` artifacts emitted by
+  patch-producing delegated runs
+
 `skill_promotion` operates on post-execution promotion drafts derived from
 `skill_completed` evidence. Promotion materializes review packets under
 `.brewva/skill-broker/materialized/<draft-id>/` and does not patch the live
@@ -319,6 +327,12 @@ Behavior:
 - derived workflow artifacts may surface metric and guard evidence as advisory
   working state
 
+## `rollback_last_patch`
+
+`rollback_last_patch` is the stable agent-facing tool id for rolling back the
+latest tracked `PatchSet`. It maps to `runtime.tools.rollbackLastPatchSet(...)`
+and the CLI `--undo` flow.
+
 ## `subagent_run` And `subagent_fanout`
 
 Delegation entrypoints:
@@ -354,7 +368,7 @@ Current delegation selector contract:
 - `executionShape.boundary?` (`safe` | `effectful`)
   - optional preset narrowing only
 - `executionShape.model?`
-- `executionShape.managedToolMode?` (`direct` | `extension`)
+- `executionShape.managedToolMode?` (`direct` | `runtime_plugin`)
 
 When `skillName` is present, the delegated output contract is owned by the
 skill document and validated through `skillOutputs`. There is no separate

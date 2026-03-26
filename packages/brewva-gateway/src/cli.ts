@@ -241,14 +241,14 @@ function describeFlagValue(raw: unknown): string {
 
 function resolveManagedToolModeFlag(raw: unknown): { value: ManagedToolMode; error?: string } {
   if (raw === undefined) {
-    return { value: "extension" };
+    return { value: "runtime_plugin" };
   }
-  if (raw === "extension" || raw === "direct") {
+  if (raw === "runtime_plugin" || raw === "direct") {
     return { value: raw };
   }
   return {
-    value: "extension",
-    error: `Error: --managed-tools must be "extension" or "direct" (received "${describeFlagValue(raw)}").`,
+    value: "runtime_plugin",
+    error: `Error: --managed-tools must be "runtime_plugin" or "direct" (received "${describeFlagValue(raw)}").`,
   };
 }
 

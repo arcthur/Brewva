@@ -41,7 +41,7 @@ describe("subagent shared execution resolution", () => {
     ).toThrow("subagent_result_mode_override_not_allowed");
     expect(() =>
       assertDelegationShapeNarrowing(target, {
-        managedToolMode: "extension",
+        managedToolMode: "runtime_plugin",
       }),
     ).toThrow("subagent_managed_tool_mode_widening_not_allowed");
   });

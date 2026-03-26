@@ -28,7 +28,7 @@ to miss when reading individual module docs.
 - `--backend gateway` does not support interactive mode, JSON mode,
   `--undo`/`--replay`, `--daemon`, `--channel`, or TaskSpec (`--task`, `--task-file`).
 - `--managed-tools direct` does not disable hosted lifecycle ports; it only
-  switches managed Brewva tools from extension registration to direct host
+  switches managed Brewva tools from runtime-plugin registration to direct host
   provisioning.
 
 ## Schedule Runtime

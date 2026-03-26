@@ -56,8 +56,8 @@ function createAdapter(options?: { sendError?: Error }): {
   };
 }
 
-describe("channel turn bridge extension helper", () => {
-  test("given bridge activity, when extension helper runs, then ingested and emitted events are recorded with channel metadata", async () => {
+describe("channel turn bridge runtime plugin helper", () => {
+  test("given bridge activity, when runtime plugin helper runs, then ingested and emitted events are recorded with channel metadata", async () => {
     const events: Record<string, unknown>[] = [];
     const runtime: RuntimeLike = {
       events: {

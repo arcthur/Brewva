@@ -53,7 +53,7 @@ export function asBoundary(value: unknown): SubagentExecutionBoundary | undefine
 }
 
 export function asManagedToolMode(value: unknown): ManagedToolMode | undefined {
-  return value === "extension" || value === "direct" ? value : undefined;
+  return value === "runtime_plugin" || value === "direct" ? value : undefined;
 }
 
 export function asResultMode(value: unknown): SubagentResultMode | undefined {

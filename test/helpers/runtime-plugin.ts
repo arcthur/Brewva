@@ -1,22 +1,22 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { RuntimePluginApi } from "@brewva/brewva-gateway/runtime-plugins";
 
-export type ExtensionTestHandler = (
+export type RuntimePluginTestHandler = (
   event: Record<string, unknown>,
   ctx: Record<string, unknown>,
 ) => unknown;
 
-export function createMockExtensionAPI(): {
-  api: ExtensionAPI;
-  handlers: Map<string, ExtensionTestHandler[]>;
+export function createMockRuntimePluginApi(): {
+  api: RuntimePluginApi;
+  handlers: Map<string, RuntimePluginTestHandler[]>;
   sentMessages: Array<Record<string, unknown>>;
   activeTools: string[];
 } {
-  const handlers = new Map<string, ExtensionTestHandler[]>();
+  const handlers = new Map<string, RuntimePluginTestHandler[]>();
   const sentMessages: Array<Record<string, unknown>> = [];
   let allTools: Array<{ name: string; description: string; parameters?: unknown }> = [];
   let activeTools: string[] = [];
   const api = {
-    on(event: string, handler: ExtensionTestHandler) {
+    on(event: string, handler: RuntimePluginTestHandler) {
       const list = handlers.get(event) ?? [];
       list.push(handler);
       handlers.set(event, list);
@@ -46,7 +46,7 @@ export function createMockExtensionAPI(): {
     sendMessage(message: Record<string, unknown>) {
       sentMessages.push(message);
     },
-  } as unknown as ExtensionAPI;
+  } as unknown as RuntimePluginApi;
   return {
     api,
     handlers,
@@ -58,7 +58,7 @@ export function createMockExtensionAPI(): {
 }
 
 export function invokeHandler<T = unknown>(
-  handlers: Map<string, ExtensionTestHandler[]>,
+  handlers: Map<string, RuntimePluginTestHandler[]>,
   eventName: string,
   event: Record<string, unknown>,
   ctx: Record<string, unknown>,
@@ -72,7 +72,7 @@ export function invokeHandler<T = unknown>(
 }
 
 export async function invokeHandlerAsync<T = unknown>(
-  handlers: Map<string, ExtensionTestHandler[]>,
+  handlers: Map<string, RuntimePluginTestHandler[]>,
   eventName: string,
   event: Record<string, unknown>,
   ctx: Record<string, unknown>,
@@ -86,7 +86,7 @@ export async function invokeHandlerAsync<T = unknown>(
 }
 
 export async function invokeHandlersAsync<T = unknown>(
-  handlers: Map<string, ExtensionTestHandler[]>,
+  handlers: Map<string, RuntimePluginTestHandler[]>,
   eventName: string,
   event: Record<string, unknown>,
   ctx: Record<string, unknown>,
@@ -100,7 +100,7 @@ export async function invokeHandlersAsync<T = unknown>(
 }
 
 export function invokeHandlers<T = unknown>(
-  handlers: Map<string, ExtensionTestHandler[]>,
+  handlers: Map<string, RuntimePluginTestHandler[]>,
   eventName: string,
   event: Record<string, unknown>,
   ctx: Record<string, unknown>,

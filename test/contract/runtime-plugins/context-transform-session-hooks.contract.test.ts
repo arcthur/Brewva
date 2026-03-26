@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { setStaticContextPressureThresholds } from "../../fixtures/config.js";
 import {
-  createMockExtensionAPI,
+  createMockRuntimePluginApi,
   createRuntimeConfig,
   createRuntimeFixture,
   invokeHandler,
@@ -11,7 +11,7 @@ import {
 
 describe("context transform session hook contract", () => {
   test("short-circuits routing and injection when the critical gate is required", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const eventPayloads: Array<{ type: string; payload?: Record<string, unknown> }> = [];
     let injectionCalls = 0;
 
@@ -66,7 +66,7 @@ describe("context transform session hook contract", () => {
   });
 
   test("arms the critical gate for non-session_compact flows and clears it after compaction", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const eventTypes: string[] = [];
     const capturedCompactions: Array<Record<string, unknown>> = [];
 
@@ -159,7 +159,7 @@ describe("context transform session hook contract", () => {
   });
 
   test("keeps the gate disarmed immediately after a recent compaction", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const eventTypes: string[] = [];
 
     const runtime = createRuntimeFixture({
@@ -230,7 +230,7 @@ describe("context transform session hook contract", () => {
   });
 
   test("keeps the gate disarmed within the compaction window and rearms after it expires", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const eventTypes: string[] = [];
 
     const runtime = createRuntimeFixture({
@@ -321,7 +321,7 @@ describe("context transform session hook contract", () => {
   });
 
   test("keeps the gate disarmed when hydrated runtime state already reflects compaction", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const eventTypes: string[] = [];
 
     const runtime = createRuntimeFixture({

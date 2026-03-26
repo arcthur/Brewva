@@ -1,5 +1,6 @@
+import type { RuntimePlugin, RuntimePluginApi } from "@brewva/brewva-gateway/runtime-plugins";
 import type { BrewvaRuntime } from "@brewva/brewva-runtime";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
   buildInsightReport,
   clampText,
@@ -40,14 +41,14 @@ function normalizeCommandArgs(args: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-export function createInsightCommandExtension(
+export function createInsightCommandRuntimePlugin(
   runtime: BrewvaRuntime,
   options: {
     widgetId?: string;
     maxWidgetLines?: number;
     maxLineChars?: number;
   } = {},
-): (pi: ExtensionAPI) => void {
+): RuntimePlugin {
   const widgetId = options.widgetId ?? DEFAULT_WIDGET_ID;
   const maxWidgetLines = Math.max(
     8,
@@ -55,18 +56,18 @@ export function createInsightCommandExtension(
   );
   const maxLineChars = Math.max(40, Math.trunc(options.maxLineChars ?? DEFAULT_MAX_LINE_CHARS));
 
-  return (pi) => {
-    pi.on("session_start", async (_event, ctx) => {
+  return (runtimePluginApi: RuntimePluginApi) => {
+    runtimePluginApi.on("session_start", async (_event, ctx) => {
       clearInsightWidget(ctx, widgetId);
     });
-    pi.on("session_switch", async (_event, ctx) => {
+    runtimePluginApi.on("session_switch", async (_event, ctx) => {
       clearInsightWidget(ctx, widgetId);
     });
-    pi.on("session_shutdown", async (_event, ctx) => {
+    runtimePluginApi.on("session_shutdown", async (_event, ctx) => {
       clearInsightWidget(ctx, widgetId);
     });
 
-    pi.registerCommand("insight", {
+    runtimePluginApi.registerCommand("insight", {
       description:
         "Review the current Brewva session for a directory without entering a model turn (usage: /insight [dir] | /insight clear)",
       handler: async (args, ctx) => {

@@ -17,11 +17,11 @@ import {
   ModelRegistry,
   SessionManager,
 } from "@mariozechner/pi-coding-agent";
-import { createMockExtensionAPI, invokeHandlers } from "../../helpers/extension.js";
+import { createMockRuntimePluginApi, invokeHandlers } from "../../helpers/runtime-plugin.js";
 import { createOpsRuntimeConfig } from "../../helpers/runtime.js";
 
-describe("Extension integration: observability injection", () => {
-  test("given extension runner contract, when emitBeforeAgentStart executes, then brewva context message is included", async () => {
+describe("Runtime plugin integration: observability injection", () => {
+  test("given runtime plugin runner contract, when emitBeforeAgentStart executes, then brewva context message is included", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-ext-dual-injection-"));
     mkdirSync(join(workspace, ".orchestrator"), { recursive: true });
     mkdirSync(join(workspace, ".brewva"), { recursive: true });
@@ -40,13 +40,13 @@ describe("Extension integration: observability injection", () => {
     );
 
     const agentDir = join(workspace, ".brewva-agent-test-dual-injection");
-    const extensionPath = join(workspace, "brewva-inline-extension.ts");
+    const runtimePluginPath = join(workspace, "brewva-inline-runtime-plugin.ts");
     const brewvaExtensionEntry = join(
       process.cwd(),
       "packages/brewva-gateway/src/runtime-plugins.ts",
     ).replaceAll("\\", "/");
     writeFileSync(
-      extensionPath,
+      runtimePluginPath,
       [
         `import { createHostedTurnPipeline } from '${brewvaExtensionEntry}';`,
         `export default createHostedTurnPipeline({ registerTools: false, cwd: ${JSON.stringify(workspace)} });`,
@@ -55,7 +55,7 @@ describe("Extension integration: observability injection", () => {
     );
 
     const loaded = await discoverAndLoadExtensions(
-      [extensionPath],
+      [runtimePluginPath],
       workspace,
       agentDir,
       createEventBus(),
@@ -130,7 +130,7 @@ describe("Extension integration: observability injection", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace, config: createOpsRuntimeConfig() });
     const sessionId = "ext-obs-1";
 
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
     registerContextTransform(api, runtime);
     registerQualityGate(api, runtime);
@@ -281,7 +281,7 @@ describe("Extension integration: observability injection", () => {
       channelSuccess: true,
     });
 
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
     const clearStateCalls: string[] = [];
     const originalClearState = runtime.session.clearState.bind(runtime.session);

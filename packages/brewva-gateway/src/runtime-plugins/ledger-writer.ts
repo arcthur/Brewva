@@ -358,11 +358,11 @@ function recordToolOutcome(
   });
 }
 
-export function registerLedgerWriter(pi: ExtensionAPI, runtime: BrewvaRuntime): void {
+export function registerLedgerWriter(extensionApi: ExtensionAPI, runtime: BrewvaRuntime): void {
   const lifecycleStatesBySession = new Map<string, Map<string, ToolLifecycleState>>();
   const finalizedToolCallsBySession = new Map<string, Set<string>>();
 
-  pi.on("tool_execution_start", (event, ctx) => {
+  extensionApi.on("tool_execution_start", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     if (getFinalizedToolCalls(finalizedToolCallsBySession, sessionId).has(event.toolCallId)) {
       return undefined;
@@ -376,7 +376,7 @@ export function registerLedgerWriter(pi: ExtensionAPI, runtime: BrewvaRuntime): 
     return undefined;
   });
 
-  pi.on("tool_call", (event, ctx) => {
+  extensionApi.on("tool_call", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     if (getFinalizedToolCalls(finalizedToolCallsBySession, sessionId).has(event.toolCallId)) {
       return undefined;
@@ -390,7 +390,7 @@ export function registerLedgerWriter(pi: ExtensionAPI, runtime: BrewvaRuntime): 
     return undefined;
   });
 
-  pi.on("tool_result", (event, ctx) => {
+  extensionApi.on("tool_result", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     if (getFinalizedToolCalls(finalizedToolCallsBySession, sessionId).has(event.toolCallId)) {
       return undefined;
@@ -425,7 +425,7 @@ export function registerLedgerWriter(pi: ExtensionAPI, runtime: BrewvaRuntime): 
     return undefined;
   });
 
-  pi.on("tool_execution_end", (event, ctx) => {
+  extensionApi.on("tool_execution_end", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     if (getFinalizedToolCalls(finalizedToolCallsBySession, sessionId).has(event.toolCallId)) {
       deleteToolLifecycleState(lifecycleStatesBySession, sessionId, event.toolCallId);
@@ -489,7 +489,7 @@ export function registerLedgerWriter(pi: ExtensionAPI, runtime: BrewvaRuntime): 
     return undefined;
   });
 
-  pi.on("session_shutdown", (_event, ctx) => {
+  extensionApi.on("session_shutdown", (_event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     lifecycleStatesBySession.delete(sessionId);
     finalizedToolCallsBySession.delete(sessionId);

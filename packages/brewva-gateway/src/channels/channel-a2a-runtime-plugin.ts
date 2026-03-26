@@ -1,5 +1,5 @@
 import { createA2ATools } from "@brewva/brewva-tools";
-import type { ExtensionFactory } from "@mariozechner/pi-coding-agent";
+import type { RuntimePlugin, RuntimePluginApi } from "../runtime-plugins/index.js";
 
 export interface ChannelA2AAdapter {
   send(input: {
@@ -46,10 +46,10 @@ export interface ChannelA2AAdapter {
   >;
 }
 
-export function createChannelA2AExtension(options: {
+export function createChannelA2ARuntimePlugin(options: {
   adapter: ChannelA2AAdapter;
-}): ExtensionFactory {
-  return (pi) => {
+}): RuntimePlugin {
+  return (runtimePluginApi: RuntimePluginApi) => {
     const tools = createA2ATools({
       runtime: {
         orchestration: {
@@ -58,14 +58,14 @@ export function createChannelA2AExtension(options: {
       },
     });
     const ensureRegistered = () => {
-      const currentNames = new Set(pi.getAllTools().map((tool) => tool.name));
+      const currentNames = new Set(runtimePluginApi.getAllTools().map((tool) => tool.name));
       for (const tool of tools) {
         if (currentNames.has(tool.name)) continue;
-        pi.registerTool(tool);
+        runtimePluginApi.registerTool(tool);
       }
     };
 
-    pi.on("session_start", () => {
+    runtimePluginApi.on("session_start", () => {
       ensureRegistered();
       return undefined;
     });

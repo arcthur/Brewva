@@ -29,13 +29,15 @@ import {
   writeGatewayAssistantText,
 } from "./gateway-print.js";
 import { handleInsightChannelCommand } from "./insight-channel-command.js";
-import { createInsightCommandExtension } from "./insight-command-extension.js";
+import { createInsightCommandRuntimePlugin } from "./insight-command-runtime-plugin.js";
 import { runInsightCli } from "./insight.js";
 import { resolveTargetSession, runInspectCli } from "./inspect.js";
 import { writeJsonLine } from "./json-lines.js";
 import { createBrewvaSession } from "./session.js";
 
 const NODE_VERSION_RANGE = "^20.19.0 || >=22.12.0";
+const BREWVA_SKIP_VERSION_CHECK_ENV = "BREWVA_SKIP_VERSION_CHECK";
+const LEGACY_PI_SKIP_VERSION_CHECK_ENV = "PI_SKIP_VERSION_CHECK";
 
 type Semver = Readonly<{ major: number; minor: number; patch: number }>;
 
@@ -109,7 +111,7 @@ Subcommands:
   brewva onboard ...   One-shot onboarding helpers (daemon install/uninstall)
 
 Modes:
-  default               Interactive TUI mode (same flow as pi)
+  default               Interactive TUI mode
   --print               One-shot mode (prints final answer and exits)
   --mode json           One-shot JSON event stream
 
@@ -120,8 +122,8 @@ Options:
   --agent <id>          Agent self bundle id (.brewva/agents/<id>/{identity,constitution,memory}.md)
   --task <json>         TaskSpec JSON (schema: brewva.task.v1)
   --task-file <path>    TaskSpec JSON file
-  --managed-tools <extension|direct>
-                       Register managed Brewva tools through the hosted pipeline or provide them directly (default: extension)
+  --managed-tools <runtime_plugin|direct>
+                       Register managed Brewva tools through the hosted runtime plugin or provide them directly (default: runtime_plugin)
   --print, -p           Run one-shot mode
   --interactive, -i     Force interactive TUI mode
   --mode <text|json>    One-shot output mode
@@ -130,7 +132,7 @@ Options:
   --undo                Roll back the latest tracked patch set in this session
   --replay              Replay persisted runtime events
   --daemon              Run scheduler daemon (no interactive session)
-  --channel <name>      Run channel gateway mode (currently: telegram)
+  --channel <name>      Run channel host mode (currently: telegram)
   --telegram-token <t>  Telegram bot token for --channel telegram
   --telegram-callback-secret <s>
                         Secret used to sign/verify Telegram approval callbacks
@@ -316,14 +318,14 @@ function describeFlagValue(raw: unknown): string {
 
 function resolveManagedToolModeFlag(raw: unknown): { value: ManagedToolMode; error?: string } {
   if (raw === undefined) {
-    return { value: "extension" };
+    return { value: "runtime_plugin" };
   }
-  if (raw === "extension" || raw === "direct") {
+  if (raw === "runtime_plugin" || raw === "direct") {
     return { value: raw };
   }
   return {
-    value: "extension",
-    error: `Error: --managed-tools must be "extension" or "direct" (received "${describeFlagValue(raw)}").`,
+    value: "runtime_plugin",
+    error: `Error: --managed-tools must be "runtime_plugin" or "direct" (received "${describeFlagValue(raw)}").`,
   };
 }
 
@@ -696,8 +698,13 @@ function resolveEffectiveMode(parsed: CliArgs): CliMode | null {
 
 function applyDefaultInteractiveEnv(mode: CliMode): void {
   if (mode !== "interactive") return;
-  if (process.env.PI_SKIP_VERSION_CHECK === undefined) {
-    process.env.PI_SKIP_VERSION_CHECK = "1";
+  const skipVersionCheck = process.env[BREWVA_SKIP_VERSION_CHECK_ENV];
+  if (skipVersionCheck !== undefined) {
+    process.env[LEGACY_PI_SKIP_VERSION_CHECK_ENV] = skipVersionCheck;
+    return;
+  }
+  if (process.env[LEGACY_PI_SKIP_VERSION_CHECK_ENV] === undefined) {
+    process.env[LEGACY_PI_SKIP_VERSION_CHECK_ENV] = "1";
   }
 }
 
@@ -1037,7 +1044,7 @@ async function run(): Promise<void> {
     model: parsed.model,
     agentId: parsed.agentId,
     managedToolMode: parsed.managedToolMode,
-    extensionFactories: [createInsightCommandExtension(runtime)],
+    runtimePlugins: [createInsightCommandRuntimePlugin(runtime)],
   });
   const printSession = wrapSessionWithSettledPrompts(session, { runtime });
 
@@ -1146,7 +1153,7 @@ if (isBunMain ?? isNodeMain) {
 
 export { parseArgs };
 export { handleInsightChannelCommand } from "./insight-channel-command.js";
-export { createInsightCommandExtension } from "./insight-command-extension.js";
+export { createInsightCommandRuntimePlugin } from "./insight-command-runtime-plugin.js";
 export { JsonLineWriter, type JsonLineWritable, writeJsonLine } from "./json-lines.js";
 export {
   resolveBackendWorkingCwd,

@@ -115,6 +115,8 @@ export interface BuildCapabilityViewResult {
   missing: string[];
 }
 
+export type CapabilityView = BuildCapabilityViewResult;
+
 export interface RenderCapabilityViewInput {
   capabilityView: BuildCapabilityViewResult;
   mode?: CapabilityRenderMode;

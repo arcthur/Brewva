@@ -209,7 +209,7 @@ type PendingToolResult = {
   isError: boolean;
 };
 
-export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): void {
+export function registerEventStream(extensionApi: ExtensionAPI, runtime: BrewvaRuntime): void {
   const lastAssistantTextBySession = new Map<string, string>();
   const assistantWindowBySession = new Map<string, string>();
   const observedToolCallsBySession = new Map<string, Set<string>>();
@@ -275,7 +275,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     pendingToolResults.clear();
   };
 
-  pi.on("session_start", (_event, ctx) => {
+  extensionApi.on("session_start", (_event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     runtime.events.record({
       sessionId,
@@ -287,7 +287,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("session_shutdown", (_event, ctx) => {
+  extensionApi.on("session_shutdown", (_event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     flushPendingToolResults(sessionId);
     runtime.events.record({
@@ -304,7 +304,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("agent_start", (_event, ctx) => {
+  extensionApi.on("agent_start", (_event, ctx) => {
     runtime.events.record({
       sessionId: ctx.sessionManager.getSessionId(),
       type: "agent_start",
@@ -312,7 +312,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("agent_end", (event, ctx) => {
+  extensionApi.on("agent_end", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     flushPendingToolResults(sessionId);
     runtime.events.record({
@@ -326,7 +326,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("turn_start", (event, ctx) => {
+  extensionApi.on("turn_start", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     const runtimeTurn = observeRuntimeTurnStart(sessionId, event.turnIndex, event.timestamp);
     runtime.events.record({
@@ -341,7 +341,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("turn_end", (event, ctx) => {
+  extensionApi.on("turn_end", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     const runtimeTurn = getCurrentRuntimeTurn(sessionId);
     flushPendingToolResults(sessionId);
@@ -359,7 +359,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("message_start", (event, ctx) => {
+  extensionApi.on("message_start", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     lastAssistantTextBySession.delete(sessionId);
     assistantWindowBySession.delete(sessionId);
@@ -371,7 +371,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("message_update", (event, ctx) => {
+  extensionApi.on("message_update", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     const currentText = extractMessageText(event.message);
     const previousText = lastAssistantTextBySession.get(sessionId) ?? "";
@@ -396,7 +396,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("message_end", (event, ctx) => {
+  extensionApi.on("message_end", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     const healthWindow = clampTail(
       assistantWindowBySession.get(sessionId) ?? extractMessageText(event.message),
@@ -416,7 +416,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("tool_execution_start", (event, ctx) => {
+  extensionApi.on("tool_execution_start", (event, ctx) => {
     runtime.events.record({
       sessionId: ctx.sessionManager.getSessionId(),
       type: "tool_execution_start",
@@ -428,13 +428,13 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("tool_execution_update", (event, ctx) => {
+  extensionApi.on("tool_execution_update", (event, ctx) => {
     void event;
     void ctx;
     return undefined;
   });
 
-  pi.on("tool_result", (event, ctx) => {
+  extensionApi.on("tool_result", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     if (typeof event.toolCallId !== "string" || typeof event.toolName !== "string") {
       return undefined;
@@ -448,7 +448,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("tool_execution_end", (event, ctx) => {
+  extensionApi.on("tool_execution_end", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     const observedToolCalls = getObservedToolCalls(sessionId);
     if (!observedToolCalls.has(event.toolCallId)) {
@@ -477,7 +477,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("tool_call", (event, ctx) => {
+  extensionApi.on("tool_call", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     getObservedToolCalls(sessionId).add(event.toolCallId);
     runtime.events.record({
@@ -491,7 +491,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("session_before_compact", (event, ctx) => {
+  extensionApi.on("session_before_compact", (event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     flushPendingToolResults(sessionId);
     runtime.events.record({
@@ -504,7 +504,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("model_select", (event, ctx) => {
+  extensionApi.on("model_select", (event, ctx) => {
     runtime.events.record({
       sessionId: ctx.sessionManager.getSessionId(),
       type: "model_select",
@@ -517,7 +517,7 @@ export function registerEventStream(pi: ExtensionAPI, runtime: BrewvaRuntime): v
     return undefined;
   });
 
-  pi.on("input", (event, ctx) => {
+  extensionApi.on("input", (event, ctx) => {
     runtime.events.record({
       sessionId: ctx.sessionManager.getSessionId(),
       type: "input",

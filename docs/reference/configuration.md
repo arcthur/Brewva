@@ -60,9 +60,9 @@ Current front-door defaults:
 - `skills.routing.scopes`: `["core", "domain"]`
 
 `skills.overrides` are runtime config tightenings only. They can reduce
-budgets, tighten dispatch thresholds, and narrow effect authorization, but they
+budgets, refine execution hints, and narrow effect authorization, but they
 do not add new authority. Use project overlays for project-specific execution
-hints and shared-context extension.
+hints and shared-context augmentation.
 
 There is no longer a public `skills.selector.*` config surface. Candidate
 selection assistance, judging, and any optional path helpers belong to

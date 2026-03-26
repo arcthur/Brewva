@@ -7,7 +7,7 @@
 - Last reviewed: `2026-03-02`
 - Promotion target:
   - `docs/reference/runtime.md`
-  - `docs/reference/extensions.md`
+  - `docs/reference/runtime-plugins.md`
   - `docs/reference/events.md`
   - `docs/reference/tools.md`
   - `docs/architecture/system-architecture.md`
@@ -27,7 +27,7 @@ The output-side distillation path has been promoted to stable documentation and 
 Stable references:
 
 - `docs/reference/runtime.md`
-- `docs/reference/extensions.md`
+- `docs/reference/runtime-plugins.md`
 - `docs/reference/events.md`
 - `docs/reference/tools.md`
 - `docs/architecture/system-architecture.md`

@@ -40,8 +40,8 @@ export function createNotificationLifecycle(runtime: BrewvaRuntime): Notificatio
   };
 }
 
-export function registerNotification(pi: ExtensionAPI, runtime: BrewvaRuntime): void {
-  const hooks = pi as unknown as {
+export function registerNotification(extensionApi: ExtensionAPI, runtime: BrewvaRuntime): void {
+  const hooks = extensionApi as unknown as {
     on(event: string, handler: (event: unknown, ctx: unknown) => unknown): void;
   };
   const lifecycle = createNotificationLifecycle(runtime);

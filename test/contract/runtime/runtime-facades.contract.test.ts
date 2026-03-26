@@ -661,6 +661,49 @@ describe("runtime facade coverage", () => {
     expect(runtime.context.getCompactionWindowTurns()).toBe(5);
   });
 
+  test("context lifecycle hooks hydrate cold sessions and clear turn-local injection reservations", async () => {
+    const runtime = new BrewvaRuntime({
+      cwd: createTestWorkspace("runtime-facade-context-lifecycle"),
+    });
+    const sessionId = "runtime-facade-context-lifecycle-1";
+    const sessionState = (
+      runtime as unknown as {
+        sessionState: {
+          getExistingCell(sessionId: string):
+            | {
+                hydration: { status: string };
+                reservedContextInjectionTokensByScope: Map<string, unknown>;
+              }
+            | undefined;
+        };
+      }
+    ).sessionState;
+
+    expect(sessionState.getExistingCell(sessionId)).toBeUndefined();
+
+    runtime.context.onUserInput(sessionId);
+
+    expect(sessionState.getExistingCell(sessionId)?.hydration.status).toBe("ready");
+
+    runtime.context.onTurnStart(sessionId, 1);
+    await runtime.context.buildInjection(sessionId, "Summarize the current runtime posture.", {
+      tokens: 256,
+      contextWindow: 8_192,
+      percent: 0.03,
+    });
+
+    expect(
+      sessionState.getExistingCell(sessionId)?.reservedContextInjectionTokensByScope.size ?? 0,
+    ).toBeGreaterThan(0);
+
+    runtime.context.onTurnEnd(sessionId);
+
+    expect(sessionState.getExistingCell(sessionId)?.hydration.status).toBe("ready");
+    expect(
+      sessionState.getExistingCell(sessionId)?.reservedContextInjectionTokensByScope.size ?? 0,
+    ).toBe(0);
+  });
+
   test("cost.getSummary returns zeroed state for untouched sessions and keeps per-session totals isolated", () => {
     const runtime = new BrewvaRuntime({ cwd: createTestWorkspace("runtime-facade-cost-summary") });
     const sessionA = "runtime-facade-cost-a";

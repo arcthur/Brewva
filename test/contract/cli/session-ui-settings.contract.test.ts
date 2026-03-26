@@ -272,13 +272,13 @@ describe("brewva session ui settings wiring", () => {
       })[0];
       const payload = (bootstrap?.payload as
         | {
-            managedToolMode?: "extension" | "direct";
+            managedToolMode?: "runtime_plugin" | "direct";
             skillBroker?: unknown;
             skillLoad?: {
               routingEnabled?: boolean;
             };
           }
-        | undefined) ?? { managedToolMode: "extension", skillLoad: {} };
+        | undefined) ?? { managedToolMode: "runtime_plugin", skillLoad: {} };
       expect(payload.managedToolMode).toBe("direct");
       expect(payload.skillBroker).toBeUndefined();
       expect(payload.skillLoad?.routingEnabled).toBe(true);

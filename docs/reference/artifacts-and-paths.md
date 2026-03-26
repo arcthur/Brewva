@@ -75,6 +75,6 @@ runtime path.
 
 - Runtime: `packages/brewva-runtime/src`
 - Tools: `packages/brewva-tools/src`
-- Extensions: `packages/brewva-gateway/src/runtime-plugins`
+- Runtime plugins: `packages/brewva-gateway/src/runtime-plugins`
 - Gateway subagents: `packages/brewva-gateway/src/subagents`
 - CLI: `packages/brewva-cli/src`

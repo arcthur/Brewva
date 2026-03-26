@@ -18,7 +18,7 @@ Brewva is an AI-native coding-agent runtime built with Bun and TypeScript. It ke
 - Explicit proposal and governance boundaries instead of implicit agent-side mutation
 - Replay-first approval and rollback flows instead of hidden in-memory authority
 - Bounded autonomy through policy-driven execution, context pressure controls, and failure handling
-- Extensible operator surfaces through CLI, gateway, extensions, channel adapters, and ingress packages
+- Extensible operator surfaces through CLI, gateway, runtime plugins, channel adapters, and ingress packages
 
 The runtime is optimized around one question:
 
@@ -34,7 +34,7 @@ flowchart TD
   BOUNDARY["Commitment Boundary<br/>receipts + operator/governance decisions"]
   DURABILITY["Durability Layer<br/>Event Tape + Replay + Turn WAL"]
   PROJECTION["Working Projection<br/>units.jsonl + working.md"]
-  OPERATORS["Operator Surfaces<br/>CLI + Gateway + Extensions + Channels"]
+  OPERATORS["Operator Surfaces<br/>CLI + Gateway + Runtime Plugins + Channels"]
 
   AGENT --> SPINE
   SPINE --> EFFECT
@@ -71,7 +71,7 @@ Implementation detail and system boundaries:
 
 - `@brewva/brewva-runtime`: runtime contracts, replay, projection, verification, governance, cost, and WAL durability
 - `@brewva/brewva-tools`: runtime-aware tools for code, tape, task, schedule, observability, and explicit subagent flows
-- `@brewva/brewva-gateway/runtime-plugins`: runtime hook wiring, integration guards, and hidden-context composition
+- `@brewva/brewva-gateway/runtime-plugins`: runtime plugin wiring, integration guards, and hidden-context composition
 - `@brewva/brewva-cli`: interactive CLI, print/json modes, replay/undo, daemon, and the user-facing front door into gateway-hosted channels
 - `@brewva/brewva-gateway`: local control-plane daemon, worker supervision, and subagent/session orchestration
 - `@brewva/brewva-channels-telegram`: Telegram adapter and transport
@@ -153,14 +153,14 @@ bun run test:live
 
 ## Documentation Map
 
-| Section         | Path                    | Purpose                                                                 |
-| --------------- | ----------------------- | ----------------------------------------------------------------------- |
-| Guides          | `docs/guide/`           | Installation, operation, feature walkthroughs, and usage flows          |
-| Architecture    | `docs/architecture/`    | Implemented design, invariants, and control/data boundaries             |
-| Journeys        | `docs/journeys/`        | End-to-end flows across runtime, gateway, channels, and orchestration   |
-| Reference       | `docs/reference/`       | Stable contracts for config, runtime API, tools, events, and extensions |
-| Troubleshooting | `docs/troubleshooting/` | Failure patterns and remediation                                        |
-| Research        | `docs/research/`        | Incubating design notes and roadmap material                            |
+| Section         | Path                    | Purpose                                                                      |
+| --------------- | ----------------------- | ---------------------------------------------------------------------------- |
+| Guides          | `docs/guide/`           | Installation, operation, feature walkthroughs, and usage flows               |
+| Architecture    | `docs/architecture/`    | Implemented design, invariants, and control/data boundaries                  |
+| Journeys        | `docs/journeys/`        | End-to-end flows across runtime, gateway, channels, and orchestration        |
+| Reference       | `docs/reference/`       | Stable contracts for config, runtime API, tools, events, and runtime plugins |
+| Troubleshooting | `docs/troubleshooting/` | Failure patterns and remediation                                             |
+| Research        | `docs/research/`        | Incubating design notes and roadmap material                                 |
 
 Start from `docs/index.md` for the full documentation map.
 

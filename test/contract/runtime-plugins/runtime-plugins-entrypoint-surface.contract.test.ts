@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-describe("extensions entrypoint surface", () => {
+describe("runtime plugins entrypoint surface", () => {
   test("keeps host and runtime plugins on explicit gateway subpaths", async () => {
     const [gateway, host, runtimePlugins] = await Promise.all([
       import("@brewva/brewva-gateway"),
@@ -15,7 +15,7 @@ describe("extensions entrypoint surface", () => {
   });
 
   test("does not expose removed memory bridge hook", async () => {
-    const extensions = await import("@brewva/brewva-gateway/runtime-plugins");
-    expect("registerMemoryBridge" in extensions).toBe(false);
+    const runtimePluginExports = await import("@brewva/brewva-gateway/runtime-plugins");
+    expect("registerMemoryBridge" in runtimePluginExports).toBe(false);
   });
 });

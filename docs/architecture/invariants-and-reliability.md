@@ -99,7 +99,7 @@ Relevant implementation:
 
 ## 9) Profile Transparency Invariant
 
-- `managedToolMode=extension` and `managedToolMode=direct` must be behaviorally
+- `managedToolMode=runtime_plugin` and `managedToolMode=direct` must be behaviorally
   explicit: the registration surface may differ, but core safety/evidence
   invariants must remain equivalent.
 - When managed tools are provided directly, the hosted lifecycle chain still
@@ -143,4 +143,4 @@ Relevant implementation:
 ## Reliability Validation
 
 Tests under `test/unit/runtime/`, `test/contract/runtime/`, and
-`test/contract/extensions/` validate these invariants.
+`test/contract/runtime-plugins/` validate these invariants.

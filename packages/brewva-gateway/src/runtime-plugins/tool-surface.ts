@@ -349,7 +349,7 @@ export interface ToolSurfaceLifecycle {
 }
 
 function registerMissingManagedTools(input: {
-  pi: ExtensionAPI;
+  extensionApi: ExtensionAPI;
   runtime: ToolSurfaceRuntime;
   sessionId: string;
   prompt: string;
@@ -375,22 +375,23 @@ function registerMissingManagedTools(input: {
     if (input.knownToolNames.has(toolName)) continue;
     const toolDefinition = input.dynamicToolDefinitions.get(toolName);
     if (!toolDefinition) continue;
-    input.pi.registerTool(toolDefinition);
+    input.extensionApi.registerTool(toolDefinition);
     input.knownToolNames.add(toolName);
   }
 }
 
 export function createToolSurfaceLifecycle(
-  pi: ExtensionAPI,
+  extensionApi: ExtensionAPI,
   runtime: ToolSurfaceRuntime,
   options: RegisterToolSurfaceOptions = {},
 ): ToolSurfaceLifecycle {
   return {
     beforeAgentStart(event, ctx) {
       const rawEvent = event as { prompt?: unknown };
-      const allToolsGetter = (pi as { getAllTools?: () => ToolInfo[] }).getAllTools;
-      const activeToolsGetter = (pi as { getActiveTools?: () => string[] }).getActiveTools;
-      const setActiveTools = (pi as { setActiveTools?: (toolNames: string[]) => void })
+      const allToolsGetter = (extensionApi as { getAllTools?: () => ToolInfo[] }).getAllTools;
+      const activeToolsGetter = (extensionApi as { getActiveTools?: () => string[] })
+        .getActiveTools;
+      const setActiveTools = (extensionApi as { setActiveTools?: (toolNames: string[]) => void })
         .setActiveTools;
       if (
         typeof allToolsGetter !== "function" ||
@@ -400,7 +401,7 @@ export function createToolSurfaceLifecycle(
         return undefined;
       }
 
-      const allTools = allToolsGetter.call(pi);
+      const allTools = allToolsGetter.call(extensionApi);
       if (!Array.isArray(allTools) || allTools.length === 0) {
         return undefined;
       }
@@ -411,14 +412,14 @@ export function createToolSurfaceLifecycle(
       ).sessionManager.getSessionId();
       const knownToolNames = new Set(allTools.map((tool) => normalizeToolName(tool.name)));
       registerMissingManagedTools({
-        pi,
+        extensionApi,
         runtime,
         sessionId,
         prompt,
         dynamicToolDefinitions: options.dynamicToolDefinitions,
         knownToolNames,
       });
-      const refreshedTools = allToolsGetter.call(pi);
+      const refreshedTools = allToolsGetter.call(extensionApi);
       if (!Array.isArray(refreshedTools) || refreshedTools.length === 0) {
         return undefined;
       }
@@ -427,10 +428,10 @@ export function createToolSurfaceLifecycle(
         sessionId,
         prompt,
         allTools: refreshedTools,
-        activeToolNames: activeToolsGetter.call(pi),
+        activeToolNames: activeToolsGetter.call(extensionApi),
         dynamicToolDefinitions: options.dynamicToolDefinitions,
       });
-      setActiveTools.call(pi, resolved.activeToolNames);
+      setActiveTools.call(extensionApi, resolved.activeToolNames);
 
       runtime.events.record({
         sessionId,
@@ -459,13 +460,13 @@ export function createToolSurfaceLifecycle(
 }
 
 export function registerToolSurface(
-  pi: ExtensionAPI,
+  extensionApi: ExtensionAPI,
   runtime: ToolSurfaceRuntime,
   options: RegisterToolSurfaceOptions = {},
 ): void {
-  const hooks = pi as unknown as {
+  const hooks = extensionApi as unknown as {
     on(event: string, handler: (event: unknown, ctx: unknown) => unknown): void;
   };
-  const lifecycle = createToolSurfaceLifecycle(pi, runtime, options);
+  const lifecycle = createToolSurfaceLifecycle(extensionApi, runtime, options);
   hooks.on("before_agent_start", lifecycle.beforeAgentStart);
 }

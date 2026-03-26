@@ -195,7 +195,7 @@ async function resolveContextInjection(
 }
 
 export function createContextTransformLifecycle(
-  pi: ExtensionAPI,
+  extensionApi: ExtensionAPI,
   runtime: BrewvaRuntime,
   options: ContextTransformOptions = {},
 ): ContextTransformLifecycle {
@@ -466,7 +466,7 @@ export function createContextTransformLifecycle(
       const prompt = typeof rawEvent.prompt === "string" ? rawEvent.prompt : "";
       let { gateStatus, pendingCompactionReason, capabilityView } = prepareContextComposerSupport({
         runtime,
-        pi,
+        extensionApi,
         sessionId,
         prompt,
         usage,
@@ -556,7 +556,7 @@ export function createContextTransformLifecycle(
       });
       const supportAfterInjection = prepareContextComposerSupport({
         runtime,
-        pi,
+        extensionApi,
         sessionId,
         prompt: originalPrompt,
         usage,
@@ -652,14 +652,14 @@ export function createContextTransformLifecycle(
 }
 
 export function registerContextTransform(
-  pi: ExtensionAPI,
+  extensionApi: ExtensionAPI,
   runtime: BrewvaRuntime,
   options: ContextTransformOptions = {},
 ): void {
-  const hooks = pi as unknown as {
+  const hooks = extensionApi as unknown as {
     on(event: string, handler: (event: unknown, ctx: unknown) => unknown): void;
   };
-  const lifecycle = createContextTransformLifecycle(pi, runtime, options);
+  const lifecycle = createContextTransformLifecycle(extensionApi, runtime, options);
   hooks.on("turn_start", lifecycle.turnStart);
   hooks.on("context", lifecycle.context);
   hooks.on("session_compact", lifecycle.sessionCompact);

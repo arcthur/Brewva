@@ -3,9 +3,18 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const EXPECTED_SYMBOLS = [
+  "RuntimePlugin",
+  "RuntimePluginApi",
   "createHostedTurnPipeline",
   "TurnLifecyclePort",
   "registerTurnLifecyclePorts",
+  "BrewvaRuntimeOptions",
+  "cwd?",
+  "configPath?",
+  "config?",
+  "governancePort?",
+  "agentId?",
+  "routingScopes?",
   "registerContextTransform",
   "registerEventStream",
   "registerQualityGate",
@@ -14,16 +23,16 @@ const EXPECTED_SYMBOLS = [
   "registerCompletionGuard",
 ];
 
-describe("docs/reference extensions coverage", () => {
-  it("documents extension entry points and handlers", () => {
+describe("docs/reference runtime plugins coverage", () => {
+  it("documents runtime plugin entry points and handlers", () => {
     const repoRoot = resolve(import.meta.dirname, "../../..");
-    const markdown = readFileSync(resolve(repoRoot, "docs/reference/extensions.md"), "utf-8");
+    const markdown = readFileSync(resolve(repoRoot, "docs/reference/runtime-plugins.md"), "utf-8");
 
     const missing = EXPECTED_SYMBOLS.filter((name) => !markdown.includes(`\`${name}\``));
 
     expect(
       missing,
-      `Missing extension symbols in docs/reference/extensions.md: ${missing.join(", ")}`,
+      `Missing runtime plugin symbols in docs/reference/runtime-plugins.md: ${missing.join(", ")}`,
     ).toEqual([]);
   });
 });

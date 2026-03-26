@@ -52,7 +52,7 @@ This repository uses a layered documentation system:
 - Proactivity (removed, explicit heartbeat remains): `docs/reference/proactivity-engine.md`
 - Proposal boundary: `docs/reference/proposal-boundary.md`
 - Events: `docs/reference/events.md`
-- Extensions: `docs/reference/extensions.md`
+- Runtime plugins: `docs/reference/runtime-plugins.md`
 - Commands (CLI surface): `docs/reference/commands.md`
 - Gateway control-plane protocol: `docs/reference/gateway-control-plane-protocol.md`
 - Session lifecycle: `docs/reference/session-lifecycle.md`
@@ -88,7 +88,7 @@ This repository uses a layered documentation system:
 - Telegram channel package: `packages/brewva-channels-telegram/src/index.ts`
 - Telegram ingress package: `packages/brewva-ingress/src/index.ts`
 - Tool package: `packages/brewva-tools/src/index.ts`
-- Extension package: `@brewva/brewva-gateway/runtime-plugins` (`packages/brewva-gateway/src/runtime-plugins/index.ts`)
+- Runtime plugin package: `@brewva/brewva-gateway/runtime-plugins` (`packages/brewva-gateway/src/runtime-plugins/index.ts`)
 - CLI package: `packages/brewva-cli/src/index.ts`
 - Gateway package: `packages/brewva-gateway/src/index.ts`
 - Gateway host subpath: `@brewva/brewva-gateway/host` (`packages/brewva-gateway/src/host.ts`)

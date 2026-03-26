@@ -206,7 +206,7 @@ function collectHandlers<TKey extends keyof TurnLifecyclePort>(
 }
 
 export function registerTurnLifecyclePorts(
-  pi: ExtensionAPI,
+  extensionApi: ExtensionAPI,
   ports: readonly TurnLifecyclePort[],
 ): void {
   const sessionStart = collectHandlers(ports, "sessionStart");
@@ -219,30 +219,32 @@ export function registerTurnLifecyclePorts(
   const sessionShutdown = collectHandlers(ports, "sessionShutdown");
 
   if (sessionStart.length > 0) {
-    pi.on("session_start", (event, ctx) => runSequential(sessionStart, event, ctx));
+    extensionApi.on("session_start", (event, ctx) => runSequential(sessionStart, event, ctx));
   }
   if (turnStart.length > 0) {
-    pi.on("turn_start", (event, ctx) => runSequential(turnStart, event, ctx));
+    extensionApi.on("turn_start", (event, ctx) => runSequential(turnStart, event, ctx));
   }
   if (input.length > 0) {
-    pi.on("input", (event, ctx) => runUntilResult(input, event, ctx));
+    extensionApi.on("input", (event, ctx) => runUntilResult(input, event, ctx));
   }
   if (beforeAgentStart.length > 0) {
-    const registerBeforeAgentStart = pi.on.bind(pi) as BeforeAgentStartRegistrar;
+    const registerBeforeAgentStart = extensionApi.on.bind(
+      extensionApi,
+    ) as BeforeAgentStartRegistrar;
     registerBeforeAgentStart("before_agent_start", (event, ctx) =>
       runBeforeAgentStart(beforeAgentStart, event, ctx),
     );
   }
   if (toolResult.length > 0) {
-    pi.on("tool_result", (event, ctx) => runToolResultPipeline(toolResult, event, ctx));
+    extensionApi.on("tool_result", (event, ctx) => runToolResultPipeline(toolResult, event, ctx));
   }
   if (agentEnd.length > 0) {
-    pi.on("agent_end", (event, ctx) => runSequential(agentEnd, event, ctx));
+    extensionApi.on("agent_end", (event, ctx) => runSequential(agentEnd, event, ctx));
   }
   if (sessionCompact.length > 0) {
-    pi.on("session_compact", (event, ctx) => runSequential(sessionCompact, event, ctx));
+    extensionApi.on("session_compact", (event, ctx) => runSequential(sessionCompact, event, ctx));
   }
   if (sessionShutdown.length > 0) {
-    pi.on("session_shutdown", (event, ctx) => runSequential(sessionShutdown, event, ctx));
+    extensionApi.on("session_shutdown", (event, ctx) => runSequential(sessionShutdown, event, ctx));
   }
 }

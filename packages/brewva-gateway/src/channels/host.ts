@@ -33,7 +33,10 @@ import { AgentRegistry } from "./agent-registry.js";
 import { AgentRuntimeManager } from "./agent-runtime-manager.js";
 import { ApprovalRoutingStore } from "./approval-routing.js";
 import { ApprovalStateStore } from "./approval-state.js";
-import { createChannelA2AExtension, type ChannelA2AAdapter } from "./channel-a2a-extension.js";
+import {
+  createChannelA2ARuntimePlugin,
+  type ChannelA2AAdapter,
+} from "./channel-a2a-runtime-plugin.js";
 import { CommandRouter, type ChannelCommandMatch } from "./command-router.js";
 import { ChannelCoordinator } from "./coordinator.js";
 import type { AgentSessionUsage } from "./eviction.js";
@@ -1284,7 +1287,7 @@ export async function runChannelMode(options: RunChannelModeOptions): Promise<vo
         throw new Error("runtime_unavailable");
       }
       const model = registry.getModel(agentId) ?? options.model;
-      const extensionFactory = createChannelA2AExtension({
+      const runtimePlugin = createChannelA2ARuntimePlugin({
         adapter: a2aAdapter,
       });
       const result = await createSession({
@@ -1294,7 +1297,7 @@ export async function runChannelMode(options: RunChannelModeOptions): Promise<vo
         managedToolMode: options.managedToolMode,
         runtime: workerRuntime,
         scopeId: scopeKey,
-        extensionFactories: [extensionFactory],
+        runtimePlugins: [runtimePlugin],
       });
       runtimeManager.retainRuntime(agentId);
       const state: ConversationSessionState = {

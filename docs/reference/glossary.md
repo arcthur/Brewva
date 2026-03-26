@@ -5,20 +5,33 @@
 - Ledger: append-only evidence stream for tool outcomes
 - Verification Gate: completion policy that checks required evidence
 - Checkpoint: machine-generated tape baseline event used to accelerate replay
-- Snapshot (rollback): per-file pre-mutation copy used by `rollback_last_patch`; not a runtime session-state source of truth
+- Snapshot (rollback): per-file pre-mutation copy used by `rollback_last_patch`, the stable tool id for patch-set rollback; not a runtime session-state source of truth
 - Replay: reconstruction of session history from structured events
-- PatchSet: tracked file change set used for rollback
+- PatchSet: tracked file change set used for rollback and worker-result adoption
+- Invocation Spine: the shared runtime-owned tool invocation path for admission, usage tracking, ledger linkage, and rollback/approval wiring
 - Context Budget: policy for context injection and compaction
+- Context Compaction Gate: the policy check that blocks further tool execution when compaction must happen first
 - Cost Budget: threshold policy for session-level USD spend
 - Channel Gateway: external channel ingress/egress gateway used by `--channel` mode
+- Channel Host: hosted runtime loop behind `brewva --channel ...`; binds channel scopes to agent sessions and runs tool-governed turns
 - Gateway (Control Plane): local daemon exposed via `brewva gateway ...`, providing a typed WebSocket API to control-plane clients
+- Runtime Plugin: the canonical Brewva hosted-session integration unit registered through `@brewva/brewva-gateway/runtime-plugins`; implemented on top of the upstream `ExtensionFactory` contract
 - Proposal: an envelope submitted to the kernel for authorization; contains issuer, subject, payload, evidence references, and optional confidence/expiry metadata
 - DecisionReceipt: the kernel decision record for a Proposal; captures the decision, policy basis, reasons, committed effects, evidence references, turn, and timestamp
-- Arena: the context injection workspace that manages source reservations and token budgets per turn
+- Context Arena: the context injection workspace that manages source reservations and token budgets per turn
 - Turn WAL: write-ahead log for turn durability; enables crash recovery and replay of in-flight turns
 - Effect Boundary: the runtime execution class for a tool invocation: `safe` or `effectful`
-- Projection: a tape-derived working snapshot maintained across turns; rebuilt from source events rather than agent reasoning memory
+- Working State: non-authoritative session-local working surfaces such as projection, context arena, active tool surface, and derived workflow posture
+- Working Projection: a tape-derived working snapshot maintained across turns; rebuilt from source events rather than agent reasoning memory
+- Iteration Fact: a durable objective observation or guard result recorded as evidence for optimization and convergence flows
 - Supplemental Context: same-turn non-authoritative context appended through the hosted-session path rather than persisted as a kernel proposal
 - Effect Commitment: an approval-bearing proposal for an `effectful` tool invocation
 - Governance Port: the external authorization interface that the runtime calls for tool-gate and effect-commitment decisions
-- Extension: a runtime plugin registered via the gateway extension factory; provides hosted-session lifecycle integration
+- Subagent: the model/operator-facing tool surface (`subagent_*`) for starting, inspecting, and cancelling delegated child runs
+- Delegation: the runtime/session ledger layer that stores delegated child-run state, delivery handoff, and replay-visible outcomes
+- WorkerResult: a child-produced patch/outcome artifact emitted by a patch-producing delegated run; merged and applied explicitly by the parent
+- CapabilityView: the model-facing capability disclosure surface built from exact governance metadata
+- PersonaProfile: the rendered identity/workstyle context block built from `.brewva/agents/<agent-id>/identity.md`
+- Kernel Ring: the authority-bearing architecture ring that owns policy, verification, replay, and commitment decisions
+- Deliberation Ring: the advisory architecture ring that folds evidence-backed artifacts such as deliberation memory, optimization continuity, and promotion drafts
+- Experience Ring: the outer architecture ring for CLI, gateway, channels, and operator UX

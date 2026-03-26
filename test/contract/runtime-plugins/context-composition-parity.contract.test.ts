@@ -5,11 +5,11 @@ import {
 } from "@brewva/brewva-gateway/runtime-plugins";
 import { setStaticContextPressureThresholds } from "../../fixtures/config.js";
 import {
-  createMockExtensionAPI,
+  createMockRuntimePluginApi,
   invokeHandler,
   invokeHandlerAsync,
   invokeHandlersAsync,
-} from "../../helpers/extension.js";
+} from "../../helpers/runtime-plugin.js";
 import { createRuntimeConfig, createRuntimeFixture } from "./fixtures/runtime.js";
 
 describe("context composition parity", () => {
@@ -36,7 +36,7 @@ describe("context composition parity", () => {
     const sessionManager = { getSessionId: () => "parity-clear" };
 
     const fullRuntime = makeRuntime();
-    const full = createMockExtensionAPI();
+    const full = createMockRuntimePluginApi();
     registerContextTransform(full.api, fullRuntime);
     await invokeHandlerAsync(
       full.handlers,
@@ -69,7 +69,7 @@ describe("context composition parity", () => {
     );
 
     const hostedRuntime = makeRuntime();
-    const hosted = createMockExtensionAPI();
+    const hosted = createMockRuntimePluginApi();
     await createHostedTurnPipeline({
       runtime: hostedRuntime,
       registerTools: false,

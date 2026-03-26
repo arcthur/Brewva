@@ -112,8 +112,8 @@ export {
   type StringEnumContractMetadata,
   type StringEnumContractMismatch,
 } from "./utils/input-alias.js";
-// A2A tools require an orchestration adapter and are typically registered by channel extensions
-// (for example `createChannelA2AExtension` in `@brewva/brewva-gateway`), not by the default bundle.
+// A2A tools require an orchestration adapter and are typically registered by channel runtime plugins
+// (for example `createChannelA2ARuntimePlugin` in `@brewva/brewva-gateway`), not by the default bundle.
 export { createA2ATools } from "./a2a.js";
 export { createLookAtTool } from "./look-at.js";
 export { createGrepTool } from "./grep.js";

@@ -79,8 +79,15 @@ Reference: `docs/reference/proposal-boundary.md`.
 - `markCompacted(sessionId, input)`
 
 `buildInjection(...)` returns admitted context entries after deterministic
-budgeting, deduplication, and source governance. Extensions may compose those
+budgeting, deduplication, and source governance. Runtime plugins may compose those
 entries for the model, but they do not bypass kernel admission.
+
+Lifecycle note:
+
+- `onTurnStart(...)` initializes turn-local context budgeting state
+- `onUserInput(...)` eagerly hydrates session-scoped runtime state for hosted
+  input hooks
+- `onTurnEnd(...)` clears pending turn-local injection reservations
 
 Default runtime-owned injected sources:
 
@@ -97,6 +104,14 @@ Hosted sessions additionally register these internal deliberation sources:
 - `brewva.deliberation-memory`
 - `brewva.optimization-continuity`
 - `brewva.skill-promotion-drafts`
+
+Naming note:
+
+- agent-facing tool ids stay `snake_case` (for example `skill_promotion`)
+- context source ids stay scoped dotted identifiers (for example
+  `brewva.skill-promotion-drafts`)
+- a source id may name the folded artifact more narrowly than the tool that
+  inspects or advances it
 
 These hosted sources fold existing evidence into reusable context, but they do
 not become kernel authority. Runtime truth, task state, schedule events,
@@ -137,6 +152,8 @@ Tool semantics:
 - `finish(input)` and `recordResult(input)` use `channelSuccess` for transport
   success and `verdict` for semantic outcome
 - durable linked tool results consume accepted approvals
+- `rollbackLastPatchSet(sessionId)` is the runtime patch-set rollback entrypoint
+  behind the stable tool id `rollback_last_patch` and the CLI `--undo` flow
 
 Tool-governance note:
 
@@ -270,6 +287,15 @@ Read-only verification semantics:
 - `onClearState(listener)`
 - `getHydration(sessionId)`
 
+Delegation taxonomy:
+
+- `subagent_*` is the model/operator-facing tool family for starting,
+  inspecting, and cancelling delegated child runs
+- `DelegationRunRecord` is the durable replay-hydrated child-run ledger surface
+  exposed through `runtime.session.*`
+- `WorkerResult` is a child-produced patch/adoption artifact for patch-producing
+  delegated runs; it is not the delegated run record itself
+
 Worker-result adoption semantics:
 
 - `mergeWorkerResults(...)` is read-only and reports `empty | conflicts | merged`
@@ -305,4 +331,4 @@ The public API stays smaller than the internal machinery:
 - rollback receipts stay durable
 - approval requests stay replayable
 
-There are no public extension profiles such as `memory` or `full`.
+There are no public runtime plugin profiles such as `memory` or `full`.

@@ -13,7 +13,7 @@ Skill taxonomy is now split by role:
 
 - public routable skills: routable semantic territory
 - runtime/control-plane workflow semantics: not public skills
-- project overlays: project-specific tightening, execution guidance, and shared-context extension
+- project overlays: project-specific tightening, execution guidance, and shared-context augmentation
 - operator/meta skills: loaded, but usually hidden from standard routing
 
 This keeps lifecycle choreography out of the public catalog.
@@ -53,7 +53,6 @@ Current rules:
 
 Skill frontmatter supports intent, effect, resource, and execution metadata:
 
-- `dispatch.suggest_threshold/auto_threshold`
 - `intent.outputs/intent.output_contracts`
 - `effects.allowed_effects/effects.denied_effects`
 - `resources.default_lease/resources.hard_ceiling`
@@ -137,7 +136,7 @@ The runtime kernel and the optional control plane have different jobs:
 
 `skills_index.json` carries normalized contract metadata for each routable skill
 entry, including `category`, `routingScope`, `outputs`, `requires`, `consumes`,
-derived `effectLevel`, `allowedEffects`, and `dispatch`.
+derived `effectLevel` and `allowedEffects`.
 
 ## Model-Native Sequencing
 

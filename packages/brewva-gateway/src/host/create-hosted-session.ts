@@ -27,9 +27,8 @@ import {
   SettingsManager,
   writeTool,
   type CreateAgentSessionResult,
-  type ExtensionFactory,
 } from "@mariozechner/pi-coding-agent";
-import { createHostedTurnPipeline } from "../runtime-plugins/index.js";
+import { createHostedTurnPipeline, type RuntimePlugin } from "../runtime-plugins/index.js";
 import {
   installHostedProviderCompatibilityLayer,
   registerHostedSessionProviderCompatibility,
@@ -47,7 +46,7 @@ export interface HostedSessionResult extends CreateAgentSessionResult {
 
 export interface CreateHostedSessionOptions extends RuntimeCreateBrewvaSessionOptions {
   runtime?: BrewvaRuntime;
-  extensionFactories?: ExtensionFactory[];
+  runtimePlugins?: RuntimePlugin[];
   orchestration?: BrewvaToolOrchestration;
   managedToolNames?: readonly string[];
   builtinToolNames?: readonly HostedDelegationBuiltinToolName[];
@@ -89,7 +88,7 @@ function applyRuntimeUiSettings(
 }
 
 function resolveManagedToolMode(mode: ManagedToolMode | undefined): ManagedToolMode {
-  return mode === "direct" ? "direct" : "extension";
+  return mode === "direct" ? "direct" : "runtime_plugin";
 }
 
 export async function createHostedSession(
@@ -201,8 +200,8 @@ export async function createHostedSession(
   applyRuntimeUiSettings(settingsManager, runtime.config.ui);
 
   const managedToolMode = resolveManagedToolMode(options.managedToolMode);
-  const registerManagedTools = managedToolMode === "extension";
-  const extensionFactories = [
+  const registerManagedTools = managedToolMode === "runtime_plugin";
+  const runtimePlugins = [
     createHostedTurnPipeline({
       runtime,
       registerTools: registerManagedTools,
@@ -210,15 +209,15 @@ export async function createHostedSession(
       managedToolNames: options.managedToolNames,
     }),
   ];
-  if (options.extensionFactories && options.extensionFactories.length > 0) {
-    extensionFactories.push(...options.extensionFactories);
+  if (options.runtimePlugins && options.runtimePlugins.length > 0) {
+    runtimePlugins.push(...options.runtimePlugins);
   }
 
   const resourceLoader = new DefaultResourceLoader({
     cwd,
     agentDir,
     settingsManager,
-    extensionFactories,
+    extensionFactories: runtimePlugins,
   });
   await resourceLoader.reload();
 

@@ -6,7 +6,7 @@ import type { SkillLifecycleService } from "../services/skill-lifecycle.js";
 import {
   readAgentConstitutionProfile,
   readAgentMemoryProfile,
-  readIdentityProfile,
+  readPersonaProfile,
 } from "./identity.js";
 import type { ContextSourceProvider, ContextSourceProviderRegistry } from "./provider.js";
 import { buildRuntimeStatusBlock } from "./runtime-status.js";
@@ -135,9 +135,9 @@ function createIdentityProvider(deps: BuiltInContextSourceProviderDeps): Context
     category: "narrative",
     order: 10,
     collect: (input) => {
-      let profile: ReturnType<typeof readIdentityProfile>;
+      let profile: ReturnType<typeof readPersonaProfile>;
       try {
-        profile = readIdentityProfile({
+        profile = readPersonaProfile({
           workspaceRoot: deps.workspaceRoot,
           agentId: deps.agentId,
         });

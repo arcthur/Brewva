@@ -9,7 +9,7 @@
   - `docs/architecture/cognitive-product-architecture.md`
   - `docs/reference/runtime.md`
   - `docs/reference/tools.md`
-  - `docs/reference/extensions.md`
+  - `docs/reference/runtime-plugins.md`
   - `docs/reference/artifacts-and-paths.md`
   - `docs/guide/features.md`
 
@@ -46,7 +46,7 @@ Stable references:
 - `docs/architecture/cognitive-product-architecture.md`
 - `docs/reference/runtime.md`
 - `docs/reference/tools.md`
-- `docs/reference/extensions.md`
+- `docs/reference/runtime-plugins.md`
 - `docs/reference/artifacts-and-paths.md`
 - `docs/guide/features.md`
 

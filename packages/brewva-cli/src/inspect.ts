@@ -25,7 +25,7 @@ const INSPECT_PARSE_OPTIONS = {
 } as const;
 
 interface InspectBootstrapPayload {
-  managedToolMode?: "extension" | "direct";
+  managedToolMode?: "runtime_plugin" | "direct";
   skillLoad?: {
     routingEnabled?: boolean;
     routingScopes?: string[];
@@ -68,7 +68,7 @@ interface InspectReport {
     entriesSinceAnchor: number;
   };
   bootstrap: {
-    managedToolMode: "extension" | "direct" | null;
+    managedToolMode: "runtime_plugin" | "direct" | null;
     routingEnabled: boolean | null;
     routingScopes: string[];
     routableSkills: string[];
@@ -361,7 +361,7 @@ function buildInspectReport(runtime: BrewvaRuntime, sessionId: string): InspectR
     },
     bootstrap: {
       managedToolMode:
-        bootstrap?.managedToolMode === "extension" || bootstrap?.managedToolMode === "direct"
+        bootstrap?.managedToolMode === "runtime_plugin" || bootstrap?.managedToolMode === "direct"
           ? bootstrap.managedToolMode
           : null,
       routingEnabled:

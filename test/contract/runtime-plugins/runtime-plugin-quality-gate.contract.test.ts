@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { registerQualityGate } from "@brewva/brewva-gateway/runtime-plugins";
 import { createGrepTool, createScheduleIntentTool } from "@brewva/brewva-tools";
-import { createMockExtensionAPI, invokeHandler } from "../../helpers/extension.js";
+import { createMockRuntimePluginApi, invokeHandler } from "../../helpers/runtime-plugin.js";
 import { createRuntimeFixture } from "./fixtures/runtime.js";
 
-describe("Extension gaps: quality gate", () => {
-  test("given sanitizer output differs, when input hook runs, then extension returns transform action", () => {
-    const { api, handlers } = createMockExtensionAPI();
+describe("Runtime plugin gaps: quality gate", () => {
+  test("given sanitizer output differs, when input hook runs, then runtime plugin returns transform action", () => {
+    const { api, handlers } = createMockRuntimePluginApi();
     const userInputs: string[] = [];
 
     const runtime = createRuntimeFixture({
@@ -40,8 +40,8 @@ describe("Extension gaps: quality gate", () => {
     expect(userInputs).toEqual(["quality-input-1"]);
   });
 
-  test("given sanitizer output unchanged, when input hook runs, then extension returns continue action", () => {
-    const { api, handlers } = createMockExtensionAPI();
+  test("given sanitizer output unchanged, when input hook runs, then runtime plugin returns continue action", () => {
+    const { api, handlers } = createMockRuntimePluginApi();
     const userInputs: string[] = [];
 
     const runtime = createRuntimeFixture({
@@ -73,8 +73,8 @@ describe("Extension gaps: quality gate", () => {
     expect(userInputs).toEqual(["quality-input-2"]);
   });
 
-  test("given non-ascii input unchanged by sanitizer, when input hook runs, then extension continues", () => {
-    const { api, handlers, sentMessages } = createMockExtensionAPI();
+  test("given non-ascii input unchanged by sanitizer, when input hook runs, then runtime plugin continues", () => {
+    const { api, handlers, sentMessages } = createMockRuntimePluginApi();
     const userInputs: string[] = [];
 
     const runtime = createRuntimeFixture({
@@ -108,7 +108,7 @@ describe("Extension gaps: quality gate", () => {
   });
 
   test("given tool_call and context usage, when quality gate runs, then runtime.tools.start receives normalized usage", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const calls: any[] = [];
     const runtime = createRuntimeFixture({
       tools: {
@@ -148,8 +148,8 @@ describe("Extension gaps: quality gate", () => {
     expect(calls[0].usage.contextWindow).toBe(4096);
   });
 
-  test("given runtime.tools.start denial, when tool_call hook runs, then extension blocks call with reason", () => {
-    const { api, handlers } = createMockExtensionAPI();
+  test("given runtime.tools.start denial, when tool_call hook runs, then runtime plugin blocks call with reason", () => {
+    const { api, handlers } = createMockRuntimePluginApi();
     const runtime = createRuntimeFixture({
       tools: {
         start: () => ({
@@ -183,7 +183,7 @@ describe("Extension gaps: quality gate", () => {
   });
 
   test("given allowed tool_call with advisory, when tool_result hook runs, then advisory is injected into the same turn", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const runtime = createRuntimeFixture({
       tools: {
         start: () => ({
@@ -233,7 +233,7 @@ describe("Extension gaps: quality gate", () => {
   });
 
   test("given invocation validation failure, when tool_result hook runs, then repair hint includes canonical enum contract", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const runtime = createRuntimeFixture({
       tools: {
         start: () => ({ allowed: true }),
@@ -287,7 +287,7 @@ describe("Extension gaps: quality gate", () => {
   });
 
   test("given nested invocation validation failure, when tool_result hook runs, then repair hint includes nested parameter path", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const runtime = createRuntimeFixture({
       tools: {
         start: () => ({ allowed: true }),

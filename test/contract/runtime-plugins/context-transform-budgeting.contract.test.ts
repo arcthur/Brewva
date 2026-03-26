@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  createMockExtensionAPI,
+  createMockRuntimePluginApi,
   createRuntimeFixture,
   invokeHandlerAsync,
   registerContextTransform,
@@ -8,7 +8,7 @@ import {
 
 describe("context transform budgeting contract", () => {
   test("suppresses narrative context when injection is rejected by budget", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const runtime = createRuntimeFixture({
       context: {
         onTurnStart: () => undefined,
@@ -53,7 +53,7 @@ describe("context transform budgeting contract", () => {
   });
 
   test("injects advisory metadata for non-critical pending compaction without arming the gate", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const eventTypes: string[] = [];
     const advisoryPayloads: Record<string, unknown>[] = [];
     const runtime = createRuntimeFixture({
@@ -131,7 +131,7 @@ describe("context transform budgeting contract", () => {
   });
 
   test("drops supplemental diagnostics when supplemental budget rejects them", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const runtime = createRuntimeFixture({
       context: {
         appendSupplementalInjection: () => ({

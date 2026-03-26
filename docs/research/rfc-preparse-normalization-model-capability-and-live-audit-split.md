@@ -6,7 +6,7 @@
 - Owner: runtime maintainers
 - Last reviewed: `2026-03-22`
 - Promotion target:
-  - `docs/reference/extensions.md`
+  - `docs/reference/runtime-plugins.md`
   - `docs/reference/events.md`
   - `docs/reference/runtime.md`
   - `docs/architecture/control-and-data-flow.md`
@@ -32,7 +32,7 @@ Implemented direction:
 
 Stable references:
 
-- `docs/reference/extensions.md`
+- `docs/reference/runtime-plugins.md`
 - `docs/reference/events.md`
 - `docs/reference/runtime.md`
 - `docs/architecture/control-and-data-flow.md`
