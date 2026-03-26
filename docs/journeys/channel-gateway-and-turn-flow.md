@@ -78,6 +78,8 @@ Flow:
 - Orchestration lifecycle:
   - `channel_command_received`
   - `channel_command_rejected`
+  - `channel_update_requested`
+  - `channel_update_lock_blocked`
   - `channel_agent_created`
   - `channel_agent_deleted`
   - `channel_focus_changed`

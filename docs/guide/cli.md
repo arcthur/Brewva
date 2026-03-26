@@ -217,6 +217,7 @@ When `channels.orchestration.enabled=true`, channel orchestration commands inclu
 - `/agents`
 - `/insight [dir]`
 - `/insight @agent [dir]`
+- `/update [operator hints]`
 - `/new-agent <name>`
 - `/del-agent <name>`
 - `/focus @<agent>`
@@ -228,6 +229,12 @@ When `channels.orchestration.enabled=true`, channel orchestration commands inclu
 but reports on the currently focused agent session inline in the channel.
 `/insight @agent [dir]` overrides the current focus and targets a specific active agent session.
 Channel insight output is rendered as a concise chat-friendly summary rather than the full CLI layout.
+
+`/update [operator hints]` is available in interactive mode and channel orchestration.
+It queues a shared LLM-driven Brewva upgrade workflow that must review the relevant
+changelog or release notes, apply only the required Brewva-owned migrations
+(config/schema/state), and finish with validation before reporting success.
+In channel mode, `/update` targets the currently focused agent.
 
 Webhook ingress can be enabled via environment variables (no additional CLI flags):
 

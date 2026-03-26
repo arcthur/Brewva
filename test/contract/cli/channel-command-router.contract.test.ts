@@ -76,6 +76,15 @@ describe("channel command router", () => {
       agentId: "jack",
       directory: "src/runtime",
     });
+
+    expect(router.match("/update")).toEqual({
+      kind: "update",
+      instructions: undefined,
+    });
+    expect(router.match("/update target=latest safe rollout")).toEqual({
+      kind: "update",
+      instructions: "target=latest safe rollout",
+    });
   });
 
   test("routes @agent mention", () => {

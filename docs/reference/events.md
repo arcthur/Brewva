@@ -44,7 +44,10 @@ The authoritative registry lives in
 
 ### Session, Turn, And Hosted Lifecycle
 
+- `channel_command_received`
 - `channel_session_bound`
+- `channel_update_requested`
+- `channel_update_lock_blocked`
 - `session_bootstrap`
 - `session_start`
 - `session_shutdown`
@@ -276,6 +279,12 @@ properties such as:
 
 `worker_results_applied` and `worker_results_apply_failed` record the
 parent-controlled adoption outcome for child-produced patches.
+
+`channel_command_received`, `channel_update_requested`, and
+`channel_update_lock_blocked` record channel control-plane activity for
+orchestrated slash commands. They remain ops-facing orchestration telemetry,
+but they are now part of the formal registered event contract so replay,
+documentation, and downstream consumers can rely on stable identifiers.
 
 `subagent_outcome_parse_failed` records when typed-outcome extraction misses and
 the delegated run falls back to prose-only summary handling.

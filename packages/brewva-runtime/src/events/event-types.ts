@@ -20,7 +20,10 @@ export const RESOURCE_LEASE_CANCELLED_EVENT_TYPE = "resource_lease_cancelled" as
 export const RESOURCE_LEASE_EXPIRED_EVENT_TYPE = "resource_lease_expired" as const;
 export const AGENT_END_EVENT_TYPE = "agent_end" as const;
 export const BUDGET_ALERT_EVENT_TYPE = "budget_alert" as const;
+export const CHANNEL_COMMAND_RECEIVED_EVENT_TYPE = "channel_command_received" as const;
 export const CHANNEL_SESSION_BOUND_EVENT_TYPE = "channel_session_bound" as const;
+export const CHANNEL_UPDATE_LOCK_BLOCKED_EVENT_TYPE = "channel_update_lock_blocked" as const;
+export const CHANNEL_UPDATE_REQUESTED_EVENT_TYPE = "channel_update_requested" as const;
 export const CONTEXT_COMPACTION_GATE_BLOCKED_TOOL_EVENT_TYPE =
   "context_compaction_gate_blocked_tool" as const;
 export const COST_UPDATE_EVENT_TYPE = "cost_update" as const;
@@ -146,7 +149,10 @@ export const BREWVA_REGISTERED_EVENT_TYPES = [
   RESOURCE_LEASE_EXPIRED_EVENT_TYPE,
   AGENT_END_EVENT_TYPE,
   BUDGET_ALERT_EVENT_TYPE,
+  CHANNEL_COMMAND_RECEIVED_EVENT_TYPE,
   CHANNEL_SESSION_BOUND_EVENT_TYPE,
+  CHANNEL_UPDATE_LOCK_BLOCKED_EVENT_TYPE,
+  CHANNEL_UPDATE_REQUESTED_EVENT_TYPE,
   CONTEXT_COMPACTION_GATE_BLOCKED_TOOL_EVENT_TYPE,
   COST_UPDATE_EVENT_TYPE,
   FILE_SNAPSHOT_CAPTURED_EVENT_TYPE,
