@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  createMockExtensionAPI,
+  createMockRuntimePluginApi,
   createRuntimeConfig,
   createRuntimeFixture,
   invokeHandler,
@@ -9,7 +9,7 @@ import {
 
 describe("context transform compaction contract", () => {
   test("records context_compaction_skipped in non-interactive mode", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const skippedReasons: string[] = [];
     const runtime = createRuntimeFixture({
       context: {
@@ -61,7 +61,7 @@ describe("context transform compaction contract", () => {
   });
 
   test("triggers one auto compaction at a time until completion in interactive mode", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const skippedReasons: string[] = [];
     const autoRequestedReasons: string[] = [];
     const autoCompletedReasons: string[] = [];
@@ -151,7 +151,7 @@ describe("context transform compaction contract", () => {
   });
 
   test("skips manual compact when the agent is still active", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const skippedReasons: string[] = [];
     const autoRequestedReasons: string[] = [];
     const compactCalls: Array<Record<string, unknown>> = [];
@@ -221,7 +221,7 @@ describe("context transform compaction contract", () => {
   });
 
   test("fails closed when interactive mode lacks an idle probe", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const skippedReasons: string[] = [];
     const autoRequestedReasons: string[] = [];
     const compactCalls: Array<Record<string, unknown>> = [];
@@ -290,7 +290,7 @@ describe("context transform compaction contract", () => {
   });
 
   test("deduplicates repeated skip events for the same active compaction condition", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const skippedReasons: string[] = [];
 
     const runtime = createRuntimeFixture({
@@ -351,7 +351,7 @@ describe("context transform compaction contract", () => {
   });
 
   test("clears the in-flight lock when the auto-compaction watchdog fires", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const autoFailedErrors: string[] = [];
     const compactCalls: Array<Record<string, unknown>> = [];
 

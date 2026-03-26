@@ -4,17 +4,17 @@ import {
 } from "@brewva/brewva-gateway/runtime-plugins";
 import { CONTEXT_SOURCES, type ContextInjectionEntry } from "@brewva/brewva-runtime";
 import {
-  createMockExtensionAPI,
+  createMockRuntimePluginApi,
   invokeHandler,
   invokeHandlerAsync,
   invokeHandlersAsync,
-} from "../../helpers/extension.js";
+} from "../../helpers/runtime-plugin.js";
 import { createRuntimeConfig, createRuntimeFixture } from "./fixtures/runtime.js";
 
 export {
   CONTEXT_SOURCES,
   createHostedTurnPipeline,
-  createMockExtensionAPI,
+  createMockRuntimePluginApi,
   createRuntimeConfig,
   createRuntimeFixture,
   invokeHandler,

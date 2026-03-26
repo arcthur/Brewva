@@ -11,7 +11,7 @@ import {
   getBrewvaToolSurface,
   type BrewvaToolOrchestration,
 } from "@brewva/brewva-tools";
-import type { ExtensionFactory } from "@mariozechner/pi-coding-agent";
+import type { ExtensionFactory as UpstreamExtensionFactory } from "@mariozechner/pi-coding-agent";
 import { createCompletionGuardLifecycle, registerCompletionGuard } from "./completion-guard.js";
 import { createContextTransformLifecycle, registerContextTransform } from "./context-transform.js";
 import { createDeliberationMaintenanceLifecycle } from "./deliberation-maintenance.js";
@@ -25,6 +25,9 @@ import {
   type ToolSurfaceRuntime,
 } from "./tool-surface.js";
 import { registerTurnLifecyclePorts, type TurnLifecyclePort } from "./turn-lifecycle-port.js";
+
+export type RuntimePlugin = UpstreamExtensionFactory;
+export type RuntimePluginApi = Parameters<RuntimePlugin>[0];
 
 export interface CreateHostedTurnPipelineOptions extends BrewvaRuntimeOptions {
   runtime?: BrewvaRuntime;
@@ -64,28 +67,28 @@ function registerGovernanceDescriptors(
 
 function registerHostedPipeline(
   runtime: BrewvaRuntime,
-  pi: Parameters<ExtensionFactory>[0],
+  runtimePluginApi: RuntimePluginApi,
   tools: ReturnType<typeof buildBrewvaTools>,
   registerTools: boolean,
   userPorts: readonly TurnLifecyclePort[],
 ): void {
   const toolDefinitionsByName = new Map(tools.map((tool) => [tool.name, tool] as const));
-  const contextTransform = createContextTransformLifecycle(pi, runtime);
+  const contextTransform = createContextTransformLifecycle(runtimePluginApi, runtime);
   const deliberationMaintenance = createDeliberationMaintenanceLifecycle(runtime);
   const qualityGate = createQualityGateLifecycle(runtime, {
     toolDefinitionsByName,
   });
-  const toolSurface = createToolSurfaceLifecycle(pi, runtime, {
+  const toolSurface = createToolSurfaceLifecycle(runtimePluginApi, runtime, {
     dynamicToolDefinitions: registerTools ? toolDefinitionsByName : undefined,
   });
-  const completionGuard = createCompletionGuardLifecycle(pi, runtime);
+  const completionGuard = createCompletionGuardLifecycle(runtimePluginApi, runtime);
 
-  pi.on("tool_call", qualityGate.toolCall);
-  pi.on("context", contextTransform.context);
-  registerEventStream(pi, runtime);
-  registerLedgerWriter(pi, runtime);
-  registerToolResultDistiller(pi, runtime);
-  registerTurnLifecyclePorts(pi, [
+  runtimePluginApi.on("tool_call", qualityGate.toolCall);
+  runtimePluginApi.on("context", contextTransform.context);
+  registerEventStream(runtimePluginApi, runtime);
+  registerLedgerWriter(runtimePluginApi, runtime);
+  registerToolResultDistiller(runtimePluginApi, runtime);
+  registerTurnLifecyclePorts(runtimePluginApi, [
     {
       beforeAgentStart: deliberationMaintenance.beforeAgentStart,
       agentEnd: deliberationMaintenance.agentEnd,
@@ -111,8 +114,8 @@ function registerHostedPipeline(
 
 export function createHostedTurnPipeline(
   options: CreateHostedTurnPipelineOptions = {},
-): ExtensionFactory {
-  return (pi) => {
+): RuntimePlugin {
+  return (runtimePluginApi) => {
     const runtime =
       options.runtime ??
       new BrewvaRuntime({
@@ -129,11 +132,11 @@ export function createHostedTurnPipeline(
         if (getBrewvaToolSurface(tool.name) !== "base") {
           continue;
         }
-        pi.registerTool(tool);
+        runtimePluginApi.registerTool(tool);
       }
     }
 
-    registerHostedPipeline(runtime, pi, allTools, registerTools, options.ports ?? []);
+    registerHostedPipeline(runtime, runtimePluginApi, allTools, registerTools, options.ports ?? []);
   };
 }
 
@@ -153,6 +156,7 @@ export {
   type CapabilityDetail,
   type CapabilityHintId,
   type CapabilityPolicyId,
+  type CapabilityView,
   type CapabilityRenderMode,
   type CapabilityRenderedBlock,
   type CapabilityRenderedBlockKind,

@@ -382,7 +382,7 @@ export interface SkillOutputRecord {
   outputs: Record<string, unknown>;
 }
 
-export type ManagedToolMode = "extension" | "direct";
+export type ManagedToolMode = "runtime_plugin" | "direct";
 
 export interface CreateBrewvaSessionOptions {
   cwd?: string;

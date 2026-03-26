@@ -10,27 +10,28 @@ export interface PreparedContextComposerSupport {
 
 export function prepareContextComposerSupport(input: {
   runtime: BrewvaRuntime;
-  pi: ExtensionAPI;
+  extensionApi: ExtensionAPI;
   sessionId: string;
   prompt: string;
   usage: Parameters<BrewvaRuntime["context"]["observeUsage"]>[1];
 }): PreparedContextComposerSupport {
   const gateStatus = input.runtime.context.getCompactionGateStatus(input.sessionId, input.usage);
   const pendingCompactionReason = input.runtime.context.getPendingCompactionReason(input.sessionId);
-  const allToolsGetter = (input.pi as { getAllTools?: () => ToolInfo[] }).getAllTools;
-  const activeToolsGetter = (input.pi as { getActiveTools?: () => string[] }).getActiveTools;
+  const allToolsGetter = (input.extensionApi as { getAllTools?: () => ToolInfo[] }).getAllTools;
+  const activeToolsGetter = (input.extensionApi as { getActiveTools?: () => string[] })
+    .getActiveTools;
   const capabilityView = buildCapabilityView({
     prompt: input.prompt,
     allTools:
       typeof allToolsGetter === "function"
-        ? allToolsGetter.call(input.pi).map((tool) => ({
+        ? allToolsGetter.call(input.extensionApi).map((tool) => ({
             name: tool.name,
             description: tool.description,
             parameters: tool.parameters,
           }))
         : [],
     activeToolNames:
-      typeof activeToolsGetter === "function" ? activeToolsGetter.call(input.pi) : [],
+      typeof activeToolsGetter === "function" ? activeToolsGetter.call(input.extensionApi) : [],
     resolveAccess: (toolName) =>
       input.runtime.tools.explainAccess({
         sessionId: input.sessionId,

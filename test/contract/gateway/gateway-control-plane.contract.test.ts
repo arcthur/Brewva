@@ -19,7 +19,7 @@ describe("gateway daemon control-plane methods", () => {
           configPath?: string;
           model?: string;
           agentId?: string;
-          managedToolMode?: "extension" | "direct";
+          managedToolMode?: "runtime_plugin" | "direct";
         }
       | undefined;
     const backend = createSessionBackendStub({

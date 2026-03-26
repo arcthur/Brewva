@@ -156,11 +156,11 @@ Short aliases:
 - `-v` for `--version`
 - `-h` for `--help`
 
-`--managed-tools <extension|direct>` controls how Brewva-managed tools reach the
+`--managed-tools <runtime_plugin|direct>` controls how Brewva-managed tools reach the
 session:
 
-- `extension` (default): the hosted pipeline registers managed tools through the
-  extension API before each turn.
+- `runtime_plugin` (default): the hosted pipeline registers managed tools through the
+  runtime plugin API before each turn.
 - `direct`: the same hosted pipeline remains active, but the host provides
   managed tools directly when creating the session.
 
@@ -249,10 +249,12 @@ Optional Telegram API endpoint override (useful for local integration/fake API t
 For the complete Worker + Fly webhook deployment path, see:
 `docs/guide/telegram-webhook-edge-ingress.md`
 
-To temporarily restore upstream version-check notifications (this is an upstream `pi-coding-agent` environment variable), launch with an empty override:
+To temporarily restore startup version-check notifications, launch with an
+empty Brewva override. Legacy upstream `PI_SKIP_VERSION_CHECK` is still
+honored for compatibility:
 
 ```bash
-PI_SKIP_VERSION_CHECK= bun run start
+BREWVA_SKIP_VERSION_CHECK= bun run start
 ```
 
 ## Typical Commands

@@ -5,7 +5,7 @@ import {
 } from "@brewva/brewva-gateway/runtime-plugins";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { ToolInfo } from "@mariozechner/pi-coding-agent";
-import { createMockExtensionAPI, invokeHandlerAsync } from "../../helpers/extension.js";
+import { createMockRuntimePluginApi, invokeHandlerAsync } from "../../helpers/runtime-plugin.js";
 import {
   createRuntimeConfig,
   createRuntimeFixture as createBaseRuntimeFixture,
@@ -32,7 +32,7 @@ function createToolDefinition(name: string): ToolDefinition {
 }
 
 function registerTools(
-  api: ReturnType<typeof createMockExtensionAPI>["api"],
+  api: ReturnType<typeof createMockRuntimePluginApi>["api"],
   names: string[],
 ): void {
   for (const name of names) {
@@ -95,9 +95,9 @@ function createToolSurfaceRuntime(options: ToolSurfaceRuntimeOptions = {}): Tool
   return runtime;
 }
 
-describe("tool surface extension", () => {
+describe("tool surface runtime plugin", () => {
   test("activates base and skill-scoped tools from the current active skill", async () => {
-    const extensionApi = createMockExtensionAPI();
+    const extensionApi = createMockRuntimePluginApi();
     registerTools(extensionApi.api, [
       "read",
       "edit",
@@ -160,7 +160,7 @@ describe("tool surface extension", () => {
   });
 
   test("explicit capability requests can surface managed tools for one turn", async () => {
-    const extensionApi = createMockExtensionAPI();
+    const extensionApi = createMockRuntimePluginApi();
     registerTools(extensionApi.api, [
       "read",
       "edit",
@@ -193,7 +193,7 @@ describe("tool surface extension", () => {
   });
 
   test("tool surface records which requested managed tools were activated", async () => {
-    const extensionApi = createMockExtensionAPI();
+    const extensionApi = createMockRuntimePluginApi();
     registerTools(extensionApi.api, [
       "read",
       "edit",
@@ -237,7 +237,7 @@ describe("tool surface extension", () => {
   });
 
   test("investigation lifecycle tools stay visible while the session has no task spec", async () => {
-    const extensionApi = createMockExtensionAPI();
+    const extensionApi = createMockRuntimePluginApi();
     registerTools(extensionApi.api, [
       "read",
       "edit",
@@ -299,7 +299,7 @@ describe("tool surface extension", () => {
   });
 
   test("registers missing managed tools on demand before resolving the turn surface", async () => {
-    const extensionApi = createMockExtensionAPI();
+    const extensionApi = createMockRuntimePluginApi();
     registerTools(extensionApi.api, ["read", "edit", "write", "session_compact", "grep", "exec"]);
 
     const runtime = createToolSurfaceRuntime({
@@ -352,7 +352,7 @@ describe("tool surface extension", () => {
   });
 
   test("effect-authorized managed skill tools stay visible even when not listed in execution hints", async () => {
-    const extensionApi = createMockExtensionAPI();
+    const extensionApi = createMockRuntimePluginApi();
     registerTools(extensionApi.api, [
       "read",
       "edit",

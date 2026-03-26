@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { createHostedTurnPipeline } from "@brewva/brewva-gateway/runtime-plugins";
 import {
-  createMockExtensionAPI,
+  createMockRuntimePluginApi,
   invokeHandler,
   invokeHandlerAsync,
   invokeHandlersAsync,
   invokeHandlers,
-} from "../../helpers/extension.js";
+} from "../../helpers/runtime-plugin.js";
 import {
   createRuntimeConfig,
   createRuntimeFixture as createBaseRuntimeFixture,
@@ -191,7 +191,7 @@ function createSessionContext(sessionId: string): {
 
 describe("hosted turn pipeline", () => {
   test("registers the canonical hosted handlers", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const { runtime } = createRuntimeFixture();
     await createHostedTurnPipeline({
       runtime,
@@ -213,7 +213,7 @@ describe("hosted turn pipeline", () => {
   });
 
   test("composes context through before_agent_start on the canonical hosted pipeline", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const { runtime, calls } = createRuntimeFixture();
     await createHostedTurnPipeline({
       runtime,
@@ -246,7 +246,7 @@ describe("hosted turn pipeline", () => {
   });
 
   test("routes tool_call blocking through the hosted pipeline quality gate", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const { runtime, calls } = createRuntimeFixture({
       startAllowed: false,
       startReason: "blocked-by-runtime",
@@ -280,7 +280,7 @@ describe("hosted turn pipeline", () => {
   });
 
   test("uses tool_execution_end only as fallback finalize source", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const { runtime, calls } = createRuntimeFixture();
     await createHostedTurnPipeline({
       runtime,
@@ -321,7 +321,7 @@ describe("hosted turn pipeline", () => {
   });
 
   test("cleans runtime session state on hosted pipeline shutdown", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const { runtime, calls } = createRuntimeFixture();
     await createHostedTurnPipeline({
       runtime,

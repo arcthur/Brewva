@@ -235,7 +235,7 @@ Model-facing composition is separate:
 
 ## Tool Surface
 
-The runtime/extension stack treats tool surface as three layers:
+The runtime/runtime-plugin stack treats tool surface as three layers:
 
 - `base tools`
 - `skill-informed tools`

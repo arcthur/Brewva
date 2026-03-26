@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { SkillDocument } from "@brewva/brewva-runtime";
 import {
   CONTEXT_SOURCES,
-  createMockExtensionAPI,
+  createMockRuntimePluginApi,
   createRuntimeConfig,
   createRuntimeFixture,
   invokeHandlerAsync,
@@ -13,7 +13,7 @@ import {
 
 describe("context transform injection contract", () => {
   test("passes the session leaf id into runtime context injection", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const scopes: Array<string | undefined> = [];
     const runtime = createRuntimeFixture({
       context: {
@@ -63,7 +63,7 @@ describe("context transform injection contract", () => {
   });
 
   test("uses the async buildInjection result when the runtime returns it", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const calls: string[] = [];
     const runtime = createRuntimeFixture({
       context: {
@@ -124,7 +124,7 @@ describe("context transform injection contract", () => {
   });
 
   test("does not inject delegation recommendations into hidden context", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const extensionApi = api as unknown as {
       registerTool: (tool: { name: string; description: string; parameters?: unknown }) => void;
     };
@@ -211,7 +211,7 @@ describe("context transform injection contract", () => {
   });
 
   test("surfaces completed delegation outcomes once and marks the handoff as surfaced", async () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const sessionId = "s-completed-delegation-outcome";
     const runtime = createRuntimeFixture({
       context: {

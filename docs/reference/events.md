@@ -212,7 +212,6 @@ The audit-retained core includes:
   `session_compact`, and `session_turn_compaction_resume_requested`
 - tool execution receipts such as `tool_call`, `tool_execution_start`,
   `tool_execution_end`, and `tool_result_recorded`
-- `tool_result_recorded`
 - `tool_output_search`
 - `iteration_metric_observed`
 - `iteration_guard_recorded`

@@ -3,11 +3,11 @@ import {
   registerLedgerWriter,
   registerToolResultDistiller,
 } from "@brewva/brewva-gateway/runtime-plugins";
-import { createMockExtensionAPI } from "../../helpers/extension.js";
+import { createMockRuntimePluginApi } from "../../helpers/runtime-plugin.js";
 import { createRuntimeFixture } from "./fixtures/runtime.js";
 
 function invokeToolResultMiddleware(
-  handlers: ReturnType<typeof createMockExtensionAPI>["handlers"],
+  handlers: ReturnType<typeof createMockRuntimePluginApi>["handlers"],
   event: Record<string, unknown>,
   ctx: Record<string, unknown>,
 ): {
@@ -39,7 +39,7 @@ function invokeToolResultMiddleware(
 
 describe("tool result inline distiller", () => {
   test("records raw evidence before any optional inline distillation patch runs", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const finished: Array<Record<string, unknown>> = [];
     const runtime = createRuntimeFixture({
       tools: {
@@ -85,7 +85,7 @@ describe("tool result inline distiller", () => {
   });
 
   test("skips inline distillation for mixed-content tool results", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const runtime = createRuntimeFixture();
 
     registerToolResultDistiller(api, runtime);
@@ -118,7 +118,7 @@ describe("tool result inline distiller", () => {
   });
 
   test("returns undefined when text-only content is not eligible for distillation", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const runtime = createRuntimeFixture();
 
     registerToolResultDistiller(api, runtime);
@@ -145,7 +145,7 @@ describe("tool result inline distiller", () => {
   });
 
   test("applies inline browser snapshot distillation for long DOM snapshots", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     const runtime = createRuntimeFixture();
 
     registerToolResultDistiller(api, runtime);

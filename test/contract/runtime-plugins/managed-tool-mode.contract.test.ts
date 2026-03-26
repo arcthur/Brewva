@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createHostedTurnPipeline } from "@brewva/brewva-gateway/runtime-plugins";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { ToolInfo } from "@mariozechner/pi-coding-agent";
-import { createMockExtensionAPI, invokeHandlerAsync } from "../../helpers/extension.js";
+import { createMockRuntimePluginApi, invokeHandlerAsync } from "../../helpers/runtime-plugin.js";
 import { createRuntimeFixture } from "./fixtures/runtime.js";
 
 function handlerNames(handlers: Map<string, unknown[]>): string[] {
@@ -12,9 +12,9 @@ function handlerNames(handlers: Map<string, unknown[]>): string[] {
 describe("managed tool registration modes", () => {
   test("managed Brewva tools register canonical schemas by default", async () => {
     const runtime = createRuntimeFixture();
-    const api = createMockExtensionAPI();
-    const extension = createHostedTurnPipeline({ runtime });
-    await extension(api.api);
+    const api = createMockRuntimePluginApi();
+    const runtimePlugin = createHostedTurnPipeline({ runtime });
+    await runtimePlugin(api.api);
 
     const readSpans = api.api.getAllTools().find((tool) => tool.name === "read_spans");
     const parameters = readSpans?.parameters as
@@ -36,14 +36,14 @@ describe("managed tool registration modes", () => {
 
   test("registerTools only affects tool registration, not hosted pipeline handler surfaces", async () => {
     const managedRuntime = createRuntimeFixture();
-    const managedApi = createMockExtensionAPI();
+    const managedApi = createMockRuntimePluginApi();
     await createHostedTurnPipeline({
       runtime: managedRuntime,
       registerTools: true,
     })(managedApi.api);
 
     const bridgeOnlyRuntime = createRuntimeFixture();
-    const bridgeOnlyApi = createMockExtensionAPI();
+    const bridgeOnlyApi = createMockRuntimePluginApi();
     await createHostedTurnPipeline({
       runtime: bridgeOnlyRuntime,
       registerTools: false,
@@ -69,7 +69,7 @@ describe("managed tool registration modes", () => {
 
   test("registerTools=false does not late-register managed Brewva tools", async () => {
     const runtime = createRuntimeFixture();
-    const api = createMockExtensionAPI();
+    const api = createMockRuntimePluginApi();
     const emptyParameters = {
       type: "object",
       properties: {},
@@ -85,11 +85,11 @@ describe("managed tool registration modes", () => {
     };
     api.api.registerTool(foreignTool);
 
-    const extension = createHostedTurnPipeline({
+    const runtimePlugin = createHostedTurnPipeline({
       runtime,
       registerTools: false,
     });
-    await extension(api.api);
+    await runtimePlugin(api.api);
 
     await invokeHandlerAsync(
       api.handlers,

@@ -1,31 +1,48 @@
-# Reference: Extensions
+# Reference: Runtime Plugins
 
-Extension factory entrypoint: `@brewva/brewva-gateway/runtime-plugins`
+Runtime plugin package: `@brewva/brewva-gateway/runtime-plugins`
 (`packages/brewva-gateway/src/runtime-plugins/index.ts`).
 
 ## Terminology
 
 - Hosted pipeline: the canonical gateway lifecycle integration layer registered into a hosted session
-- Runtime plugin: one implementation file under `packages/brewva-gateway/src/runtime-plugins`
+- Runtime plugin: the canonical Brewva hosted-session integration unit; implemented on top of the upstream `ExtensionFactory` contract
+- Runtime plugin implementation: one implementation file under `packages/brewva-gateway/src/runtime-plugins`
 
 `registerTools: false` keeps the hosted pipeline but disables managed-tool
-registration through the extension factory.
+registration through the runtime plugin API.
 
 ## Factory API
 
+- `RuntimePlugin`
+- `RuntimePluginApi`
 - `createHostedTurnPipeline`
 - `TurnLifecyclePort`
 - `registerTurnLifecyclePorts`
 
+`RuntimePluginApi` is the upstream event/tool registration object passed into a
+runtime plugin at host bootstrap.
+
 Current factory option surface:
 
 - `runtime?`
+- `runtimePlugins?` on `createHostedSession(...)` / `createBrewvaSession(...)` for composing additional runtime plugins alongside the canonical hosted pipeline
 - `registerTools?` (default `true`)
 - `orchestration?`
 - `managedToolNames?`
 - `ports?`
 
-There are no longer public extension profiles such as `core`, `memory`, or
+When `runtime` is omitted, `createHostedTurnPipeline(...)` also accepts
+inherited `BrewvaRuntimeOptions` for runtime construction:
+
+- `cwd?`
+- `configPath?`
+- `config?`
+- `governancePort?`
+- `agentId?`
+- `routingScopes?`
+
+There are no longer public runtime plugin profiles such as `core`, `memory`, or
 `full`.
 
 ## Hosted Pipeline
@@ -42,7 +59,7 @@ There are no longer public extension profiles such as `core`, `memory`, or
   `agentEnd`, `sessionCompact`, and `sessionShutdown`
 
 Hosted sessions also install a provider compatibility seam outside the
-extension-factory lifecycle itself:
+runtime-plugin lifecycle itself:
 
 - `installHostedProviderCompatibilityLayer`
 - `registerHostedSessionProviderCompatibility`
@@ -68,20 +85,20 @@ Implementation anchors:
 - `packages/brewva-gateway/src/host/create-hosted-session.ts`
 
 There is no longer a reduced runtime-core bridge variant. Hosted sessions use
-one lifecycle shape whether tools are registered by the extension factory or
+one lifecycle shape whether tools are registered by the runtime plugin API or
 provided directly by the host.
 
 ## Hosted Provider Compatibility
 
-Hosted sessions wrap Pi API providers with a compatibility adapter before
+Hosted sessions wrap provider APIs with a compatibility adapter before
 messages are admitted into the runtime authority path.
 
 Responsibilities:
 
 - resolve an explicit model capability profile for the active provider/model
 - patch request payload shape in a declarative, auditable way
-- normalize admissible tool-call structure before Pi emits the final hosted
-  completion
+- normalize admissible tool-call structure before the hosted agent emits the
+  final completion
 - fail fast when a malformed tool call cannot be repaired without guessing
 
 Intentional boundaries:
@@ -121,10 +138,11 @@ Intentional non-port stages:
 - `tool_execution_end` is only a bridge fallback source for ledger completion
 - ledger writing is a bridge adapter, not a lifecycle port
 
-Two hosted hooks therefore stay as direct Pi registrations instead of
-`TurnLifecyclePort` stages:
+Two hosted hooks therefore stay as direct host registrations on the runtime
+plugin API instead
+of `TurnLifecyclePort` stages:
 
-- `pi.on("tool_call", qualityGate.toolCall)` bridges into
+- `api.on("tool_call", qualityGate.toolCall)` bridges into
   `runtime.tools.start()` / `ToolInvocationSpine.begin()`. This is the
   authority-owned admission point for access checks, budget checks, compaction
   gating, and effect commitment. Making it a public lifecycle port would let

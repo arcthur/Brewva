@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerEventStream, registerQualityGate } from "@brewva/brewva-gateway/runtime-plugins";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
-import { createMockExtensionAPI, invokeHandlers } from "../../helpers/extension.js";
+import { createMockRuntimePluginApi, invokeHandlers } from "../../helpers/runtime-plugin.js";
 import { createOpsRuntimeConfig } from "../../helpers/runtime.js";
 
-describe("Extension integration: observability guardrails", () => {
+describe("Runtime plugin integration: observability guardrails", () => {
   test("given blocked tool_call, when handlers run with stopOnBlock, then tool_call is recorded and tool_call_marked is omitted", () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-ext-blocked-"));
     mkdirSync(join(workspace, ".brewva/skills/core/blocktool"), { recursive: true });
@@ -43,7 +43,7 @@ blocktool`,
     const sessionId = "ext-blocked-1";
     expect(runtime.skills.activate(sessionId, "blocktool").ok).toBe(true);
 
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
     registerQualityGate(api, runtime);
 
@@ -112,7 +112,7 @@ maxcalls`,
       runtime.skills.getActive(sessionId)?.contract.resources?.defaultLease?.maxToolCalls,
     ).toBe(1);
 
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
     registerQualityGate(api, runtime);
 
@@ -171,7 +171,7 @@ maxcalls`,
     const runtime = new BrewvaRuntime({ cwd: workspace, config: createOpsRuntimeConfig() });
     const sessionId = "ext-throttle-1";
 
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
 
     const ctx = {

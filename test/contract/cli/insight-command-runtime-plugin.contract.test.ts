@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createInsightCommandExtension } from "@brewva/brewva-cli";
+import { createInsightCommandRuntimePlugin } from "@brewva/brewva-cli";
+import type { RuntimePluginApi } from "@brewva/brewva-gateway/runtime-plugins";
 import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
 type RegisteredCommand = {
@@ -12,7 +12,7 @@ type RegisteredCommand = {
 };
 
 function createCommandApiMock(): {
-  api: ExtensionAPI;
+  api: RuntimePluginApi;
   commands: Map<string, RegisteredCommand>;
   handlers: Map<
     string,
@@ -37,14 +37,14 @@ function createCommandApiMock(): {
     registerCommand(name: string, definition: RegisteredCommand) {
       commands.set(name, definition);
     },
-  } as unknown as ExtensionAPI;
+  } as unknown as RuntimePluginApi;
 
   return { api, commands, handlers };
 }
 
-describe("insight interactive command extension", () => {
+describe("insight interactive command runtime plugin", () => {
   test("renders insight into a widget without mutating runtime event history", async () => {
-    const workspace = createTestWorkspace("insight-command-extension");
+    const workspace = createTestWorkspace("insight-command-runtime-plugin");
     writeFileSync(join(workspace, ".brewva", "brewva.json"), "{}\n", "utf8");
     mkdirSync(join(workspace, "src"), { recursive: true });
     mkdirSync(join(workspace, "other"), { recursive: true });
@@ -64,7 +64,7 @@ describe("insight interactive command extension", () => {
       sessionId,
       type: "session_bootstrap",
       payload: {
-        managedToolMode: "extension",
+        managedToolMode: "runtime_plugin",
         skillLoad: {
           routingEnabled: false,
           routingScopes: ["core", "domain"],
@@ -102,7 +102,7 @@ describe("insight interactive command extension", () => {
 
     const beforeEventCount = runtime.events.query(sessionId).length;
     const { api, commands } = createCommandApiMock();
-    createInsightCommandExtension(runtime)(api);
+    await createInsightCommandRuntimePlugin(runtime)(api);
 
     const command = commands.get("insight");
     expect(command).toBeDefined();
@@ -146,7 +146,7 @@ describe("insight interactive command extension", () => {
     });
 
     const { api, commands } = createCommandApiMock();
-    createInsightCommandExtension(runtime)(api);
+    await createInsightCommandRuntimePlugin(runtime)(api);
     const command = commands.get("insight");
     expect(command).toBeDefined();
 

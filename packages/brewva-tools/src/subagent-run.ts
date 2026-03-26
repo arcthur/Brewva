@@ -64,10 +64,10 @@ const ResultModeSchema = buildStringEnumSchema(
 );
 
 const ManagedToolModeSchema = buildStringEnumSchema(
-  ["direct", "extension"] as const,
+  ["direct", "runtime_plugin"] as const,
   {},
   {
-    guidance: "Direct is default. Extension may only narrow within the chosen preset.",
+    guidance: "Direct is default. Runtime plugin mode may only narrow within the chosen preset.",
   },
 );
 
@@ -287,7 +287,7 @@ function toExecutionShape(value: unknown): SubagentExecutionShape | undefined {
       : undefined;
   const managedToolMode =
     (value as { managedToolMode?: unknown }).managedToolMode === "direct" ||
-    (value as { managedToolMode?: unknown }).managedToolMode === "extension"
+    (value as { managedToolMode?: unknown }).managedToolMode === "runtime_plugin"
       ? ((value as { managedToolMode: SubagentExecutionShape["managedToolMode"] })
           .managedToolMode ?? undefined)
       : undefined;

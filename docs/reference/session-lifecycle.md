@@ -7,7 +7,7 @@
    - runtime config is loaded/normalized first
    - startup UI setting (`ui.quietStartup`) is applied from `runtime.config.ui` into session settings overrides
 3. Register lifecycle handlers through the canonical hosted pipeline (`packages/brewva-gateway/src/runtime-plugins/index.ts`)
-   - `managedToolMode=extension`: register managed Brewva tools through the extension API
+   - `managedToolMode=runtime_plugin`: register managed Brewva tools through the runtime plugin API
    - `managedToolMode=direct`: provide managed Brewva tools directly from the host
 4. Run turn loop with tool execution, ledger/event writes, and verification updates
 5. Emit replayable event timeline and dispose session resources
@@ -19,7 +19,7 @@
 - JSON one-shot (`--mode json`/`--json`): emits normal stream plus final `brewva_event_bundle`
 - `--managed-tools direct`: keeps the same hosted lifecycle shape, but managed
   Brewva tools are provided directly by the host instead of being registered by
-  the extension factory
+  the runtime plugin package
 - Channel gateway (`--channel`): run adapter bridge loop; bind conversations to scopes, then scopes to agent sessions, and dispatch inbound turns serially per scope
 
 ## Recovery Path

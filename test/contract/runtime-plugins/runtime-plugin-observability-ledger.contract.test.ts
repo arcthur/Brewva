@@ -9,15 +9,15 @@ import {
   createObsSloAssertTool,
   createOutputSearchTool,
 } from "@brewva/brewva-tools";
-import { createMockExtensionAPI, invokeHandlers } from "../../helpers/extension.js";
+import { createMockRuntimePluginApi, invokeHandlers } from "../../helpers/runtime-plugin.js";
 
-describe("Extension integration: observability ledger", () => {
+describe("Runtime plugin integration: observability ledger", () => {
   test("given high-volume exec tool output with explicit fail verdict, when ledger writer handles tool_result, then verdict propagates into observed and distilled telemetry", () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-ext-distill-"));
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "ext-distill-1";
 
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
     registerLedgerWriter(api, runtime);
 
@@ -123,7 +123,7 @@ describe("Extension integration: observability ledger", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "ext-running-inconclusive-1";
 
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
     registerLedgerWriter(api, runtime);
 
@@ -166,7 +166,7 @@ describe("Extension integration: observability ledger", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "ext-compact-lifecycle-1";
 
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
     registerLedgerWriter(api, runtime);
 
@@ -260,7 +260,7 @@ describe("Extension integration: observability ledger", () => {
       },
     });
 
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
     registerLedgerWriter(api, runtime);
     const ctx = {
@@ -361,7 +361,7 @@ describe("Extension integration: observability ledger", () => {
       },
     });
 
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
     registerLedgerWriter(api, runtime);
     const ctx = {
@@ -463,7 +463,7 @@ describe("Extension integration: observability ledger", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "ext-fallback-1";
 
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
     registerLedgerWriter(api, runtime);
     const ctx = {

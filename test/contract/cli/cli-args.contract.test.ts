@@ -13,6 +13,9 @@ describe("brewva cli args", () => {
     expect(output).toContain("brewva onboard ...");
     expect(output).toContain("brewva insight ...");
     expect(output).toContain("--agent <id>");
+    expect(output).not.toContain("same flow as pi");
+    expect(output).toContain("Run channel host mode");
+    expect(output).not.toContain("channel gateway mode");
   });
 
   test("given --version, when parsing args, then version output is printed", () => {

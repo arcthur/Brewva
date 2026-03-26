@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { registerLedgerWriter } from "@brewva/brewva-gateway/runtime-plugins";
-import { createMockExtensionAPI, invokeHandler } from "../../helpers/extension.js";
+import { createMockRuntimePluginApi, invokeHandler } from "../../helpers/runtime-plugin.js";
 import { createRuntimeFixture } from "./fixtures/runtime.js";
 
-describe("Extension gaps: ledger writer", () => {
+describe("Runtime plugin gaps: ledger writer", () => {
   test("given error tool_result with mixed content, when ledger writer runs, then text is extracted and verdict is fail", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
 
     const finished: any[] = [];
     const runtime = createRuntimeFixture({
@@ -50,7 +50,7 @@ describe("Extension gaps: ledger writer", () => {
   });
 
   test("given failed tool_execution_end without tool_result, when ledger writer runs, then fallback failure result is recorded once", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
 
     const finished: any[] = [];
     const runtime = createRuntimeFixture({
@@ -109,7 +109,7 @@ describe("Extension gaps: ledger writer", () => {
   });
 
   test("given legacy status-only tool_result, when ledger writer runs, then status does not override the latest verdict model", () => {
-    const { api, handlers } = createMockExtensionAPI();
+    const { api, handlers } = createMockRuntimePluginApi();
 
     const finished: any[] = [];
     const runtime = createRuntimeFixture({

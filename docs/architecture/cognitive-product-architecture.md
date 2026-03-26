@@ -131,9 +131,9 @@ Current responsibilities:
 - `ContextComposer`
   - arranges admitted context into narrative, constraint, and diagnostic blocks
 - `CapabilityView`
-  - turns exact governance metadata into model-facing tool disclosure
+  - typed build/render surface (`buildCapabilityView(...)` / `renderCapabilityView(...)`) that turns exact governance metadata into model-facing tool disclosure
 - `PersonaProfile`
-  - renders stable identity/workstyle signals from
+  - rendered profile surface (`readPersonaProfile(...)`) for stable identity/workstyle signals from
     `packages/brewva-runtime/src/context/identity.ts`
 - agent self bundle presentation
   - exposes `identity.md`, `constitution.md`, and `memory.md` as explicit,
@@ -231,7 +231,7 @@ Non-responsibilities:
 That split remains:
 
 - runtime admission decides what may enter
-- extensions shape how admitted context is shown
+- runtime plugins shape how admitted context is shown
 - the model decides what to do next
 
 ## Control-Plane Triggers

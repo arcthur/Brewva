@@ -33,7 +33,7 @@ function formatRollbackMessage(input: {
 export function createRollbackLastPatchTool(options: BrewvaToolOptions): ToolDefinition {
   return defineBrewvaTool({
     name: "rollback_last_patch",
-    label: "Rollback Last Patch",
+    label: "Rollback Last Patch Set",
     description: "Roll back the most recently tracked file mutation patch set for this session.",
     promptSnippet: "Restore the most recent tracked mutation patch set for the session.",
     promptGuidelines: [

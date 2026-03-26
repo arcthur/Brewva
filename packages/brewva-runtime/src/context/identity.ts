@@ -22,12 +22,12 @@ const MEMORY_SECTION_TITLES = {
   "continuity notes": "ContinuityNotes",
 } as const;
 
-export interface ReadIdentityProfileInput {
+export interface ReadPersonaProfileInput {
   workspaceRoot: string;
   agentId?: string;
 }
 
-export interface IdentityProfile {
+export interface PersonaProfile {
   schema: typeof IDENTITY_SCHEMA;
   agentId: string;
   path: string;
@@ -144,7 +144,7 @@ function renderNarrativeProfileContent<TKey extends string>(input: {
   return lines.join("\n");
 }
 
-export function readIdentityProfile(input: ReadIdentityProfileInput): IdentityProfile | null {
+export function readPersonaProfile(input: ReadPersonaProfileInput): PersonaProfile | null {
   const workspaceRoot = resolve(input.workspaceRoot);
   const agentId = normalizeAgentId(input.agentId);
   const path = resolveAgentArtifactPath(workspaceRoot, agentId, "identity.md");
@@ -172,7 +172,7 @@ export function readIdentityProfile(input: ReadIdentityProfileInput): IdentityPr
 }
 
 export function readAgentConstitutionProfile(
-  input: ReadIdentityProfileInput,
+  input: ReadPersonaProfileInput,
 ): AgentConstitutionProfile | null {
   const workspaceRoot = resolve(input.workspaceRoot);
   const agentId = normalizeAgentId(input.agentId);
@@ -201,7 +201,7 @@ export function readAgentConstitutionProfile(
   };
 }
 
-export function readAgentMemoryProfile(input: ReadIdentityProfileInput): AgentMemoryProfile | null {
+export function readAgentMemoryProfile(input: ReadPersonaProfileInput): AgentMemoryProfile | null {
   const workspaceRoot = resolve(input.workspaceRoot);
   const agentId = normalizeAgentId(input.agentId);
   const path = resolveAgentArtifactPath(workspaceRoot, agentId, "memory.md");

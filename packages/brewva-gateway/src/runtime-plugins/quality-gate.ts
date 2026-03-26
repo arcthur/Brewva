@@ -284,11 +284,11 @@ export function createQualityGateLifecycle(
 }
 
 export function registerQualityGate(
-  pi: ExtensionAPI,
+  extensionApi: ExtensionAPI,
   runtime: BrewvaRuntime,
   options: QualityGateLifecycleOptions = {},
 ): void {
-  const hooks = pi as unknown as {
+  const hooks = extensionApi as unknown as {
     on(event: string, handler: (event: unknown, ctx: unknown) => unknown): void;
   };
   const lifecycle = createQualityGateLifecycle(runtime, options);

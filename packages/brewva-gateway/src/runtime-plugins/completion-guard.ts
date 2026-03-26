@@ -17,11 +17,11 @@ function formatGuardMessage(skillName: string, outputs: string[]): string {
   ].join("\n");
 }
 
-export function registerCompletionGuard(pi: ExtensionAPI, runtime: BrewvaRuntime): void {
-  const hooks = pi as unknown as {
+export function registerCompletionGuard(extensionApi: ExtensionAPI, runtime: BrewvaRuntime): void {
+  const hooks = extensionApi as unknown as {
     on(event: string, handler: (event: unknown, ctx: unknown) => unknown): void;
   };
-  const lifecycle = createCompletionGuardLifecycle(pi, runtime);
+  const lifecycle = createCompletionGuardLifecycle(extensionApi, runtime);
   hooks.on("agent_end", lifecycle.agentEnd);
   hooks.on("session_shutdown", lifecycle.sessionShutdown);
 }
@@ -32,7 +32,7 @@ export interface CompletionGuardLifecycle {
 }
 
 export function createCompletionGuardLifecycle(
-  pi: ExtensionAPI,
+  extensionApi: ExtensionAPI,
   runtime: BrewvaRuntime,
 ): CompletionGuardLifecycle {
   const nudgeCounts = new Map<string, number>();
@@ -59,7 +59,7 @@ export function createCompletionGuardLifecycle(
         return undefined;
       }
 
-      pi.sendMessage(
+      extensionApi.sendMessage(
         {
           customType: "brewva-guard",
           content: formatGuardMessage(active.name, listSkillOutputs(active.contract)),

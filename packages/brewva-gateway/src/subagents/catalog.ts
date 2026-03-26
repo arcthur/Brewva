@@ -105,7 +105,7 @@ export function assertHostedExecutionEnvelopeTightening(
     base.defaultContextBudget?.maxTurnTokens,
     candidate.defaultContextBudget?.maxTurnTokens,
   );
-  if (base.managedToolMode === "direct" && candidate.managedToolMode === "extension") {
+  if (base.managedToolMode === "direct" && candidate.managedToolMode === "runtime_plugin") {
     throw new Error(`${context}:managedToolMode cannot widen beyond direct`);
   }
 }

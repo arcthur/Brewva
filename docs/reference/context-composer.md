@@ -31,7 +31,7 @@ It only decides how admitted context is shown to the model.
 - optional supplemental blocks from the hosted-session path
 - acceptance status for the injection pass
 
-Admitted entries come from the kernel path. There is no raw-text extension
+Admitted entries come from the kernel path. There is no raw-text runtime-plugin
 fallback.
 
 ## Output Contract

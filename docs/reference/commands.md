@@ -252,7 +252,7 @@ Daemon mode rejects incompatible input surfaces:
 - `--task` / `--task-file`
 - inline prompt text
 
-`--channel` runs channel gateway orchestration.
+`--channel` runs channel host orchestration.
 Supported channel ids are `telegram` and alias `tg`.
 Channel mode rejects incompatible input surfaces:
 
@@ -365,11 +365,11 @@ Short aliases:
 - `-v` for `--version`
 - `-h` for `--help`
 
-`--managed-tools <extension|direct>` switches only the managed-tool registration
+`--managed-tools <runtime_plugin|direct>` switches only the managed-tool registration
 surface:
 
-- `extension` (default): register managed Brewva tools through the hosted
-  extension pipeline.
+- `runtime_plugin` (default): register managed Brewva tools through the hosted
+  runtime plugin API.
 - `direct`: provide managed Brewva tools directly from the host/session while
   keeping the same hosted lifecycle pipeline active.
 
@@ -425,4 +425,4 @@ Channel mode examples:
 - Interactive mode defaults to quiet startup (reducing banner/changelog/version-check output).
 - Startup UI defaults are sourced from `BrewvaConfig.ui` and applied by `@brewva/brewva-cli`.
 - Use `--verbose` to explicitly enable detailed startup output.
-- To temporarily restore version-check notifications, run: `PI_SKIP_VERSION_CHECK= bun run start`.
+- To temporarily restore version-check notifications, run: `BREWVA_SKIP_VERSION_CHECK= bun run start`.

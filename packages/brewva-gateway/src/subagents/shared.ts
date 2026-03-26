@@ -184,7 +184,7 @@ export function assertDelegationShapeNarrowing(
   ) {
     throw new Error("subagent_effect_ceiling_widening_not_allowed");
   }
-  if (target.managedToolMode === "direct" && executionShape.managedToolMode === "extension") {
+  if (target.managedToolMode === "direct" && executionShape.managedToolMode === "runtime_plugin") {
     throw new Error("subagent_managed_tool_mode_widening_not_allowed");
   }
 }

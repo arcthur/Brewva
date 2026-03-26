@@ -801,8 +801,14 @@ export class BrewvaRuntime {
           this.sessionLifecycleService.onTurnStart(sessionId, turnIndex);
           this.taskWatchdogService.onTurnStart(sessionId);
         },
-        onTurnEnd: () => {},
-        onUserInput: () => {},
+        onTurnEnd: (sessionId) => {
+          this.sessionLifecycleService.ensureHydrated(sessionId);
+          this.contextInjection.clearPending(sessionId);
+          this.contextService.clearReservedInjectionTokensForSession(sessionId);
+        },
+        onUserInput: (sessionId) => {
+          this.sessionLifecycleService.ensureHydrated(sessionId);
+        },
         sanitizeInput: (text) => this.sanitizeInput(text),
         observeUsage: (sessionId, usage) =>
           this.contextService.observeContextUsage(sessionId, usage),
