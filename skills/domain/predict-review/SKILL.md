@@ -151,6 +151,22 @@ Produce:
 - Prefer one strong debate packet over a large number of shallow delegated
   runs.
 
+## Debate Setup Gate
+
+- [ ] The review target is bounded.
+- [ ] The decision the debate should inform is explicit.
+- [ ] Each perspective has a distinct reason to exist.
+- [ ] There is enough existing evidence to support read-only judgment.
+
+## Debate Questions
+
+Use these questions to keep the multi-perspective pass honest:
+
+- What is the strongest claim each perspective can actually support?
+- What evidence gap, if closed, would most likely reorder the hypotheses?
+- What is the strongest challenge to the emerging majority view?
+- Which disagreement is substantive enough that downstream work must see it?
+
 ## Delegation Protocol
 
 - `subagent_fanout` is the default when the perspectives are independent.

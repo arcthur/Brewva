@@ -96,6 +96,18 @@ Produce:
 - Prefer the safest operation that still satisfies the request. Do not default
   to history rewriting because it produces a prettier graph.
 
+## Operation Confirmation Gate
+
+Before running a Git mutation, restate:
+
+1. current branch and worktree posture
+2. exact operation
+3. affected scope
+4. rollback or recovery posture
+
+If any of those is unclear, stop at `commit_plan` or `git_context` instead of
+executing the mutation.
+
 ## Safety Protocol
 
 - Treat destructive or hard-to-rollback operations as explicit exceptions, not

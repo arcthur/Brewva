@@ -27,6 +27,7 @@ execution_hints:
 references:
   - skills/project/shared/runtime-artifacts.md
 consumes: []
+requires: []
 ---
 
 # Brewva Runtime Forensics Overlay
@@ -48,6 +49,11 @@ Inspect event store, evidence ledger, projection artifacts, WAL, and schedule pr
 ### Step 2: Correlate governance and cascade behavior
 
 Prefer event families and artifact joins that explain routing, cascade, context, and verification decisions.
+
+## Overlay Questions
+
+- Which canonical artifact path should answer this first?
+- Which governance or cascade event family would falsify the current suspicion?
 
 ## Stop Conditions
 

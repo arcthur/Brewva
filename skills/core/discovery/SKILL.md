@@ -104,6 +104,16 @@ Produce:
 - Recommend one primary framing and one bounded alternative when ambiguity
   remains; do not leave the user with a pile of unranked possibilities.
 
+## Discovery Questions
+
+Use these questions to separate the request from the real need:
+
+- What pain is happening now, not just what feature was requested?
+- What workaround already exists, and why is it insufficient?
+- What is the narrowest wedge that would still change user reality?
+- Which tempting scope expansion is really hiding uncertainty rather than
+  leverage?
+
 ## Framing Protocol
 
 - Distinguish stated request from underlying problem.

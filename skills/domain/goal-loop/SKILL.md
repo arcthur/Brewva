@@ -222,6 +222,16 @@ it happens. If the next run is scheduler-backed, create or update
 - Prefer a narrower scope and one causal unit per iteration over a larger but
   harder-to-explain batch of changes.
 
+## Continuation Questions
+
+Use these questions before extending the loop:
+
+- What objective evidence would count as real progress in the next run?
+- What result would falsify the current strategy rather than justify "one more try"?
+- Which next owner should take over if the loop stalls again?
+- Is the next run still a continuity problem, or has it become design,
+  debugging, or straightforward implementation?
+
 ## Convergence Protocol
 
 - Use explicit, observable predicates. If no predicate exists, stop and route

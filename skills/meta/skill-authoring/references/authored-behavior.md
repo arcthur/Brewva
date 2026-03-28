@@ -46,6 +46,41 @@ Examples:
 - classify findings by severity and decide whether the next action is fix,
   redesign, or block
 
+### Question-Driven Analysis
+
+When a skill depends on real judgment, convert vague instructions into concrete
+questions that focus attention on the right evidence.
+
+Weak:
+
+- review for architecture issues
+- check whether the root cause is clear
+- ensure the extracted payload is valid
+
+Stronger:
+
+- what user-visible behavior can fail now that could not fail before?
+- what single condition must be true for this failure to occur?
+- which required field is unsupported by source evidence and therefore should stay null?
+
+Questions work especially well for review, debugging, extraction, and release
+audits because they force the model to search for evidence instead of producing
+generic commentary.
+
+### Confirmation Gates
+
+If a skill may cross an approval or side-effect boundary, encode an explicit
+confirmation gate instead of relying on a vague "be careful" instruction.
+
+Good confirmation gates:
+
+- restate repo, object, and action before a GitHub write
+- restate release path before calling something ready to ship
+- stop at a draft artifact when the user did not clearly request mutation
+
+Use hard gates for low-reversibility actions, and softer "ask only when" rules
+for ordinary ambiguity.
+
 ### Handoff Expectations
 
 Every output should make the next skill easier to run.
@@ -74,6 +109,20 @@ Useful escalation rules include:
 - stop when required evidence is unavailable
 - stop when the remaining decision belongs to the user or an approval boundary
 
+### Delivery Checklists
+
+For output-heavy skills, add a short final checklist when consistency matters
+more than creative freedom.
+
+Good checklist targets:
+
+- UI specs that implementation will follow directly
+- release decisions with gating evidence
+- structured payloads that downstream tools will parse
+
+The checklist should stay concrete and observable. Avoid slogans like
+"ensure quality" when you really mean "all required states are specified."
+
 ## Good Skill Structure
 
 For behavior-rich skills, a practical structure is:
@@ -88,8 +137,36 @@ For behavior-rich skills, a practical structure is:
 8. Anti-Patterns
 9. Example
 
+Optional add-ons when the domain needs them:
+
+- Question Set
+- Confirmation Gate
+- Delivery Checklist
+
 Not every skill needs every section, but core skills should generally have at
 least explicit interaction, decision, and handoff guidance.
+
+## Overlay Inheritance
+
+Project overlays (`skills/project/overlays/<name>/`) tighten a base skill for a
+specific codebase. They do not replace the base skill's authored behavior.
+
+Inheritance rules:
+
+- **Questions, gates, and checklists** from the base skill apply automatically.
+  An overlay does not need to repeat them.
+- An overlay should add only the **project-specific delta**: questions that
+  reference project boundaries, gates that check project invariants, or
+  checklists that enforce project conventions.
+- If a base-skill gate or checklist is genuinely irrelevant for the project
+  context, the overlay may explicitly note the exemption and why.
+- An overlay must not weaken a base-skill gate. It may tighten one by adding
+  project-specific items.
+
+Example: the base `review` skill has a Merge Readiness Gate. The Brewva review
+overlay adds project-specific review questions about package boundaries and
+branding consistency, but does not restate the merge gate — the base gate still
+applies.
 
 ## What To Avoid
 

@@ -85,6 +85,15 @@ Produce:
 - Recommend one primary interaction pattern instead of offering several equally
   vague message shapes.
 
+## Channel Questions
+
+Use these questions to keep the payload channel-native:
+
+- What single user action should this message optimize for?
+- What decision load is realistic on a small screen with interrupted attention?
+- Which step needs explicit confirmation because the action is risky?
+- What information is necessary now versus better deferred to a follow-up step?
+
 ## Channel Design Protocol
 
 - Design copy, buttons, and decision load as one unit.
@@ -95,6 +104,13 @@ Produce:
   it in verbose text.
 - Keep payload structure aligned with channel constraints rather than mirroring
   desktop or web UI habits.
+
+## Pre-Delivery Checklist
+
+- [ ] The primary CTA is obvious.
+- [ ] The message fits interrupted mobile reading conditions.
+- [ ] Risky actions use an explicit confirmation path.
+- [ ] Buttons and copy support one coherent decision model.
 
 ## Handoff Expectations
 

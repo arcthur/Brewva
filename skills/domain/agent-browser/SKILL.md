@@ -80,6 +80,13 @@ Use this skill when:
 
 State the URL, the objective, and the evidence needed.
 
+### Navigation Gate
+
+- [ ] URL or entry surface is explicit.
+- [ ] Evidence target is explicit.
+- [ ] Auth posture is known or named as an uncertainty.
+- [ ] Static code or docs are insufficient for the question.
+
 ### Step 2: Run the browser workflow
 
 Use managed `browser_*` tools only. Do not invoke `agent-browser` directly
@@ -110,6 +117,14 @@ Produce:
   inferred safely from the request.
 - Prefer one observation or action per loop step. If uncertainty increases,
   refresh the snapshot instead of pushing forward blindly.
+
+## Browser Questions
+
+Use these questions to keep the session narrow:
+
+- What exact browser state should the next action prove or falsify?
+- What single observation would reduce the most uncertainty right now?
+- What evidence handle should be preserved so later work can resume from here?
 
 ## Evidence Protocol
 

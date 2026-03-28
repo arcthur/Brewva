@@ -53,6 +53,11 @@ Decide whether a concern belongs in runtime, tools, extensions, CLI, or gateway 
 
 Prefer moving lifecycle choreography out of public skills and into runtime or control-plane semantics when the boundary is procedural rather than capability-based.
 
+## Overlay Questions
+
+- Which package boundary actually owns this decision?
+- Is this a public capability choice or a kernel/control-plane concern?
+
 ## Stop Conditions
 
 - the change is purely local and does not touch ownership boundaries

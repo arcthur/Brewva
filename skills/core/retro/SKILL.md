@@ -107,6 +107,15 @@ Produce:
 - Recommend one primary follow-up rather than a vague bucket of "things to
   improve."
 
+## Retrospective Questions
+
+Use these questions to keep retro grounded in evidence:
+
+- What specific moment created the most avoidable delay or uncertainty?
+- Which problem was local noise versus a repeated pattern?
+- What changed behavior or confidence for the better, and why?
+- What is the smallest follow-up that would prevent this exact waste next time?
+
 ## Retrospective Protocol
 
 - Start with measurable facts: what changed, what blocked, what had to be fixed
@@ -120,6 +129,12 @@ Produce:
   verification.
 - If a finding is truly systemic, point toward `self-improve`; otherwise keep
   the follow-up bounded to the local workflow.
+
+## Follow-Up Gate
+
+- [ ] The top lesson is backed by concrete delivery evidence.
+- [ ] One-off pain is separated from systemic friction.
+- [ ] The recommended follow-up is bounded enough to execute in one next cycle.
 
 ## Handoff Expectations
 

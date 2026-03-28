@@ -94,3 +94,39 @@ Follow this style: type(scope): brief description, then detailed explanation.
 ```
 
 Examples help Claude understand the desired style and level of detail more clearly than descriptions alone.
+
+## Pre-Delivery Checklist Pattern
+
+When output quality depends on several concrete last-mile checks, add a short
+pre-delivery checklist.
+
+This pattern is useful for:
+
+- release handoff artifacts
+- UI or interaction specs
+- structured payloads consumed by downstream tooling
+
+Prefer checks that another operator could verify quickly:
+
+```markdown
+## Pre-Delivery Checklist
+
+- [ ] Required sections are present
+- [ ] All critical states or branches are covered
+- [ ] Ambiguities are called out explicitly instead of hidden
+- [ ] The artifact names the next action, not just observations
+```
+
+For domain-specific work, make the checks domain-specific:
+
+```markdown
+## Pre-Delivery Checklist
+
+- [ ] Loading, empty, error, and success states are specified
+- [ ] Primary action and fallback action are distinguishable
+- [ ] Breakpoint or layout constraints are named where relevant
+- [ ] Motion guidance is intentional, not decorative filler
+```
+
+Keep the checklist short. If it grows large, move the domain-specific version
+into `references/` and link to it from the main skill.

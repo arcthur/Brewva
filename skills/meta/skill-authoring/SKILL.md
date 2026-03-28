@@ -96,8 +96,17 @@ Ensure the skill body makes the specialist usable in practice:
 - define the role posture and what it optimizes for
 - add an interaction protocol for when to ask, proceed, or re-ground
 - add a decision protocol so the model knows how to choose, rank, or classify
+- turn abstract judgment into concrete questions when the skill depends on
+  analysis rather than rote execution
+- add confirmation gates when the workflow crosses a write, publish, approval,
+  or release boundary
 - add handoff expectations so downstream skills receive useful artifacts
+- add a short pre-delivery checklist when output quality depends on several
+  concrete final checks
 - make stop conditions and escalation behavior explicit
+- when authoring a project overlay, inherit base-skill questions, gates, and
+  checklists; add only the project-specific delta (see
+  `references/authored-behavior.md` § Overlay Inheritance)
 
 ### Step 4: Use the current scaffolding tools when structure matters
 

@@ -86,6 +86,15 @@ Produce:
 - `issue_brief` or `pr_brief`: actionable artifact draft
 - `ci_findings`: failed checks and next actions when CI is involved
 
+### Workflow Gate
+
+Before leaving triage and touching a live GitHub target, clear this gate:
+
+- [ ] repository and host are resolved
+- [ ] auth posture and permissions are known
+- [ ] workflow mode is explicit: `issue`, `pull_request`, `ci`, or `api_query`
+- [ ] any write target is named exactly: issue number, PR number, comment, label, or workflow run
+
 ## Interaction Protocol
 
 - Re-ground on repository, branch or PR, and requested GitHub action before
@@ -94,6 +103,19 @@ Produce:
   are ambiguous enough to risk operating on the wrong target.
 - Prefer one coherent GitHub workflow per request instead of mixing issue, PR,
   and CI actions opportunistically.
+
+## Write Confirmation Gate
+
+For GitHub writes, do not rely on implication. Before mutating remote state,
+restate:
+
+1. repository
+2. target object
+3. exact action
+4. why that action matches the user's request
+
+If the user did not explicitly ask for the write, stop at a draft `issue_brief`,
+`pr_brief`, or `ci_findings` artifact instead of executing the mutation.
 
 ## Mode Selection Protocol
 

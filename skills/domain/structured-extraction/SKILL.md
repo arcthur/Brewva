@@ -88,6 +88,15 @@ Produce:
 - If the source cannot support a stable schema, say so directly instead of
   forcing a shape that only looks valid.
 
+## Extraction Questions
+
+Use these questions to keep extraction honest:
+
+- Which fields are directly supported by source evidence?
+- Which fields can be repaired mechanically versus only guessed semantically?
+- Where should ambiguity stay explicit instead of being normalized away?
+- What downstream consumer expectation makes this schema worth enforcing?
+
 ## Extraction Protocol
 
 - Separate three things clearly: source evidence, repaired normalization, and
@@ -97,6 +106,13 @@ Produce:
 - Prefer stable keys and explicit null or missing-state handling over prose
   escape hatches.
 - Validation is part of the skill, not an optional cleanup pass.
+
+## Pre-Delivery Checklist
+
+- [ ] Every required field is either evidence-backed or explicitly unresolved.
+- [ ] Repairs are mechanical and described in `extraction_report`.
+- [ ] Missing or null states are explicit where source support is absent.
+- [ ] The output is stable enough for downstream tooling without reparsing prose.
 
 ## Handoff Expectations
 
