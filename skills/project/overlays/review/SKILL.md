@@ -33,6 +33,7 @@ consumes:
   - design_spec
   - verification_evidence
   - impact_map
+requires: []
 ---
 
 # Brewva Review Overlay
@@ -54,6 +55,11 @@ Prioritize runtime governance, package boundaries, CLI branding, config shape, a
 ### Step 2: Call out project-specific regressions
 
 Surface violations of the migration matrix, skill DoD, or artifact contract clarity.
+
+## Overlay Review Questions
+
+- Which Brewva invariant is this change most likely to violate?
+- Does the diff weaken package boundaries, branding consistency, or dist safety?
 
 ## Stop Conditions
 

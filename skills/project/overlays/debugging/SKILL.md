@@ -31,6 +31,7 @@ consumes:
   - impact_map
   - verification_evidence
   - runtime_trace
+requires: []
 ---
 
 # Brewva Debugging Overlay
@@ -52,6 +53,11 @@ Check whether the failure is in code paths, runtime artifacts, or both.
 ### Step 2: Bias to deterministic proof
 
 Prefer reproducible commands, event traces, and artifact correlations over speculation.
+
+## Overlay Questions
+
+- Which artifact or command most cleanly separates source failure from runtime symptom?
+- What Brewva-specific boundary is most likely to own the break?
 
 ## Stop Conditions
 

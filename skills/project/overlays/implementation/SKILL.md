@@ -33,6 +33,7 @@ consumes:
   - execution_mode_hint
   - root_cause
   - fix_strategy
+requires: []
 ---
 
 # Brewva Implementation Overlay
@@ -54,6 +55,12 @@ Treat runtime, CLI branding, and distribution safety gates as high-risk surfaces
 ### Step 2: Pair code and evidence
 
 When touching routing, verification, or distribution behavior, keep verification evidence explicit in the same change set.
+
+## Overlay Gate
+
+- [ ] Public surfaces stayed explicit.
+- [ ] Verification evidence is captured with the change.
+- [ ] Category migration did not quietly widen into architecture churn.
 
 ## Stop Conditions
 

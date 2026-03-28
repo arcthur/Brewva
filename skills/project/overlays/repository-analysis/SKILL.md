@@ -25,6 +25,7 @@ execution_hints:
 references:
   - skills/project/shared/package-boundaries.md
 consumes: []
+requires: []
 ---
 
 # Brewva Repository Analysis Overlay
@@ -46,6 +47,11 @@ Start from runtime, tools, extensions, CLI, gateway, and distribution boundaries
 ### Step 2: Highlight governance-critical paths
 
 Prioritize routing, verification, context, replay, and artifact persistence paths.
+
+## Overlay Questions
+
+- Which Brewva package boundary would have to move if this request is real?
+- Which governance-critical path is most likely to hide blast radius?
 
 ## Stop Conditions
 

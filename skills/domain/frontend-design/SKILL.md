@@ -87,6 +87,18 @@ Produce:
 - Recommend one clear direction instead of presenting several interchangeable UI
   moods.
 
+## Design Questions
+
+Use these questions to keep the design concrete:
+
+- What user moment is under the most pressure here?
+- What should be visually obvious in the first second?
+- Which state transitions or feedback moments carry the most product risk?
+- What existing product language must remain intact so the output does not feel
+  imported from another app?
+- What implementation detail must be specified now to prevent generic drift
+  later?
+
 ## Design Protocol
 
 - Start from user goal and interaction pressure, not from aesthetics in
@@ -103,6 +115,15 @@ Produce:
   product feeling implementation must preserve.
 - `ui_spec` should be concrete enough that implementation can build the screen
   or component without reinventing layout, hierarchy, or state transitions.
+
+## Pre-Delivery Checklist
+
+- [ ] Primary hierarchy and focal action are explicit.
+- [ ] Loading, empty, error, and success states are specified when relevant.
+- [ ] Motion guidance is intentional or explicitly omitted.
+- [ ] Layout, density, and breakpoint-sensitive behavior are concrete enough for
+      implementation.
+- [ ] The output avoids generic polish language and names what the UI should do.
 
 ## Stop Conditions
 

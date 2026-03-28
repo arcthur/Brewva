@@ -99,6 +99,15 @@ Produce:
 - If the evidence is insufficient, say so directly instead of drifting into
   source-level speculation.
 
+## Forensic Questions
+
+Use these questions to keep the investigation causal:
+
+- Which artifact is authoritative for this claim?
+- What happened first, and what changed after it?
+- Where do source artifacts and derived projections agree or diverge?
+- What missing artifact or event would most reduce uncertainty?
+
 ## Evidence Protocol
 
 - Start from authoritative artifacts first: event store, ledger, projection

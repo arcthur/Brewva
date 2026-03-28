@@ -96,6 +96,15 @@ Once the hot path and boundary map are clear, stop expanding and hand off.
 - Prefer a recommended reading path over a giant inventory dump. The goal is to
   reduce future uncertainty, not to prove you scanned many files.
 
+## Mapping Questions
+
+Use these questions to avoid aimless scanning:
+
+- Which entrypoint or public boundary is most likely to own this request?
+- What file or module would have to change if the user's complaint is real?
+- Which adjacent boundary is most likely to create hidden blast radius?
+- What unknown still blocks downstream design, review, or debugging work?
+
 ## Search Protocol
 
 - Start from likely entrypoints, public boundaries, and ownership seams.

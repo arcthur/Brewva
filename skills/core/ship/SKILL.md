@@ -131,6 +131,28 @@ Produce:
 - Recommend the release path you actually believe is safe. Do not hide behind a
   generic checklist if the release is clearly blocked.
 
+## Release Questions
+
+Use these questions before declaring anything shippable:
+
+- Which exact release action is being judged: PR, merge, or deploy handoff?
+- What evidence is current, and what evidence is stale relative to the latest change?
+- Which approval, CI, or repository-state gate still stands between now and the intended action?
+- If this moved forward now, what operator burden or rollback risk would remain?
+
+## Ship Confirmation Gate
+
+Before setting `ship_decision` to `ready`, clear this gate:
+
+- [ ] The exact release path being judged is explicit: PR, merge, or deploy handoff.
+- [ ] Review, QA, and verification evidence is current relative to the latest
+      risky change, not inherited from an earlier diff state.
+- [ ] No unresolved CI, approval, or repository-state blocker remains.
+- [ ] Operator burden and rollback posture are named, not assumed away.
+
+If any item is unclear, stop at `needs_follow_up` or `blocked` instead of
+declaring readiness.
+
 ## Release Path Protocol
 
 - Distinguish clearly between "ready for PR", "ready to merge", and

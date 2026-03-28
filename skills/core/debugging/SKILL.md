@@ -106,6 +106,17 @@ Do not patch. Produce:
 - If the issue is not yet reproducible, say that explicitly instead of acting as
   if a plausible narrative were proof.
 
+## Root Cause Questions
+
+Use questions to force causal discipline:
+
+- What exact boundary or invariant fails first, not just most visibly?
+- What condition must already be true for the observed symptom to appear?
+- What earlier state transition, input, or replay step created that condition?
+- What single observation would falsify the current leading hypothesis?
+- If the proposed cause were repaired, what downstream symptom should disappear
+  or change immediately?
+
 ## Hypothesis Protocol
 
 - Keep at most three active hypotheses.

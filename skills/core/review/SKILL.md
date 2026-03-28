@@ -106,6 +106,19 @@ Produce:
 - If a user-facing decision is needed, recommend the merge path you actually
   believe is safest instead of presenting symmetric options.
 
+## Review Questions
+
+Use these questions to keep the review anchored in behavior instead of style:
+
+- What can fail now that could not fail before this change?
+- Which contract, invariant, or ownership boundary does the diff rely on
+  without proving?
+- Where could persisted state, external effects, or user-visible behavior drift
+  partially rather than fail cleanly?
+- What evidence is still missing but required before `merge_decision = ready`?
+- If this merged today, what rollback, mitigation, or operator burden is most
+  likely?
+
 ## Findings Protocol
 
 - Prioritize behavior risk over style.
@@ -115,6 +128,17 @@ Produce:
   violations as first-class findings, not footnotes.
 - If the real problem is an unconfirmed bug rather than a review issue, say so
   and direct the next step toward debugging.
+
+## Merge Readiness Gate
+
+Before setting `merge_decision` to `ready`, mentally clear this gate:
+
+- [ ] The intended behavior still matches the current design and scope.
+- [ ] Verification evidence is current relative to the latest risky change.
+- [ ] No unresolved finding remains that could corrupt state, break contracts,
+      or cause operator-visible regressions.
+- [ ] Any remaining residual risk is named explicitly and is truly acceptable,
+      not merely unverified.
 
 ## Merge Decision Protocol
 

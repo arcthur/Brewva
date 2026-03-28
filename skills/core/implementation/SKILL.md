@@ -112,6 +112,15 @@ continue from the failure snapshot instead of re-deriving context from scratch.
 - If the change expands materially beyond the active plan, stop and hand control
   back to design instead of silently widening scope.
 
+## Change Safety Gate
+
+Before applying edits, clear this gate:
+
+- [ ] The active plan still matches the actual touched surface.
+- [ ] The diff can stay local instead of widening into incidental cleanup.
+- [ ] A concrete verification path exists for the risky behavior.
+- [ ] Any unresolved ambiguity is about execution detail, not missing design.
+
 ## Mode Selection Protocol
 
 - Use `direct_patch` for bounded local edits where verification is straightforward.

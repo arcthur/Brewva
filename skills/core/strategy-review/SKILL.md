@@ -116,6 +116,15 @@ Produce:
 - Recommend one primary posture and one bounded alternative when ambiguity
   remains. Do not leave scope unresolved by presenting a neutral menu.
 
+## Strategy Questions
+
+Use these questions to pressure-test the wedge:
+
+- Why now, specifically, rather than one cycle later?
+- What becomes true for the user if this lands, and what stays false?
+- Which adjacent scope adds leverage versus just adding surface area?
+- If we cut this in half, what is the smallest still-credible bet?
+
 ## Scope Posture Protocol
 
 - Expand only when the broader scope clearly compounds user value without
@@ -129,6 +138,13 @@ Produce:
   vague ambition statement.
 - When recommending expansion, say what must still remain out of scope so the
   next plan does not silently sprawl.
+
+## Scope Decision Gate
+
+- [ ] Accepted scope is explicit.
+- [ ] Deferred scope is explicit.
+- [ ] Non-goals are explicit.
+- [ ] Timing rationale is strong enough to justify the proposed posture.
 
 ## Handoff Expectations
 

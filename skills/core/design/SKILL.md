@@ -118,6 +118,16 @@ Produce:
 - When user input is needed, recommend one primary path and one bounded
   alternative instead of presenting an open menu of possibilities.
 
+## Design Questions
+
+Use these questions to keep planning first-principles-driven:
+
+- Which boundary actually owns this change?
+- Which option minimizes blast radius without weakening the outcome?
+- What verification evidence would prove this path was the right one?
+- What migration, rollback, or operator cost is being hidden by the most
+  attractive-looking option?
+
 ## Decision Protocol
 
 - Start with at most three viable approaches.
@@ -127,6 +137,13 @@ Produce:
   missing choice genuinely belongs to the user.
 - Prefer complete but bounded work over shortcut plans that defer obvious edge
   cases into follow-up churn.
+
+## Plan Emission Gate
+
+- [ ] The chosen path is explicit.
+- [ ] Deferred or rejected scope is named explicitly.
+- [ ] Verification posture is concrete, not implied.
+- [ ] Migration or rollback assumptions are visible to downstream skills.
 
 ## Handoff Expectations
 

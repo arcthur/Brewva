@@ -136,6 +136,15 @@ Produce:
 - Recommend the release path you believe the evidence supports. Do not hide
   behind a neutral report when the right verdict is obvious.
 
+## QA Questions
+
+Use these questions to pick the right test path:
+
+- Which user-visible path is most likely to fail for the reasons this diff is risky?
+- What setup or environment assumption must be true before this result means anything?
+- If the first failing path passes, what second path would still meaningfully reduce uncertainty?
+- What evidence must be captured now so `ship` does not have to trust prose?
+
 ## Test Execution Protocol
 
 - Start from the narrowest realistic flow that can fail for the reasons this
@@ -160,6 +169,13 @@ Produce:
   or missing product decisions.
 - Treat missing environments, broken auth, and irreproducible behavior as
   blockers, not as silent skips.
+
+## Release Confidence Gate
+
+- [ ] The highest-risk realistic path was actually exercised.
+- [ ] The observed result is backed by replayable evidence.
+- [ ] Any bounded fix was re-verified on the failing path.
+- [ ] Remaining uncertainty is named as a real blocker or residual risk.
 
 ## Handoff Expectations
 

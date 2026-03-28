@@ -143,6 +143,16 @@ Decide whether the improvement should land in:
 - If the supposed lesson depends on one ambiguous event, say that the evidence
   is too thin rather than inflating it into a systemic story.
 
+## Learning Questions
+
+Use these questions to keep improvement work evidence-backed:
+
+- What exactly repeated, and how many times?
+- What is the smallest hypothesis that explains the repeated waste?
+- Which home should absorb the fix: skill, overlay, project rule, runtime doc,
+  or tool?
+- What bounded experiment would falsify this lesson if it is wrong?
+
 ## Learning Protocol
 
 - Require repetition or a clearly recurring pattern. One-off bugs are not
@@ -160,6 +170,13 @@ Decide whether the improvement should land in:
   shared project rules, runtime docs, or targeted tooling.
 - No broad remediation without bounded evidence. If the evidence is narrow, the
   improvement should stay narrow too.
+
+## Promotion Gate
+
+- [ ] The pattern is repeated, not isolated.
+- [ ] Evidence anchors are traceable.
+- [ ] The proposed improvement home is explicit.
+- [ ] The next change is bounded enough to validate the lesson.
 
 ## Handoff Expectations
 
