@@ -1,5 +1,15 @@
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+export type JsonCompatible<T> = T extends JsonPrimitive
+  ? T
+  : T extends undefined
+    ? undefined
+    : T extends readonly (infer U)[]
+      ? JsonCompatible<U>[]
+      : T extends object
+        ? { [K in keyof T]: JsonCompatible<T[K]> }
+        : never;
+export type JsonCompatibleObject<T extends object> = T & { [K in keyof T]: JsonCompatible<T[K]> };
 
 export function sortJsonValue(value: unknown): unknown {
   if (Array.isArray(value)) {

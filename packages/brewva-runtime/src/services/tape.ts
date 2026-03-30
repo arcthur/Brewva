@@ -50,7 +50,7 @@ export interface TapeServiceOptions {
         sessionId: string;
         type: string;
         turn?: number;
-        payload?: Record<string, unknown>;
+        payload?: object;
         timestamp?: number;
         skipTapeCheckpoint?: boolean;
       },
@@ -294,7 +294,7 @@ export class TapeService {
       sessionId,
       type: TAPE_ANCHOR_EVENT_TYPE,
       turn: this.getCurrentTurn(sessionId),
-      payload: payload as unknown as Record<string, unknown>,
+      payload,
     });
     if (!row) {
       return { ok: false, error: "event_store_disabled" };
@@ -522,7 +522,7 @@ export class TapeService {
         sessionId,
         turn: this.getCurrentTurn(sessionId),
         type: TAPE_CHECKPOINT_EVENT_TYPE,
-        payload: payload as unknown as Record<string, unknown>,
+        payload,
         skipTapeCheckpoint: true,
       });
       if (row) {

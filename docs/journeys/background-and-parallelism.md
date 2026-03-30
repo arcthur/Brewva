@@ -48,7 +48,9 @@ flowchart TD
 6. Let the parent session inspect and adopt child patch results explicitly via
    `worker_results_merge` and `worker_results_apply`.
 7. Feed pending or applied worker outcomes back into derived workflow status so
-   ship state remains blocked until parent-controlled merge/apply completes.
+   ship state remains blocked until parent-controlled merge/apply completes,
+   and keep late detached outcomes visible as explicit parent-attention
+   blockers until they are surfaced.
 8. Release slots, persist lifecycle state, and keep pending child runs visible
    to compaction through a dedicated `PendingDelegations` section.
 
@@ -72,8 +74,19 @@ effort helpers.
   `subagent_status` can report whether the selected child model came from the
   requested execution shape, the target preset, or an auto-applied policy
 - `subagent_status` and `subagent_cancel` survive parent runtime restarts
+- detached `waitMode=start` runs use the same runtime slot gate as foreground
+  delegation, including per-skill `maxParallel` enforcement
+- parent restart restores durable detached live runs back into the in-memory
+  slot ledger so new background work cannot overrun the original concurrency
+  budget
 - the control-plane delegation read model rebuilds run state from lifecycle
   events and durable run metadata
+- `subagent_spawned` records durable creation and `subagent_running` records
+  the later live child transition; older replay tapes that encoded the running
+  transition as `subagent_spawned(status=running)` remain supported
+- completion predicates are checked before spawn, re-checked during detached
+  run recovery, and evaluated again on later parent events; an already-satisfied
+  predicate records a terminal cancellation instead of spawning then cancelling
 - `HostedDelegationStore.listPendingOutcomes(...)` is the stable derived handoff
   view for late detached outcomes
 - hosted turns surface pending late results through a
@@ -84,6 +97,9 @@ effort helpers.
   delegation outcomes awaiting parent attention
 - these signals remain explicit inspection state; they do not auto-apply child
   work or force the parent into a stage machine
+- isolated patch workers create their snapshot workspace with best-effort
+  reflink/COW semantics when available and use persisted child patch history as
+  a changed-path journal before falling back to full-tree diffing
 
 Note: use `runtime.tools.acquireParallelSlot(...)` to apply per-skill
 `maxParallel` policy (warn/enforce), not internal parallel managers directly.

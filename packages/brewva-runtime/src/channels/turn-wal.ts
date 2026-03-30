@@ -25,11 +25,7 @@ export interface TurnWALStoreOptions {
   config: BrewvaConfig["infrastructure"]["turnWal"];
   scope: string;
   now?: () => number;
-  recordEvent?: (input: {
-    sessionId: string;
-    type: string;
-    payload?: Record<string, unknown>;
-  }) => void;
+  recordEvent?: (input: { sessionId: string; type: string; payload?: object }) => void;
 }
 
 export interface TurnWALAppendPendingOptions {
@@ -173,7 +169,7 @@ export class TurnWALStore {
   private readonly scheduleTurnTtlMs: number;
   private readonly compactAfterMs: number;
   private readonly recordEvent?:
-    | ((input: { sessionId: string; type: string; payload?: Record<string, unknown> }) => void)
+    | ((input: { sessionId: string; type: string; payload?: object }) => void)
     | undefined;
   private readonly cacheByFilePath = new Map<string, TurnWALFileCache>();
   private integrityIssues: IntegrityIssue[] = [];

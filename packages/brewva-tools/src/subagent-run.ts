@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type, type Static, type TSchema } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import type {
   BrewvaToolOptions,
   DelegationPacket,
@@ -13,7 +14,7 @@ import type {
   SubagentExecutionBoundary,
 } from "./types.js";
 import { buildStringEnumSchema } from "./utils/input-alias.js";
-import { failTextResult, textResult, withVerdict } from "./utils/result.js";
+import { failTextResult, textResult, toolDetails, withVerdict } from "./utils/result.js";
 import { getSessionId } from "./utils/session.js";
 import { defineBrewvaTool } from "./utils/tool.js";
 
@@ -162,111 +163,182 @@ const TaskPacketSchema = Type.Object({
   effectCeiling: PacketFields.effectCeiling,
 });
 
-function hasSinglePacketInput(params: Record<string, unknown>): boolean {
+const SharedPacketSchema = Type.Object(PacketFields);
+
+const SubagentRunParamsSchema = Type.Object({
+  agentSpec: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  envelope: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  skillName: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  fallbackResultMode: Type.Optional(ResultModeSchema),
+  executionShape: Type.Optional(ExecutionShapeSchema),
+  mode: Type.Optional(ModeSchema),
+  objective: PacketFields.objective,
+  deliverable: PacketFields.deliverable,
+  constraints: PacketFields.constraints,
+  sharedNotes: PacketFields.sharedNotes,
+  activeSkillName: PacketFields.activeSkillName,
+  executionHints: PacketFields.executionHints,
+  contextRefs: PacketFields.contextRefs,
+  contextBudget: PacketFields.contextBudget,
+  completionPredicate: PacketFields.completionPredicate,
+  effectCeiling: PacketFields.effectCeiling,
+  waitMode: Type.Optional(WaitModeSchema),
+  timeoutMs: Type.Optional(Type.Integer({ minimum: 1 })),
+  returnMode: Type.Optional(ReturnModeSchema),
+  returnLabel: Type.Optional(Type.String({ minLength: 1, maxLength: 240 })),
+  returnScopeId: Type.Optional(Type.String({ minLength: 1, maxLength: 240 })),
+  tasks: Type.Optional(Type.Array(TaskPacketSchema, { minItems: 1, maxItems: 12 })),
+});
+
+const SubagentFanoutParamsSchema = Type.Object({
+  agentSpec: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  envelope: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  skillName: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  fallbackResultMode: Type.Optional(ResultModeSchema),
+  executionShape: Type.Optional(ExecutionShapeSchema),
+  objective: PacketFields.objective,
+  deliverable: PacketFields.deliverable,
+  constraints: PacketFields.constraints,
+  sharedNotes: PacketFields.sharedNotes,
+  activeSkillName: PacketFields.activeSkillName,
+  executionHints: PacketFields.executionHints,
+  contextRefs: PacketFields.contextRefs,
+  contextBudget: PacketFields.contextBudget,
+  completionPredicate: PacketFields.completionPredicate,
+  effectCeiling: PacketFields.effectCeiling,
+  waitMode: Type.Optional(WaitModeSchema),
+  timeoutMs: Type.Optional(Type.Integer({ minimum: 1 })),
+  returnMode: Type.Optional(ReturnModeSchema),
+  returnLabel: Type.Optional(Type.String({ minLength: 1, maxLength: 240 })),
+  returnScopeId: Type.Optional(Type.String({ minLength: 1, maxLength: 240 })),
+  tasks: Type.Array(TaskPacketSchema, { minItems: 1, maxItems: 12 }),
+});
+
+type SharedPacketInput = Static<typeof SharedPacketSchema>;
+type ExecutionShapeInput = Static<typeof ExecutionShapeSchema>;
+type CompletionPredicateInput = Static<typeof CompletionPredicateSchema>;
+type TaskPacketInput = Static<typeof TaskPacketSchema>;
+type SubagentRunParams = Static<typeof SubagentRunParamsSchema>;
+type SubagentFanoutParams = Static<typeof SubagentFanoutParamsSchema>;
+
+function decodeToolParams<TSchemaValue extends TSchema>(
+  schema: TSchemaValue,
+  value: unknown,
+): Static<TSchemaValue> {
+  const cleaned = Value.Clean(schema, value);
+  if (!Value.Check(schema, cleaned)) {
+    throw new Error("validated subagent params failed schema decode");
+  }
+  return Value.Clone(cleaned);
+}
+
+function hasSinglePacketInput(params: SharedPacketInput): boolean {
   return (
-    typeof params.objective === "string" ||
-    typeof params.deliverable === "string" ||
-    Array.isArray(params.constraints) ||
-    Array.isArray(params.sharedNotes) ||
-    typeof params.activeSkillName === "string" ||
-    typeof params.executionHints === "object" ||
-    Array.isArray(params.contextRefs) ||
-    typeof params.contextBudget === "object" ||
-    typeof params.completionPredicate === "object" ||
-    typeof params.effectCeiling === "object"
+    params.objective !== undefined ||
+    params.deliverable !== undefined ||
+    params.constraints !== undefined ||
+    params.sharedNotes !== undefined ||
+    params.activeSkillName !== undefined ||
+    params.executionHints !== undefined ||
+    params.contextRefs !== undefined ||
+    params.contextBudget !== undefined ||
+    params.completionPredicate !== undefined ||
+    params.effectCeiling !== undefined
   );
 }
 
-function toPacket(packet: {
-  objective?: unknown;
-  deliverable?: unknown;
-  constraints?: unknown;
-  sharedNotes?: unknown;
-  activeSkillName?: unknown;
-  executionHints?: unknown;
-  contextRefs?: unknown;
-  contextBudget?: unknown;
-  completionPredicate?: unknown;
-  effectCeiling?: unknown;
-}): DelegationPacket | undefined {
-  const objective = typeof packet.objective === "string" ? packet.objective.trim() : "";
-  if (!objective) {
+function buildExecutionHints(
+  value: SharedPacketInput["executionHints"],
+): DelegationPacket["executionHints"] | undefined {
+  if (!value) {
     return undefined;
   }
-  const boundary = normalizeBoundary(
-    typeof packet.effectCeiling === "object" && packet.effectCeiling !== null
-      ? (packet.effectCeiling as { boundary?: unknown }).boundary
-      : undefined,
-  );
+  const preferredTools = value.preferredTools;
+  const fallbackTools = value.fallbackTools;
+  const preferredSkills = value.preferredSkills;
+  if (!preferredTools && !fallbackTools && !preferredSkills) {
+    return undefined;
+  }
   return {
-    objective,
-    deliverable: typeof packet.deliverable === "string" ? packet.deliverable : undefined,
-    constraints: Array.isArray(packet.constraints) ? packet.constraints : undefined,
-    sharedNotes: Array.isArray(packet.sharedNotes) ? packet.sharedNotes : undefined,
-    activeSkillName:
-      typeof packet.activeSkillName === "string" ? packet.activeSkillName : undefined,
-    executionHints:
-      typeof packet.executionHints === "object" && packet.executionHints !== null
-        ? {
-            preferredTools: Array.isArray(
-              (packet.executionHints as { preferredTools?: unknown }).preferredTools,
-            )
-              ? ((packet.executionHints as { preferredTools: string[] }).preferredTools ?? [])
-              : undefined,
-            fallbackTools: Array.isArray(
-              (packet.executionHints as { fallbackTools?: unknown }).fallbackTools,
-            )
-              ? ((packet.executionHints as { fallbackTools: string[] }).fallbackTools ?? [])
-              : undefined,
-            preferredSkills: Array.isArray(
-              (packet.executionHints as { preferredSkills?: unknown }).preferredSkills,
-            )
-              ? ((packet.executionHints as { preferredSkills: string[] }).preferredSkills ?? [])
-              : undefined,
-          }
-        : undefined,
-    contextRefs: Array.isArray(packet.contextRefs) ? packet.contextRefs : undefined,
-    contextBudget:
-      typeof packet.contextBudget === "object" && packet.contextBudget !== null
-        ? {
-            maxInjectionTokens:
-              typeof (packet.contextBudget as { maxInjectionTokens?: unknown })
-                .maxInjectionTokens === "number"
-                ? (packet.contextBudget as { maxInjectionTokens: number }).maxInjectionTokens
-                : undefined,
-            maxTurnTokens:
-              typeof (packet.contextBudget as { maxTurnTokens?: unknown }).maxTurnTokens ===
-              "number"
-                ? (packet.contextBudget as { maxTurnTokens: number }).maxTurnTokens
-                : undefined,
-          }
-        : undefined,
-    completionPredicate: toCompletionPredicate(packet.completionPredicate),
-    effectCeiling: boundary ? { boundary } : undefined,
+    preferredTools,
+    fallbackTools,
+    preferredSkills,
   };
 }
 
-function toExecutionShape(value: unknown): SubagentExecutionShape | undefined {
-  if (typeof value !== "object" || value === null) {
+function buildCompletionPredicate(
+  value: CompletionPredicateInput | undefined,
+): DelegationCompletionPredicate | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (value.source === "events") {
+    return {
+      source: "events",
+      type: value.type,
+      match: value.match && Object.keys(value.match).length > 0 ? value.match : undefined,
+      policy: "cancel_when_true",
+    };
+  }
+  return {
+    source: "worker_results",
+    workerId: value.workerId,
+    status:
+      value.status === "ok" || value.status === "error" || value.status === "skipped"
+        ? value.status
+        : undefined,
+    policy: "cancel_when_true",
+  };
+}
+
+function buildPacket(packet: SharedPacketInput): DelegationPacket | undefined {
+  const objective = packet.objective?.trim() ?? "";
+  if (!objective) {
+    return undefined;
+  }
+  const contextBudget =
+    packet.contextBudget &&
+    (packet.contextBudget.maxInjectionTokens !== undefined ||
+      packet.contextBudget.maxTurnTokens !== undefined)
+      ? {
+          maxInjectionTokens: packet.contextBudget.maxInjectionTokens,
+          maxTurnTokens: packet.contextBudget.maxTurnTokens,
+        }
+      : undefined;
+  const boundary = normalizeBoundary(packet.effectCeiling?.boundary);
+  const effectCeiling = boundary ? { boundary } : undefined;
+  return {
+    objective,
+    deliverable: packet.deliverable,
+    constraints: packet.constraints,
+    sharedNotes: packet.sharedNotes,
+    activeSkillName: packet.activeSkillName,
+    executionHints: buildExecutionHints(packet.executionHints),
+    contextRefs: packet.contextRefs,
+    contextBudget,
+    completionPredicate: buildCompletionPredicate(packet.completionPredicate),
+    effectCeiling,
+  };
+}
+
+function buildExecutionShape(
+  value: ExecutionShapeInput | undefined,
+): SubagentExecutionShape | undefined {
+  if (!value) {
     return undefined;
   }
   const resultMode =
-    (value as { resultMode?: unknown }).resultMode === "exploration" ||
-    (value as { resultMode?: unknown }).resultMode === "review" ||
-    (value as { resultMode?: unknown }).resultMode === "verification" ||
-    (value as { resultMode?: unknown }).resultMode === "patch"
-      ? ((value as { resultMode: SubagentExecutionShape["resultMode"] }).resultMode ?? undefined)
+    value.resultMode === "exploration" ||
+    value.resultMode === "review" ||
+    value.resultMode === "verification" ||
+    value.resultMode === "patch"
+      ? value.resultMode
       : undefined;
-  const boundary = normalizeBoundary((value as { boundary?: unknown }).boundary);
-  const model =
-    typeof (value as { model?: unknown }).model === "string"
-      ? (value as { model: string }).model
-      : undefined;
+  const boundary = normalizeBoundary(value.boundary);
+  const model = typeof value.model === "string" ? value.model : undefined;
   const managedToolMode =
-    (value as { managedToolMode?: unknown }).managedToolMode === "direct" ||
-    (value as { managedToolMode?: unknown }).managedToolMode === "runtime_plugin"
-      ? ((value as { managedToolMode: SubagentExecutionShape["managedToolMode"] })
-          .managedToolMode ?? undefined)
+    value.managedToolMode === "direct" || value.managedToolMode === "runtime_plugin"
+      ? value.managedToolMode
       : undefined;
   if (!resultMode && !boundary && !model && !managedToolMode) {
     return undefined;
@@ -279,64 +351,14 @@ function toExecutionShape(value: unknown): SubagentExecutionShape | undefined {
   };
 }
 
-function toCompletionPredicate(value: unknown): DelegationCompletionPredicate | undefined {
-  if (typeof value !== "object" || value === null) {
-    return undefined;
-  }
-  if ((value as { source?: unknown }).source === "events") {
-    const type =
-      typeof (value as { type?: unknown }).type === "string"
-        ? (value as { type: string }).type
-        : undefined;
-    if (!type) {
-      return undefined;
-    }
-    const match =
-      typeof (value as { match?: unknown }).match === "object" &&
-      (value as { match?: unknown }).match !== null &&
-      !Array.isArray((value as { match?: unknown }).match)
-        ? (Object.fromEntries(
-            Object.entries((value as { match: Record<string, unknown> }).match).filter(
-              ([, entry]) =>
-                typeof entry === "string" ||
-                typeof entry === "number" ||
-                typeof entry === "boolean" ||
-                entry === null,
-            ),
-          ) as Record<string, string | number | boolean | null>)
-        : undefined;
-    return {
-      source: "events",
-      type,
-      match,
-      policy: "cancel_when_true",
-    };
-  }
-  if ((value as { source?: unknown }).source === "worker_results") {
-    const status =
-      (value as { status?: unknown }).status === "ok" ||
-      (value as { status?: unknown }).status === "error" ||
-      (value as { status?: unknown }).status === "skipped"
-        ? ((value as { status: "ok" | "error" | "skipped" }).status ?? undefined)
-        : undefined;
-    return {
-      source: "worker_results",
-      workerId:
-        typeof (value as { workerId?: unknown }).workerId === "string"
-          ? (value as { workerId: string }).workerId
-          : undefined,
-      status,
-      policy: "cancel_when_true",
-    };
-  }
-  return undefined;
-}
-
 function normalizeBoundary(value: unknown): SubagentExecutionBoundary | undefined {
   return value === "safe" || value === "effectful" ? value : undefined;
 }
 
-function resolveMode(value: unknown, tasks: unknown): SubagentDelegationMode {
+function resolveMode(
+  value: unknown,
+  tasks: readonly TaskPacketInput[] | undefined,
+): SubagentDelegationMode {
   if (value === "parallel") {
     return "parallel";
   }
@@ -358,40 +380,13 @@ function includesSupplementalReturn(mode: SubagentReturnMode): boolean {
   return mode === "supplemental";
 }
 
-const REMOVED_DELEGATION_FIELDS = ["profile", "entrySkill", "requiredOutputs"] as const;
-
-function collectRemovedDelegationFields(params: Record<string, unknown>): string[] {
-  const removed = new Set<string>();
-  for (const field of REMOVED_DELEGATION_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(params, field)) {
-      removed.add(field);
-    }
-  }
-  if (Array.isArray(params.tasks)) {
-    for (const task of params.tasks) {
-      if (typeof task !== "object" || task === null) {
-        continue;
-      }
-      for (const field of REMOVED_DELEGATION_FIELDS) {
-        if (field === "profile") {
-          continue;
-        }
-        if (Object.prototype.hasOwnProperty.call(task, field)) {
-          removed.add(`tasks[].${field}`);
-        }
-      }
-    }
-  }
-  return [...removed];
-}
-
-function toTask(task: Record<string, unknown>): DelegationTaskPacket {
-  const packet = toPacket(task);
+function toTask(task: TaskPacketInput): DelegationTaskPacket {
+  const packet = buildPacket(task);
   if (!packet) {
     throw new Error("parallel task objective is required");
   }
   return {
-    label: typeof task.label === "string" ? task.label : undefined,
+    label: task.label,
     ...packet,
   };
 }
@@ -536,15 +531,15 @@ function validateDeliveryConfiguration(
 
 function buildDeliveryRequest(
   returnMode: SubagentReturnMode,
-  params: Record<string, unknown>,
+  params: Pick<SubagentRunParams, "returnLabel" | "returnScopeId">,
 ): SubagentRunRequest["delivery"] | undefined {
   if (returnMode === "text_only") {
     return undefined;
   }
   return {
     returnMode,
-    returnLabel: typeof params.returnLabel === "string" ? params.returnLabel : undefined,
-    returnScopeId: typeof params.returnScopeId === "string" ? params.returnScopeId : undefined,
+    returnLabel: params.returnLabel,
+    returnScopeId: params.returnScopeId,
   };
 }
 
@@ -565,36 +560,20 @@ function resolveDelegationLabel(
 }
 
 function buildRunRequestFromParams(input: {
-  params: Record<string, unknown>;
+  params: SubagentRunParams | SubagentFanoutParams;
   mode: SubagentDelegationMode;
 }): { ok: true; request: SubagentRunRequest } | { ok: false; message: string } {
-  const removedFields = collectRemovedDelegationFields(input.params);
-  if (removedFields.length > 0) {
-    return {
-      ok: false,
-      message: `Error: legacy delegation fields are no longer supported: ${removedFields.join(", ")}.`,
-    };
-  }
-
-  const agentSpec =
-    typeof input.params.agentSpec === "string" && input.params.agentSpec.trim().length > 0
-      ? input.params.agentSpec
-      : undefined;
-  const envelope =
-    typeof input.params.envelope === "string" && input.params.envelope.trim().length > 0
-      ? input.params.envelope
-      : undefined;
-  const explicitSkillName =
-    typeof input.params.skillName === "string" && input.params.skillName.trim().length > 0
-      ? input.params.skillName
-      : undefined;
-  const executionShape = toExecutionShape(input.params.executionShape);
+  const { params } = input;
+  const agentSpec = params.agentSpec?.trim() ? params.agentSpec : undefined;
+  const envelope = params.envelope?.trim() ? params.envelope : undefined;
+  const explicitSkillName = params.skillName?.trim() ? params.skillName : undefined;
+  const executionShape = buildExecutionShape(params.executionShape);
   const fallbackResultMode =
-    input.params.fallbackResultMode === "exploration" ||
-    input.params.fallbackResultMode === "review" ||
-    input.params.fallbackResultMode === "verification" ||
-    input.params.fallbackResultMode === "patch"
-      ? (input.params.fallbackResultMode as SubagentRunRequest["fallbackResultMode"])
+    params.fallbackResultMode === "exploration" ||
+    params.fallbackResultMode === "review" ||
+    params.fallbackResultMode === "verification" ||
+    params.fallbackResultMode === "patch"
+      ? params.fallbackResultMode
       : undefined;
   const request: SubagentRunRequest = {
     agentSpec,
@@ -603,11 +582,11 @@ function buildRunRequestFromParams(input: {
     fallbackResultMode,
     executionShape,
     mode: input.mode,
-    timeoutMs: typeof input.params.timeoutMs === "number" ? input.params.timeoutMs : undefined,
+    timeoutMs: params.timeoutMs,
   };
 
   if (input.mode === "single") {
-    const packet = toPacket(input.params);
+    const packet = buildPacket(params);
     if (!packet) {
       return {
         ok: false,
@@ -618,20 +597,20 @@ function buildRunRequestFromParams(input: {
     return { ok: true, request };
   }
 
-  if (!Array.isArray(input.params.tasks) || input.params.tasks.length === 0) {
+  if (!params.tasks || params.tasks.length === 0) {
     return {
       ok: false,
       message: "Error: tasks is required for mode=parallel.",
     };
   }
-  if (hasSinglePacketInput(input.params)) {
-    const sharedPacket = toPacket(input.params);
+  if (hasSinglePacketInput(params)) {
+    const sharedPacket = buildPacket(params);
     if (sharedPacket) {
       request.packet = sharedPacket;
     }
   }
   try {
-    request.tasks = input.params.tasks.map((task) => toTask(task as Record<string, unknown>));
+    request.tasks = params.tasks.map((task) => toTask(task));
   } catch (error) {
     return {
       ok: false,
@@ -694,9 +673,7 @@ async function executeSubagentToolWithRequest(input: {
     ];
     return textResult(
       lines.join("\n"),
-      started.ok
-        ? (started as unknown as Record<string, unknown>)
-        : withVerdict(started as unknown as Record<string, unknown>, "fail"),
+      started.ok ? toolDetails(started) : withVerdict(toolDetails(started), "fail"),
     );
   }
 
@@ -707,7 +684,7 @@ async function executeSubagentToolWithRequest(input: {
   if (!result.ok) {
     return failTextResult(
       `${input.completionVerb} failed for delegate=${input.delegate}: ${result.error ?? "unknown_error"}`,
-      result as unknown as Record<string, unknown>,
+      toolDetails(result),
     );
   }
 
@@ -738,7 +715,7 @@ async function executeSubagentToolWithRequest(input: {
     );
   }
   const details = {
-    ...(result as unknown as Record<string, unknown>),
+    ...toolDetails(result),
     delivery,
   };
   return textResult(lines.join("\n"), failures.length > 0 ? withVerdict(details, "fail") : details);
@@ -760,28 +737,7 @@ export function createSubagentRunTool(options: BrewvaToolOptions): ToolDefinitio
       "Keep objectives specific, pass only the context references the child needs, and avoid broad parent-context dumps.",
     ],
     parameters: Type.Object({
-      agentSpec: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
-      envelope: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
-      skillName: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
-      fallbackResultMode: Type.Optional(ResultModeSchema),
-      executionShape: Type.Optional(ExecutionShapeSchema),
-      mode: Type.Optional(ModeSchema),
-      objective: PacketFields.objective,
-      deliverable: PacketFields.deliverable,
-      constraints: PacketFields.constraints,
-      sharedNotes: PacketFields.sharedNotes,
-      activeSkillName: PacketFields.activeSkillName,
-      executionHints: PacketFields.executionHints,
-      contextRefs: PacketFields.contextRefs,
-      contextBudget: PacketFields.contextBudget,
-      completionPredicate: PacketFields.completionPredicate,
-      effectCeiling: PacketFields.effectCeiling,
-      waitMode: Type.Optional(WaitModeSchema),
-      timeoutMs: Type.Optional(Type.Integer({ minimum: 1 })),
-      returnMode: Type.Optional(ReturnModeSchema),
-      returnLabel: Type.Optional(Type.String({ minLength: 1, maxLength: 240 })),
-      returnScopeId: Type.Optional(Type.String({ minLength: 1, maxLength: 240 })),
-      tasks: Type.Optional(Type.Array(TaskPacketSchema, { minItems: 1, maxItems: 12 })),
+      ...SubagentRunParamsSchema.properties,
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const adapter = options.runtime.orchestration?.subagents;
@@ -791,15 +747,16 @@ export function createSubagentRunTool(options: BrewvaToolOptions): ToolDefinitio
         });
       }
 
-      const mode = resolveMode(params.mode, params.tasks);
-      const waitMode = resolveWaitMode(params.waitMode);
-      const returnMode = resolveReturnMode(params.returnMode);
+      const decodedParams = decodeToolParams(SubagentRunParamsSchema, params);
+      const mode = resolveMode(decodedParams.mode, decodedParams.tasks);
+      const waitMode = resolveWaitMode(decodedParams.waitMode);
+      const returnMode = resolveReturnMode(decodedParams.returnMode);
       const deliveryValidation = validateDeliveryConfiguration(options.runtime, returnMode);
       if (!deliveryValidation.ok) {
         return failTextResult(deliveryValidation.message, { ok: false });
       }
       const builtRequest = buildRunRequestFromParams({
-        params: params as Record<string, unknown>,
+        params: decodedParams,
         mode,
       });
       if (!builtRequest.ok) {
@@ -817,7 +774,7 @@ export function createSubagentRunTool(options: BrewvaToolOptions): ToolDefinitio
         adapter,
         completionVerb: "subagent_run",
         startVerb: "subagent_run started",
-        delivery: buildDeliveryRequest(returnMode, params as Record<string, unknown>),
+        delivery: buildDeliveryRequest(returnMode, decodedParams),
       });
     },
   });
@@ -838,27 +795,7 @@ export function createSubagentFanoutTool(options: BrewvaToolOptions): ToolDefini
       "Prefer read-only envelopes unless the workflow is explicitly ready to inspect and merge isolated patch results.",
     ],
     parameters: Type.Object({
-      agentSpec: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
-      envelope: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
-      skillName: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
-      fallbackResultMode: Type.Optional(ResultModeSchema),
-      executionShape: Type.Optional(ExecutionShapeSchema),
-      objective: PacketFields.objective,
-      deliverable: PacketFields.deliverable,
-      constraints: PacketFields.constraints,
-      sharedNotes: PacketFields.sharedNotes,
-      activeSkillName: PacketFields.activeSkillName,
-      executionHints: PacketFields.executionHints,
-      contextRefs: PacketFields.contextRefs,
-      contextBudget: PacketFields.contextBudget,
-      completionPredicate: PacketFields.completionPredicate,
-      effectCeiling: PacketFields.effectCeiling,
-      waitMode: Type.Optional(WaitModeSchema),
-      timeoutMs: Type.Optional(Type.Integer({ minimum: 1 })),
-      returnMode: Type.Optional(ReturnModeSchema),
-      returnLabel: Type.Optional(Type.String({ minLength: 1, maxLength: 240 })),
-      returnScopeId: Type.Optional(Type.String({ minLength: 1, maxLength: 240 })),
-      tasks: Type.Array(TaskPacketSchema, { minItems: 1, maxItems: 12 }),
+      ...SubagentFanoutParamsSchema.properties,
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const adapter = options.runtime.orchestration?.subagents;
@@ -868,14 +805,15 @@ export function createSubagentFanoutTool(options: BrewvaToolOptions): ToolDefini
         });
       }
 
-      const waitMode = resolveWaitMode(params.waitMode);
-      const returnMode = resolveReturnMode(params.returnMode);
+      const decodedParams = decodeToolParams(SubagentFanoutParamsSchema, params);
+      const waitMode = resolveWaitMode(decodedParams.waitMode);
+      const returnMode = resolveReturnMode(decodedParams.returnMode);
       const deliveryValidation = validateDeliveryConfiguration(options.runtime, returnMode);
       if (!deliveryValidation.ok) {
         return failTextResult(deliveryValidation.message, { ok: false });
       }
       const builtRequest = buildRunRequestFromParams({
-        params: { ...(params as Record<string, unknown>), mode: "parallel" },
+        params: { ...decodedParams, mode: "parallel" },
         mode: "parallel",
       });
       if (!builtRequest.ok) {
@@ -893,7 +831,7 @@ export function createSubagentFanoutTool(options: BrewvaToolOptions): ToolDefini
         adapter,
         completionVerb: "subagent_fanout",
         startVerb: "subagent_fanout started",
-        delivery: buildDeliveryRequest(returnMode, params as Record<string, unknown>),
+        delivery: buildDeliveryRequest(returnMode, decodedParams),
       });
     },
   });

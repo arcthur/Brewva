@@ -33,8 +33,11 @@ describe("context transform session hook contract", () => {
         },
       },
       events: {
-        record: (input: { type: string; payload?: Record<string, unknown> }) => {
-          eventPayloads.push({ type: input.type, payload: input.payload });
+        record: (input: { type: string; payload?: object }) => {
+          eventPayloads.push({
+            type: input.type,
+            payload: input.payload as Record<string, unknown> | undefined,
+          });
           return undefined;
         },
       },

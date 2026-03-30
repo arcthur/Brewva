@@ -75,3 +75,13 @@ export interface DelegationRunQuery {
 export interface PendingDelegationOutcomeQuery {
   limit?: number;
 }
+
+export function isDelegationRunTerminalStatus(status: DelegationRunStatus): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "timeout" ||
+    status === "cancelled" ||
+    status === "merged"
+  );
+}

@@ -70,4 +70,38 @@ describe("HostedDelegationStore", () => {
     expect(pending[0]?.runId).toBe("pending-older");
     expect(pending[0]?.delivery?.handoffState).toBe("pending_parent_turn");
   });
+
+  test("replays subagent_running as the live lifecycle transition while keeping older spawned events compatible", () => {
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const store = new HostedDelegationStore(runtime);
+    const sessionId = "delegation-store-running";
+
+    runtime.events.record({
+      sessionId,
+      type: "subagent_spawned",
+      timestamp: 100,
+      payload: {
+        runId: "run-1",
+        delegate: "review",
+        status: "pending",
+      },
+    });
+    runtime.events.record({
+      sessionId,
+      type: "subagent_running",
+      timestamp: 110,
+      payload: {
+        runId: "run-1",
+        delegate: "review",
+        status: "running",
+        childSessionId: "child-1",
+      },
+    });
+
+    expect(store.getRun(sessionId, "run-1")).toMatchObject({
+      runId: "run-1",
+      status: "running",
+      workerSessionId: "child-1",
+    });
+  });
 });

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type {
   BrewvaEventRecord,
+  BrewvaStructuredEvent,
   ParallelAcquireResult,
   PatchSet,
   SkillDocument,
@@ -17,6 +18,7 @@ import {
 } from "../events/event-types.js";
 import type { ParallelBudgetManager } from "../parallel/budget.js";
 import type { ParallelResultStore } from "../parallel/results.js";
+import { deriveParallelBudgetStateFromEvents } from "../parallel/state.js";
 import type { RuntimeKernelContext } from "../runtime-kernel.js";
 import { resolveSecurityPolicy } from "../security/mode.js";
 import type { FileChangeService } from "./file-change.js";
@@ -31,6 +33,7 @@ export interface ParallelServiceOptions {
   parallelResults: RuntimeKernelContext["parallelResults"];
   sessionState: RuntimeKernelContext["sessionState"];
   eventStore: RuntimeKernelContext["eventStore"];
+  subscribeEvents?: (listener: (event: BrewvaStructuredEvent) => void) => () => void;
   getCurrentTurn: RuntimeKernelContext["getCurrentTurn"];
   recordEvent: RuntimeKernelContext["recordEvent"];
   fileChangeService: Pick<FileChangeService, "applyPatchSet">;
@@ -86,7 +89,7 @@ function readPatchSetManifest(workspaceRoot: string, pathRef: string): PatchSet 
 
 function buildRecoveredWorkerResult(
   workspaceRoot: string,
-  event: BrewvaEventRecord,
+  event: Pick<BrewvaEventRecord, "type" | "payload">,
 ): WorkerResult | undefined {
   const payload = isRecord(event.payload) ? event.payload : undefined;
   const workerId = readString(payload?.runId);
@@ -128,8 +131,24 @@ function buildRecoveredWorkerResult(
   };
 }
 
+function readWorkerIds(payload: Record<string, unknown> | undefined): string[] {
+  const collected = new Set<string>();
+  const singleWorkerId = readString(payload?.workerId);
+  if (singleWorkerId) {
+    collected.add(singleWorkerId);
+  }
+  if (Array.isArray(payload?.workerIds)) {
+    for (const value of payload.workerIds) {
+      const workerId = readString(value);
+      if (workerId) {
+        collected.add(workerId);
+      }
+    }
+  }
+  return [...collected];
+}
+
 function recoverWorkerResultsFromEvents(
-  sessionId: string,
   workspaceRoot: string,
   events: BrewvaEventRecord[],
 ): WorkerResult[] {
@@ -137,12 +156,7 @@ function recoverWorkerResultsFromEvents(
   for (const event of events) {
     if (event.type === WORKER_RESULTS_APPLIED_EVENT_TYPE) {
       const payload = isRecord(event.payload) ? event.payload : undefined;
-      const workerIds = Array.isArray(payload?.workerIds)
-        ? payload.workerIds.flatMap((value) =>
-            typeof value === "string" && value.trim().length > 0 ? [value.trim()] : [],
-          )
-        : [];
-      for (const workerId of workerIds) {
+      for (const workerId of readWorkerIds(payload)) {
         recovered.delete(workerId);
       }
       continue;
@@ -165,29 +179,6 @@ function recoverWorkerResultsFromEvents(
   return [...recovered.values()];
 }
 
-export function hydrateAndListWorkerResults(input: {
-  sessionId: string;
-  workspaceRoot: string;
-  eventStore: RuntimeKernelContext["eventStore"];
-  parallelResults: ParallelResultStore;
-}): WorkerResult[] {
-  const existingWorkerIds = new Set(
-    input.parallelResults.list(input.sessionId).map((result) => result.workerId),
-  );
-  const recoveredResults = recoverWorkerResultsFromEvents(
-    input.sessionId,
-    input.workspaceRoot,
-    input.eventStore.list(input.sessionId),
-  );
-  for (const recovered of recoveredResults) {
-    if (existingWorkerIds.has(recovered.workerId)) {
-      continue;
-    }
-    input.parallelResults.record(input.sessionId, recovered);
-  }
-  return input.parallelResults.list(input.sessionId);
-}
-
 export class ParallelService {
   private readonly securityPolicy: ReturnType<typeof resolveSecurityPolicy>;
   private readonly workspaceRoot: string;
@@ -202,7 +193,7 @@ export class ParallelService {
     sessionId: string;
     type: string;
     turn?: number;
-    payload?: Record<string, unknown>;
+    payload?: object;
     timestamp?: number;
     skipTapeCheckpoint?: boolean;
   }) => unknown;
@@ -221,6 +212,9 @@ export class ParallelService {
       options.resourceLeaseService.getEffectiveBudget(sessionId, contract, skillName);
     this.recordEvent = (input) => options.recordEvent(input);
     this.applyPatchSet = (input) => options.fileChangeService.applyPatchSet(input);
+    options.subscribeEvents?.((event) => {
+      this.applyIncrementalWorkerResultEvent(event);
+    });
   }
 
   acquireParallelSlot(sessionId: string, runId: string): ParallelAcquireResult {
@@ -252,26 +246,18 @@ export class ParallelService {
   }
 
   recordWorkerResult(sessionId: string, result: WorkerResult): void {
+    this.ensureWorkerResultsHydrated(sessionId);
     this.parallelResults.record(sessionId, result);
     this.parallel.release(sessionId, result.workerId);
   }
 
   listWorkerResults(sessionId: string): WorkerResult[] {
-    return hydrateAndListWorkerResults({
-      sessionId,
-      workspaceRoot: this.workspaceRoot,
-      eventStore: this.eventStore,
-      parallelResults: this.parallelResults,
-    });
+    this.ensureWorkerResultsHydrated(sessionId);
+    return this.parallelResults.list(sessionId);
   }
 
   mergeWorkerResults(sessionId: string): WorkerMergeReport {
-    hydrateAndListWorkerResults({
-      sessionId,
-      workspaceRoot: this.workspaceRoot,
-      eventStore: this.eventStore,
-      parallelResults: this.parallelResults,
-    });
+    this.ensureWorkerResultsHydrated(sessionId);
     return this.parallelResults.merge(sessionId);
   }
 
@@ -282,12 +268,7 @@ export class ParallelService {
       toolCallId?: string;
     },
   ): WorkerApplyReport {
-    hydrateAndListWorkerResults({
-      sessionId,
-      workspaceRoot: this.workspaceRoot,
-      eventStore: this.eventStore,
-      parallelResults: this.parallelResults,
-    });
+    this.ensureWorkerResultsHydrated(sessionId);
     const merged = this.parallelResults.merge(sessionId);
     if (merged.status === "empty") {
       this.recordEvent({
@@ -365,13 +346,14 @@ export class ParallelService {
       };
     }
 
-    this.parallelResults.clear(sessionId);
+    this.parallelResults.clear(sessionId, { preserveHydration: true });
     this.recordEvent({
       sessionId,
       type: "worker_results_applied",
       turn: this.getCurrentTurn(sessionId),
       payload: {
         workerIds: merged.workerIds,
+        workerId: merged.workerIds.length === 1 ? merged.workerIds[0] : null,
         patchSetId: applied.patchSetId ?? null,
         appliedPaths: applied.appliedPaths,
       },
@@ -388,7 +370,7 @@ export class ParallelService {
   }
 
   clearWorkerResults(sessionId: string): void {
-    this.parallelResults.clear(sessionId);
+    this.parallelResults.clear(sessionId, { preserveHydration: true });
   }
 
   private tryAcquireParallelSlot(
@@ -396,6 +378,7 @@ export class ParallelService {
     runId: string,
     options: { recordRejection: boolean },
   ): ParallelAcquireResult {
+    this.reconcileParallelBudget(sessionId);
     const state = this.sessionState.getCell(sessionId);
     const skill = this.getActiveSkill(sessionId);
     const effectiveBudget =
@@ -473,5 +456,61 @@ export class ParallelService {
         reason: reason ?? "unknown",
       },
     });
+  }
+
+  private ensureWorkerResultsHydrated(sessionId: string): void {
+    if (this.parallelResults.isHydrated(sessionId)) {
+      return;
+    }
+    const recoveredResults = recoverWorkerResultsFromEvents(
+      this.workspaceRoot,
+      this.eventStore.list(sessionId),
+    );
+    this.parallelResults.replace(sessionId, recoveredResults);
+    this.parallelResults.markHydrated(sessionId);
+  }
+
+  private applyIncrementalWorkerResultEvent(event: BrewvaStructuredEvent): void {
+    if (!this.parallelResults.isHydrated(event.sessionId)) {
+      return;
+    }
+
+    const payload = isRecord(event.payload) ? event.payload : undefined;
+    if (event.type === WORKER_RESULTS_APPLIED_EVENT_TYPE) {
+      for (const workerId of readWorkerIds(payload)) {
+        this.parallelResults.delete(event.sessionId, workerId);
+      }
+      return;
+    }
+
+    if (
+      event.type !== SUBAGENT_COMPLETED_EVENT_TYPE &&
+      event.type !== SUBAGENT_FAILED_EVENT_TYPE &&
+      event.type !== SUBAGENT_CANCELLED_EVENT_TYPE
+    ) {
+      return;
+    }
+
+    const recoveredResult = buildRecoveredWorkerResult(this.workspaceRoot, event);
+    if (!recoveredResult) {
+      return;
+    }
+    this.parallelResults.record(event.sessionId, recoveredResult);
+  }
+
+  private reconcileParallelBudget(sessionId: string): void {
+    const state = this.sessionState.getCell(sessionId);
+    const events = this.eventStore.list(sessionId);
+    const latestEventId = events[events.length - 1]?.id;
+    if (state.parallelBudgetHydrated && state.parallelBudgetLatestEventId === latestEventId) {
+      return;
+    }
+    const derivedState = deriveParallelBudgetStateFromEvents(events);
+    this.parallel.restoreSession(sessionId, {
+      activeRunIds: derivedState.activeRunIds,
+      totalStarted: derivedState.totalStarted,
+    });
+    state.parallelBudgetHydrated = true;
+    state.parallelBudgetLatestEventId = derivedState.latestEventId;
   }
 }

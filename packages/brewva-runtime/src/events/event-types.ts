@@ -106,6 +106,7 @@ export const SCHEDULE_CHILD_SESSION_FINISHED_EVENT_TYPE =
   "schedule_child_session_finished" as const;
 export const SCHEDULE_CHILD_SESSION_FAILED_EVENT_TYPE = "schedule_child_session_failed" as const;
 export const SUBAGENT_SPAWNED_EVENT_TYPE = "subagent_spawned" as const;
+export const SUBAGENT_RUNNING_EVENT_TYPE = "subagent_running" as const;
 export const SUBAGENT_COMPLETED_EVENT_TYPE = "subagent_completed" as const;
 export const SUBAGENT_FAILED_EVENT_TYPE = "subagent_failed" as const;
 export const SUBAGENT_CANCELLED_EVENT_TYPE = "subagent_cancelled" as const;
@@ -223,6 +224,7 @@ export const BREWVA_REGISTERED_EVENT_TYPES = [
   SCHEDULE_CHILD_SESSION_FINISHED_EVENT_TYPE,
   SCHEDULE_CHILD_SESSION_FAILED_EVENT_TYPE,
   SUBAGENT_SPAWNED_EVENT_TYPE,
+  SUBAGENT_RUNNING_EVENT_TYPE,
   SUBAGENT_COMPLETED_EVENT_TYPE,
   SUBAGENT_FAILED_EVENT_TYPE,
   SUBAGENT_CANCELLED_EVENT_TYPE,

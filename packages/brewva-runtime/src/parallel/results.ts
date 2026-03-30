@@ -54,10 +54,23 @@ function buildMergedPatchSet(origins: PatchOrigin[]): PatchSet {
 
 export class ParallelResultStore {
   private readonly sessions = new Map<string, Map<string, WorkerResult>>();
+  private readonly hydratedSessions = new Set<string>();
 
   record(sessionId: string, result: WorkerResult): void {
     const state = this.getOrCreate(sessionId);
     state.set(result.workerId, result);
+  }
+
+  replace(sessionId: string, results: readonly WorkerResult[]): void {
+    const state = this.getOrCreate(sessionId);
+    state.clear();
+    for (const result of results) {
+      state.set(result.workerId, result);
+    }
+  }
+
+  delete(sessionId: string, workerId: string): void {
+    this.sessions.get(sessionId)?.delete(workerId);
   }
 
   list(sessionId: string): WorkerResult[] {
@@ -66,8 +79,19 @@ export class ParallelResultStore {
     return [...state.values()];
   }
 
-  clear(sessionId: string): void {
+  isHydrated(sessionId: string): boolean {
+    return this.hydratedSessions.has(sessionId);
+  }
+
+  markHydrated(sessionId: string): void {
+    this.hydratedSessions.add(sessionId);
+  }
+
+  clear(sessionId: string, options: { preserveHydration?: boolean } = {}): void {
     this.sessions.delete(sessionId);
+    if (!options.preserveHydration) {
+      this.hydratedSessions.delete(sessionId);
+    }
   }
 
   merge(sessionId: string): WorkerMergeReport {

@@ -24,13 +24,14 @@ import {
   type TapeCheckpointPayload,
 } from "../tape/events.js";
 import { ensureDir, ensureDirForFile } from "../utils/fs.js";
+import type { JsonValue } from "../utils/json.js";
 import { normalizeJsonRecord } from "../utils/json.js";
 
-type EventAppendInput = {
+type EventAppendInput<TPayload extends object = Record<string, JsonValue>> = {
   sessionId: string;
   type: string;
   turn?: number;
-  payload?: Record<string, unknown>;
+  payload?: TPayload;
   timestamp?: number;
 };
 
@@ -122,7 +123,9 @@ export class BrewvaEventStore {
     }
   }
 
-  append(input: EventAppendInput): BrewvaEventRecord | undefined {
+  append<TPayload extends object>(
+    input: EventAppendInput<TPayload>,
+  ): BrewvaEventRecord | undefined {
     if (!this.enabled) return undefined;
 
     const timestamp = input.timestamp ?? Date.now();
@@ -164,7 +167,7 @@ export class BrewvaEventStore {
       sessionId: input.sessionId,
       type: TAPE_ANCHOR_EVENT_TYPE,
       turn: input.turn,
-      payload: input.payload as unknown as Record<string, unknown>,
+      payload: input.payload,
       timestamp: input.timestamp,
     });
   }
@@ -179,7 +182,7 @@ export class BrewvaEventStore {
       sessionId: input.sessionId,
       type: TAPE_CHECKPOINT_EVENT_TYPE,
       turn: input.turn,
-      payload: input.payload as unknown as Record<string, unknown>,
+      payload: input.payload,
       timestamp: input.timestamp,
     });
   }

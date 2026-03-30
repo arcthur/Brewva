@@ -25,7 +25,7 @@ export class TruthService {
     sessionId: string;
     type: string;
     turn?: number;
-    payload?: Record<string, unknown>;
+    payload?: object;
     timestamp?: number;
     skipTapeCheckpoint?: boolean;
   }) => unknown;
@@ -80,7 +80,7 @@ export class TruthService {
     this.recordEvent({
       sessionId,
       type: TRUTH_EVENT_TYPE,
-      payload: buildTruthFactUpsertedEvent(fact) as unknown as Record<string, unknown>,
+      payload: buildTruthFactUpsertedEvent(fact),
     });
     return { ok: true, fact };
   }
@@ -95,7 +95,7 @@ export class TruthService {
       payload: buildTruthFactResolvedEvent({
         factId: id,
         resolvedAt: Date.now(),
-      }) as unknown as Record<string, unknown>,
+      }),
     });
     return { ok: true };
   }

@@ -275,6 +275,7 @@ describe("event pipeline level classification", () => {
       "effect_commitment_approval_decided",
       "effect_commitment_approval_consumed",
       "subagent_spawned",
+      "subagent_running",
       "subagent_completed",
       "subagent_failed",
       "subagent_cancelled",

@@ -160,6 +160,8 @@ describe("Gap remediation: parallel result lifecycle", () => {
       last: 1,
     });
     expect(appliedEvents).toHaveLength(1);
+    expect(appliedEvents[0]?.payload?.workerId).toBe("w1");
+    expect(appliedEvents[0]?.payload?.workerIds).toEqual(["w1"]);
 
     const rollback = runtime.tools.rollbackLastPatchSet(sessionId);
     expect(rollback.ok).toBe(true);

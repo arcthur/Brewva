@@ -18,7 +18,7 @@ export interface ProjectionEngineOptions {
     sessionId: string;
     type: string;
     turn?: number;
-    payload?: Record<string, unknown>;
+    payload?: object;
   }) => void;
 }
 

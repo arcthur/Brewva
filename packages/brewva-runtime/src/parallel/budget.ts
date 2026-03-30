@@ -6,6 +6,11 @@ interface SessionParallelState {
   waiters: ParallelSlotWaiter[];
 }
 
+export interface ParallelBudgetSessionSnapshot {
+  activeRunIds: readonly string[];
+  totalStarted: number;
+}
+
 interface ParallelSlotWaiter {
   runId: string;
   resolve: (result: ParallelAcquireResult) => void;
@@ -90,6 +95,19 @@ export class ParallelBudgetManager {
   getActiveRunCount(sessionId: string): number {
     const state = this.sessions.get(sessionId);
     return state ? state.active.size : 0;
+  }
+
+  restoreSession(sessionId: string, snapshot: ParallelBudgetSessionSnapshot): void {
+    const state = this.getOrCreate(sessionId);
+    state.active.clear();
+    for (const runId of snapshot.activeRunIds) {
+      state.active.add(runId);
+    }
+    state.totalStarted = Math.max(
+      state.active.size,
+      Number.isFinite(snapshot.totalStarted) ? Math.max(0, Math.trunc(snapshot.totalStarted)) : 0,
+    );
+    this.drainWaiters(sessionId, state);
   }
 
   clear(sessionId: string): void {

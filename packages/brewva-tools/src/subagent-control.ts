@@ -3,7 +3,7 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { BrewvaToolOptions } from "./types.js";
 import { buildStringEnumSchema } from "./utils/input-alias.js";
-import { failTextResult, textResult, withVerdict } from "./utils/result.js";
+import { failTextResult, textResult, toolDetails, withVerdict } from "./utils/result.js";
 import { getSessionId } from "./utils/session.js";
 import { defineBrewvaTool } from "./utils/tool.js";
 
@@ -178,20 +178,17 @@ export function createSubagentStatusTool(options: BrewvaToolOptions): ToolDefini
       if (!resolved.ok) {
         return failTextResult(
           `subagent_status failed: ${resolved.error ?? "unknown_error"}`,
-          resolved as unknown as Record<string, unknown>,
+          toolDetails(resolved),
         );
       }
 
       if (resolved.runs.length === 0) {
-        return textResult(
-          "No matching subagent runs.",
-          resolved as unknown as Record<string, unknown>,
-        );
+        return textResult("No matching subagent runs.", toolDetails(resolved));
       }
 
       return textResult(
         ["# Subagent Status", ...resolved.runs.map((run) => summarizeRun(run))].join("\n"),
-        resolved as unknown as Record<string, unknown>,
+        toolDetails(resolved),
       );
     },
   });
@@ -231,7 +228,7 @@ export function createSubagentCancelTool(options: BrewvaToolOptions): ToolDefini
         const text = cancelled.run
           ? `subagent_cancel failed: ${cancelled.error ?? "unknown_error"}\n${summarizeRun(cancelled.run)}`
           : `subagent_cancel failed: ${cancelled.error ?? "unknown_error"}`;
-        return failTextResult(text, cancelled as unknown as Record<string, unknown>);
+        return failTextResult(text, toolDetails(cancelled));
       }
 
       if (!cancelled.run) {
@@ -243,8 +240,8 @@ export function createSubagentCancelTool(options: BrewvaToolOptions): ToolDefini
       return textResult(
         ["Subagent cancelled.", summarizeRun(cancelled.run)].join("\n"),
         cancelled.run.status === "cancelled" || cancelled.run.status === "timeout"
-          ? (cancelled as unknown as Record<string, unknown>)
-          : withVerdict(cancelled as unknown as Record<string, unknown>, "fail"),
+          ? toolDetails(cancelled)
+          : withVerdict(toolDetails(cancelled), "fail"),
       );
     },
   });

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   capturePatchSetFromIsolatedWorkspace,
+  collectChangedPathsFromIsolatedWorkspace,
   createIsolatedWorkspace,
 } from "@brewva/brewva-gateway";
 
@@ -75,6 +76,27 @@ describe("subagent isolated workspace helpers", () => {
     await isolated.dispose();
     expect(existsSync(isolatedBeforeDispose)).toBe(false);
 
+    await rm(workspaceRoot, { recursive: true, force: true });
+  });
+
+  test("derives changed paths from the isolated workspace baseline even without child patch history", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "brewva-subagent-workspace-baseline-"));
+    mkdirSync(join(workspaceRoot, "src"), { recursive: true });
+    writeFileSync(join(workspaceRoot, "src", "keep.ts"), "export const keep = 1;\n", "utf8");
+    writeFileSync(join(workspaceRoot, "src", "delete.ts"), "export const remove = true;\n", "utf8");
+
+    const isolated = await createIsolatedWorkspace(workspaceRoot);
+    writeFileSync(join(isolated.root, "src", "keep.ts"), "export const keep = 2;\n", "utf8");
+    rmSync(join(isolated.root, "src", "delete.ts"));
+    writeFileSync(join(isolated.root, "src", "add.ts"), "export const added = true;\n", "utf8");
+
+    expect(
+      collectChangedPathsFromIsolatedWorkspace({
+        isolatedRoot: isolated.root,
+      }),
+    ).toEqual(["src/add.ts", "src/delete.ts", "src/keep.ts"]);
+
+    await isolated.dispose();
     await rm(workspaceRoot, { recursive: true, force: true });
   });
 });

@@ -9,6 +9,7 @@ import type {
   DelegationRunRecord,
   SkillRoutingScope,
 } from "@brewva/brewva-runtime";
+import { isDelegationRunTerminalStatus } from "@brewva/brewva-runtime";
 import type {
   DelegationPacket,
   SubagentCancelResult,
@@ -89,16 +90,6 @@ function buildDeliveryRecord(
   };
 }
 
-function isTerminalStatus(status: DelegationRunRecord["status"]): boolean {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "timeout" ||
-    status === "cancelled" ||
-    status === "merged"
-  );
-}
-
 function cloneRuntimeConfig(runtime: BrewvaRuntime): BrewvaConfig {
   return structuredClone(runtime.config) as BrewvaConfig;
 }
@@ -136,7 +127,13 @@ function matchesEventPredicate(
     typeof event.payload === "object" && event.payload !== null && !Array.isArray(event.payload)
       ? (event.payload as Record<string, unknown>)
       : {};
-  return Object.entries(predicate.match).every(([key, value]) => payload[key] === value);
+  return Object.entries(predicate.match).every(([key, value]) => {
+    const current = payload[key];
+    if (Array.isArray(current)) {
+      return current.some((entry) => entry === value);
+    }
+    return current === value;
+  });
 }
 
 function matchesWorkerResultPredicate(
@@ -156,6 +153,64 @@ function matchesWorkerResultPredicate(
     }
     return true;
   });
+}
+
+function readEventWorkerIds(event: BrewvaStructuredEvent): string[] {
+  if (event.type !== "worker_results_applied") {
+    return [];
+  }
+  const payload =
+    typeof event.payload === "object" && event.payload !== null && !Array.isArray(event.payload)
+      ? (event.payload as Record<string, unknown>)
+      : {};
+  const workerIds = new Set<string>();
+  if (typeof payload.workerId === "string" && payload.workerId.trim().length > 0) {
+    workerIds.add(payload.workerId.trim());
+  }
+  if (Array.isArray(payload.workerIds)) {
+    for (const workerId of payload.workerIds) {
+      if (typeof workerId === "string" && workerId.trim().length > 0) {
+        workerIds.add(workerId.trim());
+      }
+    }
+  }
+  return [...workerIds];
+}
+
+function evaluateCompletionPredicate(input: {
+  runtime: BrewvaRuntime;
+  parentSessionId: string;
+  predicate: NonNullable<DelegationPacket["completionPredicate"]>;
+  currentEvent?: BrewvaStructuredEvent;
+}): boolean {
+  const predicate = input.predicate;
+  if (predicate.source === "events") {
+    if (input.currentEvent) {
+      return matchesEventPredicate(input.currentEvent, input.parentSessionId, predicate);
+    }
+    return input.runtime.events
+      .query(input.parentSessionId, { type: predicate.type })
+      .some((event) =>
+        matchesEventPredicate(
+          input.runtime.events.toStructured(event),
+          input.parentSessionId,
+          predicate,
+        ),
+      );
+  }
+
+  if (input.currentEvent && input.currentEvent.sessionId === input.parentSessionId) {
+    const appliedWorkerIds = readEventWorkerIds(input.currentEvent);
+    if (
+      appliedWorkerIds.length > 0 &&
+      (!predicate.workerId || appliedWorkerIds.includes(predicate.workerId)) &&
+      (!predicate.status || predicate.status === "ok")
+    ) {
+      return true;
+    }
+  }
+
+  return matchesWorkerResultPredicate(input.runtime, input.parentSessionId, predicate);
 }
 
 export function createDetachedSubagentBackgroundController(
@@ -198,6 +253,7 @@ export function createDetachedSubagentBackgroundController(
         : undefined,
     };
     trackedPredicates.delete(record.runId);
+    options.runtime.tools.releaseParallelSlot(record.parentSessionId, record.runId);
     options.runtime.events.record({
       sessionId: record.parentSessionId,
       type: terminalStatus === "cancelled" ? "subagent_cancelled" : "subagent_failed",
@@ -217,7 +273,7 @@ export function createDetachedSubagentBackgroundController(
     );
     if (!liveState) {
       trackedPredicates.delete(record.runId);
-      if (!isTerminalStatus(record.status)) {
+      if (!isDelegationRunTerminalStatus(record.status)) {
         const failed = writeTerminalFailure(record, "failed", "background_registry_missing");
         return {
           live: false,
@@ -246,7 +302,7 @@ export function createDetachedSubagentBackgroundController(
     removeDetachedSubagentLiveState(options.runtime.workspaceRoot, record.runId);
     removeDetachedSubagentCancelRequest(options.runtime.workspaceRoot, record.runId);
     trackedPredicates.delete(record.runId);
-    if (isTerminalStatus(record.status)) {
+    if (isDelegationRunTerminalStatus(record.status)) {
       return {
         live: false,
         cancelable: false,
@@ -324,6 +380,40 @@ export function createDetachedSubagentBackgroundController(
         modelRoute: executionPlan.modelRoute,
         delivery: buildDeliveryRecord(input.delivery, createdAt),
       };
+      if (
+        input.packet.completionPredicate &&
+        evaluateCompletionPredicate({
+          runtime: options.runtime,
+          parentSessionId: input.parentSessionId,
+          predicate: input.packet.completionPredicate,
+        })
+      ) {
+        const cancelledRecord: DelegationRunRecord = {
+          ...cloneDelegationRunRecord(initialRecord),
+          status: "cancelled",
+          updatedAt: createdAt,
+          summary: "completion_predicate_satisfied",
+        };
+        options.runtime.events.record({
+          sessionId: input.parentSessionId,
+          type: "subagent_cancelled",
+          payload: {
+            ...buildDelegationLifecyclePayload(cancelledRecord),
+            reason: "completion_predicate_satisfied",
+          },
+        });
+        return cloneDelegationRunRecord(cancelledRecord);
+      }
+
+      const parallel = options.runtime.tools.acquireParallelSlot(input.parentSessionId, runId);
+      if (!parallel.accepted) {
+        return writeTerminalFailure(
+          initialRecord,
+          "failed",
+          `parallel_slot_rejected:${parallel.reason ?? "unknown"}`,
+        );
+      }
+
       options.runtime.events.record({
         sessionId: input.parentSessionId,
         type: "subagent_spawned",
@@ -398,32 +488,6 @@ export function createDetachedSubagentBackgroundController(
           parentSessionId: input.parentSessionId,
           predicate: input.packet.completionPredicate,
         });
-        const alreadyMatched =
-          input.packet.completionPredicate.source === "events"
-            ? options.runtime.events
-                .query(input.parentSessionId, { type: input.packet.completionPredicate.type })
-                .some((event) =>
-                  matchesEventPredicate(
-                    options.runtime.events.toStructured(event),
-                    input.parentSessionId,
-                    input.packet.completionPredicate as Extract<
-                      NonNullable<DelegationPacket["completionPredicate"]>,
-                      { source: "events" }
-                    >,
-                  ),
-                )
-            : matchesWorkerResultPredicate(
-                options.runtime,
-                input.parentSessionId,
-                input.packet.completionPredicate,
-              );
-        if (alreadyMatched) {
-          void controller.cancelRun({
-            parentSessionId: input.parentSessionId,
-            runId,
-            reason: "completion_predicate_satisfied",
-          });
-        }
       }
       return cloneDelegationRunRecord(initialRecord);
     },
@@ -440,6 +504,24 @@ export function createDetachedSubagentBackgroundController(
           trackedPredicates.set(liveState.runId, {
             parentSessionId,
             predicate: spec.packet.completionPredicate,
+          });
+        }
+      }
+      for (const [runId, tracked] of Array.from(trackedPredicates.entries())) {
+        if (tracked.parentSessionId !== parentSessionId) {
+          continue;
+        }
+        if (
+          evaluateCompletionPredicate({
+            runtime: options.runtime,
+            parentSessionId,
+            predicate: tracked.predicate,
+          })
+        ) {
+          await controller.cancelRun({
+            parentSessionId,
+            runId,
+            reason: "completion_predicate_satisfied",
           });
         }
       }
@@ -462,7 +544,7 @@ export function createDetachedSubagentBackgroundController(
           error: `unknown_run:${runId}`,
         };
       }
-      if (isTerminalStatus(existing.status)) {
+      if (isDelegationRunTerminalStatus(existing.status)) {
         trackedPredicates.delete(runId);
         return {
           ok: false,
@@ -504,34 +586,62 @@ export function createDetachedSubagentBackgroundController(
         // reconciliation below will convert missing live pid into terminal state.
       }
 
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        await sleep(50);
-        const latest = delegationStore.getRun(parentSessionId, runId) ?? existing;
-        const reconciled = await reconcileLiveState(latest);
-        if (isTerminalStatus(reconciled.record.status)) {
-          return {
-            ok: reconciled.record.status === "cancelled" || reconciled.record.status === "timeout",
-            error:
-              reconciled.record.status === "cancelled" || reconciled.record.status === "timeout"
-                ? undefined
-                : `cancel_not_observed:${reconciled.record.status}`,
-            run: {
-              ...cloneDelegationRunRecord(reconciled.record),
-              live: false,
-              cancelable: false,
-            },
-          };
+      for (const signal of ["SIGTERM", "SIGKILL"] as const) {
+        if (signal === "SIGKILL" && !isPidAlive(liveState.pid)) {
+          break;
+        }
+        if (signal === "SIGKILL") {
+          try {
+            sendSignal(liveState.pid, signal);
+          } catch {
+            // reconciliation below will determine whether the process is still alive.
+          }
+        }
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          await sleep(50);
+          const latest = delegationStore.getRun(parentSessionId, runId) ?? existing;
+          const reconciled = await reconcileLiveState(latest);
+          if (isDelegationRunTerminalStatus(reconciled.record.status)) {
+            return {
+              ok:
+                reconciled.record.status === "cancelled" || reconciled.record.status === "timeout",
+              error:
+                reconciled.record.status === "cancelled" || reconciled.record.status === "timeout"
+                  ? undefined
+                  : `cancel_not_observed:${reconciled.record.status}`,
+              run: {
+                ...cloneDelegationRunRecord(reconciled.record),
+                live: false,
+                cancelable: false,
+              },
+            };
+          }
         }
       }
 
       const latest = delegationStore.getRun(parentSessionId, runId) ?? existing;
+      const reconciled = await reconcileLiveState(latest);
+      if (isDelegationRunTerminalStatus(reconciled.record.status)) {
+        return {
+          ok: reconciled.record.status === "cancelled" || reconciled.record.status === "timeout",
+          error:
+            reconciled.record.status === "cancelled" || reconciled.record.status === "timeout"
+              ? undefined
+              : `cancel_not_observed:${reconciled.record.status}`,
+          run: {
+            ...cloneDelegationRunRecord(reconciled.record),
+            live: false,
+            cancelable: false,
+          },
+        };
+      }
       return {
         ok: false,
         error: `cancel_timeout:${runId}`,
         run: {
-          ...cloneDelegationRunRecord(latest),
-          live: true,
-          cancelable: true,
+          ...cloneDelegationRunRecord(reconciled.record),
+          live: isPidAlive(liveState.pid),
+          cancelable: isPidAlive(liveState.pid),
         },
       };
     },
@@ -560,14 +670,12 @@ export function createDetachedSubagentBackgroundController(
       if (tracked.parentSessionId !== event.sessionId) {
         continue;
       }
-      const matched =
-        tracked.predicate.source === "events"
-          ? matchesEventPredicate(event, tracked.parentSessionId, tracked.predicate)
-          : matchesWorkerResultPredicate(
-              options.runtime,
-              tracked.parentSessionId,
-              tracked.predicate,
-            );
+      const matched = evaluateCompletionPredicate({
+        runtime: options.runtime,
+        parentSessionId: tracked.parentSessionId,
+        predicate: tracked.predicate,
+        currentEvent: event,
+      });
       if (!matched) {
         continue;
       }

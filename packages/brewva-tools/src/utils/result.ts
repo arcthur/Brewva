@@ -2,6 +2,10 @@ import type { AgentToolResult } from "@mariozechner/pi-coding-agent";
 
 export type ToolResultVerdict = "pass" | "fail" | "inconclusive";
 
+export function toolDetails<T extends object>(details: T): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(details));
+}
+
 export function textResult(
   text: string,
   details: Record<string, unknown> = {},

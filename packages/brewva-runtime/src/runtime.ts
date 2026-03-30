@@ -137,7 +137,11 @@ import { ContextService } from "./services/context.js";
 import { CostService } from "./services/cost.js";
 import type { CredentialVaultService } from "./services/credential-vault.js";
 import { EffectCommitmentDeskService } from "./services/effect-commitment-desk.js";
-import { EventPipelineService, type RuntimeRecordEventInput } from "./services/event-pipeline.js";
+import {
+  EventPipelineService,
+  type RuntimeRecordEvent,
+  type RuntimeRecordEventInput,
+} from "./services/event-pipeline.js";
 import { FileChangeService } from "./services/file-change.js";
 import { LedgerService } from "./services/ledger.js";
 import { MutationRollbackService } from "./services/mutation-rollback.js";
@@ -471,7 +475,7 @@ export class BrewvaRuntime {
     };
   };
   declare readonly events: {
-    record(input: RuntimeRecordEventInput): BrewvaEventRecord | undefined;
+    record: RuntimeRecordEvent;
     query(sessionId: string, query?: BrewvaEventQuery): BrewvaEventRecord[];
     queryStructured(sessionId: string, query?: BrewvaEventQuery): BrewvaStructuredEvent[];
     recordMetricObservation(
@@ -916,11 +920,7 @@ export class BrewvaRuntime {
           const recovery = new TurnWALRecovery({
             workspaceRoot: this.workspaceRoot,
             config: this.runtimeConfig.infrastructure.turnWal,
-            recordEvent: (input: {
-              sessionId: string;
-              type: string;
-              payload?: Record<string, unknown>;
-            }) => {
+            recordEvent: (input: { sessionId: string; type: string; payload?: object }) => {
               this.eventPipeline.recordEvent({
                 sessionId: input.sessionId,
                 type: input.type,
@@ -1032,7 +1032,9 @@ export class BrewvaRuntime {
     return this.turnReplay.getTruthState(sessionId);
   }
 
-  private recordEvent(input: RuntimeRecordEventInput): BrewvaEventRecord | undefined {
+  private recordEvent<TPayload extends object>(
+    input: RuntimeRecordEventInput<TPayload>,
+  ): BrewvaEventRecord | undefined {
     return this.eventPipeline.recordEvent(input);
   }
 
@@ -1193,7 +1195,7 @@ export class BrewvaRuntime {
       type: ITERATION_METRIC_OBSERVED_EVENT_TYPE,
       turn: input.turn,
       timestamp: input.timestamp,
-      payload: payload as unknown as Record<string, unknown>,
+      payload,
     });
   }
 
@@ -1221,7 +1223,7 @@ export class BrewvaRuntime {
       type: ITERATION_GUARD_RECORDED_EVENT_TYPE,
       turn: input.turn,
       timestamp: input.timestamp,
-      payload: payload as unknown as Record<string, unknown>,
+      payload,
     });
   }
 
