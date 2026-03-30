@@ -68,7 +68,7 @@ export interface ToolSurfaceRuntime {
       | undefined;
   };
   events: {
-    record(input: { sessionId: string; type: string; payload?: Record<string, unknown> }): unknown;
+    record(input: { sessionId: string; type: string; payload?: object }): unknown;
   };
 }
 

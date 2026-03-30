@@ -63,7 +63,7 @@ export interface TaskServiceOptions {
         sessionId: string;
         type: string;
         turn?: number;
-        payload?: Record<string, unknown>;
+        payload?: object;
         timestamp?: number;
         skipTapeCheckpoint?: boolean;
       },
@@ -251,7 +251,7 @@ export class TaskService {
     this.recordEvent({
       sessionId: input.sessionId,
       type: TASK_EVENT_TYPE,
-      payload: buildStatusSetEvent(next) as unknown as Record<string, unknown>,
+      payload: buildStatusSetEvent(next),
     });
   }
 

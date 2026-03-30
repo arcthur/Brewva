@@ -143,6 +143,7 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
           acceptance: taskState.acceptance,
         },
         pendingWorkerResults: pendingWorkerResults.length,
+        pendingDelegationOutcomes: pendingDelegationOutcomes.length,
         workspaceRoot: options.runtime.workspaceRoot,
       });
 
@@ -172,7 +173,7 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
         `ship: ${posture.ship}`,
         `retro: ${posture.retro}`,
         `pending_worker_results: ${snapshot.pendingWorkerResults}`,
-        `pending_delegation_outcomes: ${pendingDelegationOutcomes.length}`,
+        `pending_delegation_outcomes: ${snapshot.pendingDelegationOutcomes}`,
       ];
 
       if (stallAdjudication) {
@@ -228,6 +229,7 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
               status: result.status,
               summary: result.summary,
             })),
+            pendingDelegationOutcomesCount: snapshot.pendingDelegationOutcomes,
             pendingDelegationOutcomes: pendingDelegationOutcomes.map((run) => ({
               runId: run.runId,
               delegate: run.delegate,

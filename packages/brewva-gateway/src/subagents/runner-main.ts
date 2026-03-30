@@ -1,7 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { relative } from "node:path";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
-import type { DelegationRunRecord, SkillRoutingScope } from "@brewva/brewva-runtime";
+import {
+  SUBAGENT_RUNNING_EVENT_TYPE,
+  type DelegationRunRecord,
+  type SkillRoutingScope,
+} from "@brewva/brewva-runtime";
 import type {
   SubagentOutcome,
   SubagentOutcomeArtifactRef,
@@ -37,6 +41,7 @@ import {
 import { mergeDelegationPacketWithTargetDefaults, type HostedDelegationTarget } from "./targets.js";
 import {
   capturePatchSetFromIsolatedWorkspace,
+  collectChangedPathsFromIsolatedWorkspace,
   copyDelegationContextManifestToIsolatedWorkspace,
   createIsolatedWorkspace,
   type IsolatedWorkspaceHandle,
@@ -276,7 +281,7 @@ async function main(): Promise<void> {
     };
     parentRuntime.events.record({
       sessionId: spec.parentSessionId,
-      type: "subagent_spawned",
+      type: SUBAGENT_RUNNING_EVENT_TYPE,
       payload: buildDelegationLifecyclePayload(runningRecord),
     });
     writeDetachedSubagentLiveState(spec.workspaceRoot, spec.runId, {
@@ -387,6 +392,13 @@ async function main(): Promise<void> {
       sourceRoot: spec.workspaceRoot,
       isolatedRoot: isolatedWorkspace?.root ?? spec.workspaceRoot,
       summary,
+      candidatePaths:
+        isolatedWorkspace && childSessionId
+          ? collectChangedPathsFromIsolatedWorkspace({
+              isolatedRoot: isolatedWorkspace.root,
+              childSessionId,
+            })
+          : undefined,
     });
 
     if (executionPlan.boundary === "effectful") {
@@ -484,6 +496,13 @@ async function main(): Promise<void> {
       sourceRoot: spec.workspaceRoot,
       isolatedRoot: isolatedWorkspace?.root ?? spec.workspaceRoot,
       summary: message,
+      candidatePaths:
+        isolatedWorkspace && childSessionId
+          ? collectChangedPathsFromIsolatedWorkspace({
+              isolatedRoot: isolatedWorkspace.root,
+              childSessionId,
+            })
+          : undefined,
     }).catch(() => undefined);
     const artifactRefs = [
       ...(buildPatchArtifactRefs(patches) ?? []),

@@ -103,7 +103,7 @@ export class EffectCommitmentDeskService {
     sessionId: string;
     type: string;
     turn?: number;
-    payload?: Record<string, unknown>;
+    payload?: object;
   }): void {
     const row = this.recordEvent(input);
     if (!row) {

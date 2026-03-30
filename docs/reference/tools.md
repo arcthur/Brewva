@@ -523,7 +523,8 @@ Derived workflow inspection surface.
   `compact_recommended`, or `abort_recommended`
 - reports blockers such as stale review/QA/verification/ship evidence, task
   blockers, pending worker results, and pending delegation outcomes awaiting
-  a parent turn
+  a parent turn; pending worker results and pending delegation outcomes both
+  keep ship posture blocked until the parent explicitly resolves them
 - optionally includes recent derived workflow artifacts
 
 This tool is advisory. It does not create a runtime-owned chain planner and it

@@ -70,10 +70,10 @@ describe("context transform budgeting contract", () => {
         }),
       },
       events: {
-        record: (input: { type: string; payload?: Record<string, unknown> }) => {
+        record: (input: { type: string; payload?: object }) => {
           eventTypes.push(input.type);
           if (input.type === "context_compaction_advisory" && input.payload) {
-            advisoryPayloads.push(input.payload);
+            advisoryPayloads.push(input.payload as Record<string, unknown>);
           }
           return undefined;
         },

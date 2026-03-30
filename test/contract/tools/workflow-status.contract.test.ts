@@ -191,6 +191,7 @@ describe("workflow_status contract", () => {
 
     const text = extractTextContent(result);
     expect(text).toContain("pending_delegation_outcomes: 1");
+    expect(text).toContain("Pending delegation outcomes require parent attention (1 outcome).");
     expect(text).toContain("pending_delegation_outcome_runs:");
     expect(text).toContain("- review/delegation-handoff-1: completed");
     expect(
@@ -218,6 +219,25 @@ describe("workflow_status contract", () => {
         handoffState: "pending_parent_turn",
       },
     ]);
+    expect(
+      (
+        result.details as
+          | {
+              pendingDelegationOutcomesCount?: number;
+              posture?: { blockers?: string[] };
+            }
+          | undefined
+      )?.pendingDelegationOutcomesCount,
+    ).toBe(1);
+    expect(
+      (
+        result.details as
+          | {
+              posture?: { blockers?: string[] };
+            }
+          | undefined
+      )?.posture?.blockers,
+    ).toContain("Pending delegation outcomes require parent attention (1 outcome).");
   });
 
   test("surfaces the latest stall adjudication as advisory workflow state", async () => {

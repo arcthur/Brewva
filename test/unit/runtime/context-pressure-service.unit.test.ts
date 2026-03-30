@@ -40,7 +40,7 @@ describe("ContextPressureService", () => {
       sessionId: string;
       type: string;
       turn?: number;
-      payload?: Record<string, unknown>;
+      payload?: object;
     }> = [];
 
     const budget = new ContextBudgetManager(config.infrastructure.contextBudget);
@@ -86,7 +86,7 @@ describe("ContextPressureService", () => {
       sessionId: string;
       type: string;
       turn?: number;
-      payload?: Record<string, unknown>;
+      payload?: object;
     }> = [];
 
     const budget = new ContextBudgetManager(config.infrastructure.contextBudget);
@@ -129,7 +129,7 @@ describe("ContextPressureService", () => {
       sessionId: string;
       type: string;
       turn?: number;
-      payload?: Record<string, unknown>;
+      payload?: object;
     }> = [];
 
     const budget = new ContextBudgetManager(config.infrastructure.contextBudget);
@@ -169,7 +169,7 @@ describe("ContextPressureService", () => {
       sessionId: string;
       type: string;
       turn?: number;
-      payload?: Record<string, unknown>;
+      payload?: object;
     }> = [];
 
     const budget = new ContextBudgetManager(config.infrastructure.contextBudget);
@@ -238,7 +238,7 @@ describe("ContextPressureService", () => {
       sessionId: string;
       type: string;
       turn?: number;
-      payload?: Record<string, unknown>;
+      payload?: object;
     }> = [];
 
     const budget = new ContextBudgetManager(config.infrastructure.contextBudget);

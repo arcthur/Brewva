@@ -185,6 +185,7 @@ Current guard notes:
 - `schedule_child_session_finished`
 - `schedule_child_session_failed`
 - `subagent_spawned`
+- `subagent_running`
 - `subagent_completed`
 - `subagent_failed`
 - `subagent_cancelled`
@@ -269,6 +270,7 @@ The audit-retained core includes:
 - `governance_compaction_integrity_failed`
 - `governance_compaction_integrity_error`
 - `subagent_spawned`
+- `subagent_running`
 - `subagent_completed`
 - `subagent_failed`
 - `subagent_cancelled`
@@ -328,8 +330,15 @@ properties such as:
 - `deliverySurfacedAt`
 - `supplementalAppended`
 
+`subagent_spawned` records durable run creation. `subagent_running` records the
+later transition where the child pid/session is actually live. Readers accept
+older replay tapes that encoded the running transition as
+`subagent_spawned(status=running)`.
+
 `worker_results_applied` and `worker_results_apply_failed` record the
-parent-controlled adoption outcome for child-produced patches.
+parent-controlled adoption outcome for child-produced patches. When a single
+worker result is applied, `worker_results_applied` also includes `workerId`
+alongside canonical `workerIds`.
 
 `channel_command_received`, `channel_update_requested`, and
 `channel_update_lock_blocked` record channel control-plane activity for
@@ -351,5 +360,6 @@ Iteration fact events record objective optimization evidence only:
   - guard key, pass/fail-like status, and evidence refs
 
 Workflow posture is computed from those durable families plus current task
-blockers and pending worker-result state. The resulting advisory surfaces remain
-inspection-only and may not prescribe a single legal workflow path.
+blockers, pending worker-result state, and pending delegation outcomes awaiting
+parent attention. The resulting advisory surfaces remain inspection-only and may
+not prescribe a single legal workflow path.

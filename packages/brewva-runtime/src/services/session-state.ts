@@ -37,6 +37,8 @@ export class RuntimeSessionStateCell {
   tapeLatestAnchorEventId?: string;
   tapeLastCheckpointEventId?: string;
   tapeProcessedEventIdsSinceCheckpoint = new Set<string>();
+  parallelBudgetHydrated = false;
+  parallelBudgetLatestEventId?: string;
   hydration: SessionHydrationState = {
     status: "cold",
     issues: [],

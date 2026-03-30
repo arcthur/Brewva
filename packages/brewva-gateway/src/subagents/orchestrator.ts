@@ -6,7 +6,11 @@ import type {
   DelegationRunRecord,
   ManagedToolMode,
   PatchSet,
-  WorkerResult,
+} from "@brewva/brewva-runtime";
+import {
+  SUBAGENT_RUNNING_EVENT_TYPE,
+  isDelegationRunTerminalStatus,
+  type WorkerResult,
 } from "@brewva/brewva-runtime";
 import type {
   BrewvaToolOrchestration,
@@ -50,6 +54,7 @@ import {
 } from "./targets.js";
 import {
   capturePatchSetFromIsolatedWorkspace,
+  collectChangedPathsFromIsolatedWorkspace,
   copyDelegationContextManifestToIsolatedWorkspace,
   createIsolatedWorkspace,
   type IsolatedWorkspaceHandle,
@@ -165,25 +170,23 @@ async function captureIsolatedPatchSet(
   sourceRoot: string,
   isolatedWorkspace: IsolatedWorkspaceHandle | undefined,
   summary: string,
+  childSessionId?: string,
 ): Promise<PatchSet | undefined> {
   if (!isolatedWorkspace) {
     return undefined;
   }
+  const candidatePaths = childSessionId
+    ? collectChangedPathsFromIsolatedWorkspace({
+        isolatedRoot: isolatedWorkspace.root,
+        childSessionId,
+      })
+    : undefined;
   return await capturePatchSetFromIsolatedWorkspace({
     sourceRoot,
     isolatedRoot: isolatedWorkspace.root,
     summary,
+    candidatePaths,
   });
-}
-
-function isTerminalRunStatus(status: DelegationRunRecord["status"]): boolean {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "timeout" ||
-    status === "cancelled" ||
-    status === "merged"
-  );
 }
 
 function resolveDelegationRecordIdentity(input: {
@@ -634,7 +637,7 @@ export function createHostedSubagentAdapter(
         if (!latest) {
           return cloneDelegationRunRecord(initialRecord);
         }
-        if (isTerminalRunStatus(latest.status)) {
+        if (isDelegationRunTerminalStatus(latest.status)) {
           return cloneDelegationRunRecord(latest);
         }
         cancellationReason = reason?.trim() || "cancelled_by_parent";
@@ -650,7 +653,7 @@ export function createHostedSubagentAdapter(
       },
       getView() {
         const latest = delegationStore.getRun(input.parentSessionId, runId) ?? liveRun.record;
-        const terminal = isTerminalRunStatus(latest.status);
+        const terminal = isDelegationRunTerminalStatus(latest.status);
         return {
           ...cloneDelegationRunRecord(latest),
           live: !terminal && !finished,
@@ -724,7 +727,7 @@ export function createHostedSubagentAdapter(
         liveRun.record = cloneDelegationRunRecord(runningRecord);
         options.runtime.events.record({
           sessionId: input.parentSessionId,
-          type: "subagent_spawned",
+          type: SUBAGENT_RUNNING_EVENT_TYPE,
           payload: {
             runId,
             delegate,
@@ -829,6 +832,7 @@ export function createHostedSubagentAdapter(
           options.runtime.workspaceRoot,
           isolatedWorkspace,
           summary,
+          childSessionId,
         );
         const workerResult =
           executionPlan.boundary === "effectful"
@@ -967,6 +971,7 @@ export function createHostedSubagentAdapter(
             options.runtime.workspaceRoot,
             isolatedWorkspace,
             message,
+            childSessionId,
           ).catch(() => undefined);
           workerResult = buildWorkerResult({
             workerId: runId,
@@ -1267,9 +1272,11 @@ export function createHostedSubagentAdapter(
             : undefined,
           totalTokens: record.totalTokens,
           costUsd: record.costUsd,
-          live: backgroundLive?.live ?? (!!liveRun && !isTerminalRunStatus(record.status)),
+          live:
+            backgroundLive?.live ?? (!!liveRun && !isDelegationRunTerminalStatus(record.status)),
           cancelable:
-            backgroundLive?.cancelable ?? (!!liveRun && !isTerminalRunStatus(record.status)),
+            backgroundLive?.cancelable ??
+            (!!liveRun && !isDelegationRunTerminalStatus(record.status)),
         };
       });
       return {
@@ -1294,7 +1301,7 @@ export function createHostedSubagentAdapter(
             error: `unknown_run:${runId}`,
           };
         }
-        if (isTerminalRunStatus(persisted.status)) {
+        if (isDelegationRunTerminalStatus(persisted.status)) {
           return {
             ok: false,
             error: `already_terminal:${persisted.status}`,

@@ -1,6 +1,9 @@
 import {
+  closeSync,
   existsSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -70,8 +73,20 @@ function writeJsonFile(filePath: string, value: unknown): void {
   mkdirSync(dirname(resolvedPath), { recursive: true });
   const tmpPath = `${resolvedPath}.tmp-${process.pid}-${Date.now()}`;
   try {
-    writeFileSync(tmpPath, JSON.stringify(value, null, 2), "utf8");
+    const fileDescriptor = openSync(tmpPath, "w");
+    try {
+      writeFileSync(fileDescriptor, JSON.stringify(value, null, 2), "utf8");
+      fsyncSync(fileDescriptor);
+    } finally {
+      closeSync(fileDescriptor);
+    }
     renameSync(tmpPath, resolvedPath);
+    const directoryDescriptor = openSync(dirname(resolvedPath), "r");
+    try {
+      fsyncSync(directoryDescriptor);
+    } finally {
+      closeSync(directoryDescriptor);
+    }
   } catch (error) {
     try {
       rmSync(tmpPath, { force: true });

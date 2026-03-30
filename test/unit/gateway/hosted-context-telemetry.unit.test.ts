@@ -8,18 +8,13 @@ describe("hosted context telemetry", () => {
   test("emits context composed payloads with stable composition metrics", () => {
     const recorded: Array<{
       sessionId: string;
-      turn: number;
+      turn?: number;
       type: string;
-      payload?: Record<string, unknown>;
+      payload?: object;
     }> = [];
     const runtime = createRuntimeFixture({
       events: {
-        record: (input: {
-          sessionId: string;
-          turn: number;
-          type: string;
-          payload?: Record<string, unknown>;
-        }) => {
+        record: (input: { sessionId: string; turn?: number; type: string; payload?: object }) => {
           recorded.push(input);
           return undefined;
         },

@@ -165,7 +165,7 @@ export interface SchedulerRuntimePort {
     sessionId: string;
     type: string;
     turn?: number;
-    payload?: Record<string, unknown>;
+    payload?: object;
     timestamp?: number;
     skipTapeCheckpoint?: boolean;
   }): BrewvaEventRecord | undefined;
@@ -669,7 +669,7 @@ export class SchedulerService {
     const row = this.runtimePort.recordEvent({
       sessionId: payload.parentSessionId,
       type: SCHEDULE_EVENT_TYPE,
-      payload: payload as unknown as Record<string, unknown>,
+      payload,
       skipTapeCheckpoint: true,
     });
     if (!row) return null;

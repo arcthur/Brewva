@@ -13,6 +13,7 @@ import type { BrewvaEventStore } from "../events/store.js";
 import type { EvidenceLedger } from "../ledger/evidence-ledger.js";
 import type { ParallelBudgetManager } from "../parallel/budget.js";
 import type { ParallelResultStore } from "../parallel/results.js";
+import { deriveParallelBudgetStateFromEvents } from "../parallel/state.js";
 import type { ProjectionEngine } from "../projection/engine.js";
 import type { RuntimeKernelContext } from "../runtime-kernel.js";
 import type { FileChangeTracker } from "../state/file-change-tracker.js";
@@ -91,7 +92,7 @@ export class SessionLifecycleService {
     sessionId: string;
     type: string;
     turn?: number;
-    payload?: Record<string, unknown>;
+    payload?: object;
     timestamp?: number;
     skipTapeCheckpoint?: boolean;
   }) => unknown;
@@ -241,6 +242,13 @@ export class SessionLifecycleService {
     const events = this.events.list(sessionId);
     const integrityIssues = this.events.getIntegrityIssues(sessionId);
     this.resetHydrationSupportStores(sessionId);
+    const parallelBudgetState = deriveParallelBudgetStateFromEvents(events);
+    this.parallel.restoreSession(sessionId, {
+      activeRunIds: parallelBudgetState.activeRunIds,
+      totalStarted: parallelBudgetState.totalStarted,
+    });
+    state.parallelBudgetHydrated = true;
+    state.parallelBudgetLatestEventId = parallelBudgetState.latestEventId;
     if (events.length === 0) {
       state.hydration = {
         status: integrityIssues.length > 0 ? "degraded" : "ready",
@@ -261,6 +269,7 @@ export class SessionLifecycleService {
     this.costTracker.clear(sessionId);
     this.verification.stateStore.clear(sessionId);
     this.reversibleMutations.clear(sessionId);
+    this.parallel.clear(sessionId);
   }
 
   private prepareHydrationReplayState(

@@ -19,11 +19,7 @@ export interface TurnWALRecoveryOptions {
   now?: () => number;
   handlers?: Partial<Record<TurnWALSource, TurnWALRecoverHandler>>;
   scopeFilter?: (scope: string) => boolean;
-  recordEvent?: (input: {
-    sessionId: string;
-    type: string;
-    payload?: Record<string, unknown>;
-  }) => void;
+  recordEvent?: (input: { sessionId: string; type: string; payload?: object }) => void;
 }
 
 function buildEmptySummary(): TurnWALRecoveryResult {
@@ -82,7 +78,7 @@ export class TurnWALRecovery {
   private readonly defaultTtlMs: number;
   private readonly scheduleTurnTtlMs: number;
   private readonly recordEvent?:
-    | ((input: { sessionId: string; type: string; payload?: Record<string, unknown> }) => void)
+    | ((input: { sessionId: string; type: string; payload?: object }) => void)
     | undefined;
 
   constructor(private readonly options: TurnWALRecoveryOptions) {

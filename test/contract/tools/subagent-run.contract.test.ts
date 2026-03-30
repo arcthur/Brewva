@@ -102,7 +102,7 @@ describe("subagent_run tool", () => {
     expect((result.details as { verdict?: string } | undefined)?.verdict).toBe("fail");
   });
 
-  test("rejects removed legacy delegation fields", async () => {
+  test("ignores unknown legacy delegation fields", async () => {
     let adapterCalled = false;
     const tool = createSubagentRunTool({
       runtime: {
@@ -134,11 +134,9 @@ describe("subagent_run tool", () => {
       fakeContext("session-legacy"),
     );
 
-    expect(adapterCalled).toBe(false);
-    expect(extractText(result)).toContain(
-      "legacy delegation fields are no longer supported: requiredOutputs",
-    );
-    expect((result.details as { verdict?: string } | undefined)?.verdict).toBe("fail");
+    expect(adapterCalled).toBe(true);
+    expect(extractText(result)).toContain("subagent_run completed for delegate=review");
+    expect((result.details as { ok?: boolean } | undefined)?.ok).toBe(true);
   });
 
   test("marks mixed parallel results as failed", async () => {

@@ -8,7 +8,6 @@ import type { VerificationOutcomeSnapshot } from "./context/runtime-status.js";
 import type { ToolOutputDistillationEntry } from "./context/tool-output-distilled.js";
 import type {
   BrewvaConfig,
-  BrewvaEventRecord,
   SessionCostSummary,
   ToolGovernanceDescriptor,
   VerificationLevel,
@@ -35,7 +34,7 @@ import { CostService } from "./services/cost.js";
 import { createCredentialVaultServiceFromSecurityConfig } from "./services/credential-vault.js";
 import type { CredentialVaultService } from "./services/credential-vault.js";
 import { EffectCommitmentDeskService } from "./services/effect-commitment-desk.js";
-import { EventPipelineService, type RuntimeRecordEventInput } from "./services/event-pipeline.js";
+import { EventPipelineService, type RuntimeRecordEvent } from "./services/event-pipeline.js";
 import { FileChangeService } from "./services/file-change.js";
 import { LedgerService } from "./services/ledger.js";
 import { MutationRollbackService } from "./services/mutation-rollback.js";
@@ -109,7 +108,7 @@ interface RuntimeCoreAssemblyOptions {
   cwd: string;
   workspaceRoot: string;
   config: BrewvaConfig;
-  recordEvent(input: RuntimeRecordEventInput): BrewvaEventRecord | undefined;
+  recordEvent: RuntimeRecordEvent;
   getCurrentTurn(sessionId: string): number;
 }
 
@@ -572,6 +571,7 @@ export function createRuntimeServiceDependencies(
     parallelResults: options.coreDependencies.parallelResults,
     sessionState: options.sessionState,
     eventStore: options.coreDependencies.eventStore,
+    subscribeEvents: (listener) => eventPipeline.subscribeEvents(listener),
     getCurrentTurn: (sessionId) => options.kernel.getCurrentTurn(sessionId),
     recordEvent: (input) => options.kernel.recordEvent(input),
     fileChangeService,

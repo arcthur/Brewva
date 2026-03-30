@@ -11,8 +11,8 @@ import { lowerStringEnumContractParameters } from "./input-alias.js";
 
 export function defineTool<TParams extends TSchema, TDetails = unknown>(
   tool: ToolDefinition<TParams, TDetails>,
-): ToolDefinition {
-  return tool as unknown as ToolDefinition;
+): ToolDefinition<TParams, TDetails> {
+  return tool;
 }
 
 function cloneGovernanceDescriptor(input: ToolGovernanceDescriptor): ToolGovernanceDescriptor {
@@ -70,10 +70,10 @@ export function defineBrewvaTool<TParams extends TSchema, TDetails = unknown>(
     return await tool.execute(toolCallId, loweredParams, signal, onUpdate, ctx);
   };
   const managed = {
-    ...(tool as unknown as Record<string, unknown>),
+    ...tool,
     parameters: tool.parameters,
     execute,
-  } as unknown as BrewvaManagedToolDefinition;
+  } satisfies ToolDefinition<TParams, TDetails>;
   Object.defineProperty(managed, "brewva", {
     enumerable: true,
     configurable: false,
@@ -87,7 +87,7 @@ export function defineBrewvaTool<TParams extends TSchema, TDetails = unknown>(
     writable: false,
     value: tool.parameters,
   });
-  return managed;
+  return managed as BrewvaManagedToolDefinition;
 }
 
 export function getBrewvaToolMetadata(

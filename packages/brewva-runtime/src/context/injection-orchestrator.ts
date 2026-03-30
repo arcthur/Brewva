@@ -37,12 +37,7 @@ export interface ContextInjectionOrchestratorDeps {
     usage?: ContextBudgetUsage;
   }): void;
   registerContextInjection(sessionId: string, input: RegisterContextInjectionInput): void;
-  recordEvent(input: {
-    sessionId: string;
-    type: string;
-    turn?: number;
-    payload?: Record<string, unknown>;
-  }): void;
+  recordEvent(input: { sessionId: string; type: string; turn?: number; payload?: object }): void;
   planContextInjection(sessionId: string, totalTokenBudget: number): ContextInjectionPlanResult;
   commitContextInjection(sessionId: string, consumedKeys: string[]): void;
   planBudgetInjection(

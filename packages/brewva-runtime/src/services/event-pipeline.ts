@@ -79,6 +79,7 @@ import {
   SUBAGENT_DELIVERY_SURFACED_EVENT_TYPE,
   SUBAGENT_FAILED_EVENT_TYPE,
   SUBAGENT_OUTCOME_PARSE_FAILED_EVENT_TYPE,
+  SUBAGENT_RUNNING_EVENT_TYPE,
   SUBAGENT_SPAWNED_EVENT_TYPE,
   TASK_STALL_ADJUDICATED_EVENT_TYPE,
   TASK_STALL_ADJUDICATION_ERROR_EVENT_TYPE,
@@ -110,6 +111,7 @@ import { SCHEDULE_EVENT_TYPE } from "../schedule/events.js";
 import { TAPE_ANCHOR_EVENT_TYPE, TAPE_CHECKPOINT_EVENT_TYPE } from "../tape/events.js";
 import { TASK_EVENT_TYPE } from "../task/ledger.js";
 import { TRUTH_EVENT_TYPE } from "../truth/ledger.js";
+import type { JsonValue } from "../utils/json.js";
 import type { RuntimeCallback } from "./callback.js";
 
 const AUDIT_EVENT_TYPES = new Set<string>([
@@ -160,6 +162,7 @@ const AUDIT_EVENT_TYPES = new Set<string>([
   SCHEDULE_CHILD_SESSION_FINISHED_EVENT_TYPE,
   SCHEDULE_CHILD_SESSION_FAILED_EVENT_TYPE,
   SUBAGENT_SPAWNED_EVENT_TYPE,
+  SUBAGENT_RUNNING_EVENT_TYPE,
   SUBAGENT_COMPLETED_EVENT_TYPE,
   SUBAGENT_FAILED_EVENT_TYPE,
   SUBAGENT_CANCELLED_EVENT_TYPE,
@@ -293,14 +296,18 @@ const RESERVED_RUNTIME_EVENT_PREFIXES = [
   "worker_results_",
 ] as const;
 
-export interface RuntimeRecordEventInput {
+export interface RuntimeRecordEventInput<TPayload extends object = Record<string, JsonValue>> {
   sessionId: string;
   type: string;
   turn?: number;
-  payload?: Record<string, unknown>;
+  payload?: TPayload;
   timestamp?: number;
   skipTapeCheckpoint?: boolean;
 }
+
+export type RuntimeRecordEvent = <TPayload extends object>(
+  input: RuntimeRecordEventInput<TPayload>,
+) => BrewvaEventRecord | undefined;
 
 export interface EventPipelineServiceOptions {
   events: BrewvaEventStore;
@@ -329,12 +336,14 @@ export class EventPipelineService {
     this.maybeRecordTapeCheckpoint = options.maybeRecordTapeCheckpoint;
   }
 
-  recordEvent(input: RuntimeRecordEventInput): BrewvaEventRecord | undefined {
+  recordEvent<TPayload extends object>(
+    input: RuntimeRecordEventInput<TPayload>,
+  ): BrewvaEventRecord | undefined {
     return this.appendEvent(input, { emitListeners: true });
   }
 
-  private appendEvent(
-    input: RuntimeRecordEventInput,
+  private appendEvent<TPayload extends object>(
+    input: RuntimeRecordEventInput<TPayload>,
     options: { emitListeners: boolean },
   ): BrewvaEventRecord | undefined {
     if (!this.shouldEmit(input.type)) {

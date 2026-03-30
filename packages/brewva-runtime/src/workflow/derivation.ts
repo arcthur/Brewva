@@ -79,6 +79,7 @@ export interface WorkflowStatusSnapshot {
   posture: WorkflowPosture;
   artifacts: WorkflowArtifact[];
   pendingWorkerResults: number;
+  pendingDelegationOutcomes: number;
   updatedAt: number;
 }
 
@@ -108,6 +109,7 @@ interface DeriveWorkflowStatusInput {
   blockers?: readonly TaskBlockerLike[];
   taskState?: Pick<TaskState, "spec" | "status" | "acceptance">;
   pendingWorkerResults?: number;
+  pendingDelegationOutcomes?: number;
   workspaceRoot?: string;
 }
 
@@ -1122,6 +1124,7 @@ export function deriveWorkflowStatus(input: DeriveWorkflowStatusInput): Workflow
   const latestArtifacts = latestArtifactByKind(artifacts);
   const taskBlockers = input.blockers ?? [];
   const pendingWorkerResults = Math.max(0, input.pendingWorkerResults ?? 0);
+  const pendingDelegationOutcomes = Math.max(0, input.pendingDelegationOutcomes ?? 0);
   const blockers: string[] = taskBlockers.map((blocker) =>
     blocker.message.trim() ? blocker.message.trim() : blocker.id,
   );
@@ -1180,6 +1183,11 @@ export function deriveWorkflowStatus(input: DeriveWorkflowStatusInput): Workflow
   if (pendingWorkerResults > 0) {
     blockers.push(
       `Pending worker results require merge/apply (${pendingWorkerResults} result${pendingWorkerResults === 1 ? "" : "s"}).`,
+    );
+  }
+  if (pendingDelegationOutcomes > 0) {
+    blockers.push(
+      `Pending delegation outcomes require parent attention (${pendingDelegationOutcomes} outcome${pendingDelegationOutcomes === 1 ? "" : "s"}).`,
     );
   }
 
@@ -1279,6 +1287,7 @@ export function deriveWorkflowStatus(input: DeriveWorkflowStatusInput): Workflow
     posture,
     artifacts: artifactsWithShipPosture,
     pendingWorkerResults,
+    pendingDelegationOutcomes,
     updatedAt,
   };
 }

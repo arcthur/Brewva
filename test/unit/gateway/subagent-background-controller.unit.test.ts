@@ -7,7 +7,7 @@ import {
   HostedDelegationStore,
   type HostedDelegationTarget,
 } from "@brewva/brewva-gateway";
-import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
 
 function createTempWorkspace(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -331,5 +331,255 @@ describe("detached subagent background controller", () => {
     expect(
       existsSync(join(workspaceRoot, ".orchestrator", "subagent-runs", first.runId, "cancel.json")),
     ).toBe(true);
+  });
+
+  test("startRun rejects new detached work when the session parallel budget is already saturated", async () => {
+    const workspaceRoot = createTempWorkspace("brewva-subagent-bg-slot-budget-");
+    const runtime = new BrewvaRuntime({
+      cwd: workspaceRoot,
+      config: {
+        ...structuredClone(DEFAULT_BREWVA_CONFIG),
+        parallel: {
+          ...DEFAULT_BREWVA_CONFIG.parallel,
+          enabled: true,
+          maxConcurrent: 1,
+          maxTotalPerSession: 4,
+        },
+      },
+    });
+    let nextPid = 47000;
+    let spawnCalls = 0;
+    const controller = createDetachedSubagentBackgroundController({
+      runtime,
+      spawnProcess() {
+        spawnCalls += 1;
+        return {
+          pid: nextPid++,
+          unref() {},
+        } as any;
+      },
+      isPidAlive() {
+        return true;
+      },
+    });
+
+    const first = await controller.startRun({
+      parentSessionId: "parent-bg-slot-budget",
+      target: EXPLORE_TARGET,
+      packet: {
+        objective: "Inspect runtime package.",
+      },
+    });
+    const second = await controller.startRun({
+      parentSessionId: "parent-bg-slot-budget",
+      target: EXPLORE_TARGET,
+      packet: {
+        objective: "Inspect gateway package.",
+      },
+    });
+
+    expect(first.status).toBe("pending");
+    expect(second.status).toBe("failed");
+    expect(second.summary).toBe("parallel_slot_rejected:max_concurrent");
+    expect(spawnCalls).toBe(1);
+  });
+
+  test("restored detached live runs continue to consume parallel budget after parent restart", async () => {
+    const workspaceRoot = createTempWorkspace("brewva-subagent-bg-slot-restore-");
+    const config = {
+      ...structuredClone(DEFAULT_BREWVA_CONFIG),
+      parallel: {
+        ...DEFAULT_BREWVA_CONFIG.parallel,
+        enabled: true,
+        maxConcurrent: 1,
+        maxTotalPerSession: 4,
+      },
+    };
+    const runtime = new BrewvaRuntime({
+      cwd: workspaceRoot,
+      config,
+    });
+    const controller = createDetachedSubagentBackgroundController({
+      runtime,
+      spawnProcess() {
+        return {
+          pid: 48001,
+          unref() {},
+        } as any;
+      },
+      isPidAlive() {
+        return true;
+      },
+    });
+
+    const first = await controller.startRun({
+      parentSessionId: "parent-bg-slot-restore",
+      target: EXPLORE_TARGET,
+      packet: {
+        objective: "Inspect runtime package.",
+      },
+    });
+
+    const restartedRuntime = new BrewvaRuntime({
+      cwd: workspaceRoot,
+      config,
+    });
+    let spawnCalls = 0;
+    const restartedController = createDetachedSubagentBackgroundController({
+      runtime: restartedRuntime,
+      spawnProcess() {
+        spawnCalls += 1;
+        return {
+          pid: 48002,
+          unref() {},
+        } as any;
+      },
+      isPidAlive() {
+        return true;
+      },
+    });
+
+    const second = await restartedController.startRun({
+      parentSessionId: "parent-bg-slot-restore",
+      target: EXPLORE_TARGET,
+      packet: {
+        objective: "Inspect gateway package.",
+      },
+    });
+
+    expect(first.status).toBe("pending");
+    expect(second.status).toBe("failed");
+    expect(second.summary).toBe("parallel_slot_rejected:max_concurrent");
+    expect(spawnCalls).toBe(0);
+  });
+
+  test("pre-satisfied completion predicates record a terminal cancellation without spawning", async () => {
+    const workspaceRoot = createTempWorkspace("brewva-subagent-bg-predicate-preflight-");
+    const runtime = new BrewvaRuntime({ cwd: workspaceRoot });
+    let spawnCalls = 0;
+    const controller = createDetachedSubagentBackgroundController({
+      runtime,
+      spawnProcess() {
+        spawnCalls += 1;
+        return {
+          pid: 49001,
+          unref() {},
+        } as any;
+      },
+      isPidAlive() {
+        return true;
+      },
+    });
+
+    runtime.events.record({
+      sessionId: "parent-bg-predicate-preflight",
+      type: "worker_results_applied",
+      payload: {
+        workerId: "worker-preflight-1",
+      },
+    });
+
+    const run = await controller.startRun({
+      parentSessionId: "parent-bg-predicate-preflight",
+      target: EXPLORE_TARGET,
+      packet: {
+        objective: "Inspect runtime until an applied worker result exists.",
+        completionPredicate: {
+          source: "events",
+          type: "worker_results_applied",
+          match: {
+            workerId: "worker-preflight-1",
+          },
+          policy: "cancel_when_true",
+        },
+      },
+    });
+
+    expect(run.status).toBe("cancelled");
+    expect(run.summary).toBe("completion_predicate_satisfied");
+    expect(spawnCalls).toBe(0);
+    expect(
+      existsSync(join(workspaceRoot, ".orchestrator", "subagent-runs", run.runId, "spec.json")),
+    ).toBe(false);
+  });
+
+  test("inspectLiveRuns replays completion predicates after restart and cancels already-satisfied runs", async () => {
+    const workspaceRoot = createTempWorkspace("brewva-subagent-bg-predicate-restart-");
+    const runtime = new BrewvaRuntime({ cwd: workspaceRoot });
+    const controller = createDetachedSubagentBackgroundController({
+      runtime,
+      spawnProcess() {
+        return {
+          pid: 50001,
+          unref() {},
+        } as any;
+      },
+      isPidAlive() {
+        return true;
+      },
+    });
+
+    const run = await controller.startRun({
+      parentSessionId: "parent-bg-predicate-restart",
+      target: EXPLORE_TARGET,
+      packet: {
+        objective: "Inspect runtime package until merge evidence exists.",
+        completionPredicate: {
+          source: "events",
+          type: "worker_results_applied",
+          match: {
+            workerId: "worker-restart-1",
+          },
+          policy: "cancel_when_true",
+        },
+      },
+    });
+
+    const restartedRuntime = new BrewvaRuntime({ cwd: workspaceRoot });
+    const restartedStore = new HostedDelegationStore(restartedRuntime);
+    let pidAlive = true;
+    const signals: Array<{ pid: number; signal: NodeJS.Signals }> = [];
+    const restartedController = createDetachedSubagentBackgroundController({
+      runtime: restartedRuntime,
+      delegationStore: restartedStore,
+      spawnProcess() {
+        return {
+          pid: 50002,
+          unref() {},
+        } as any;
+      },
+      isPidAlive() {
+        return pidAlive;
+      },
+      sendSignal(pid, signal) {
+        signals.push({ pid, signal });
+        pidAlive = false;
+      },
+    });
+
+    restartedRuntime.events.record({
+      sessionId: "parent-bg-predicate-restart",
+      type: "worker_results_applied",
+      payload: {
+        workerId: "worker-restart-1",
+      },
+    });
+
+    const liveRuns = await restartedController.inspectLiveRuns({
+      parentSessionId: "parent-bg-predicate-restart",
+      query: { runIds: [run.runId] },
+    });
+    const terminal = restartedStore.getRun("parent-bg-predicate-restart", run.runId);
+
+    expect(signals).toEqual([{ pid: 50001, signal: "SIGTERM" }]);
+    expect(liveRuns.get(run.runId)).toEqual({
+      live: false,
+      cancelable: false,
+    });
+    expect(terminal).toMatchObject({
+      runId: run.runId,
+      status: "cancelled",
+      summary: "completion_predicate_satisfied",
+    });
   });
 });

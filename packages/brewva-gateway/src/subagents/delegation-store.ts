@@ -4,6 +4,7 @@ import {
   SUBAGENT_DELIVERY_SURFACED_EVENT_TYPE,
   SUBAGENT_FAILED_EVENT_TYPE,
   SUBAGENT_OUTCOME_PARSE_FAILED_EVENT_TYPE,
+  SUBAGENT_RUNNING_EVENT_TYPE,
   SUBAGENT_SPAWNED_EVENT_TYPE,
   WORKER_RESULTS_APPLIED_EVENT_TYPE,
   type BrewvaRuntime,
@@ -17,6 +18,7 @@ import {
   type PendingDelegationOutcomeQuery,
   type ToolExecutionBoundary,
 } from "@brewva/brewva-runtime";
+import { isDelegationRunTerminalStatus } from "@brewva/brewva-runtime";
 
 type DelegationEvent = Pick<BrewvaStructuredEvent, "sessionId" | "type" | "timestamp" | "payload">;
 
@@ -204,16 +206,6 @@ function upsertRun(
   return cloned;
 }
 
-function isTerminalStatus(status: DelegationRunRecord["status"]): boolean {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "timeout" ||
-    status === "cancelled" ||
-    status === "merged"
-  );
-}
-
 export function buildDelegationLifecyclePayload(
   record: DelegationRunRecord,
 ): Record<string, unknown> {
@@ -251,7 +243,7 @@ function applyDelegationEvent(
   event: DelegationEvent,
 ): void {
   const payload = readEventPayload(event);
-  if (event.type === SUBAGENT_SPAWNED_EVENT_TYPE) {
+  if (event.type === SUBAGENT_SPAWNED_EVENT_TYPE || event.type === SUBAGENT_RUNNING_EVENT_TYPE) {
     const runId = readString(payload?.runId);
     const delegate = readString(payload?.delegate);
     if (!runId || !delegate) {
@@ -263,7 +255,9 @@ function applyDelegationEvent(
       delegate,
       ...readRunMetadata(payload, existing),
       parentSessionId: event.sessionId,
-      status: readRunStatus(payload?.status) ?? "running",
+      status:
+        readRunStatus(payload?.status) ??
+        (event.type === SUBAGENT_RUNNING_EVENT_TYPE ? "running" : "pending"),
       createdAt: existing?.createdAt ?? event.timestamp,
       updatedAt: event.timestamp,
       label: readString(payload?.label) ?? existing?.label,
@@ -456,7 +450,7 @@ function filterDelegationRuns(
       if (runIdFilter && !runIdFilter.has(record.runId)) {
         return false;
       }
-      if (!includeTerminal && isTerminalStatus(record.status)) {
+      if (!includeTerminal && isDelegationRunTerminalStatus(record.status)) {
         return false;
       }
       if (statusFilter && !statusFilter.has(record.status)) {

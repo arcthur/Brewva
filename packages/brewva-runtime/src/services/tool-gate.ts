@@ -117,7 +117,7 @@ export class ToolGateService {
     sessionId: string;
     type: string;
     turn?: number;
-    payload?: Record<string, unknown>;
+    payload?: object;
     timestamp?: number;
     skipTapeCheckpoint?: boolean;
   }) => BrewvaEventRecord | undefined;
@@ -540,7 +540,7 @@ export class ToolGateService {
       sessionId,
       type: ITERATION_GUARD_RECORDED_EVENT_TYPE,
       turn: this.getCurrentTurn(sessionId),
-      payload: payload as unknown as Record<string, unknown>,
+      payload,
     });
   }
 

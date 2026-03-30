@@ -400,7 +400,7 @@ function buildExecAuditPayload(input: {
   toolCallId: string;
   policy: ResolvedExecutionPolicy;
   command: string;
-  payload?: Record<string, unknown>;
+  payload?: object;
 }): Record<string, unknown> {
   return {
     toolCallId: input.toolCallId,

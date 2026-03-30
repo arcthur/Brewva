@@ -72,7 +72,7 @@ export class FileChangeService {
     sessionId: string;
     type: string;
     turn?: number;
-    payload?: Record<string, unknown>;
+    payload?: object;
     timestamp?: number;
     skipTapeCheckpoint?: boolean;
   }) => unknown;

@@ -23,7 +23,7 @@ describe("context-compaction module", () => {
       sessionId: string;
       type: string;
       turn?: number;
-      payload?: Record<string, unknown>;
+      payload?: object;
     }> = [];
     const ledgerRows: Array<Record<string, unknown>> = [];
     const pressureMarks: string[] = [];
@@ -106,7 +106,7 @@ describe("context-compaction module", () => {
       sessionId: string;
       type: string;
       turn?: number;
-      payload?: Record<string, unknown>;
+      payload?: object;
     }> = [];
 
     const deps: ContextCompactionDeps = {
@@ -143,7 +143,7 @@ describe("context-compaction module", () => {
       sessionId: string;
       type: string;
       turn?: number;
-      payload?: Record<string, unknown>;
+      payload?: object;
     }> = [];
 
     const deps: ContextCompactionDeps = {
@@ -181,7 +181,7 @@ describe("context-compaction module", () => {
       sessionId: string;
       type: string;
       turn?: number;
-      payload?: Record<string, unknown>;
+      payload?: object;
     }> = [];
 
     const deps: ContextCompactionDeps = {
@@ -220,7 +220,7 @@ describe("context-compaction module", () => {
       sessionId: string;
       type: string;
       turn?: number;
-      payload?: Record<string, unknown>;
+      payload?: object;
     }> = [];
 
     const deps: ContextCompactionDeps = {
