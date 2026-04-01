@@ -18,7 +18,6 @@ describe("deliberation memory tool", () => {
       schema: "brewva.task.v1",
       goal: "Keep repository verification strict and evidence-backed.",
       verification: {
-        level: "strict",
         commands: ["bun run check", "bun test"],
       },
       constraints: ["no backward compatibility"],
@@ -30,7 +29,6 @@ describe("deliberation memory tool", () => {
       schema: "brewva.task.v1",
       goal: "Preserve explicit constraints and narrow file scope.",
       verification: {
-        level: "strict",
         commands: ["bun test"],
       },
       constraints: ["keep runtime authority narrow"],

@@ -1,8 +1,8 @@
 import { differenceInMilliseconds } from "date-fns";
 import type {
   VerificationCheckRun,
-  VerificationEvidence,
   VerificationSessionState,
+  VerificationLevel,
 } from "../contracts/index.js";
 
 const DEFAULT_TTL_MS = 15 * 60 * 1000;
@@ -24,17 +24,30 @@ export class VerificationStateStore {
     state.lastWriteAt = Math.max(0, Math.floor(timestamp));
   }
 
-  appendEvidence(sessionId: string, evidence: VerificationEvidence[]): void {
-    if (evidence.length === 0) return;
-    const state = this.getOrCreate(sessionId);
-    this.prune(state);
-    state.evidence.push(...evidence);
-  }
-
   setCheckRun(sessionId: string, checkName: string, run: VerificationCheckRun): void {
     const state = this.getOrCreate(sessionId);
     this.prune(state);
     state.checkRuns[checkName] = run;
+  }
+
+  recordOutcome(
+    sessionId: string,
+    input: {
+      level: VerificationLevel;
+      passed: boolean;
+      recordedAt: number;
+      referenceWriteAt?: number;
+    },
+  ): void {
+    const state = this.getOrCreate(sessionId);
+    this.prune(state);
+    state.lastOutcomeAt = Math.max(0, Math.floor(input.recordedAt));
+    state.lastOutcomeLevel = input.level;
+    state.lastOutcomePassed = input.passed;
+    state.lastOutcomeReferenceWriteAt =
+      input.referenceWriteAt === undefined
+        ? undefined
+        : Math.max(0, Math.floor(input.referenceWriteAt));
   }
 
   get(sessionId: string): VerificationSessionState {
@@ -45,9 +58,12 @@ export class VerificationStateStore {
     }
     return {
       lastWriteAt: state.lastWriteAt,
-      evidence: [...state.evidence],
       checkRuns: { ...state.checkRuns },
       denialCount: state.denialCount,
+      lastOutcomeAt: state.lastOutcomeAt,
+      lastOutcomeLevel: state.lastOutcomeLevel,
+      lastOutcomePassed: state.lastOutcomePassed,
+      lastOutcomeReferenceWriteAt: state.lastOutcomeReferenceWriteAt,
     };
   }
 
@@ -76,9 +92,12 @@ export class VerificationStateStore {
     }
     return {
       lastWriteAt: state.lastWriteAt,
-      evidence: [...state.evidence],
       checkRuns: { ...state.checkRuns },
       denialCount: state.denialCount,
+      lastOutcomeAt: state.lastOutcomeAt,
+      lastOutcomeLevel: state.lastOutcomeLevel,
+      lastOutcomePassed: state.lastOutcomePassed,
+      lastOutcomeReferenceWriteAt: state.lastOutcomeReferenceWriteAt,
     };
   }
 
@@ -86,9 +105,12 @@ export class VerificationStateStore {
     if (!snapshot) return;
     this.sessions.set(sessionId, {
       lastWriteAt: snapshot.lastWriteAt,
-      evidence: [...snapshot.evidence],
       checkRuns: { ...snapshot.checkRuns },
       denialCount: snapshot.denialCount,
+      lastOutcomeAt: snapshot.lastOutcomeAt,
+      lastOutcomeLevel: snapshot.lastOutcomeLevel,
+      lastOutcomePassed: snapshot.lastOutcomePassed,
+      lastOutcomeReferenceWriteAt: snapshot.lastOutcomeReferenceWriteAt,
     });
   }
 
@@ -98,7 +120,6 @@ export class VerificationStateStore {
       return existing;
     }
     const state: VerificationSessionState = {
-      evidence: [],
       checkRuns: {},
       denialCount: 0,
     };
@@ -108,21 +129,27 @@ export class VerificationStateStore {
 
   private prune(state: VerificationSessionState): void {
     const now = Date.now();
-    state.evidence = state.evidence.filter(
-      (entry) => differenceInMilliseconds(now, entry.timestamp) <= this.ttlMs,
-    );
     state.checkRuns = Object.fromEntries(
       Object.entries(state.checkRuns).filter(
         ([, run]) => differenceInMilliseconds(now, run.timestamp) <= this.ttlMs,
       ),
     );
+    if (
+      state.lastOutcomeAt !== undefined &&
+      differenceInMilliseconds(now, state.lastOutcomeAt) > this.ttlMs
+    ) {
+      state.lastOutcomeAt = undefined;
+      state.lastOutcomeLevel = undefined;
+      state.lastOutcomePassed = undefined;
+      state.lastOutcomeReferenceWriteAt = undefined;
+    }
   }
 
   private isEmpty(state: VerificationSessionState): boolean {
     return (
-      state.evidence.length === 0 &&
       Object.keys(state.checkRuns).length === 0 &&
       state.denialCount === 0 &&
+      state.lastOutcomeAt === undefined &&
       (state.lastWriteAt === undefined ||
         differenceInMilliseconds(Date.now(), state.lastWriteAt) > this.ttlMs)
     );

@@ -1,17 +1,5 @@
 import type { VerificationLevel } from "./shared.js";
 
-export type VerificationEvidenceKind = "lsp_clean" | "test_or_build_passed" | "command_passed";
-
-export type VerificationEvidenceMode = "heuristic" | "compiler" | "command" | "lsp_native";
-
-export interface VerificationEvidence {
-  kind: VerificationEvidenceKind;
-  timestamp: number;
-  tool: string;
-  detail?: string;
-  mode?: VerificationEvidenceMode;
-}
-
 export interface VerificationReport {
   passed: boolean;
   readOnly: boolean;
@@ -38,7 +26,10 @@ export interface VerificationCheckRun {
 
 export interface VerificationSessionState {
   lastWriteAt?: number;
-  evidence: VerificationEvidence[];
   checkRuns: Record<string, VerificationCheckRun>;
   denialCount: number;
+  lastOutcomeAt?: number;
+  lastOutcomeLevel?: VerificationLevel;
+  lastOutcomePassed?: boolean;
+  lastOutcomeReferenceWriteAt?: number;
 }

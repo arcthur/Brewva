@@ -1,10 +1,7 @@
-import type {
-  VerificationCheckRun,
-  VerificationEvidence,
-  VerificationSessionState,
-} from "../contracts/index.js";
+import type { VerificationCheckRun, VerificationSessionState } from "../contracts/index.js";
 import {
   TOOL_RESULT_RECORDED_EVENT_TYPE,
+  VERIFICATION_OUTCOME_RECORDED_EVENT_TYPE,
   VERIFICATION_STATE_RESET_EVENT_TYPE,
   VERIFICATION_WRITE_MARKED_EVENT_TYPE,
 } from "../events/event-types.js";
@@ -19,27 +16,27 @@ import type {
 } from "./session-hydration-fold.js";
 import { readEventPayload } from "./session-hydration-fold.js";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function createSnapshot(state: VerificationHydrationState): VerificationSessionState | undefined {
   if (
     state.lastWriteAt === undefined &&
-    state.evidence.length === 0 &&
-    Object.keys(state.checkRuns).length === 0
+    Object.keys(state.checkRuns).length === 0 &&
+    state.lastOutcomeAt === undefined
   ) {
     return undefined;
   }
   return {
     lastWriteAt: state.lastWriteAt,
-    evidence: [...state.evidence],
     checkRuns: { ...state.checkRuns },
     denialCount: 0,
+    lastOutcomeAt: state.lastOutcomeAt,
+    lastOutcomeLevel: state.lastOutcomeLevel,
+    lastOutcomePassed: state.lastOutcomePassed,
+    lastOutcomeReferenceWriteAt: state.lastOutcomeReferenceWriteAt,
   };
-}
-
-function appendEvidence(state: VerificationHydrationState, evidence: VerificationEvidence[]): void {
-  if (evidence.length === 0) {
-    return;
-  }
-  state.evidence.push(...evidence);
 }
 
 function setCheckRun(
@@ -62,7 +59,6 @@ export function createVerificationHydrationFold(): SessionHydrationFold<Verifica
     domain: "verification",
     initial() {
       return {
-        evidence: [],
         checkRuns: {},
       };
     },
@@ -84,17 +80,40 @@ export function createVerificationHydrationFold(): SessionHydrationFold<Verifica
         if (!projection) {
           return;
         }
-        appendEvidence(state, projection.evidence);
         if (projection.checkRun) {
           setCheckRun(state, projection.checkRun.checkName, projection.checkRun.run);
         }
         return;
       }
 
+      if (event.type === VERIFICATION_OUTCOME_RECORDED_EVENT_TYPE) {
+        if (!isRecord(payload)) {
+          return;
+        }
+        const level =
+          payload.level === "quick" || payload.level === "standard" || payload.level === "strict"
+            ? payload.level
+            : undefined;
+        if (!level) {
+          return;
+        }
+        state.lastOutcomeAt = Math.max(0, Math.floor(event.timestamp));
+        state.lastOutcomeLevel = level;
+        state.lastOutcomePassed = payload.outcome === "pass";
+        state.lastOutcomeReferenceWriteAt =
+          typeof payload.referenceWriteAt === "number" && Number.isFinite(payload.referenceWriteAt)
+            ? Math.max(0, Math.floor(payload.referenceWriteAt))
+            : undefined;
+        return;
+      }
+
       if (event.type === VERIFICATION_STATE_RESET_EVENT_TYPE) {
         state.lastWriteAt = undefined;
-        state.evidence = [];
         state.checkRuns = {};
+        state.lastOutcomeAt = undefined;
+        state.lastOutcomeLevel = undefined;
+        state.lastOutcomePassed = undefined;
+        state.lastOutcomeReferenceWriteAt = undefined;
       }
     },
     apply(state, _cell, context) {

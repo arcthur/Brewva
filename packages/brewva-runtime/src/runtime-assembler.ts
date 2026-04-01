@@ -318,7 +318,7 @@ export function createRuntimeServiceDependencies(
     }),
     getTaskState: (sessionId) => options.kernel.getTaskState(sessionId),
     getTruthState: (sessionId) => options.kernel.getTruthState(sessionId),
-    evaluateCompletion: (sessionId, level) => options.evaluateCompletion(sessionId, level),
+    evaluateCompletion: (sessionId) => options.evaluateCompletion(sessionId),
     recordEvent: (input) => options.kernel.recordEvent(input),
   });
   options.coreDependencies.verificationGate.bindSessionIntrospection({

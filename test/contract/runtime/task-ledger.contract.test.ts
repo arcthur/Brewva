@@ -44,21 +44,19 @@ describe("Task ledger", () => {
     expect(state.spec?.goal).toBe("Refactor context injection");
   });
 
-  test("parseTaskSpec rejects removed or invalid enum values", () => {
-    const fullSpec = parseTaskSpec({
+  test("parseTaskSpec accepts command-only verification and rejects removed kernel-owned fields", () => {
+    const explicitCommands = parseTaskSpec({
       goal: "Validate implementation",
       verification: {
-        level: "strict",
         commands: ["bun test"],
       },
     });
-    expect(fullSpec).toEqual({
+    expect(explicitCommands).toEqual({
       ok: true,
       spec: {
         schema: "brewva.task.v1",
         goal: "Validate implementation",
         verification: {
-          level: "strict",
           commands: ["bun test"],
         },
       },
@@ -67,9 +65,7 @@ describe("Task ledger", () => {
     expect(
       parseTaskSpec({
         goal: "Review architecture",
-        verification: {
-          level: "none",
-        },
+        verification: {},
       }),
     ).toEqual({
       ok: true,
@@ -83,13 +79,14 @@ describe("Task ledger", () => {
       parseTaskSpec({
         goal: "Review architecture",
         verification: {
-          level: "inspection",
+          level: "strict",
           commands: ["review docs only"],
         },
       }),
     ).toEqual({
       ok: false,
-      error: "TaskSpec verification.level must be one of: quick, standard, strict, none.",
+      error:
+        "TaskSpec verification.level has been removed. Verification profile is skill-owned; use verification.commands only when you need explicit command checks.",
     });
 
     expect(
@@ -101,7 +98,8 @@ describe("Task ledger", () => {
       }),
     ).toEqual({
       ok: false,
-      error: "TaskSpec acceptance.owner must be one of: operator.",
+      error:
+        "TaskSpec acceptance.owner has been removed. Acceptance is always operator-owned when enabled.",
     });
   });
 
@@ -134,7 +132,7 @@ describe("Task ledger", () => {
         files: ["src/foo.ts"],
       },
       verification: {
-        level: "standard",
+        commands: ["bun test test/quality/docs"],
       },
     });
     runtime.task.addItem(sessionId, {
@@ -149,7 +147,8 @@ describe("Task ledger", () => {
     expect(injection.text).toContain("[TaskLedger]");
     expect(injection.text).toContain("targets.files:");
     expect(injection.text).toContain("src/foo.ts");
-    expect(injection.text).toContain("verification.level=targeted");
+    expect(injection.text).toContain("verification.commands:");
+    expect(injection.text).toContain("- bun test test/quality/docs");
     expect(injection.text).toContain(
       "- [pending] Confirm the projected task state uses agent-facing labels",
     );
@@ -164,12 +163,8 @@ describe("Task ledger", () => {
     runtime.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Close the task with explicit operator acceptance",
-      verification: {
-        level: "quick",
-      },
       acceptance: {
         required: true,
-        owner: "operator",
         criteria: ["Operator accepts the result as closure."],
       },
     });

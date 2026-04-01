@@ -489,7 +489,6 @@ describe("workflow_status contract", () => {
       goal: "Land the closure UX",
       acceptance: {
         required: true,
-        owner: "operator",
         criteria: ["Operator accepts the result before done."],
       },
     });

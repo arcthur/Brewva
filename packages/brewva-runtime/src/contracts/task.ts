@@ -1,7 +1,6 @@
-import type { RuntimeResult, VerificationLevel } from "./shared.js";
+import type { RuntimeResult } from "./shared.js";
 
 export type TaskSpecSchema = "brewva.task.v1";
-export type TaskAcceptanceOwner = "operator";
 
 export interface TaskSpec {
   schema: TaskSpecSchema;
@@ -13,12 +12,10 @@ export interface TaskSpec {
   expectedBehavior?: string;
   constraints?: string[];
   verification?: {
-    level?: VerificationLevel;
     commands?: string[];
   };
   acceptance?: {
     required?: boolean;
-    owner?: TaskAcceptanceOwner;
     criteria?: string[];
   };
 }

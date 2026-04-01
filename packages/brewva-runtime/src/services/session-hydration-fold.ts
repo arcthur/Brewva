@@ -4,7 +4,6 @@ import type {
   ResourceLeaseRecord,
   SkillOutputRecord,
   VerificationCheckRun,
-  VerificationEvidence,
   VerificationSessionState,
 } from "../contracts/index.js";
 import type { RuntimeSessionStateCell } from "./session-state.js";
@@ -80,8 +79,11 @@ export interface ResourceLeaseHydrationState {
 
 export interface VerificationHydrationState {
   lastWriteAt?: number;
-  evidence: VerificationEvidence[];
   checkRuns: Record<string, VerificationCheckRun>;
+  lastOutcomeAt?: number;
+  lastOutcomeLevel?: VerificationSessionState["lastOutcomeLevel"];
+  lastOutcomePassed?: boolean;
+  lastOutcomeReferenceWriteAt?: number;
 }
 
 export interface LedgerHydrationState {

@@ -14,7 +14,6 @@ import type {
   TaskState,
   TaskStatus,
   TruthState,
-  VerificationLevel,
   VerificationReport,
 } from "../contracts/index.js";
 import {
@@ -53,10 +52,7 @@ export interface TaskServiceOptions {
   >;
   getTaskState: RuntimeCallback<[sessionId: string], TaskState>;
   getTruthState: RuntimeCallback<[sessionId: string], TruthState>;
-  evaluateCompletion: RuntimeCallback<
-    [sessionId: string, level?: VerificationLevel],
-    VerificationReport
-  >;
+  evaluateCompletion: RuntimeCallback<[sessionId: string], VerificationReport>;
   recordEvent: RuntimeCallback<
     [
       input: {
@@ -84,10 +80,7 @@ export class TaskService {
   };
   private readonly getTaskState: (sessionId: string) => TaskState;
   private readonly getTruthState: (sessionId: string) => TruthState;
-  private readonly evaluateCompletion: (
-    sessionId: string,
-    level?: VerificationLevel,
-  ) => VerificationReport;
+  private readonly evaluateCompletion: (sessionId: string) => VerificationReport;
   private readonly recordEvent: TaskServiceOptions["recordEvent"];
 
   constructor(options: TaskServiceOptions) {
@@ -190,8 +183,7 @@ export class TaskService {
       health = "ok";
       reason = "no_task_items";
     } else {
-      const desiredLevel = state.spec?.verification?.level ?? this.config.verification.defaultLevel;
-      const report = this.evaluateCompletion(input.sessionId, desiredLevel);
+      const report = this.evaluateCompletion(input.sessionId);
       if (!report.passed) {
         phase = "verify";
         health = "verification_failed";
@@ -376,9 +368,6 @@ export class TaskService {
     const state = this.getTaskState(sessionId);
     if (state.spec?.acceptance?.required !== true) {
       return { ok: false, error: "acceptance_not_enabled" };
-    }
-    if (state.spec.acceptance.owner && state.spec.acceptance.owner !== "operator") {
-      return { ok: false, error: "acceptance_owner_unsupported" };
     }
 
     const payload = buildAcceptanceSetEvent({

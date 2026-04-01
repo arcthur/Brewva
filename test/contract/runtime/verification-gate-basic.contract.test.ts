@@ -16,36 +16,33 @@ afterEach(() => {
 function createCleanRuntime(): BrewvaRuntime {
   return new BrewvaRuntime({
     cwd: workspace,
-    config: createRuntimeConfig(),
+    config: createRuntimeConfig((config) => {
+      config.verification.defaultLevel = "quick";
+      config.verification.checks.quick = ["tests"];
+      config.verification.checks.standard = ["tests"];
+      config.verification.checks.strict = ["tests"];
+      config.verification.commands.tests = "true";
+    }),
   });
 }
 
 describe("S-004/S-005 verification gate", () => {
-  test("blocks without evidence after write and passes with evidence", async () => {
+  test("blocks without authoritative check runs after write and passes after verification executes", async () => {
     const runtime = createCleanRuntime();
     const sessionId = "s4";
 
     runtime.tools.markCall(sessionId, "edit");
-    const blocked = runtime.verification.evaluate(sessionId);
+    const blocked = runtime.verification.evaluate(sessionId, "quick");
     expect(blocked.passed).toBe(false);
-    expect(blocked.missingEvidence).toContain("test_or_build");
+    expect(blocked.missingEvidence).toContain("tests");
 
-    runtime.tools.recordResult({
-      sessionId,
-      toolName: "lsp_diagnostics",
-      args: { severity: "all" },
-      outputText: "No diagnostics found",
-      channelSuccess: true,
+    const verified = await runtime.verification.verify(sessionId, "quick", {
+      executeCommands: true,
+      timeoutMs: 5_000,
     });
-    runtime.tools.recordResult({
-      sessionId,
-      toolName: "exec",
-      args: { command: "bun test" },
-      outputText: "All tests passed",
-      channelSuccess: true,
-    });
+    expect(verified.passed).toBe(true);
 
-    const passed = runtime.verification.evaluate(sessionId);
+    const passed = runtime.verification.evaluate(sessionId, "quick");
     expect(passed.passed).toBe(true);
   });
 
@@ -53,7 +50,7 @@ describe("S-004/S-005 verification gate", () => {
     const runtime = createCleanRuntime();
     const sessionId = "s4-readonly";
 
-    const report = runtime.verification.evaluate(sessionId);
+    const report = runtime.verification.evaluate(sessionId, "quick");
     expect(report.passed).toBe(true);
     expect(report.readOnly).toBe(true);
     expect(report.skipped).toBe(true);
@@ -68,47 +65,49 @@ describe("S-004/S-005 verification gate", () => {
     const sessionId = "s4-multi-edit";
 
     runtime.tools.markCall(sessionId, "multi_edit");
-    const blocked = runtime.verification.evaluate(sessionId);
+    const blocked = runtime.verification.evaluate(sessionId, "quick");
     expect(blocked.passed).toBe(false);
-    expect(blocked.missingEvidence).toContain("test_or_build");
+    expect(blocked.missingEvidence).toContain("tests");
   });
 
-  test("requires pass verdict before tool results count as verification evidence", () => {
+  test("ignores raw exec results until runtime verification records an authoritative check run", async () => {
     const runtime = createCleanRuntime();
     const sessionId = "s4-explicit-verdicts";
 
     runtime.tools.markCall(sessionId, "edit");
     runtime.tools.recordResult({
       sessionId,
-      toolName: "lsp_diagnostics",
-      args: { severity: "all" },
-      outputText: "No diagnostics found",
-      channelSuccess: true,
-      verdict: "pass",
-    });
-    runtime.tools.recordResult({
-      sessionId,
       toolName: "exec",
-      args: { command: "bun test" },
-      outputText: "Tests still running",
-      channelSuccess: true,
-      verdict: "inconclusive",
-    });
-
-    const inconclusive = runtime.verification.evaluate(sessionId);
-    expect(inconclusive.passed).toBe(false);
-    expect(inconclusive.missingEvidence).toContain("test_or_build");
-
-    runtime.tools.recordResult({
-      sessionId,
-      toolName: "exec",
-      args: { command: "bun test" },
+      args: { command: "true" },
       outputText: "All tests passed",
       channelSuccess: true,
       verdict: "pass",
     });
+    runtime.tools.recordResult({
+      sessionId,
+      toolName: "brewva_verify",
+      args: { check: "tests", command: "true" },
+      outputText: "Tests still running",
+      channelSuccess: true,
+      verdict: "inconclusive",
+      metadata: {
+        check: "tests",
+        command: "true",
+        exitCode: 0,
+      },
+    });
 
-    const passed = runtime.verification.evaluate(sessionId);
+    const inconclusive = runtime.verification.evaluate(sessionId, "quick");
+    expect(inconclusive.passed).toBe(false);
+    expect(inconclusive.missingEvidence).toContain("tests");
+
+    const verified = await runtime.verification.verify(sessionId, "quick", {
+      executeCommands: true,
+      timeoutMs: 5_000,
+    });
+    expect(verified.passed).toBe(true);
+
+    const passed = runtime.verification.evaluate(sessionId, "quick");
     expect(passed.passed).toBe(true);
   });
 });

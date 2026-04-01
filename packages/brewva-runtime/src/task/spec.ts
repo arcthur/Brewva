@@ -1,35 +1,5 @@
-import type { TaskAcceptanceOwner, TaskSpec, VerificationLevel } from "../contracts/index.js";
+import type { TaskSpec } from "../contracts/index.js";
 import { isRecord, normalizeNonEmptyString, normalizeStringArray } from "../utils/coerce.js";
-
-export const TASK_SPEC_VERIFICATION_LEVEL_VALUES = ["quick", "standard", "strict", "none"] as const;
-
-export type TaskSpecVerificationLevelInput = (typeof TASK_SPEC_VERIFICATION_LEVEL_VALUES)[number];
-
-export function normalizeTaskSpecVerificationLevel(value: unknown): VerificationLevel | undefined {
-  const normalized = normalizeNonEmptyString(value);
-  if (!normalized || normalized === "none") {
-    return undefined;
-  }
-  if (normalized === "quick" || normalized === "standard" || normalized === "strict") {
-    return normalized;
-  }
-  return undefined;
-}
-
-function isTaskSpecVerificationLevelInput(value: unknown): value is TaskSpecVerificationLevelInput {
-  const normalized = normalizeNonEmptyString(value);
-  return (
-    normalized === "quick" ||
-    normalized === "standard" ||
-    normalized === "strict" ||
-    normalized === "none"
-  );
-}
-
-export function normalizeTaskAcceptanceOwner(value: unknown): TaskAcceptanceOwner | undefined {
-  const normalized = normalizeNonEmptyString(value);
-  return normalized === "operator" ? "operator" : undefined;
-}
 
 export function normalizeTaskSpec(input: TaskSpec): TaskSpec {
   const goal = input.goal.trim();
@@ -37,14 +7,12 @@ export function normalizeTaskSpec(input: TaskSpec): TaskSpec {
   const constraints = normalizeStringArray(input.constraints);
   const files = normalizeStringArray(input.targets?.files);
   const symbols = normalizeStringArray(input.targets?.symbols);
-  const verificationLevel = normalizeTaskSpecVerificationLevel(input.verification?.level);
   const verificationCommands = normalizeStringArray(input.verification?.commands);
-  const acceptanceOwner = normalizeTaskAcceptanceOwner(input.acceptance?.owner);
   const acceptanceCriteria = normalizeStringArray(input.acceptance?.criteria);
   const acceptanceRequired =
     typeof input.acceptance?.required === "boolean"
       ? input.acceptance.required
-      : Boolean(acceptanceOwner || acceptanceCriteria);
+      : Boolean(acceptanceCriteria);
 
   return {
     schema: "brewva.task.v1",
@@ -58,18 +26,15 @@ export function normalizeTaskSpec(input: TaskSpec): TaskSpec {
         : undefined,
     expectedBehavior,
     constraints,
-    verification:
-      verificationLevel || verificationCommands
-        ? {
-            level: verificationLevel,
-            commands: verificationCommands,
-          }
-        : undefined,
+    verification: verificationCommands
+      ? {
+          commands: verificationCommands,
+        }
+      : undefined,
     acceptance:
-      acceptanceRequired || acceptanceOwner || acceptanceCriteria
+      acceptanceRequired || acceptanceCriteria
         ? {
             required: acceptanceRequired || undefined,
-            owner: acceptanceOwner,
             criteria: acceptanceCriteria,
           }
         : undefined,
@@ -108,37 +73,29 @@ export function parseTaskSpec(
     : undefined;
 
   const verificationRaw = input.verification;
-  const verificationLevelRaw = isRecord(verificationRaw) ? verificationRaw.level : undefined;
-  const verificationLevel = normalizeTaskSpecVerificationLevel(verificationLevelRaw);
-  if (
-    verificationLevelRaw !== undefined &&
-    verificationLevelRaw !== null &&
-    !isTaskSpecVerificationLevelInput(verificationLevelRaw)
-  ) {
+  if (isRecord(verificationRaw) && verificationRaw.level !== undefined) {
     return {
       ok: false,
-      error: "TaskSpec verification.level must be one of: quick, standard, strict, none.",
+      error:
+        "TaskSpec verification.level has been removed. Verification profile is skill-owned; use verification.commands only when you need explicit command checks.",
     };
   }
   const verification = isRecord(verificationRaw)
     ? {
-        level: verificationLevel,
         commands: normalizeStringArray(verificationRaw.commands),
       }
     : undefined;
   const acceptanceRaw = input.acceptance;
-  const acceptanceOwnerRaw = isRecord(acceptanceRaw) ? acceptanceRaw.owner : undefined;
-  const acceptanceOwner = normalizeTaskAcceptanceOwner(acceptanceOwnerRaw);
-  if (acceptanceOwnerRaw !== undefined && acceptanceOwnerRaw !== null && !acceptanceOwner) {
+  if (isRecord(acceptanceRaw) && acceptanceRaw.owner !== undefined) {
     return {
       ok: false,
-      error: "TaskSpec acceptance.owner must be one of: operator.",
+      error:
+        "TaskSpec acceptance.owner has been removed. Acceptance is always operator-owned when enabled.",
     };
   }
   const acceptance = isRecord(acceptanceRaw)
     ? {
         required: typeof acceptanceRaw.required === "boolean" ? acceptanceRaw.required : undefined,
-        owner: acceptanceOwner,
         criteria: normalizeStringArray(acceptanceRaw.criteria),
       }
     : undefined;
@@ -155,18 +112,15 @@ export function parseTaskSpec(
         : undefined,
     expectedBehavior: normalizeNonEmptyString(input.expectedBehavior),
     constraints: normalizeStringArray(input.constraints),
-    verification:
-      verification?.level || verification?.commands
-        ? {
-            level: verification.level,
-            commands: verification.commands,
-          }
-        : undefined,
+    verification: verification?.commands
+      ? {
+          commands: verification.commands,
+        }
+      : undefined,
     acceptance:
-      acceptance?.required !== undefined || acceptance?.owner || acceptance?.criteria
+      acceptance?.required !== undefined || acceptance?.criteria
         ? {
             required: acceptance.required,
-            owner: acceptance.owner,
             criteria: acceptance.criteria,
           }
         : undefined,

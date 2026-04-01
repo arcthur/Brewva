@@ -1,5 +1,6 @@
 import type {
   BrewvaConfig,
+  SkillDocument,
   TaskState,
   VerificationLevel,
   VerificationReport,
@@ -67,7 +68,7 @@ export class VerificationService {
   private readonly verification: VerificationGate;
   private readonly governancePort?: GovernancePort;
   private readonly getTaskState: (sessionId: string) => TaskState;
-  private readonly getActiveSkillName: (sessionId: string) => string | undefined;
+  private readonly getActiveSkill: (sessionId: string) => SkillDocument | undefined;
   private readonly recordEvent: (input: {
     sessionId: string;
     type: string;
@@ -92,10 +93,27 @@ export class VerificationService {
     this.verification = options.verificationGate;
     this.governancePort = options.governancePort;
     this.getTaskState = (sessionId) => options.getTaskState(sessionId);
-    this.getActiveSkillName = (sessionId) =>
-      options.skillLifecycleService.getActiveSkill(sessionId)?.name;
+    this.getActiveSkill = (sessionId) => options.skillLifecycleService.getActiveSkill(sessionId);
     this.recordEvent = (input) => options.recordEvent(input);
     this.recordToolResult = (input) => options.ledgerService.recordToolResult(input);
+  }
+
+  private resolveEffectiveLevel(
+    sessionId: string,
+    requestedLevel?: VerificationLevel,
+  ): VerificationLevel {
+    if (requestedLevel) {
+      return requestedLevel;
+    }
+    const activeSkill = this.getActiveSkill(sessionId);
+    const skillLevel = activeSkill?.contract.intent?.completionDefinition?.verificationLevel;
+    if (skillLevel) {
+      return skillLevel;
+    }
+    return this.verification.resolvePreferredLevel(
+      sessionId,
+      this.config.verification.defaultLevel,
+    );
   }
 
   async verifyCompletion(
@@ -103,10 +121,10 @@ export class VerificationService {
     level?: VerificationLevel,
     options: VerifyCompletionOptions = {},
   ): Promise<VerificationReport> {
-    const effectiveLevel = level ?? this.config.verification.defaultLevel;
+    const effectiveLevel = this.resolveEffectiveLevel(sessionId, level);
     const executeCommands = options.executeCommands !== false;
 
-    if (executeCommands && effectiveLevel !== "quick") {
+    if (executeCommands) {
       await this.runVerificationCommands(sessionId, effectiveLevel, {
         timeoutMs: options.timeoutMs ?? 10 * 60 * 1000,
       });
@@ -128,7 +146,7 @@ export class VerificationService {
     const verificationState = this.verification.stateStore.get(sessionId);
     const taskState = this.getTaskState(sessionId);
     const taskGoal = taskState.spec?.goal?.trim() ?? "";
-    const activeSkillName = this.getActiveSkillName(sessionId);
+    const activeSkillName = this.getActiveSkill(sessionId)?.name;
     const outcome: "pass" | "fail" | "skipped" = report.skipped
       ? "skipped"
       : report.passed
@@ -231,6 +249,13 @@ export class VerificationService {
         : outcome === "skipped"
           ? null
           : `reuse verification profile ${level} for similar tasks`;
+
+    this.verification.stateStore.recordOutcome(sessionId, {
+      level,
+      passed: report.passed,
+      recordedAt: Date.now(),
+      referenceWriteAt: referenceWriteAt > 0 ? referenceWriteAt : undefined,
+    });
 
     this.recordEvent({
       sessionId,

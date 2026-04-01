@@ -179,9 +179,6 @@ export class VerificationProjectorService {
         payload?.verificationProjection,
       );
       if (!projection) return;
-      if (projection.evidence.length > 0) {
-        this.stateStore.appendEvidence(event.sessionId, projection.evidence);
-      }
       if (projection.checkRun) {
         this.stateStore.setCheckRun(
           event.sessionId,

@@ -491,13 +491,11 @@ function buildRepositoryWorkingContract(
     return undefined;
   }
 
-  const verificationLevels = new Map<string, number>();
   const verificationCommands = new Map<string, number>();
   const constraints = new Map<string, number>();
   const targetFiles = new Map<string, number>();
 
   for (const entry of taskSpecs) {
-    bumpFrequency(verificationLevels, entry.spec.verification?.level);
     for (const command of entry.spec.verification?.commands ?? []) {
       bumpFrequency(verificationCommands, command);
     }
@@ -509,7 +507,6 @@ function buildRepositoryWorkingContract(
     }
   }
 
-  const verificationLevelPreview = renderFrequencyMap(verificationLevels, 3);
   const verificationCommandPreview = renderFrequencyMap(verificationCommands, 4);
   const constraintPreview = renderFrequencyMap(constraints, 4);
   const targetFilePreview = renderFrequencyMap(targetFiles, 4);
@@ -522,9 +519,6 @@ function buildRepositoryWorkingContract(
     timestamp: entry.timestamp,
   }));
   const summaryParts: string[] = [];
-  if (verificationLevelPreview.length > 0) {
-    summaryParts.push(`Verification posture: ${verificationLevelPreview.join(", ")}.`);
-  }
   if (verificationCommandPreview.length > 0) {
     summaryParts.push(`Common commands: ${verificationCommandPreview.join(", ")}.`);
   }
@@ -539,9 +533,6 @@ function buildRepositoryWorkingContract(
   const lines = [
     `Observed across ${taskSpecs.length} task spec${taskSpecs.length === 1 ? "" : "s"} in ${sessionIds.length} session${sessionIds.length === 1 ? "" : "s"}.`,
   ];
-  if (verificationLevelPreview.length > 0) {
-    lines.push(`Verification levels: ${verificationLevelPreview.join(", ")}.`);
-  }
   if (verificationCommandPreview.length > 0) {
     lines.push(`Verification commands: ${verificationCommandPreview.join(", ")}.`);
   }
@@ -558,12 +549,7 @@ function buildRepositoryWorkingContract(
     title: "Repository Working Contract",
     summary,
     content: [`Repository root: ${repositoryRoot}.`, ...lines].join(" "),
-    tags: [
-      ...verificationLevelPreview,
-      ...verificationCommandPreview,
-      ...constraintPreview,
-      ...targetFilePreview,
-    ],
+    tags: [...verificationCommandPreview, ...constraintPreview, ...targetFilePreview],
     confidenceScore: 0.58 + Math.min(0.28, sessionIds.length * 0.06),
     firstCapturedAt: Math.min(...taskSpecs.map((entry) => entry.timestamp)),
     lastValidatedAt: Math.max(...taskSpecs.map((entry) => entry.timestamp)),
@@ -669,7 +655,7 @@ function buildUserCollaborationProfile(
   }
   const verificationHeavy = taskSpecs.filter((entry) => {
     const commands = entry.spec.verification?.commands ?? [];
-    return Boolean(entry.spec.verification?.level) || commands.length > 0;
+    return commands.length > 0;
   }).length;
   const constrained = taskSpecs.filter((entry) => (entry.spec.constraints?.length ?? 0) > 0).length;
   const targeted = taskSpecs.filter((entry) => {

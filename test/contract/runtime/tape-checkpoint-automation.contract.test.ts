@@ -189,13 +189,14 @@ requires: []
     expect(blockedAfterRestart.reason).toContain("Session cost exceeded");
   });
 
-  test("rehydrates verification evidence state from tape after restart", async () => {
+  test("rehydrates authoritative verification state from tape after restart", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-verification-evidence-rehydrate-"));
     const config = structuredClone(DEFAULT_BREWVA_CONFIG);
     config.verification.defaultLevel = "quick";
-    config.verification.checks.quick = ["type-check"];
-    config.verification.checks.standard = ["type-check"];
-    config.verification.checks.strict = ["type-check"];
+    config.verification.checks.quick = ["tests"];
+    config.verification.checks.standard = ["tests"];
+    config.verification.checks.strict = ["tests"];
+    config.verification.commands.tests = "true";
     const sessionId = "verification-evidence-rehydrate-1";
     const sourceDir = join(workspace, "src");
     const sourceFile = join(sourceDir, "app.ts");
@@ -211,27 +212,9 @@ requires: []
       },
     });
     runtime.tools.markCall(sessionId, "edit");
-    runtime.tools.recordResult({
-      sessionId,
-      toolName: "lsp_diagnostics",
-      args: {
-        filePath: sourceFile,
-        severity: "all",
-      },
-      outputText: "No diagnostics found",
-      channelSuccess: true,
-    });
-    runtime.tools.recordResult({
-      sessionId,
-      toolName: "exec",
-      args: {
-        command: "bun test",
-      },
-      outputText: "All tests passed",
-      channelSuccess: true,
-    });
     const beforeRestart = await runtime.verification.verify(sessionId, "quick", {
-      executeCommands: false,
+      executeCommands: true,
+      timeoutMs: 5_000,
     });
     expect(beforeRestart.passed).toBe(true);
     expect(beforeRestart.skipped).toBe(false);

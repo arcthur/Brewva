@@ -1,12 +1,6 @@
-import type {
-  VerificationCheckRun,
-  VerificationEvidence,
-  VerificationEvidenceKind,
-  VerificationEvidenceMode,
-} from "../contracts/index.js";
+import type { VerificationCheckRun } from "../contracts/index.js";
 import { normalizeToolName } from "../utils/tool-name.js";
 import type { ToolResultVerdict } from "../utils/tool-result.js";
-import { classifyEvidence } from "./classifier.js";
 
 const VERIFICATION_WRITE_MARKED_SCHEMA = "brewva.verification.write_marked.v1" as const;
 const VERIFICATION_TOOL_RESULT_PROJECTION_SCHEMA =
@@ -14,49 +8,6 @@ const VERIFICATION_TOOL_RESULT_PROJECTION_SCHEMA =
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function normalizeEvidenceKind(value: unknown): VerificationEvidenceKind | null {
-  if (value === "lsp_clean" || value === "test_or_build_passed" || value === "command_passed") {
-    return value;
-  }
-  return null;
-}
-
-function normalizeEvidenceMode(value: unknown): VerificationEvidenceMode | undefined {
-  if (
-    value === "heuristic" ||
-    value === "compiler" ||
-    value === "command" ||
-    value === "lsp_native"
-  ) {
-    return value;
-  }
-  return undefined;
-}
-
-function coerceVerificationEvidence(value: unknown): VerificationEvidence | null {
-  if (!isRecord(value)) return null;
-  const kind = normalizeEvidenceKind(value.kind);
-  const timestamp =
-    typeof value.timestamp === "number" && Number.isFinite(value.timestamp)
-      ? Math.max(0, Math.floor(value.timestamp))
-      : null;
-  const tool = typeof value.tool === "string" ? value.tool.trim() : "";
-  if (!kind || timestamp === null || !tool) {
-    return null;
-  }
-
-  const detail =
-    typeof value.detail === "string" && value.detail.trim().length > 0 ? value.detail : undefined;
-  const mode = normalizeEvidenceMode(value.mode);
-  return {
-    kind,
-    timestamp,
-    tool,
-    detail,
-    mode,
-  };
 }
 
 function coerceVerificationCheckRun(value: unknown): VerificationCheckRun | null {
@@ -128,14 +79,6 @@ export function buildVerificationToolResultProjectionPayload(input: {
   ledgerId: string;
   outputSummary: string;
 }): Record<string, unknown> | undefined {
-  const evidence = classifyEvidence({
-    now: input.now,
-    toolName: input.toolName,
-    args: input.args,
-    outputText: input.outputText,
-    verdict: input.verdict,
-  });
-
   const normalizedToolName = normalizeToolName(input.toolName);
   let checkRun: { checkName: string; run: VerificationCheckRun } | undefined;
   if (normalizedToolName === "brewva_verify") {
@@ -168,30 +111,22 @@ export function buildVerificationToolResultProjectionPayload(input: {
     }
   }
 
-  if (evidence.length === 0 && !checkRun) {
+  if (!checkRun) {
     return undefined;
   }
 
   return {
     schema: VERIFICATION_TOOL_RESULT_PROJECTION_SCHEMA,
-    evidence,
     checkRun,
   };
 }
 
 export function readVerificationToolResultProjectionPayload(value: unknown): {
-  evidence: VerificationEvidence[];
   checkRun?: { checkName: string; run: VerificationCheckRun };
 } | null {
   if (!isRecord(value) || value.schema !== VERIFICATION_TOOL_RESULT_PROJECTION_SCHEMA) {
     return null;
   }
-
-  const evidence = Array.isArray(value.evidence)
-    ? value.evidence
-        .map((entry) => coerceVerificationEvidence(entry))
-        .filter((entry): entry is VerificationEvidence => entry !== null)
-    : [];
 
   let checkRun: { checkName: string; run: VerificationCheckRun } | undefined;
   if (isRecord(value.checkRun)) {
@@ -203,9 +138,9 @@ export function readVerificationToolResultProjectionPayload(value: unknown): {
     }
   }
 
-  if (evidence.length === 0 && !checkRun) {
+  if (!checkRun) {
     return null;
   }
 
-  return { evidence, checkRun };
+  return { checkRun };
 }

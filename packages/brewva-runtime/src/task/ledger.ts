@@ -12,10 +12,7 @@ import type {
   TaskStatus,
 } from "../contracts/index.js";
 import { isRecord, normalizeNonEmptyString, normalizeStringArray } from "../utils/coerce.js";
-import {
-  formatTaskItemStatusForSurface,
-  formatTaskVerificationLevelForSurface,
-} from "./surface.js";
+import { formatTaskItemStatusForSurface } from "./surface.js";
 
 export const TASK_EVENT_TYPE = "task_event";
 export const TASK_LEDGER_SCHEMA = "brewva.task.ledger.v1" as const;
@@ -563,11 +560,6 @@ export function formatTaskStateBlock(state: TaskState): string {
   }
 
   const verification = spec?.verification;
-  if (verification?.level) {
-    lines.push(
-      `verification.level=${formatTaskVerificationLevelForSurface(verification.level) ?? verification.level}`,
-    );
-  }
   if (verification?.commands && verification.commands.length > 0) {
     lines.push("verification.commands:");
     for (const command of verification.commands.slice(0, 4)) {
@@ -578,9 +570,6 @@ export function formatTaskStateBlock(state: TaskState): string {
   const acceptanceSpec = spec?.acceptance;
   if (acceptanceSpec?.required) {
     lines.push("acceptance.required=true");
-    if (acceptanceSpec.owner) {
-      lines.push(`acceptance.owner=${acceptanceSpec.owner}`);
-    }
     if (acceptanceSpec.criteria && acceptanceSpec.criteria.length > 0) {
       lines.push("acceptance.criteria:");
       for (const criterion of acceptanceSpec.criteria.slice(0, 6)) {
