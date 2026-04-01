@@ -46,85 +46,38 @@ function readLiteralUnionValues(schema: unknown): string[] {
 }
 
 describe("task ledger tool contracts", () => {
-  test("task_set_spec exposes canonical agent-facing verification levels and lowers them to runtime values", async () => {
+  test("task_set_spec only exposes command-backed verification inputs", async () => {
     const { workspace, runtime, taskSetSpec } = createTaskLedgerToolHarness(
       "task-ledger-tool-set-spec",
     );
 
     try {
       const sessionId = "task-ledger-tool-set-spec";
-      const smokeInput = {
+      const input = {
         goal: "Review docs",
         verification: {
-          level: "smoke",
-          commands: ["bun test test/quality/docs"],
-        },
-      };
-      const targetedInput = {
-        goal: "Review docs",
-        verification: {
-          level: "targeted",
-          commands: ["bun test test/quality/docs"],
-        },
-      };
-      const fullInput = {
-        goal: "Review docs",
-        verification: {
-          level: "full",
           commands: ["bun test test/quality/docs"],
         },
       };
 
-      const verificationLevelSchema = (
+      const verificationSchema = (
         taskSetSpec.parameters as {
           properties?: {
-            verification?: {
-              properties?: {
-                level?: unknown;
-              };
-            };
+            verification?: unknown;
           };
         }
-      ).properties?.verification?.properties?.level;
-      expect(readLiteralUnionValues(verificationLevelSchema)).toContain("none");
-      expect(readLiteralUnionValues(verificationLevelSchema)).toContain("smoke");
-      expect(readLiteralUnionValues(verificationLevelSchema)).toContain("targeted");
-      expect(readLiteralUnionValues(verificationLevelSchema)).toContain("full");
-      expect(readLiteralUnionValues(verificationLevelSchema)).not.toContain("standard");
+      ).properties?.verification as { properties?: Record<string, unknown> } | undefined;
+      expect(verificationSchema?.properties?.commands).toBeDefined();
+      expect(verificationSchema?.properties?.level).toBeUndefined();
 
       await taskSetSpec.execute(
-        "tc-task-set-spec-smoke-alias",
-        smokeInput,
+        "tc-task-set-spec-commands",
+        input,
         undefined,
         undefined,
         fakeContext(sessionId),
       );
       expect(runtime.task.getState(sessionId).spec?.verification).toEqual({
-        level: "quick",
-        commands: ["bun test test/quality/docs"],
-      });
-
-      await taskSetSpec.execute(
-        "tc-task-set-spec-targeted-alias",
-        targetedInput,
-        undefined,
-        undefined,
-        fakeContext(sessionId),
-      );
-      expect(runtime.task.getState(sessionId).spec?.verification).toEqual({
-        level: "standard",
-        commands: ["bun test test/quality/docs"],
-      });
-
-      await taskSetSpec.execute(
-        "tc-task-set-spec-full-alias",
-        fullInput,
-        undefined,
-        undefined,
-        fakeContext(sessionId),
-      );
-      expect(runtime.task.getState(sessionId).spec?.verification).toEqual({
-        level: "strict",
         commands: ["bun test test/quality/docs"],
       });
     } finally {
@@ -225,7 +178,6 @@ describe("task ledger tool contracts", () => {
           goal: "Ship the closure UX",
           acceptance: {
             required: true,
-            owner: "operator",
             criteria: ["Operator confirms the result is acceptable."],
           },
         },

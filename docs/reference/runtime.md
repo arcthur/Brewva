@@ -317,17 +317,18 @@ Read-only verification semantics:
   `report.skipped=true`, `report.reason="read_only"` when no write was
   observed in session
 - skipped read-only evaluation records `outcome="skipped"` rather than `pass`
-- verification evidence is replayed from tape via
-  `verification_write_marked` and `tool_result_recorded.verificationProjection`
+- authoritative verification state is replayed from tape via
+  `verification_write_marked`, `verification_outcome_recorded`, and
+  `tool_result_recorded.verificationProjection`
 - default verification checks are expanded per target root for the active task;
   multi-root tasks therefore record separate check identities and check-run
   provenance per root
 - auto-discovered package verification scripts execute through the root package
   manager command (`bun run`, `pnpm run`, `yarn`, or `npm run`) rather than the
   raw script body
-- command-backed checks are tracked as `command_passed` evidence and replay into
-  root-scoped `checkRuns`; verification freshness is judged against the most
-  recent `verification_write_marked` boundary
+- command-backed checks only become authoritative after `brewva_verify`
+  materializes root-scoped `checkRuns`; verification freshness is judged
+  against the most recent `verification_write_marked` boundary
 
 ### `runtime.cost.*`
 

@@ -113,7 +113,6 @@ function cloneTaskState(state: TaskState): TaskState {
         constraints: state.spec.constraints ? [...state.spec.constraints] : undefined,
         verification: state.spec.verification
           ? {
-              level: state.spec.verification.level,
               commands: state.spec.verification.commands
                 ? [...state.spec.verification.commands]
                 : undefined,

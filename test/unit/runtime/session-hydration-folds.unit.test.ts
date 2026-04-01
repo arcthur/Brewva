@@ -8,6 +8,7 @@ import {
   RESOURCE_LEASE_CANCELLED_EVENT_TYPE,
   RESOURCE_LEASE_GRANTED_EVENT_TYPE,
   TOOL_RESULT_RECORDED_EVENT_TYPE,
+  VERIFICATION_OUTCOME_RECORDED_EVENT_TYPE,
   VERIFICATION_STATE_RESET_EVENT_TYPE,
   VERIFICATION_WRITE_MARKED_EVENT_TYPE,
 } from "../../../packages/brewva-runtime/src/events/event-types.js";
@@ -144,7 +145,7 @@ describe("session hydration folds", () => {
     expect([...result.cell.governanceMetadataWarnings]).toEqual(["design:custom_query_tool"]);
   });
 
-  test("verification fold restores write markers, evidence, and check runs", () => {
+  test("verification fold restores write markers, authoritative outcomes, and check runs", () => {
     const result = runFold(createVerificationHydrationFold(), [
       createEvent({
         id: "verification-1",
@@ -159,15 +160,7 @@ describe("session hydration folds", () => {
         timestamp: 210,
         turn: 2,
         payload: {
-          verificationProjection: buildVerificationToolResultProjectionPayload({
-            now: 210,
-            toolName: "lsp_diagnostics",
-            args: {},
-            outputText: "No diagnostics found",
-            verdict: "pass",
-            ledgerId: "ledger-lsp-clean",
-            outputSummary: "clean",
-          }),
+          verificationProjection: undefined,
         },
       }),
       createEvent({
@@ -193,6 +186,18 @@ describe("session hydration folds", () => {
           }),
         },
       }),
+      createEvent({
+        id: "verification-4",
+        type: VERIFICATION_OUTCOME_RECORDED_EVENT_TYPE,
+        timestamp: 230,
+        turn: 2,
+        payload: {
+          schema: "brewva.verification.outcome.v1",
+          level: "standard",
+          outcome: "pass",
+          referenceWriteAt: 200,
+        },
+      }),
     ]);
 
     expect(result.issues).toHaveLength(0);
@@ -200,8 +205,11 @@ describe("session hydration folds", () => {
     expect(result.verificationSnapshots[0]).toMatchObject({
       lastWriteAt: 200,
       denialCount: 0,
+      lastOutcomeAt: 230,
+      lastOutcomeLevel: "standard",
+      lastOutcomePassed: true,
+      lastOutcomeReferenceWriteAt: 200,
     });
-    expect(result.verificationSnapshots[0]?.evidence).toHaveLength(1);
     expect(result.verificationSnapshots[0]?.checkRuns.typecheck).toMatchObject({
       ok: true,
       command: "bun run check",

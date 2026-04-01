@@ -159,7 +159,7 @@ describe("tool surface runtime plugin", () => {
     expect(events.map((event) => event.type)).toContain("tool_surface_resolved");
   });
 
-  test("explicit capability requests can surface managed tools for one turn", async () => {
+  test("explicit capability requests can surface managed tools for one turn after skill activation", async () => {
     const extensionApi = createMockRuntimePluginApi();
     registerTools(extensionApi.api, [
       "read",
@@ -171,7 +171,22 @@ describe("tool surface runtime plugin", () => {
       "obs_query",
     ]);
 
-    const runtime = createToolSurfaceRuntime();
+    const runtime = createToolSurfaceRuntime({
+      getActive: () =>
+        createSkillDocument(
+          "debugging",
+          ["workspace_read", "runtime_observe", "local_exec"],
+          ["read"],
+        ),
+      getSkill: (name: string) =>
+        name === "debugging"
+          ? createSkillDocument(
+              "debugging",
+              ["workspace_read", "runtime_observe", "local_exec"],
+              ["read"],
+            )
+          : undefined,
+    });
 
     registerToolSurface(extensionApi.api, runtime);
     await invokeHandlerAsync(
@@ -192,7 +207,7 @@ describe("tool surface runtime plugin", () => {
     expect(extensionApi.activeTools).toContain("obs_query");
   });
 
-  test("tool surface records which requested managed tools were activated", async () => {
+  test("tool surface records which requested managed tools were activated after admission", async () => {
     const extensionApi = createMockRuntimePluginApi();
     registerTools(extensionApi.api, [
       "read",
@@ -206,6 +221,20 @@ describe("tool surface runtime plugin", () => {
 
     const events: Array<Record<string, unknown>> = [];
     const runtime = createToolSurfaceRuntime({
+      getActive: () =>
+        createSkillDocument(
+          "debugging",
+          ["workspace_read", "runtime_observe", "local_exec"],
+          ["read"],
+        ),
+      getSkill: (name: string) =>
+        name === "debugging"
+          ? createSkillDocument(
+              "debugging",
+              ["workspace_read", "runtime_observe", "local_exec"],
+              ["read"],
+            )
+          : undefined,
       recordEvent: (input: Record<string, unknown>) => {
         events.push(input);
         return undefined;

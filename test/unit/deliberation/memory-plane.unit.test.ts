@@ -50,7 +50,6 @@ function createTaskSpecObservation(input: {
   eventId: string;
   timestamp: number;
   goal: string;
-  verificationLevel?: "quick" | "standard" | "strict";
   verificationCommands?: string[];
   constraints?: string[];
   files?: string[];
@@ -62,13 +61,11 @@ function createTaskSpecObservation(input: {
     spec: {
       schema: "brewva.task.v1",
       goal: input.goal,
-      verification:
-        input.verificationLevel || input.verificationCommands
-          ? {
-              level: input.verificationLevel,
-              commands: input.verificationCommands,
-            }
-          : undefined,
+      verification: input.verificationCommands
+        ? {
+            commands: input.verificationCommands,
+          }
+        : undefined,
       constraints: input.constraints,
       targets: input.files
         ? {
@@ -192,7 +189,6 @@ describe("deliberation memory plane", () => {
       schema: "brewva.task.v1",
       goal: "Keep deliberation memory aligned with repository verification discipline.",
       verification: {
-        level: "strict",
         commands: ["bun run check", "bun test"],
       },
       constraints: ["no backward compatibility"],
@@ -323,7 +319,6 @@ describe("deliberation memory plane", () => {
             eventId: "task:1",
             timestamp: 1_000,
             goal: "Implement deliberation home",
-            verificationLevel: "strict",
             verificationCommands: ["bun run check", "bun test"],
             constraints: ["no backward compatibility"],
             files: ["packages/brewva-runtime/src/runtime.ts"],
@@ -386,7 +381,6 @@ describe("deliberation memory plane", () => {
             eventId: "task:2",
             timestamp: 2_000,
             goal: "Wire deliberation memory into gateway",
-            verificationLevel: "strict",
             verificationCommands: ["bun run check", "bun test"],
             constraints: ["no backward compatibility"],
             files: ["packages/brewva-gateway/src/host/create-hosted-session.ts"],
@@ -475,7 +469,6 @@ describe("deliberation memory plane", () => {
               eventId: "task:1",
               timestamp: 1_000,
               goal: "Keep verification strict",
-              verificationLevel: "strict",
               verificationCommands: ["bun run check"],
             }),
           ],

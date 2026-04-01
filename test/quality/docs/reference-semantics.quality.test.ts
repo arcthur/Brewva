@@ -31,7 +31,9 @@ describe("docs/reference semantic contracts", () => {
       "auto-discovered `package.json` scripts run through the root package manager",
     );
     expect(runtimeDoc).toContain("default verification checks are expanded per target root");
-    expect(runtimeDoc).toContain("command-backed checks are tracked as `command_passed` evidence");
+    expect(runtimeDoc).toContain(
+      "command-backed checks only become authoritative after `brewva_verify`",
+    );
   });
 
   it("documents verifier blockers as verification debt rather than hard blockers", () => {

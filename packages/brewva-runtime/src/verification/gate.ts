@@ -4,11 +4,7 @@ import type {
   VerificationLevel,
   VerificationReport,
 } from "../contracts/index.js";
-import {
-  matchesVerificationEvidence,
-  resolveVerificationPlan,
-  type VerificationPlan,
-} from "./profile.js";
+import { resolveVerificationPlan, type VerificationPlan } from "./profile.js";
 import { VerificationStateStore } from "./state.js";
 
 export interface VerificationGateOptions {
@@ -69,12 +65,27 @@ export class VerificationGate {
     });
   }
 
+  resolvePreferredLevel(
+    sessionId: string,
+    fallback: VerificationLevel = this.config.verification.defaultLevel,
+  ): VerificationLevel {
+    const state = this.store.get(sessionId);
+    if (
+      state.lastOutcomeLevel &&
+      state.lastOutcomeReferenceWriteAt !== undefined &&
+      state.lastOutcomeReferenceWriteAt === state.lastWriteAt
+    ) {
+      return state.lastOutcomeLevel;
+    }
+    return fallback;
+  }
+
   evaluate(
     sessionId: string,
-    level: VerificationLevel = this.config.verification.defaultLevel,
+    level: VerificationLevel = this.resolvePreferredLevel(sessionId),
     options: VerificationGateOptions = {},
   ): VerificationReport {
-    const requireCommands = options.requireCommands === true && level !== "quick";
+    const requireCommands = options.requireCommands === true;
     const state = this.store.get(sessionId);
     const hasWrite = Boolean(state.lastWriteAt);
     const lastWriteAt = state.lastWriteAt ?? 0;
@@ -91,25 +102,22 @@ export class VerificationGate {
       const checkRun = state.checkRuns[check.name];
       const freshRun = checkRun && isFresh(checkRun.timestamp, lastWriteAt) ? checkRun : undefined;
 
-      if (requireCommands && check.command) {
+      if (!check.command.trim()) {
         return {
           name: check.name,
-          status: freshRun?.ok ? "pass" : "fail",
-          evidence: freshRun
-            ? `${freshRun.ok ? "pass" : "fail"} (${freshRun.exitCode ?? "null"}) ${freshRun.command}`
-            : `missing command run: ${check.command}`,
+          status: "fail",
+          evidence: `verification command not configured: ${check.name}`,
         } as const;
       }
 
-      const freshEvidence = state.evidence.find(
-        (entry) =>
-          isFresh(entry.timestamp, lastWriteAt) && matchesVerificationEvidence(entry, check),
-      );
-      const passed = Boolean((freshRun && freshRun.ok) || freshEvidence);
       return {
         name: check.name,
-        status: passed ? "pass" : "fail",
-        evidence: freshRun?.command ?? freshEvidence?.detail,
+        status: freshRun?.ok ? "pass" : "fail",
+        evidence: freshRun
+          ? `${freshRun.ok ? "pass" : "fail"} (${freshRun.exitCode ?? "null"}) ${freshRun.command}`
+          : requireCommands
+            ? `missing command run: ${check.command}`
+            : `verification command has not been run since the latest write: ${check.command}`,
       } as const;
     });
 

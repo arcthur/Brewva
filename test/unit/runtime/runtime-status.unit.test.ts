@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildRuntimeStatusBlock } from "../../../packages/brewva-runtime/src/context/runtime-status.js";
 
 describe("runtime status surface formatting", () => {
-  test("renders task verification levels using the agent-facing surface", () => {
+  test("renders canonical verification levels without agent-facing aliases", () => {
     const block = buildRuntimeStatusBlock({
       verification: {
         timestamp: Date.now(),
@@ -13,7 +13,7 @@ describe("runtime status surface formatting", () => {
     });
 
     expect(block).toContain("[RuntimeStatus]");
-    expect(block).toContain("level=targeted");
-    expect(block).not.toContain("level=standard");
+    expect(block).toContain("level=standard");
+    expect(block).not.toContain("level=targeted");
   });
 });

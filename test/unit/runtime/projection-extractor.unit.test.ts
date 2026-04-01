@@ -61,7 +61,6 @@ describe("projection extractor", () => {
             goal: "Ship governance kernel runtime",
             constraints: ["No backward compatibility."],
             verification: {
-              level: "standard",
               commands: ["bun test"],
             },
           },
@@ -72,7 +71,6 @@ describe("projection extractor", () => {
     const statements = result.upserts.map((unit) => unit.statement);
     expect(statements).toContain("Ship governance kernel runtime");
     expect(statements).toContain("No backward compatibility.");
-    expect(statements).toContain("targeted");
     expect(statements).toContain("bun test");
     expect(result.resolves).toEqual([
       {
@@ -82,7 +80,6 @@ describe("projection extractor", () => {
         keepProjectionKeys: [
           "task_spec.goal",
           "task_spec.constraint:no backward compatibility.",
-          "task_spec.verification.level",
           "task_spec.verification.command:bun test",
         ],
         resolvedAt: 1_700_000_000_000,

@@ -1,5 +1,4 @@
 import type { SessionCostSummary, TaskSpec, TaskState, TruthState } from "../contracts/index.js";
-import { normalizeTaskAcceptanceOwner } from "../task/spec.js";
 import { isRecord, normalizeNonEmptyString } from "../utils/coerce.js";
 
 export const TAPE_ANCHOR_EVENT_TYPE = "anchor";
@@ -216,13 +215,6 @@ function coerceCheckpointTaskState(value: unknown): TaskState | null {
     if (rawSpec.verification !== undefined) {
       if (!isRecord(rawSpec.verification)) return null;
       verification = {
-        level:
-          typeof rawSpec.verification.level === "string" &&
-          (["quick", "standard", "strict"] as readonly string[]).includes(
-            rawSpec.verification.level,
-          )
-            ? (rawSpec.verification.level as "quick" | "standard" | "strict")
-            : undefined,
         commands: Array.isArray(rawSpec.verification.commands)
           ? rawSpec.verification.commands.filter(
               (item: unknown): item is string => typeof item === "string",
@@ -238,7 +230,6 @@ function coerceCheckpointTaskState(value: unknown): TaskState | null {
           typeof rawSpec.acceptance.required === "boolean"
             ? rawSpec.acceptance.required
             : undefined,
-        owner: normalizeTaskAcceptanceOwner(rawSpec.acceptance.owner),
         criteria: Array.isArray(rawSpec.acceptance.criteria)
           ? rawSpec.acceptance.criteria.filter(
               (item: unknown): item is string => typeof item === "string",

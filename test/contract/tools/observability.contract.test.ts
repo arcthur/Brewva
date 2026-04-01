@@ -162,6 +162,6 @@ describe("observability tool contracts", () => {
     expect(snapshotText).toContain("[ObsSnapshot]");
     expect(snapshotText).toContain("tape_pressure:");
     expect(snapshotText).toContain("context_pressure:");
-    expect(snapshotText).toContain("verification_level: targeted");
+    expect(snapshotText).toContain("verification_level: standard");
   });
 });

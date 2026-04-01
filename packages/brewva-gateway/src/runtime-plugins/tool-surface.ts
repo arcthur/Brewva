@@ -21,15 +21,23 @@ import type { ExtensionAPI, ToolDefinition, ToolInfo } from "@mariozechner/pi-co
 const CAPABILITY_REQUEST_PATTERN = /\$([a-z][a-z0-9_]*)/g;
 const BUILTIN_ALWAYS_ON_TOOL_NAMES = ["read", "edit", "write"] as const;
 const MANAGED_TOOL_NAME_SET = new Set(MANAGED_BREWVA_TOOL_NAMES);
-const ALWAYS_ON_INSPECTION_TOOL_NAMES = [
+const BOOTSTRAP_MANAGED_TOOL_NAMES = [
+  "skill_load",
+  "workflow_status",
+  "session_compact",
   "task_set_spec",
   "task_view_state",
   "task_add_item",
   "task_update_item",
   "task_record_blocker",
   "task_resolve_blocker",
+  "knowledge_search",
+  "precedent_audit",
+  "precedent_sweep",
+  "deliberation_memory",
   "output_search",
   "ledger_query",
+  "tape_info",
   "tape_search",
   "tape_handoff",
 ] as const;
@@ -161,52 +169,61 @@ function collectSkillToolNames(
 function resolveRequestedManagedToolNames(
   requestedToolNames: string[],
   knownToolNames: Set<string>,
+  allowedManagedToolNames: ReadonlySet<string>,
 ): string[] {
   return requestedToolNames.filter((toolName) => {
     if (!knownToolNames.has(toolName)) return false;
-    return isManagedBrewvaToolName(toolName);
+    return isManagedBrewvaToolName(toolName) && allowedManagedToolNames.has(toolName);
   });
 }
 
-function resolveManagedToolNamesForTurn(input: {
+type TurnSurfacePlan = {
+  requestedToolNames: string[];
+  requestedManagedToolNames: string[];
+  skillNames: string[];
+  hasActiveSkill: boolean;
+  skillManagedToolNames: string[];
+  lifecycleManagedToolNames: string[];
+  operatorManagedToolNames: string[];
+  operatorProfile: boolean;
+};
+
+function resolveTurnSurfacePlan(input: {
   runtime: ToolSurfaceRuntime;
   sessionId: string;
   prompt: string;
   dynamicToolDefinitions?: ReadonlyMap<string, ToolDefinition>;
-}): {
-  requestedManagedToolNames: string[];
-  skillManagedToolNames: string[];
-  lifecycleManagedToolNames: string[];
-  operatorManagedToolNames: string[];
-} {
+}): TurnSurfacePlan {
+  const requestedToolNames = extractRequestedToolNames(input.prompt);
   const requestedManagedToolNames = extractRequestedToolNames(input.prompt).filter((toolName) =>
     MANAGED_TOOL_NAME_SET.has(toolName),
   );
   const surfaceSkills = resolveSurfaceSkills(input.runtime, input.sessionId);
+  const hasActiveSkill = surfaceSkills.length > 0;
   const skillManagedToolNames = collectSkillToolNames(
     input.runtime,
     surfaceSkills,
     input.dynamicToolDefinitions,
   ).filter((toolName) => MANAGED_TOOL_NAME_SET.has(toolName));
-  const lifecycleManagedToolNames: string[] = [
-    "skill_load",
-    "workflow_status",
-    ...ALWAYS_ON_INSPECTION_TOOL_NAMES,
-  ];
+  const lifecycleManagedToolNames: string[] = [...BOOTSTRAP_MANAGED_TOOL_NAMES];
 
-  if (surfaceSkills.length > 0) {
+  if (hasActiveSkill) {
     lifecycleManagedToolNames.push("skill_complete");
   }
 
-  const operatorManagedToolNames = isOperatorProfile(input.runtime)
-    ? OPERATOR_BREWVA_TOOL_NAMES
-    : [];
+  const operatorProfile = isOperatorProfile(input.runtime);
+  const operatorManagedToolNames =
+    hasActiveSkill && operatorProfile ? OPERATOR_BREWVA_TOOL_NAMES : [];
 
   return {
+    requestedToolNames,
     requestedManagedToolNames,
+    skillNames: surfaceSkills.map((skill) => skill.name),
+    hasActiveSkill,
     skillManagedToolNames,
     lifecycleManagedToolNames: [...new Set(lifecycleManagedToolNames)],
     operatorManagedToolNames,
+    operatorProfile,
   };
 }
 
@@ -235,6 +252,12 @@ function resolveActiveToolNames(input: {
   const allToolNames = input.allTools.map((tool) => normalizeToolName(tool.name));
   const knownToolNames = new Set(allToolNames);
   const active = new Set<string>();
+  const turnPlan = resolveTurnSurfacePlan({
+    runtime: input.runtime,
+    sessionId: input.sessionId,
+    prompt: input.prompt,
+    dynamicToolDefinitions: input.dynamicToolDefinitions,
+  });
 
   for (const toolName of input.activeToolNames) {
     const normalized = normalizeToolName(toolName);
@@ -244,45 +267,44 @@ function resolveActiveToolNames(input: {
     }
   }
 
-  for (const toolName of BUILTIN_ALWAYS_ON_TOOL_NAMES) {
-    if (knownToolNames.has(toolName)) {
-      active.add(toolName);
+  const bootstrapManagedToolNames = new Set<string>(BOOTSTRAP_MANAGED_TOOL_NAMES);
+  const allowedRequestedManagedToolNames = turnPlan.hasActiveSkill
+    ? new Set<string>(MANAGED_BREWVA_TOOL_NAMES)
+    : bootstrapManagedToolNames;
+  const requestedActivatedToolNames = resolveRequestedManagedToolNames(
+    turnPlan.requestedToolNames,
+    knownToolNames,
+    allowedRequestedManagedToolNames,
+  );
+
+  if (turnPlan.hasActiveSkill) {
+    for (const toolName of BUILTIN_ALWAYS_ON_TOOL_NAMES) {
+      if (knownToolNames.has(toolName)) {
+        active.add(toolName);
+      }
     }
-  }
-  for (const toolName of BASE_BREWVA_TOOL_NAMES) {
-    if (knownToolNames.has(toolName)) {
-      active.add(toolName);
+    for (const toolName of BASE_BREWVA_TOOL_NAMES) {
+      if (knownToolNames.has(toolName)) {
+        active.add(toolName);
+      }
+    }
+    for (const toolName of turnPlan.skillManagedToolNames) {
+      if (knownToolNames.has(toolName)) {
+        active.add(toolName);
+      }
     }
   }
 
-  const requestedToolNames = extractRequestedToolNames(input.prompt).filter((toolName) =>
-    knownToolNames.has(toolName),
-  );
-  const requestedActivatedToolNames = resolveRequestedManagedToolNames(
-    requestedToolNames,
-    knownToolNames,
-  );
   for (const toolName of requestedActivatedToolNames) {
     active.add(toolName);
   }
-
-  const surfaceSkills = resolveSurfaceSkills(input.runtime, input.sessionId);
-  for (const toolName of collectSkillToolNames(
-    input.runtime,
-    surfaceSkills,
-    input.dynamicToolDefinitions,
-  )) {
-    if (knownToolNames.has(toolName)) {
-      active.add(toolName);
-    }
-  }
-  for (const toolName of ALWAYS_ON_INSPECTION_TOOL_NAMES) {
+  for (const toolName of BOOTSTRAP_MANAGED_TOOL_NAMES) {
     if (knownToolNames.has(toolName)) {
       active.add(toolName);
     }
   }
 
-  if (surfaceSkills.length > 0 && knownToolNames.has("skill_complete")) {
+  if (turnPlan.hasActiveSkill && knownToolNames.has("skill_complete")) {
     active.add("skill_complete");
   }
   if (knownToolNames.has("skill_load")) {
@@ -292,8 +314,7 @@ function resolveActiveToolNames(input: {
     active.add("workflow_status");
   }
 
-  const operatorProfile = isOperatorProfile(input.runtime);
-  if (operatorProfile) {
+  if (turnPlan.operatorProfile && turnPlan.hasActiveSkill) {
     for (const toolName of OPERATOR_BREWVA_TOOL_NAMES) {
       if (knownToolNames.has(toolName)) {
         active.add(toolName);
@@ -324,13 +345,15 @@ function resolveActiveToolNames(input: {
   return {
     activeToolNames,
     managedActiveCount: [...active].filter((toolName) => isManagedBrewvaToolName(toolName)).length,
-    requestedToolNames,
-    requestedActivatedToolNames,
-    ignoredRequestedToolNames: requestedToolNames.filter(
-      (toolName) => !requestedActivatedToolNames.includes(toolName),
+    requestedToolNames: turnPlan.requestedToolNames.filter((toolName) =>
+      knownToolNames.has(toolName),
     ),
-    skillNames: surfaceSkills.map((skill) => skill.name),
-    operatorProfile,
+    requestedActivatedToolNames,
+    ignoredRequestedToolNames: turnPlan.requestedToolNames
+      .filter((toolName) => knownToolNames.has(toolName))
+      .filter((toolName) => !requestedActivatedToolNames.includes(toolName)),
+    skillNames: turnPlan.skillNames,
+    operatorProfile: turnPlan.operatorProfile,
     baseActiveCount,
     skillActiveCount,
     operatorActiveCount,
@@ -358,17 +381,17 @@ function registerMissingManagedTools(input: {
 }): void {
   if (!input.dynamicToolDefinitions || input.dynamicToolDefinitions.size === 0) return;
 
-  const dynamic = resolveManagedToolNamesForTurn({
+  const turnPlan = resolveTurnSurfacePlan({
     runtime: input.runtime,
     sessionId: input.sessionId,
     prompt: input.prompt,
     dynamicToolDefinitions: input.dynamicToolDefinitions,
   });
   const namesToEnsure = [
-    ...dynamic.requestedManagedToolNames,
-    ...dynamic.skillManagedToolNames,
-    ...dynamic.lifecycleManagedToolNames,
-    ...dynamic.operatorManagedToolNames,
+    ...turnPlan.requestedManagedToolNames,
+    ...turnPlan.skillManagedToolNames,
+    ...turnPlan.lifecycleManagedToolNames,
+    ...turnPlan.operatorManagedToolNames,
   ];
 
   for (const toolName of new Set(namesToEnsure)) {

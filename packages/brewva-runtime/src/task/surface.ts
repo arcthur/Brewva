@@ -1,23 +1,4 @@
-import type { TaskItemStatus, VerificationLevel } from "../contracts/index.js";
-
-export const TASK_AGENT_VERIFICATION_LEVEL_VALUES = ["smoke", "targeted", "full", "none"] as const;
-
-export type TaskAgentVerificationLevel = (typeof TASK_AGENT_VERIFICATION_LEVEL_VALUES)[number];
-
-export const TASK_AGENT_VERIFICATION_LEVEL_RUNTIME_MAP = {
-  smoke: "quick",
-  targeted: "standard",
-  full: "strict",
-  none: "none",
-} as const satisfies Readonly<Record<TaskAgentVerificationLevel, string>>;
-
-const TASK_RUNTIME_TO_AGENT_VERIFICATION_LEVEL = {
-  quick: "smoke",
-  standard: "targeted",
-  strict: "full",
-} as const satisfies Readonly<
-  Record<VerificationLevel, Exclude<TaskAgentVerificationLevel, "none">>
->;
+import type { TaskItemStatus } from "../contracts/index.js";
 
 export const TASK_AGENT_ITEM_STATUS_VALUES = ["pending", "in_progress", "done", "blocked"] as const;
 
@@ -45,15 +26,7 @@ function normalizeSurfaceToken(value: string | undefined | null): string | undef
 export function formatTaskVerificationLevelForSurface(
   level: string | undefined | null,
 ): string | undefined {
-  const normalized = normalizeSurfaceToken(level);
-  if (!normalized) {
-    return undefined;
-  }
-  return normalized in TASK_RUNTIME_TO_AGENT_VERIFICATION_LEVEL
-    ? TASK_RUNTIME_TO_AGENT_VERIFICATION_LEVEL[
-        normalized as keyof typeof TASK_RUNTIME_TO_AGENT_VERIFICATION_LEVEL
-      ]
-    : normalized;
+  return normalizeSurfaceToken(level);
 }
 
 export function formatTaskItemStatusForSurface(

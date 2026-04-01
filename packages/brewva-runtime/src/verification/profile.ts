@@ -2,22 +2,13 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DEFAULT_BREWVA_CONFIG } from "../config/defaults.js";
-import type {
-  BrewvaConfig,
-  TaskState,
-  VerificationEvidence,
-  VerificationLevel,
-} from "../contracts/index.js";
-
-export type VerificationEvidenceMatchKind = "lsp_clean" | "test_or_build_passed" | "command_passed";
+import type { BrewvaConfig, TaskState, VerificationLevel } from "../contracts/index.js";
 
 export interface VerificationPlanCheck {
   name: string;
-  command?: string;
+  command: string;
   cwd?: string;
-  evidenceKind: VerificationEvidenceMatchKind;
   missingLabel: string;
-  commandMatch?: string;
 }
 
 export interface VerificationPlan {
@@ -30,10 +21,6 @@ type PackageScripts = Record<string, string>;
 interface PackageManifest {
   scripts: PackageScripts;
   packageManager?: string;
-}
-
-function normalizeCommand(value: string): string {
-  return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function hasTargetExtension(
@@ -169,16 +156,14 @@ function hasAnyLintConfig(root: string): boolean {
 function resolveExplicitCommandChecks(commands: readonly string[]): VerificationPlanCheck[] {
   return commands
     .map((command, index) => {
-      const normalized = normalizeCommand(command);
+      const trimmed = command.trim();
       return {
         name: `command:${index + 1}`,
-        command,
-        evidenceKind: "command_passed" as const,
+        command: trimmed,
         missingLabel: `command:${index + 1}`,
-        commandMatch: normalized,
       };
     })
-    .filter((entry) => entry.command.trim().length > 0);
+    .filter((entry) => entry.command.length > 0);
 }
 
 function isExplicitVerificationCheck(
@@ -252,20 +237,18 @@ function resolveDefaultChecks(input: {
         }
         checks.push({
           name: checkName,
-          command: typecheckCommand,
+          command: typecheckCommand ?? "",
           cwd: root,
-          evidenceKind: "lsp_clean",
-          missingLabel: "lsp_diagnostics",
+          missingLabel: checkName,
         });
         continue;
       }
       if (name === "tests") {
         checks.push({
           name: checkName,
-          command: testsCommand,
+          command: testsCommand ?? "",
           cwd: root,
-          evidenceKind: "test_or_build_passed",
-          missingLabel: "test_or_build",
+          missingLabel: checkName,
         });
         continue;
       }
@@ -279,11 +262,9 @@ function resolveDefaultChecks(input: {
         }
         checks.push({
           name: checkName,
-          command: lintCommand,
+          command: lintCommand ?? "",
           cwd: root,
-          evidenceKind: "command_passed",
-          missingLabel: "command_passed",
-          commandMatch: lintCommand ? normalizeCommand(lintCommand) : undefined,
+          missingLabel: checkName,
         });
         continue;
       }
@@ -291,11 +272,9 @@ function resolveDefaultChecks(input: {
         const command = input.config.verification.commands["diff-review"];
         checks.push({
           name: checkName,
-          command,
+          command: command ?? "",
           cwd: root,
-          evidenceKind: "command_passed",
-          missingLabel: "command_passed",
-          commandMatch: normalizeCommand(command ?? ""),
+          missingLabel: checkName,
         });
       }
     }
@@ -304,25 +283,12 @@ function resolveDefaultChecks(input: {
   if (checks.length === 0) {
     checks.push({
       name: "smoke",
-      evidenceKind: "command_passed",
-      missingLabel: "command_passed",
+      command: "true",
+      missingLabel: "smoke",
     });
   }
 
   return checks;
-}
-
-export function matchesVerificationEvidence(
-  evidence: VerificationEvidence,
-  check: VerificationPlanCheck,
-): boolean {
-  if (evidence.kind !== check.evidenceKind) {
-    return false;
-  }
-  if (!check.commandMatch) {
-    return true;
-  }
-  return normalizeCommand(evidence.detail ?? "") === check.commandMatch;
 }
 
 export function resolveVerificationPlan(input: {
@@ -342,9 +308,7 @@ export function resolveVerificationPlan(input: {
           name: check.name,
           command: check.command,
           cwd: roots[0],
-          evidenceKind: check.evidenceKind,
           missingLabel: check.missingLabel,
-          commandMatch: check.commandMatch,
         });
       }
     } else {
@@ -355,9 +319,7 @@ export function resolveVerificationPlan(input: {
             name,
             command: check.command,
             cwd: root,
-            evidenceKind: check.evidenceKind,
             missingLabel: name,
-            commandMatch: check.commandMatch,
           });
         }
       }

@@ -260,7 +260,6 @@ describe("reversible mutation receipts", () => {
       goal: "Close with operator acceptance",
       acceptance: {
         required: true,
-        owner: "operator",
       },
     });
 

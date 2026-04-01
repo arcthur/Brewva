@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { DelegationRunRecord } from "@brewva/brewva-runtime";
-import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
 import { createSkillCompleteTool, createSkillLoadTool } from "@brewva/brewva-tools";
 
 type ToolExecutionContext = Parameters<ReturnType<typeof createSkillLoadTool>["execute"]>[4];
@@ -1138,7 +1138,14 @@ The WAL boundary must keep replay ordering deterministic.
       ],
     });
 
-    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const config = structuredClone(DEFAULT_BREWVA_CONFIG);
+    config.verification.defaultLevel = "quick";
+    config.verification.checks.quick = ["tests"];
+    config.verification.checks.standard = ["tests"];
+    config.verification.checks.strict = ["tests"];
+    config.verification.commands.tests = "true";
+
+    const runtime = new BrewvaRuntime({ cwd: workspace, config });
     const sessionId = "skill-complete-implementation-2";
     const loadTool = createSkillLoadTool({ runtime });
     const completeTool = createSkillCompleteTool({
@@ -1169,6 +1176,11 @@ The WAL boundary must keep replay ordering deterministic.
       outputText: "No diagnostics found",
       channelSuccess: true,
     });
+    const verificationReport = await runtime.verification.verify(sessionId, "quick", {
+      executeCommands: true,
+      timeoutMs: 5_000,
+    });
+    expect(verificationReport.passed).toBe(true);
 
     const result = await completeTool.execute(
       "tc-complete-implementation-valid",
