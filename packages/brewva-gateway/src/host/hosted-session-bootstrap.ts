@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   createNarrativeMemoryContextProvider,
@@ -21,12 +22,16 @@ import {
 } from "@brewva/brewva-tools";
 import {
   AuthStorage,
+  createReadTool,
   createAgentSession,
   DefaultResourceLoader,
   editTool,
   ModelRegistry,
   readTool,
+  type ReadToolDetails,
+  type ReadToolOptions,
   SettingsManager,
+  type ToolDefinition,
   writeTool,
   type CreateAgentSessionResult,
 } from "@mariozechner/pi-coding-agent";
@@ -64,6 +69,182 @@ interface HostedEnvironment {
   selectedModel: ReturnType<typeof resolveBrewvaModelSelection>;
 }
 
+function createStaticTextComponent(text: string): {
+  render: (width: number) => string[];
+  invalidate: () => void;
+} {
+  return {
+    render: (_width) => (text.length > 0 ? text.split("\n") : []),
+    invalidate: () => undefined,
+  };
+}
+
+function shortenPath(path: string): string {
+  const home = homedir();
+  return path.startsWith(home) ? `~${path.slice(home.length)}` : path;
+}
+
+function extractTextContent(result: { content?: unknown }): string {
+  if (!Array.isArray(result.content)) {
+    return "";
+  }
+  return result.content
+    .flatMap((item) => {
+      if (!item || typeof item !== "object") {
+        return [];
+      }
+      const text = (item as { type?: unknown; text?: unknown }).text;
+      const type = (item as { type?: unknown }).type;
+      return type === "text" && typeof text === "string" ? [text.replace(/\r/g, "")] : [];
+    })
+    .join("\n");
+}
+
+const READ_CONTINUATION_FOOTER =
+  /\n\n(\[(?:Showing lines \d+-\d+ of \d+(?: \([^)]+\))?\. Use offset=\d+ to continue\.|\d+ more lines in file\. Use offset=\d+ to continue\.)\])$/;
+
+interface CompactReadTextOutput {
+  body: string;
+  continuationFooter?: string;
+}
+
+interface CompactReadToolInput {
+  cwd: string;
+  getReadToolOptions?: () => ReadToolOptions | undefined;
+  createReadDelegate?: typeof createReadTool;
+}
+
+function splitCompactReadTextOutput(output: string): CompactReadTextOutput {
+  const footerMatch = READ_CONTINUATION_FOOTER.exec(output);
+  if (!footerMatch || typeof footerMatch.index !== "number") {
+    return { body: output };
+  }
+
+  return {
+    body: output.slice(0, footerMatch.index),
+    continuationFooter: footerMatch[1],
+  };
+}
+
+function countRenderedLines(text: string): number {
+  return text.length === 0 ? 0 : text.split("\n").length;
+}
+
+function formatLineCount(lineCount: number): string {
+  return `${lineCount} line${lineCount === 1 ? "" : "s"}`;
+}
+
+export function createCompactReadTool(
+  input: CompactReadToolInput,
+): ToolDefinition<ReturnType<typeof createReadTool>["parameters"], ReadToolDetails> {
+  const createReadDelegate = input.createReadDelegate ?? createReadTool;
+  const originalRead = createReadDelegate(input.cwd);
+  return {
+    name: originalRead.name,
+    label: originalRead.label,
+    description: originalRead.description,
+    parameters: originalRead.parameters,
+    execute(toolCallId, params, signal, onUpdate, _ctx) {
+      return createReadDelegate(input.cwd, input.getReadToolOptions?.()).execute(
+        toolCallId,
+        params,
+        signal,
+        onUpdate,
+      );
+    },
+    renderCall(args, theme) {
+      const filePathCandidate = (args as { file_path?: unknown } | undefined)?.file_path;
+      const rawPath =
+        typeof args?.path === "string"
+          ? args.path
+          : typeof filePathCandidate === "string"
+            ? filePathCandidate
+            : "";
+      const offset = typeof args?.offset === "number" ? args.offset : undefined;
+      const limit = typeof args?.limit === "number" ? args.limit : undefined;
+      let pathDisplay = rawPath
+        ? theme.fg("accent", shortenPath(rawPath))
+        : theme.fg("toolOutput", "...");
+
+      if (offset !== undefined || limit !== undefined) {
+        const startLine = offset ?? 1;
+        const endLine = limit !== undefined ? startLine + limit - 1 : "";
+        pathDisplay += theme.fg("warning", `:${startLine}${endLine ? `-${endLine}` : ""}`);
+      }
+
+      return createStaticTextComponent(
+        `${theme.fg("toolTitle", theme.bold("read"))} ${pathDisplay}`,
+      );
+    },
+    renderResult(result, { expanded }, theme) {
+      const hasImage = Array.isArray(result.content)
+        ? result.content.some(
+            (item) =>
+              item && typeof item === "object" && (item as { type?: unknown }).type === "image",
+          )
+        : false;
+      if (hasImage) {
+        return createStaticTextComponent(`\n${theme.fg("success", "Image loaded")}`);
+      }
+
+      const output = extractTextContent(result);
+      if (!output) {
+        return createStaticTextComponent("");
+      }
+
+      const details = result.details as ReadToolDetails | undefined;
+      if (details?.truncation?.firstLineExceedsLimit) {
+        if (!expanded) {
+          return createStaticTextComponent(`\n${theme.fg("warning", "Line exceeds output limit")}`);
+        }
+        return createStaticTextComponent(`\n${theme.fg("warning", output)}`);
+      }
+
+      const { body, continuationFooter } = splitCompactReadTextOutput(output);
+      const lineCount =
+        details?.truncation?.truncated && typeof details.truncation.outputLines === "number"
+          ? details.truncation.outputLines
+          : countRenderedLines(body);
+
+      if (!expanded) {
+        let summary = theme.fg("success", formatLineCount(lineCount));
+        if (details?.truncation?.truncated && typeof details.truncation.totalLines === "number") {
+          summary += theme.fg("warning", ` (truncated from ${details.truncation.totalLines})`);
+        }
+        return createStaticTextComponent(`\n${summary}`);
+      }
+
+      const renderedLines = body
+        .split("\n")
+        .filter((_line, index, lines) => !(lines.length === 1 && lines[0] === ""))
+        .map((line) => theme.fg("toolOutput", line));
+
+      if (details?.truncation?.truncated) {
+        if (details.truncation.firstLineExceedsLimit) {
+          renderedLines.push(theme.fg("warning", "[First line exceeds output limit]"));
+        } else if (details.truncation.truncatedBy === "lines") {
+          renderedLines.push(
+            theme.fg(
+              "warning",
+              `[Truncated: showing ${details.truncation.outputLines} of ${details.truncation.totalLines} lines]`,
+            ),
+          );
+        } else {
+          renderedLines.push(
+            theme.fg("warning", `[Truncated: ${details.truncation.outputLines} lines shown]`),
+          );
+        }
+      } else if (continuationFooter) {
+        renderedLines.push(theme.fg("warning", continuationFooter));
+      }
+
+      return createStaticTextComponent(
+        renderedLines.length > 0 ? `\n${renderedLines.join("\n")}` : "",
+      );
+    },
+  };
+}
+
 function resolveBuiltinTools(
   builtinToolNames: readonly HostedDelegationBuiltinToolName[] | undefined,
 ): Array<typeof readTool | typeof editTool | typeof writeTool> {
@@ -79,6 +260,33 @@ function resolveBuiltinTools(
     tools.push(writeTool);
   }
   return tools;
+}
+
+function createHostedCustomTools(input: {
+  cwd: string;
+  settingsManager: SettingsManager;
+  builtinToolNames: readonly HostedDelegationBuiltinToolName[] | undefined;
+  directManagedTools: ReturnType<typeof createDirectManagedTools>;
+}): ToolDefinition[] | undefined {
+  const tools: ToolDefinition[] = [];
+  const requestedBuiltinTools = new Set(input.builtinToolNames ?? ["read", "edit", "write"]);
+
+  if (requestedBuiltinTools.has("read")) {
+    tools.push(
+      createCompactReadTool({
+        cwd: input.cwd,
+        getReadToolOptions: () => ({
+          autoResizeImages: input.settingsManager.getImageAutoResize(),
+        }),
+      }) as unknown as ToolDefinition,
+    );
+  }
+
+  if (input.directManagedTools && input.directManagedTools.length > 0) {
+    tools.push(...input.directManagedTools);
+  }
+
+  return tools.length > 0 ? tools : undefined;
 }
 
 function sameRoutingScopes(actual: readonly string[], expected: readonly string[]): boolean {
@@ -389,13 +597,19 @@ export async function createHostedSession(
   });
   await resourceLoader.reload();
 
-  const customTools = createDirectManagedTools({
+  const directManagedTools = createDirectManagedTools({
     options,
     runtime,
     orchestration,
     delegationStore,
     managedToolMode,
     semanticOracle,
+  });
+  const customTools = createHostedCustomTools({
+    cwd: environment.cwd,
+    settingsManager,
+    builtinToolNames: options.builtinToolNames,
+    directManagedTools,
   });
   const builtinTools = resolveBuiltinTools(options.builtinToolNames);
 
