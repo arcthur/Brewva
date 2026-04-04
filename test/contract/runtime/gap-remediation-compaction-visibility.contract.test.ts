@@ -14,14 +14,14 @@ describe("Gap remediation: compaction visibility", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "context-compaction-summary-1";
 
-    runtime.context.markCompacted(sessionId, {
+    runtime.maintain.context.markCompacted(sessionId, {
       fromTokens: 1600,
       toTokens: 500,
       entryId: "cmp-1",
       summary: "Keep failing tests, active objective, and latest diff only.",
     });
 
-    const first = await runtime.context.buildInjection(sessionId, "fix flaky tests", {
+    const first = await runtime.maintain.context.buildInjection(sessionId, "fix flaky tests", {
       tokens: 800,
       contextWindow: 4000,
       percent: 0.2,
@@ -30,21 +30,25 @@ describe("Gap remediation: compaction visibility", () => {
     expect(first.text).not.toContain("[CompactionSummary]");
     expect(first.text).not.toContain("active objective");
 
-    const second = await runtime.context.buildInjection(sessionId, "continue fixing tests", {
-      tokens: 820,
-      contextWindow: 4000,
-      percent: 0.21,
-    });
+    const second = await runtime.maintain.context.buildInjection(
+      sessionId,
+      "continue fixing tests",
+      {
+        tokens: 820,
+        contextWindow: 4000,
+        percent: 0.21,
+      },
+    );
     expect(second.text).not.toContain("[CompactionSummary]");
 
-    runtime.context.markCompacted(sessionId, {
+    runtime.maintain.context.markCompacted(sessionId, {
       fromTokens: 1700,
       toTokens: 480,
       entryId: "cmp-2",
       summary: "Preserve unresolved assertion mismatch and the last failing command output.",
     });
 
-    const third = await runtime.context.buildInjection(sessionId, "resume bugfix", {
+    const third = await runtime.maintain.context.buildInjection(sessionId, "resume bugfix", {
       tokens: 790,
       contextWindow: 4000,
       percent: 0.19,
@@ -60,22 +64,22 @@ describe("Gap remediation: compaction visibility", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "context-hard-limit-retain-1";
 
-    runtime.context.markCompacted(sessionId, {
+    runtime.maintain.context.markCompacted(sessionId, {
       fromTokens: 1800,
       toTokens: 520,
       entryId: "cmp-retain-1",
       summary: "Keep unresolved failures and active objective only.",
     });
 
-    const dropped = await runtime.context.buildInjection(sessionId, "resume task", {
+    const dropped = await runtime.maintain.context.buildInjection(sessionId, "resume task", {
       tokens: 195_000,
       contextWindow: 200_000,
       percent: 0.975,
     });
     expect(dropped.accepted).toBe(false);
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
 
-    const recovered = await runtime.context.buildInjection(sessionId, "resume task", {
+    const recovered = await runtime.maintain.context.buildInjection(sessionId, "resume task", {
       tokens: 600,
       contextWindow: 200_000,
       percent: 0.3,
@@ -91,28 +95,28 @@ describe("Gap remediation: compaction visibility", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "context-compaction-interval-1";
 
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
     expect(
-      runtime.context.checkAndRequestCompaction(sessionId, {
+      runtime.maintain.context.checkAndRequestCompaction(sessionId, {
         tokens: 820,
         contextWindow: 1000,
         percent: 0.9,
       }),
     ).toBe(true);
-    runtime.context.markCompacted(sessionId, { fromTokens: 820, toTokens: 120 });
+    runtime.maintain.context.markCompacted(sessionId, { fromTokens: 820, toTokens: 120 });
 
-    runtime.context.onTurnStart(sessionId, 2);
+    runtime.maintain.context.onTurnStart(sessionId, 2);
     expect(
-      runtime.context.checkAndRequestCompaction(sessionId, {
+      runtime.maintain.context.checkAndRequestCompaction(sessionId, {
         tokens: 820,
         contextWindow: 1000,
         percent: 0.9,
       }),
     ).toBe(false);
 
-    runtime.context.onTurnStart(sessionId, 3);
+    runtime.maintain.context.onTurnStart(sessionId, 3);
     expect(
-      runtime.context.checkAndRequestCompaction(sessionId, {
+      runtime.maintain.context.checkAndRequestCompaction(sessionId, {
         tokens: 820,
         contextWindow: 1000,
         percent: 0.9,
@@ -126,22 +130,22 @@ describe("Gap remediation: compaction visibility", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "turn-alignment-1";
 
-    runtime.context.onTurnStart(sessionId, 7);
-    runtime.tools.recordResult({
+    runtime.maintain.context.onTurnStart(sessionId, 7);
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "echo one" },
       outputText: "one",
       channelSuccess: true,
     });
-    runtime.tools.recordResult({
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "echo two" },
       outputText: "two",
       channelSuccess: true,
     });
-    runtime.cost.recordAssistantUsage({
+    runtime.authority.cost.recordAssistantUsage({
       sessionId,
       model: "test/model",
       inputTokens: 10,
@@ -152,7 +156,7 @@ describe("Gap remediation: compaction visibility", () => {
       costUsd: 0.001,
     });
 
-    const rows = runtime.ledger
+    const rows = runtime.inspect.ledger
       .listRows(sessionId)
       .filter((row) => row.tool !== "ledger_checkpoint");
     expect(rows.length).toBe(3);
@@ -165,13 +169,13 @@ describe("Gap remediation: compaction visibility", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "context-compaction-ledger-1";
 
-    runtime.context.onTurnStart(sessionId, 3);
-    runtime.context.markCompacted(sessionId, {
+    runtime.maintain.context.onTurnStart(sessionId, 3);
+    runtime.maintain.context.markCompacted(sessionId, {
       fromTokens: 8000,
       toTokens: 1200,
     });
 
-    const rows = runtime.ledger.listRows(sessionId);
+    const rows = runtime.inspect.ledger.listRows(sessionId);
     expect(rows.map((row) => row.tool)).toContain("brewva_context_compaction");
   });
 });

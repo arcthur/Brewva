@@ -1,10 +1,8 @@
 import { resolve } from "node:path";
-import { TurnWALRecovery } from "./channels/turn-wal-recovery.js";
-import { TurnWALStore } from "./channels/turn-wal.js";
+import { RecoveryWalRecovery } from "./channels/recovery-wal-recovery.js";
+import { RecoveryWalStore } from "./channels/recovery-wal.js";
 import type { TurnEnvelope } from "./channels/turn.js";
-import { DEFAULT_BREWVA_CONFIG } from "./config/defaults.js";
-import { loadBrewvaConfig } from "./config/loader.js";
-import { normalizeBrewvaConfig } from "./config/normalize.js";
+import { loadBrewvaConfig, normalizeExplicitBrewvaConfig } from "./config/loader.js";
 import { resolveWorkspaceRootDir } from "./config/paths.js";
 import { ContextBudgetManager } from "./context/budget.js";
 import { normalizeAgentId } from "./context/identity.js";
@@ -80,9 +78,9 @@ import type {
   TaskTargetDescriptor,
   TaskSpec,
   TaskState,
-  TurnWALRecord,
-  TurnWALRecoveryResult,
-  TurnWALSource,
+  RecoveryWalRecord,
+  RecoveryWalRecoveryResult,
+  RecoveryWalSource,
   VerificationLevel,
   VerificationReport,
   WorkerMergeReport,
@@ -139,6 +137,7 @@ import {
   type RuntimeServiceDependencies,
 } from "./runtime-assembler.js";
 import type { RuntimeKernelContext } from "./runtime-kernel.js";
+import { BREWVA_RUNTIME_METHOD_GROUPS } from "./runtime-symbols.js";
 import { sanitizeContextText } from "./security/sanitize.js";
 import { ContextService } from "./services/context.js";
 import { CostService } from "./services/cost.js";
@@ -215,12 +214,32 @@ function deepFreezeValue<T>(value: T): DeepReadonly<T> {
   return value as DeepReadonly<T>;
 }
 
-export class BrewvaRuntime {
-  declare readonly cwd: string;
-  declare readonly workspaceRoot: string;
-  declare readonly agentId: string;
-  declare readonly config: DeepReadonly<BrewvaConfig>;
-  declare readonly skills: {
+function bindMethods<TObject extends object, const TKeys extends readonly (keyof TObject)[]>(
+  owner: TObject,
+  keys: TKeys,
+): Pick<TObject, TKeys[number]> {
+  const result = {} as Pick<TObject, TKeys[number]>;
+  for (const key of keys) {
+    const value = owner[key];
+    if (typeof value !== "function") {
+      throw new Error(`Expected method at key ${String(key)}`);
+    }
+    // These methods belong to semantic method groups, not to the BrewvaRuntime instance itself.
+    // Binding here preserves the group receiver when callers destructure narrowed surface ports.
+    (result as unknown as Record<string, unknown>)[String(key)] = value.bind(owner);
+  }
+  return result;
+}
+
+export interface BrewvaRuntimeIdentity {
+  readonly cwd: string;
+  readonly workspaceRoot: string;
+  readonly agentId: string;
+  readonly config: DeepReadonly<BrewvaConfig>;
+}
+
+interface BrewvaRuntimeMethodGroups {
+  skills: {
     refresh(input?: SkillRefreshInput): SkillRefreshResult;
     getLoadReport(): SkillRegistryLoadReport;
     list(): SkillDocument[];
@@ -239,7 +258,7 @@ export class BrewvaRuntime {
     getOutputs(sessionId: string, skillName: string): Record<string, unknown> | undefined;
     getConsumedOutputs(sessionId: string, targetSkillName: string): Record<string, unknown>;
   };
-  declare readonly proposals: {
+  proposals: {
     submit(sessionId: string, proposal: EffectCommitmentProposal): DecisionReceipt;
     list(sessionId: string, query?: EffectCommitmentListQuery): EffectCommitmentRecord[];
     listEffectCommitmentRequests(
@@ -253,7 +272,7 @@ export class BrewvaRuntime {
       input: DecideEffectCommitmentInput,
     ): DecideEffectCommitmentResult;
   };
-  declare readonly context: {
+  context: {
     onTurnStart(sessionId: string, turnIndex: number): void;
     onTurnEnd(sessionId: string): void;
     onUserInput(sessionId: string): void;
@@ -319,7 +338,7 @@ export class BrewvaRuntime {
       },
     ): void;
   };
-  declare readonly tools: {
+  tools: {
     checkAccess(
       sessionId: string,
       toolName: string,
@@ -414,7 +433,7 @@ export class BrewvaRuntime {
       effectCommitmentRequestId?: string;
     }): string;
   };
-  declare readonly task: {
+  task: {
     setSpec(sessionId: string, spec: TaskSpec): void;
     addItem(
       sessionId: string,
@@ -436,7 +455,7 @@ export class BrewvaRuntime {
     getTargetDescriptor(sessionId: string): TaskTargetDescriptor;
     getState(sessionId: string): TaskState;
   };
-  declare readonly truth: {
+  truth: {
     getState(sessionId: string): TruthState;
     upsertFact(
       sessionId: string,
@@ -452,14 +471,14 @@ export class BrewvaRuntime {
     ): TruthFactUpsertResult;
     resolveFact(sessionId: string, truthFactId: string): TruthFactResolveResult;
   };
-  declare readonly ledger: {
+  ledger: {
     getDigest(sessionId: string): string;
     query(sessionId: string, query: EvidenceQuery): string;
     listRows(sessionId?: string): EvidenceLedgerRow[];
     verifyIntegrity(sessionId: string): { valid: boolean; reason?: string };
     getPath(): string;
   };
-  declare readonly schedule: {
+  schedule: {
     createIntent(
       sessionId: string,
       input: ScheduleIntentCreateInput,
@@ -475,18 +494,18 @@ export class BrewvaRuntime {
     listIntents(query?: ScheduleIntentListQuery): Promise<ScheduleIntentProjectionRecord[]>;
     getProjectionSnapshot(): Promise<ScheduleProjectionSnapshot>;
   };
-  declare readonly turnWal: {
+  recoveryWal: {
     appendPending(
       envelope: TurnEnvelope,
-      source: TurnWALSource,
+      source: RecoveryWalSource,
       options?: { ttlMs?: number; dedupeKey?: string },
-    ): TurnWALRecord;
-    markInflight(walId: string): TurnWALRecord | undefined;
-    markDone(walId: string): TurnWALRecord | undefined;
-    markFailed(walId: string, error?: string): TurnWALRecord | undefined;
-    markExpired(walId: string): TurnWALRecord | undefined;
-    listPending(): TurnWALRecord[];
-    recover(): Promise<TurnWALRecoveryResult>;
+    ): RecoveryWalRecord;
+    markInflight(walId: string): RecoveryWalRecord | undefined;
+    markDone(walId: string): RecoveryWalRecord | undefined;
+    markFailed(walId: string, error?: string): RecoveryWalRecord | undefined;
+    markExpired(walId: string): RecoveryWalRecord | undefined;
+    listPending(): RecoveryWalRecord[];
+    recover(): Promise<RecoveryWalRecoveryResult>;
     compact(): {
       scope: string;
       filePath: string;
@@ -495,7 +514,7 @@ export class BrewvaRuntime {
       dropped: number;
     };
   };
-  declare readonly events: {
+  events: {
     record: RuntimeRecordEvent;
     query(sessionId: string, query?: BrewvaEventQuery): BrewvaEventRecord[];
     queryStructured(sessionId: string, query?: BrewvaEventQuery): BrewvaStructuredEvent[];
@@ -525,7 +544,7 @@ export class BrewvaRuntime {
     list(sessionId: string, query?: BrewvaEventQuery): BrewvaEventRecord[];
     listSessionIds(): string[];
   };
-  declare readonly verification: {
+  verification: {
     evaluate(sessionId: string, level?: VerificationLevel): VerificationReport;
     verify(
       sessionId: string,
@@ -533,7 +552,7 @@ export class BrewvaRuntime {
       options?: VerifyCompletionOptions,
     ): Promise<VerificationReport>;
   };
-  declare readonly cost: {
+  cost: {
     recordAssistantUsage(input: {
       sessionId: string;
       model: string;
@@ -547,7 +566,7 @@ export class BrewvaRuntime {
     }): void;
     getSummary(sessionId: string): SessionCostSummary;
   };
-  declare readonly session: {
+  session: {
     recordWorkerResult(sessionId: string, result: WorkerResult): void;
     listWorkerResults(sessionId: string): WorkerResult[];
     mergeWorkerResults(sessionId: string): WorkerMergeReport;
@@ -570,6 +589,178 @@ export class BrewvaRuntime {
     resolveCredentialBindings(sessionId: string, toolName: string): Record<string, string>;
     resolveSandboxApiKey(sessionId: string): string | undefined;
   };
+}
+
+export interface BrewvaAuthorityPort {
+  readonly skills: Pick<BrewvaRuntimeMethodGroups["skills"], "activate" | "complete">;
+  readonly proposals: Pick<
+    BrewvaRuntimeMethodGroups["proposals"],
+    "submit" | "decideEffectCommitment"
+  >;
+  readonly tools: Pick<
+    BrewvaRuntimeMethodGroups["tools"],
+    | "start"
+    | "finish"
+    | "acquireParallelSlot"
+    | "acquireParallelSlotAsync"
+    | "releaseParallelSlot"
+    | "requestResourceLease"
+    | "cancelResourceLease"
+    | "markCall"
+    | "trackCallStart"
+    | "trackCallEnd"
+    | "rollbackLastPatchSet"
+    | "rollbackLastMutation"
+    | "recordResult"
+  >;
+  readonly task: Pick<
+    BrewvaRuntimeMethodGroups["task"],
+    "setSpec" | "addItem" | "updateItem" | "recordBlocker" | "recordAcceptance" | "resolveBlocker"
+  >;
+  readonly truth: Pick<BrewvaRuntimeMethodGroups["truth"], "upsertFact" | "resolveFact">;
+  readonly schedule: Pick<
+    BrewvaRuntimeMethodGroups["schedule"],
+    "createIntent" | "cancelIntent" | "updateIntent"
+  >;
+  readonly events: Pick<
+    BrewvaRuntimeMethodGroups["events"],
+    "recordMetricObservation" | "recordGuardResult" | "recordTapeHandoff"
+  >;
+  readonly verification: BrewvaRuntimeMethodGroups["verification"];
+  readonly cost: Pick<BrewvaRuntimeMethodGroups["cost"], "recordAssistantUsage">;
+  readonly session: Pick<BrewvaRuntimeMethodGroups["session"], "applyMergedWorkerResults">;
+}
+
+export interface BrewvaInspectionPort {
+  readonly skills: Pick<
+    BrewvaRuntimeMethodGroups["skills"],
+    | "getLoadReport"
+    | "list"
+    | "get"
+    | "getActive"
+    | "validateOutputs"
+    | "getOutputs"
+    | "getConsumedOutputs"
+  >;
+  readonly proposals: Pick<
+    BrewvaRuntimeMethodGroups["proposals"],
+    "list" | "listEffectCommitmentRequests" | "listPendingEffectCommitments"
+  >;
+  readonly context: Pick<
+    BrewvaRuntimeMethodGroups["context"],
+    | "sanitizeInput"
+    | "getUsage"
+    | "getUsageRatio"
+    | "getHardLimitRatio"
+    | "getCompactionThresholdRatio"
+    | "getPressureStatus"
+    | "getPressureLevel"
+    | "getCompactionGateStatus"
+    | "checkCompactionGate"
+    | "listProviders"
+    | "getPendingCompactionReason"
+    | "getCompactionInstructions"
+    | "getCompactionWindowTurns"
+  >;
+  readonly tools: Pick<
+    BrewvaRuntimeMethodGroups["tools"],
+    | "checkAccess"
+    | "explainAccess"
+    | "getGovernanceDescriptor"
+    | "listResourceLeases"
+    | "resolveUndoSessionId"
+  >;
+  readonly task: Pick<BrewvaRuntimeMethodGroups["task"], "getTargetDescriptor" | "getState">;
+  readonly truth: Pick<BrewvaRuntimeMethodGroups["truth"], "getState">;
+  readonly ledger: BrewvaRuntimeMethodGroups["ledger"];
+  readonly schedule: Pick<
+    BrewvaRuntimeMethodGroups["schedule"],
+    "listIntents" | "getProjectionSnapshot"
+  >;
+  // This is the public read model for WAL-backed recovery state.
+  readonly recovery: {
+    listPending(): RecoveryWalRecord[];
+  };
+  readonly events: Pick<
+    BrewvaRuntimeMethodGroups["events"],
+    | "query"
+    | "queryStructured"
+    | "listMetricObservations"
+    | "listGuardResults"
+    | "getTapeStatus"
+    | "getTapePressureThresholds"
+    | "searchTape"
+    | "listReplaySessions"
+    | "subscribe"
+    | "toStructured"
+    | "list"
+    | "listSessionIds"
+  >;
+  readonly cost: Pick<BrewvaRuntimeMethodGroups["cost"], "getSummary">;
+  readonly session: Pick<
+    BrewvaRuntimeMethodGroups["session"],
+    "listWorkerResults" | "mergeWorkerResults" | "getHydration" | "getIntegrity"
+  >;
+}
+
+export interface BrewvaMaintenancePort {
+  readonly skills: Pick<BrewvaRuntimeMethodGroups["skills"], "refresh">;
+  readonly context: Pick<
+    BrewvaRuntimeMethodGroups["context"],
+    | "onTurnStart"
+    | "onTurnEnd"
+    | "onUserInput"
+    | "observeUsage"
+    | "registerProvider"
+    | "unregisterProvider"
+    | "buildInjection"
+    | "appendSupplementalInjection"
+    | "checkAndRequestCompaction"
+    | "requestCompaction"
+    | "markCompacted"
+  >;
+  readonly tools: Pick<
+    BrewvaRuntimeMethodGroups["tools"],
+    "registerGovernanceDescriptor" | "registerGovernanceResolver" | "unregisterGovernanceDescriptor"
+  >;
+  readonly session: Pick<
+    BrewvaRuntimeMethodGroups["session"],
+    | "recordWorkerResult"
+    | "clearWorkerResults"
+    | "pollStall"
+    | "clearState"
+    | "onClearState"
+    | "resolveCredentialBindings"
+    | "resolveSandboxApiKey"
+  >;
+  // This is the public maintenance surface over the Recovery WAL implementation.
+  readonly recovery: Pick<BrewvaRuntimeMethodGroups["recoveryWal"], "recover" | "compact">;
+}
+
+export interface BrewvaHostedRuntimePort extends BrewvaRuntimeIdentity {
+  readonly authority: BrewvaAuthorityPort;
+  readonly inspect: BrewvaInspectionPort;
+  readonly maintain: BrewvaMaintenancePort;
+}
+
+export interface BrewvaToolRuntimePort extends BrewvaRuntimeIdentity {
+  readonly authority: BrewvaAuthorityPort;
+  readonly inspect: BrewvaInspectionPort;
+}
+
+export interface BrewvaOperatorRuntimePort extends BrewvaRuntimeIdentity {
+  readonly inspect: BrewvaInspectionPort;
+  readonly maintain: Pick<BrewvaMaintenancePort, "session" | "recovery">;
+}
+
+export class BrewvaRuntime implements BrewvaHostedRuntimePort {
+  declare readonly cwd: string;
+  declare readonly workspaceRoot: string;
+  declare readonly agentId: string;
+  declare readonly config: DeepReadonly<BrewvaConfig>;
+  declare readonly authority: BrewvaAuthorityPort;
+  declare readonly inspect: BrewvaInspectionPort;
+  declare readonly maintain: BrewvaMaintenancePort;
 
   declare private readonly evidenceLedger: EvidenceLedger;
   declare private readonly parallel: ParallelBudgetManager;
@@ -582,7 +773,7 @@ export class BrewvaRuntime {
   declare private readonly skillRegistry: SkillRegistry;
   declare private readonly verificationGate: VerificationGate;
   declare private readonly eventStore: BrewvaEventStore;
-  declare private readonly turnWalStore: TurnWALStore;
+  declare private readonly recoveryWalStore: RecoveryWalStore;
   declare private readonly projectionEngine: ProjectionEngine;
 
   private readonly sessionState = new RuntimeSessionStateStore();
@@ -632,12 +823,14 @@ export class BrewvaRuntime {
     this.kernel = this.createKernelContext(options);
     Object.assign(this, this.createServiceDependencies(options));
     this.refreshSkillsState();
-    Object.assign(this, this.createDomainApis());
+    const methodGroups = this.createMethodGroups();
+    attachRuntimeMethodGroupsCarrier(this, methodGroups);
+    Object.assign(this, this.createSurfacePorts(methodGroups));
   }
 
   private resolveRuntimeConfig(options: BrewvaRuntimeOptions): RuntimeConfigState {
     const config = options.config
-      ? normalizeBrewvaConfig(options.config, DEFAULT_BREWVA_CONFIG)
+      ? normalizeExplicitBrewvaConfig(options.config)
       : loadBrewvaConfig({
           cwd: this.cwd,
           configPath: options.configPath,
@@ -678,7 +871,7 @@ export class BrewvaRuntime {
         parallel: this.parallel,
         parallelResults: this.parallelResults,
         eventStore: this.eventStore,
-        turnWalStore: this.turnWalStore,
+        recoveryWalStore: this.recoveryWalStore,
         contextBudget: this.contextBudget,
         contextInjection: this.contextInjection,
         turnReplay: this.turnReplay,
@@ -714,7 +907,7 @@ export class BrewvaRuntime {
         parallel: this.parallel,
         parallelResults: this.parallelResults,
         eventStore: this.eventStore,
-        turnWalStore: this.turnWalStore,
+        recoveryWalStore: this.recoveryWalStore,
         contextBudget: this.contextBudget,
         contextInjection: this.contextInjection,
         turnReplay: this.turnReplay,
@@ -732,21 +925,7 @@ export class BrewvaRuntime {
     });
   }
 
-  private createDomainApis(): {
-    skills: BrewvaRuntime["skills"];
-    proposals: BrewvaRuntime["proposals"];
-    context: BrewvaRuntime["context"];
-    tools: BrewvaRuntime["tools"];
-    task: BrewvaRuntime["task"];
-    truth: BrewvaRuntime["truth"];
-    ledger: BrewvaRuntime["ledger"];
-    schedule: BrewvaRuntime["schedule"];
-    turnWal: BrewvaRuntime["turnWal"];
-    events: BrewvaRuntime["events"];
-    verification: BrewvaRuntime["verification"];
-    cost: BrewvaRuntime["cost"];
-    session: BrewvaRuntime["session"];
-  } {
+  private createMethodGroups(): BrewvaRuntimeMethodGroups {
     return {
       skills: {
         refresh: (input) => this.refreshSkillsState(input),
@@ -938,18 +1117,18 @@ export class BrewvaRuntime {
         listIntents: (query) => this.scheduleIntentService.listScheduleIntents(query),
         getProjectionSnapshot: () => this.scheduleIntentService.getScheduleProjectionSnapshot(),
       },
-      turnWal: {
+      recoveryWal: {
         appendPending: (envelope, source, options) =>
-          this.turnWalStore.appendPending(envelope, source, options),
-        markInflight: (walId) => this.turnWalStore.markInflight(walId),
-        markDone: (walId) => this.turnWalStore.markDone(walId),
-        markFailed: (walId, error) => this.turnWalStore.markFailed(walId, error),
-        markExpired: (walId) => this.turnWalStore.markExpired(walId),
-        listPending: () => this.turnWalStore.listPending(),
+          this.recoveryWalStore.appendPending(envelope, source, options),
+        markInflight: (walId) => this.recoveryWalStore.markInflight(walId),
+        markDone: (walId) => this.recoveryWalStore.markDone(walId),
+        markFailed: (walId, error) => this.recoveryWalStore.markFailed(walId, error),
+        markExpired: (walId) => this.recoveryWalStore.markExpired(walId),
+        listPending: () => this.recoveryWalStore.listPending(),
         recover: async () => {
-          const recovery = new TurnWALRecovery({
+          const recovery = new RecoveryWalRecovery({
             workspaceRoot: this.workspaceRoot,
-            config: this.runtimeConfig.infrastructure.turnWal,
+            config: this.runtimeConfig.infrastructure.recoveryWal,
             recordEvent: (input: { sessionId: string; type: string; payload?: object }) => {
               this.eventPipeline.recordEvent({
                 sessionId: input.sessionId,
@@ -961,7 +1140,7 @@ export class BrewvaRuntime {
           });
           return await recovery.recover();
         },
-        compact: () => this.turnWalStore.compact(),
+        compact: () => this.recoveryWalStore.compact(),
       },
       events: {
         record: (input) => this.eventPipeline.recordEvent(input),
@@ -1036,6 +1215,157 @@ export class BrewvaRuntime {
     };
   }
 
+  private createSurfacePorts(methodGroups: BrewvaRuntimeMethodGroups): {
+    authority: BrewvaAuthorityPort;
+    inspect: BrewvaInspectionPort;
+    maintain: BrewvaMaintenancePort;
+  } {
+    return {
+      authority: {
+        skills: bindMethods(methodGroups.skills, ["activate", "complete"] as const),
+        proposals: bindMethods(methodGroups.proposals, [
+          "submit",
+          "decideEffectCommitment",
+        ] as const),
+        tools: bindMethods(methodGroups.tools, [
+          "start",
+          "finish",
+          "acquireParallelSlot",
+          "acquireParallelSlotAsync",
+          "releaseParallelSlot",
+          "requestResourceLease",
+          "cancelResourceLease",
+          "markCall",
+          "trackCallStart",
+          "trackCallEnd",
+          "rollbackLastPatchSet",
+          "rollbackLastMutation",
+          "recordResult",
+        ] as const),
+        task: bindMethods(methodGroups.task, [
+          "setSpec",
+          "addItem",
+          "updateItem",
+          "recordBlocker",
+          "recordAcceptance",
+          "resolveBlocker",
+        ] as const),
+        truth: bindMethods(methodGroups.truth, ["upsertFact", "resolveFact"] as const),
+        schedule: bindMethods(methodGroups.schedule, [
+          "createIntent",
+          "cancelIntent",
+          "updateIntent",
+        ] as const),
+        events: bindMethods(methodGroups.events, [
+          "recordMetricObservation",
+          "recordGuardResult",
+          "recordTapeHandoff",
+        ] as const),
+        verification: methodGroups.verification,
+        cost: bindMethods(methodGroups.cost, ["recordAssistantUsage"] as const),
+        session: bindMethods(methodGroups.session, ["applyMergedWorkerResults"] as const),
+      },
+      inspect: {
+        skills: bindMethods(methodGroups.skills, [
+          "getLoadReport",
+          "list",
+          "get",
+          "getActive",
+          "validateOutputs",
+          "getOutputs",
+          "getConsumedOutputs",
+        ] as const),
+        proposals: bindMethods(methodGroups.proposals, [
+          "list",
+          "listEffectCommitmentRequests",
+          "listPendingEffectCommitments",
+        ] as const),
+        context: bindMethods(methodGroups.context, [
+          "sanitizeInput",
+          "getUsage",
+          "getUsageRatio",
+          "getHardLimitRatio",
+          "getCompactionThresholdRatio",
+          "getPressureStatus",
+          "getPressureLevel",
+          "getCompactionGateStatus",
+          "checkCompactionGate",
+          "listProviders",
+          "getPendingCompactionReason",
+          "getCompactionInstructions",
+          "getCompactionWindowTurns",
+        ] as const),
+        tools: bindMethods(methodGroups.tools, [
+          "checkAccess",
+          "explainAccess",
+          "getGovernanceDescriptor",
+          "listResourceLeases",
+          "resolveUndoSessionId",
+        ] as const),
+        task: bindMethods(methodGroups.task, ["getTargetDescriptor", "getState"] as const),
+        truth: bindMethods(methodGroups.truth, ["getState"] as const),
+        ledger: methodGroups.ledger,
+        schedule: bindMethods(methodGroups.schedule, [
+          "listIntents",
+          "getProjectionSnapshot",
+        ] as const),
+        recovery: bindMethods(methodGroups.recoveryWal, ["listPending"] as const),
+        events: bindMethods(methodGroups.events, [
+          "query",
+          "queryStructured",
+          "listMetricObservations",
+          "listGuardResults",
+          "getTapeStatus",
+          "getTapePressureThresholds",
+          "searchTape",
+          "listReplaySessions",
+          "subscribe",
+          "toStructured",
+          "list",
+          "listSessionIds",
+        ] as const),
+        cost: bindMethods(methodGroups.cost, ["getSummary"] as const),
+        session: bindMethods(methodGroups.session, [
+          "listWorkerResults",
+          "mergeWorkerResults",
+          "getHydration",
+          "getIntegrity",
+        ] as const),
+      },
+      maintain: {
+        skills: bindMethods(methodGroups.skills, ["refresh"] as const),
+        context: bindMethods(methodGroups.context, [
+          "onTurnStart",
+          "onTurnEnd",
+          "onUserInput",
+          "observeUsage",
+          "registerProvider",
+          "unregisterProvider",
+          "buildInjection",
+          "appendSupplementalInjection",
+          "checkAndRequestCompaction",
+          "requestCompaction",
+          "markCompacted",
+        ] as const),
+        tools: bindMethods(methodGroups.tools, [
+          "registerGovernanceDescriptor",
+          "registerGovernanceResolver",
+          "unregisterGovernanceDescriptor",
+        ] as const),
+        session: bindMethods(methodGroups.session, [
+          "recordWorkerResult",
+          "clearWorkerResults",
+          "pollStall",
+          "clearState",
+          "onClearState",
+          "resolveCredentialBindings",
+          "resolveSandboxApiKey",
+        ] as const),
+        recovery: bindMethods(methodGroups.recoveryWal, ["recover", "compact"] as const),
+      },
+    };
+  }
+
   private getTaskState(sessionId: string): TaskState {
     return this.turnReplay.getTaskState(sessionId);
   }
@@ -1080,7 +1410,7 @@ export class BrewvaRuntime {
         sessionId: input.sessionId,
         type: SKILL_REFRESH_RECORDED_EVENT_TYPE,
         payload: {
-          reason: input.reason?.trim() || "runtime.skills.refresh",
+          reason: input.reason?.trim() || "runtime.maintain.skills.refresh",
           generatedAt,
           indexPath,
           systemInstall,
@@ -1329,4 +1659,66 @@ export class BrewvaRuntime {
   private isContextBudgetEnabled(): boolean {
     return this.runtimeConfig.infrastructure.contextBudget.enabled;
   }
+}
+
+type RuntimeMethodGroupsCarrier = {
+  [BREWVA_RUNTIME_METHOD_GROUPS]?: BrewvaRuntimeMethodGroups;
+};
+
+function attachRuntimeMethodGroupsCarrier(
+  target: object,
+  methodGroups: BrewvaRuntimeMethodGroups,
+): void {
+  Object.defineProperty(target, BREWVA_RUNTIME_METHOD_GROUPS, {
+    configurable: false,
+    enumerable: false,
+    value: methodGroups,
+    writable: false,
+  });
+}
+
+function copyRuntimeMethodGroupsCarrier(source: object, target: object): void {
+  const methodGroups = (source as RuntimeMethodGroupsCarrier)[BREWVA_RUNTIME_METHOD_GROUPS];
+  if (methodGroups) {
+    attachRuntimeMethodGroupsCarrier(target, methodGroups);
+  }
+}
+
+export function createHostedRuntimePort(runtime: BrewvaRuntime): BrewvaHostedRuntimePort {
+  const hostedRuntime: BrewvaHostedRuntimePort = {
+    cwd: runtime.cwd,
+    workspaceRoot: runtime.workspaceRoot,
+    agentId: runtime.agentId,
+    config: runtime.config,
+    authority: runtime.authority,
+    inspect: runtime.inspect,
+    maintain: runtime.maintain,
+  };
+  copyRuntimeMethodGroupsCarrier(runtime, hostedRuntime);
+  return hostedRuntime;
+}
+
+export function createToolRuntimePort(runtime: BrewvaRuntime): BrewvaToolRuntimePort {
+  return {
+    cwd: runtime.cwd,
+    workspaceRoot: runtime.workspaceRoot,
+    agentId: runtime.agentId,
+    config: runtime.config,
+    authority: runtime.authority,
+    inspect: runtime.inspect,
+  };
+}
+
+export function createOperatorRuntimePort(runtime: BrewvaRuntime): BrewvaOperatorRuntimePort {
+  return {
+    cwd: runtime.cwd,
+    workspaceRoot: runtime.workspaceRoot,
+    agentId: runtime.agentId,
+    config: runtime.config,
+    inspect: runtime.inspect,
+    maintain: {
+      session: runtime.maintain.session,
+      recovery: runtime.maintain.recovery,
+    },
+  };
 }

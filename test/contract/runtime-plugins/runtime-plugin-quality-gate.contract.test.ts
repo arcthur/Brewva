@@ -107,7 +107,7 @@ describe("Runtime plugin gaps: quality gate", () => {
     expect(userInputs).toEqual(["quality-input-3"]);
   });
 
-  test("given tool_call and context usage, when quality gate runs, then runtime.tools.start receives normalized usage", () => {
+  test("given tool_call and context usage, when quality gate runs, then runtime.authority.tools.start receives normalized usage", () => {
     const { api, handlers } = createMockRuntimePluginApi();
     const calls: any[] = [];
     const runtime = createRuntimeFixture({
@@ -148,7 +148,7 @@ describe("Runtime plugin gaps: quality gate", () => {
     expect(calls[0].usage.contextWindow).toBe(4096);
   });
 
-  test("given runtime.tools.start denial, when tool_call hook runs, then runtime plugin blocks call with reason", () => {
+  test("given runtime.authority.tools.start denial, when tool_call hook runs, then runtime plugin blocks call with reason", () => {
     const { api, handlers } = createMockRuntimePluginApi();
     const runtime = createRuntimeFixture({
       tools: {

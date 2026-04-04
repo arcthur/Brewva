@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { handleInspectChannelCommand } from "../../../packages/brewva-cli/src/inspect-channel-command.js";
 import { cleanupTestWorkspace, createTestWorkspace } from "../../helpers/workspace.js";
 
@@ -18,16 +19,16 @@ describe("inspect channel command", () => {
     const sessionId = "inspect-channel-approval-session";
 
     try {
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId,
         type: "session_bootstrap",
         payload: {
           managedToolMode: "direct",
         },
       });
-      runtime.context.onTurnStart(sessionId, 1);
+      runtime.maintain.context.onTurnStart(sessionId, 1);
 
-      const deferred = runtime.tools.start({
+      const deferred = runtime.authority.tools.start({
         sessionId,
         toolCallId: "tc-inspect-channel-approval",
         toolName: "exec",
@@ -35,10 +36,10 @@ describe("inspect channel command", () => {
       });
       expect(deferred.allowed).toBe(false);
 
-      const pending = runtime.proposals.listPendingEffectCommitments(sessionId);
+      const pending = runtime.inspect.proposals.listPendingEffectCommitments(sessionId);
       expect(pending).toHaveLength(1);
 
-      runtime.proposals.decideEffectCommitment(sessionId, pending[0]!.requestId, {
+      runtime.authority.proposals.decideEffectCommitment(sessionId, pending[0]!.requestId, {
         decision: "accept",
         actor: "operator:test",
         reason: "safe local command",

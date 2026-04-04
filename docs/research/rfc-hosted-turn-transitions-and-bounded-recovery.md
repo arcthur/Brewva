@@ -518,7 +518,7 @@ Adjacent runtime surfaces that must remain authoritative and narrow:
 - `packages/brewva-runtime/src/services/tool-invocation-spine.ts`
 - `packages/brewva-runtime/src/services/context-pressure.ts`
 - `packages/brewva-runtime/src/services/effect-commitment-desk.ts`
-- `packages/brewva-runtime/src/channels/turn-wal-recovery.ts`
+- `packages/brewva-runtime/src/channels/recovery-wal-recovery.ts`
 
 The gateway should become richer in explicit recovery semantics.
 The runtime should not become more permissive in authority.
@@ -535,7 +535,7 @@ Code:
 - `packages/brewva-runtime/src/services/tool-invocation-spine.ts`
 - `packages/brewva-runtime/src/services/context-pressure.ts`
 - `packages/brewva-runtime/src/services/effect-commitment-desk.ts`
-- `packages/brewva-runtime/src/channels/turn-wal-recovery.ts`
+- `packages/brewva-runtime/src/channels/recovery-wal-recovery.ts`
 
 Docs:
 

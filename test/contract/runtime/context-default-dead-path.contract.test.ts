@@ -32,24 +32,24 @@ describe("context default dead-path", () => {
     });
     const sessionId = "context-default-dead-path";
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "validate default allocator path",
     });
-    runtime.truth.upsertFact(sessionId, {
+    runtime.authority.truth.upsertFact(sessionId, {
       id: "truth:default-dead-path",
       kind: "diagnostic",
       severity: "info",
       summary: "default context path should avoid legacy control loops",
     });
 
-    await runtime.context.buildInjection(sessionId, "run baseline injection", {
+    await runtime.maintain.context.buildInjection(sessionId, "run baseline injection", {
       tokens: 300,
       contextWindow: 1000,
       percent: 0.3,
     });
 
-    const events = runtime.events.query(sessionId);
+    const events = runtime.inspect.events.query(sessionId);
     const arenaEvents = events.filter((event) => event.type.startsWith("context_arena_"));
     const legacyStabilityEvents = events.filter((event) =>
       event.type.startsWith("context_stability_"),

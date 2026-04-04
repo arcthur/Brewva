@@ -1,5 +1,6 @@
 import { BrewvaRuntime, type ManagedToolMode } from "@brewva/brewva-runtime";
 import type { TurnEnvelope } from "@brewva/brewva-runtime/channels";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { ConversationBindingStore } from "../conversations/binding-store.js";
 import { createHostedSession, type HostedSessionResult } from "../host/create-hosted-session.js";
 import { waitForAllSettledWithTimeout } from "../utils/async.js";
@@ -19,7 +20,7 @@ const DEFAULT_CLEANUP_GRACEFUL_TIMEOUT_MS = 2_000;
 const SESSION_CREATION_INVALIDATED_ERROR = "session_creation_invalidated";
 const REPLAYABLE_EFFECT_COMMITMENT_REQUEST_STATES = ["pending", "accepted"] as const;
 
-export type ChannelSessionCostSummary = ReturnType<BrewvaRuntime["cost"]["getSummary"]>;
+export type ChannelSessionCostSummary = ReturnType<BrewvaRuntime["inspect"]["cost"]["getSummary"]>;
 
 function buildEmptyCostSummary(): ChannelSessionCostSummary {
   return {
@@ -118,7 +119,7 @@ export function createChannelSessionCoordinator(input: {
   };
   scopeStrategy: RoutingScopeStrategy;
   idleRuntimeTtlMs: number;
-  turnWalScope: string;
+  recoveryWalScope: string;
   cleanupGracefulTimeoutMs?: number;
 }): ChannelSessionCoordinator {
   const conversationBindings = ConversationBindingStore.create({
@@ -157,8 +158,8 @@ export function createChannelSessionCoordinator(input: {
       conversationId: turn.conversationId,
       threadId: turn.threadId,
     });
-    input.runtime.events.record({
-      sessionId: input.turnWalScope,
+    recordRuntimeEvent(input.runtime, {
+      sessionId: input.recoveryWalScope,
       type: "channel_conversation_bound",
       payload: {
         channel: created.channel,
@@ -244,7 +245,7 @@ export function createChannelSessionCoordinator(input: {
     }
     ensureSessionShutdownRecorded(inputState.runtime, inputState.agentSessionId);
     try {
-      inputState.runtime.session.clearState(inputState.agentSessionId);
+      inputState.runtime.maintain.session.clearState(inputState.agentSessionId);
     } catch {
       // Best effort cleanup.
     }
@@ -331,8 +332,8 @@ export function createChannelSessionCoordinator(input: {
     if (!candidate) return null;
     const disposed = await evictAgentRuntime(candidate);
     if (!disposed) return null;
-    input.runtime.events.record({
-      sessionId: input.turnWalScope,
+    recordRuntimeEvent(input.runtime, {
+      sessionId: input.recoveryWalScope,
       type: "channel_runtime_evicted",
       payload: {
         agentIds: [candidate],
@@ -452,7 +453,7 @@ export function createChannelSessionCoordinator(input: {
             };
             sessions.set(key, state);
             sessionByAgentSessionId.set(state.agentSessionId, state);
-            workerRuntime.events.record({
+            recordRuntimeEvent(workerRuntime, {
               sessionId: state.agentSessionId,
               type: "channel_session_bound",
               payload: {
@@ -512,7 +513,7 @@ export function createChannelSessionCoordinator(input: {
       if (!state) {
         return buildEmptyCostSummary();
       }
-      return state.runtime.cost.getSummary(sessionId);
+      return state.runtime.inspect.cost.getSummary(sessionId);
     },
 
     hasPendingEffectCommitment(sessionId: string, requestId: string): boolean {
@@ -520,7 +521,7 @@ export function createChannelSessionCoordinator(input: {
       if (!state) {
         return false;
       }
-      return state.runtime.proposals
+      return state.runtime.inspect.proposals
         .listPendingEffectCommitments(sessionId)
         .some((pending) => pending.requestId === requestId);
     },
@@ -531,7 +532,7 @@ export function createChannelSessionCoordinator(input: {
         return false;
       }
       return REPLAYABLE_EFFECT_COMMITMENT_REQUEST_STATES.some((requestState) =>
-        state.runtime.proposals
+        state.runtime.inspect.proposals
           .listEffectCommitmentRequests(sessionId, {
             state: requestState,
           })
@@ -596,8 +597,8 @@ export function createChannelSessionCoordinator(input: {
         }
       }
       if (evicted.length > 0) {
-        input.runtime.events.record({
-          sessionId: input.turnWalScope,
+        recordRuntimeEvent(input.runtime, {
+          sessionId: input.recoveryWalScope,
           type: "channel_runtime_evicted",
           payload: {
             agentIds: evicted,

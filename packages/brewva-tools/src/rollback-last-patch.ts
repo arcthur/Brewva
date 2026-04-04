@@ -42,7 +42,7 @@ export function createRollbackLastPatchTool(options: BrewvaToolOptions): ToolDef
     parameters: Type.Object({}, { additionalProperties: false }),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       const sessionId = getSessionId(ctx);
-      const rollback = options.runtime.tools.rollbackLastPatchSet(sessionId);
+      const rollback = options.runtime.authority.tools.rollbackLastPatchSet(sessionId);
       return textResult(formatRollbackMessage(rollback), {
         ok: rollback.ok,
         patchSetId: rollback.patchSetId,

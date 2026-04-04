@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { cpSync } from "node:fs";
 import { resolve } from "node:path";
 import { CONTEXT_SOURCES, BrewvaRuntime, SKILL_COMPLETED_EVENT_TYPE } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createSkillPromotionContextProvider } from "@brewva/brewva-skill-broker";
 import { createSkillPromotionTool } from "@brewva/brewva-tools";
 import { createTestWorkspace } from "../../helpers/workspace.js";
@@ -24,7 +25,7 @@ function recordPromotionSourceEvent(
   sessionId: string,
   timestamp: number,
 ): void {
-  runtime.events.record({
+  recordRuntimeEvent(runtime, {
     sessionId,
     type: SKILL_COMPLETED_EVENT_TYPE,
     timestamp,

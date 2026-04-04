@@ -22,14 +22,14 @@ describe("gateway session watchdog integration", () => {
     try {
       const sessionId = result.session.sessionManager.getSessionId();
 
-      const bootstrap = result.runtime.events.query(sessionId, {
+      const bootstrap = result.runtime.inspect.events.query(sessionId, {
         type: "session_bootstrap",
         last: 1,
       })[0];
       expect(bootstrap?.sessionId).toBe(sessionId);
 
       now = 1_740_000_000_100;
-      result.runtime.task.setSpec(sessionId, {
+      result.runtime.authority.task.setSpec(sessionId, {
         schema: "brewva.task.v1",
         goal: "Detect stalled work on a real gateway-backed session",
       });
@@ -60,7 +60,7 @@ describe("gateway session watchdog integration", () => {
         });
       triggerPoll();
 
-      const detected = result.runtime.events.query(sessionId, {
+      const detected = result.runtime.inspect.events.query(sessionId, {
         type: "task_stuck_detected",
         last: 1,
       })[0];

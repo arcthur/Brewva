@@ -125,9 +125,9 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const sessionId = getSessionId(ctx);
-      const events = options.runtime.events.query(sessionId);
-      const taskState = options.runtime.task.getState(sessionId);
-      const pendingWorkerResults = options.runtime.session.listWorkerResults(sessionId);
+      const events = options.runtime.inspect.events.query(sessionId);
+      const taskState = options.runtime.inspect.task.getState(sessionId);
+      const pendingWorkerResults = options.runtime.inspect.session.listWorkerResults(sessionId);
       const pendingDelegationOutcomes = await listPendingDelegationOutcomes(options, sessionId);
       const stallAdjudication = readLatestStallAdjudication(events);
       const snapshot = deriveWorkflowStatus({

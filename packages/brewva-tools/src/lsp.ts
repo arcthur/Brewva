@@ -8,7 +8,7 @@ import { differenceInMilliseconds } from "date-fns";
 import { escapeRegexLiteral } from "./shared/query.js";
 import { walkWorkspaceFiles } from "./shared/workspace-walk.js";
 import { resolveScopedPath, resolveToolTargetScope } from "./target-scope.js";
-import type { BrewvaToolRuntime } from "./types.js";
+import type { BrewvaBundledToolRuntime } from "./types.js";
 import { runCommand } from "./utils/exec.js";
 import { buildStringEnumSchema } from "./utils/input-alias.js";
 import {
@@ -44,7 +44,7 @@ const require = createRequire(import.meta.url);
 const TSC_BIN_PATH = require.resolve("typescript/bin/tsc");
 
 interface LspParallelReadContext {
-  runtime?: BrewvaToolRuntime;
+  runtime?: BrewvaBundledToolRuntime;
   sessionId?: string;
   toolName: string;
   config: ParallelReadConfig;
@@ -419,7 +419,7 @@ function applyRename(
   return { filesChanged, replacements };
 }
 
-export function createLspTools(options?: { runtime?: BrewvaToolRuntime }): ToolDefinition[] {
+export function createLspTools(options?: { runtime?: BrewvaBundledToolRuntime }): ToolDefinition[] {
   const resolveLspScope = (ctx: unknown) => resolveToolTargetScope(options?.runtime, ctx);
   const resolveLspCwd = (ctx: unknown) => resolveLspScope(ctx).baseCwd;
   const resolveLspFilePath = (ctx: unknown, filePath: string): string | null =>

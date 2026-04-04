@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { requireNonEmptyString } from "../../helpers/assertions.js";
 import { createRuntimeConfig } from "../../helpers/runtime.js";
 import { cleanupWorkspace, createTestWorkspace } from "../../helpers/workspace.js";
@@ -39,7 +40,7 @@ describe("Gap remediation: parallel result lifecycle", () => {
     const runtime = createCleanRuntime();
     const sessionId = "parallel-1";
 
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "w1",
       status: "ok",
       summary: "worker-1",
@@ -49,7 +50,7 @@ describe("Gap remediation: parallel result lifecycle", () => {
         changes: [{ path: "src/a.ts", action: "modify", diffText: "a" }],
       },
     });
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "w2",
       status: "ok",
       summary: "worker-2",
@@ -60,16 +61,16 @@ describe("Gap remediation: parallel result lifecycle", () => {
       },
     });
 
-    const listedBeforeMerge = runtime.session.listWorkerResults(sessionId);
+    const listedBeforeMerge = runtime.inspect.session.listWorkerResults(sessionId);
     expect(listedBeforeMerge.map((result) => result.workerId)).toEqual(["w1", "w2"]);
 
-    const conflictReport = runtime.session.mergeWorkerResults(sessionId);
+    const conflictReport = runtime.inspect.session.mergeWorkerResults(sessionId);
     expect(conflictReport.status).toBe("conflicts");
     expect(conflictReport.conflicts.length).toBe(1);
 
-    runtime.session.clearWorkerResults(sessionId);
-    expect(runtime.session.listWorkerResults(sessionId)).toHaveLength(0);
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.session.clearWorkerResults(sessionId);
+    expect(runtime.inspect.session.listWorkerResults(sessionId)).toHaveLength(0);
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "w1",
       status: "ok",
       summary: "worker-1",
@@ -79,7 +80,7 @@ describe("Gap remediation: parallel result lifecycle", () => {
         changes: [{ path: "src/a.ts", action: "modify", diffText: "a" }],
       },
     });
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "w2",
       status: "ok",
       summary: "worker-2",
@@ -90,10 +91,10 @@ describe("Gap remediation: parallel result lifecycle", () => {
       },
     });
 
-    const listedAfterReset = runtime.session.listWorkerResults(sessionId);
+    const listedAfterReset = runtime.inspect.session.listWorkerResults(sessionId);
     expect(listedAfterReset.map((result) => result.workerId)).toEqual(["w1", "w2"]);
 
-    const mergedReport = runtime.session.mergeWorkerResults(sessionId);
+    const mergedReport = runtime.inspect.session.mergeWorkerResults(sessionId);
     expect(mergedReport.status).toBe("merged");
     expect(mergedReport.mergedPatchSet?.changes.length).toBe(2);
   });
@@ -123,9 +124,9 @@ describe("Gap remediation: parallel result lifecycle", () => {
       configPath: GAP_REMEDIATION_CONFIG_PATH,
     });
     const sessionId = "parallel-apply-1";
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
 
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "w1",
       status: "ok",
       summary: "worker-1",
@@ -144,7 +145,7 @@ describe("Gap remediation: parallel result lifecycle", () => {
       },
     });
 
-    const report = runtime.session.applyMergedWorkerResults(sessionId, {
+    const report = runtime.authority.session.applyMergedWorkerResults(sessionId, {
       toolName: "worker_results_apply",
       toolCallId: "tc-worker-apply-1",
     });
@@ -153,9 +154,9 @@ describe("Gap remediation: parallel result lifecycle", () => {
     requireNonEmptyString(report.appliedPatchSetId, "missing applied patch set id");
     expect(report.appliedPaths).toEqual(["src/value.ts"]);
     expect(readFileSync(filePath, "utf8")).toBe(afterText);
-    expect(runtime.session.listWorkerResults(sessionId)).toHaveLength(0);
+    expect(runtime.inspect.session.listWorkerResults(sessionId)).toHaveLength(0);
 
-    const appliedEvents = runtime.events.query(sessionId, {
+    const appliedEvents = runtime.inspect.events.query(sessionId, {
       type: "worker_results_applied",
       last: 1,
     });
@@ -163,7 +164,7 @@ describe("Gap remediation: parallel result lifecycle", () => {
     expect(appliedEvents[0]?.payload?.workerId).toBe("w1");
     expect(appliedEvents[0]?.payload?.workerIds).toEqual(["w1"]);
 
-    const rollback = runtime.tools.rollbackLastPatchSet(sessionId);
+    const rollback = runtime.authority.tools.rollbackLastPatchSet(sessionId);
     expect(rollback.ok).toBe(true);
     expect(readFileSync(filePath, "utf8")).toBe(beforeText);
   });
@@ -182,9 +183,9 @@ describe("Gap remediation: parallel result lifecycle", () => {
       configPath: GAP_REMEDIATION_CONFIG_PATH,
     });
     const sessionId = "parallel-apply-missing-artifact-1";
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
 
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "w1",
       status: "ok",
       summary: "worker-1",
@@ -203,7 +204,7 @@ describe("Gap remediation: parallel result lifecycle", () => {
       },
     });
 
-    const report = runtime.session.applyMergedWorkerResults(sessionId, {
+    const report = runtime.authority.session.applyMergedWorkerResults(sessionId, {
       toolName: "worker_results_apply",
       toolCallId: "tc-worker-apply-missing",
     });
@@ -211,9 +212,9 @@ describe("Gap remediation: parallel result lifecycle", () => {
     expect(report.status).toBe("apply_failed");
     expect(report.reason).toBe("missing_artifact");
     expect(readFileSync(filePath, "utf8")).toBe(beforeText);
-    expect(runtime.session.listWorkerResults(sessionId)).toHaveLength(1);
+    expect(runtime.inspect.session.listWorkerResults(sessionId)).toHaveLength(1);
 
-    const failedEvents = runtime.events.query(sessionId, {
+    const failedEvents = runtime.inspect.events.query(sessionId, {
       type: "worker_results_apply_failed",
       last: 1,
     });
@@ -269,7 +270,7 @@ describe("Gap remediation: parallel result lifecycle", () => {
       cwd: rehydrateWorkspace,
       configPath: GAP_REMEDIATION_CONFIG_PATH,
     });
-    writer.events.record({
+    recordRuntimeEvent(writer, {
       sessionId,
       type: "subagent_completed",
       payload: {
@@ -295,16 +296,16 @@ describe("Gap remediation: parallel result lifecycle", () => {
       cwd: rehydrateWorkspace,
       configPath: GAP_REMEDIATION_CONFIG_PATH,
     });
-    restarted.context.onTurnStart(sessionId, 1);
+    restarted.maintain.context.onTurnStart(sessionId, 1);
 
-    const workerResults = restarted.session.listWorkerResults(sessionId);
+    const workerResults = restarted.inspect.session.listWorkerResults(sessionId);
     expect(workerResults).toHaveLength(1);
     expect(workerResults[0]).toMatchObject({
       workerId: "delegated-patch-1",
       status: "ok",
     });
 
-    const report = restarted.session.applyMergedWorkerResults(sessionId, {
+    const report = restarted.authority.session.applyMergedWorkerResults(sessionId, {
       toolName: "worker_results_apply",
       toolCallId: "tc-worker-apply-rehydrated",
     });

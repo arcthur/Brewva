@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { TASK_EVENT_TYPE, TRUTH_EVENT_TYPE, type BrewvaEventRecord } from "@brewva/brewva-runtime";
+import {
+  TASK_EVENT_TYPE,
+  TASK_LEDGER_SCHEMA,
+  TRUTH_EVENT_TYPE,
+  TRUTH_LEDGER_SCHEMA,
+  type BrewvaEventRecord,
+} from "@brewva/brewva-runtime";
 import { extractProjectionFromEvent } from "../../../packages/brewva-runtime/src/projection/extractor.js";
 
 function event(input: {
@@ -25,7 +31,7 @@ describe("projection extractor", () => {
         id: "evt-truth-upsert",
         type: TRUTH_EVENT_TYPE,
         payload: {
-          schema: "brewva.truth.ledger.v1",
+          schema: TRUTH_LEDGER_SCHEMA,
           kind: "fact_upserted",
           fact: {
             id: "truth:command:1",
@@ -54,7 +60,7 @@ describe("projection extractor", () => {
         id: "evt-task-spec-set",
         type: TASK_EVENT_TYPE,
         payload: {
-          schema: "brewva.task.ledger.v1",
+          schema: TASK_LEDGER_SCHEMA,
           kind: "spec_set",
           spec: {
             schema: "brewva.task.v1",
@@ -93,7 +99,7 @@ describe("projection extractor", () => {
         id: "evt-task-blocker-recorded",
         type: TASK_EVENT_TYPE,
         payload: {
-          schema: "brewva.task.ledger.v1",
+          schema: TASK_LEDGER_SCHEMA,
           kind: "blocker_recorded",
           blocker: {
             id: "blocker-1",
@@ -118,7 +124,7 @@ describe("projection extractor", () => {
         id: "evt-task-resolved",
         type: TASK_EVENT_TYPE,
         payload: {
-          schema: "brewva.task.ledger.v1",
+          schema: TASK_LEDGER_SCHEMA,
           kind: "blocker_resolved",
           blockerId: "blocker-1",
         },
@@ -142,7 +148,7 @@ describe("projection extractor", () => {
         id: "evt-task-status",
         type: TASK_EVENT_TYPE,
         payload: {
-          schema: "brewva.task.ledger.v1",
+          schema: TASK_LEDGER_SCHEMA,
           kind: "status_set",
           status: {
             phase: "execute",
@@ -296,7 +302,7 @@ describe("projection extractor", () => {
         id: "evt-non-projectable",
         type: "tool_call_result_recorded",
         payload: {
-          schema: "brewva.ledger.tool_result.v1",
+          schema: "brewva.inspect.ledger.tool_result.v1",
         },
       }),
     );

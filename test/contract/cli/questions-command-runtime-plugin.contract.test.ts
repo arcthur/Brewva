@@ -8,6 +8,7 @@ import {
   DEFAULT_BREWVA_CONFIG,
   OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { requireDefined, requireNonEmptyString } from "../../helpers/assertions.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
@@ -66,7 +67,7 @@ describe("questions interactive command runtime plugin", () => {
     });
     const sessionId = "questions-command-session-1";
     const questionEvent = requireDefined(
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId,
         type: "skill_completed",
         payload: {
@@ -83,7 +84,7 @@ describe("questions interactive command runtime plugin", () => {
       "Expected recorded question event id.",
     );
 
-    const beforeEventCount = runtime.events.query(sessionId).length;
+    const beforeEventCount = runtime.inspect.events.query(sessionId).length;
     const { api, commands } = createCommandApiMock();
     await createQuestionsCommandRuntimePlugin(runtime)(api);
 
@@ -108,7 +109,7 @@ describe("questions interactive command runtime plugin", () => {
 
     await questionsCommand.handler("", ctx);
 
-    expect(runtime.events.query(sessionId)).toHaveLength(beforeEventCount);
+    expect(runtime.inspect.events.query(sessionId)).toHaveLength(beforeEventCount);
     expect(widgets.at(-1)?.id).toBe("brewva-questions");
     expect(widgets.at(-1)?.options?.placement).toBe("belowEditor");
     const rendered = (widgets.at(-1)?.lines ?? []).join("\n");
@@ -127,7 +128,7 @@ describe("questions interactive command runtime plugin", () => {
     });
     const sessionId = "questions-answer-session-1";
     const questionEvent = requireDefined(
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId,
         type: "skill_completed",
         payload: {
@@ -166,7 +167,7 @@ describe("questions interactive command runtime plugin", () => {
     expect(sentMessages[0]?.options).toEqual({ deliverAs: "followUp" });
     expect(sentMessages[0]?.content).toContain(`Question ID: ${questionId}`);
     expect(sentMessages[0]?.content).toContain("Answer: Use the gateway daemon path.");
-    const answerEvents = runtime.events
+    const answerEvents = runtime.inspect.events
       .query(sessionId)
       .filter((event) => event.type === OPERATOR_QUESTION_ANSWERED_EVENT_TYPE);
     expect(answerEvents).toHaveLength(1);

@@ -5,6 +5,7 @@ import {
   recordAssistantUsageFromMessage,
   type BrewvaRuntime,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type {
   BrewvaSemanticOracle,
   SemanticOracleNarrativeExtractionInput,
@@ -20,7 +21,7 @@ type RegisteredModel = NonNullable<ReturnType<ModelRegistry["getAll"]>[number]>;
 interface HostedSemanticOracleOptions {
   model?: RegisteredModel;
   modelRegistry: Pick<ModelRegistry, "getApiKeyAndHeaders">;
-  runtime: Pick<BrewvaRuntime, "cost" | "events">;
+  runtime: BrewvaRuntime;
   completeFn?: typeof complete;
 }
 
@@ -350,7 +351,7 @@ class HostedSemanticOracle implements BrewvaSemanticOracle {
       recordClass: string | null;
     },
   ): void {
-    this.options.runtime.events.record({
+    recordRuntimeEvent(this.options.runtime, {
       sessionId: input.sessionId,
       type: SEMANTIC_EXTRACTION_INVOKED_EVENT_TYPE,
       payload: {
@@ -374,7 +375,7 @@ class HostedSemanticOracle implements BrewvaSemanticOracle {
       orderedIds: readonly string[];
     },
   ): void {
-    this.options.runtime.events.record({
+    recordRuntimeEvent(this.options.runtime, {
       sessionId: input.sessionId,
       type: SEMANTIC_RERANK_INVOKED_EVENT_TYPE,
       payload: {

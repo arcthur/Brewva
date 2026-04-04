@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { appendFileSync, readFileSync } from "node:fs";
 import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
-import { TurnWALStore, type TurnEnvelope } from "@brewva/brewva-runtime/channels";
+import type { TurnEnvelope } from "@brewva/brewva-runtime/channels";
+import { RecoveryWalStore, createSchedulerIngressPort } from "@brewva/brewva-runtime/internal";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
 function createEnvelope(
@@ -21,12 +22,12 @@ function createEnvelope(
   };
 }
 
-describe("turn wal store", () => {
+describe("Recovery WAL store", () => {
   test("given a new envelope, when appendPending is called, then pending record is created and listed", () => {
-    const workspace = createTestWorkspace("turn-wal-status");
-    const store = new TurnWALStore({
+    const workspace = createTestWorkspace("recovery-wal-status");
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "runtime",
     });
 
@@ -37,10 +38,10 @@ describe("turn wal store", () => {
   });
 
   test("given a pending record, when markInflight is called, then status becomes inflight with incremented attempts", () => {
-    const workspace = createTestWorkspace("turn-wal-status-inflight");
-    const store = new TurnWALStore({
+    const workspace = createTestWorkspace("recovery-wal-status-inflight");
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "runtime",
     });
 
@@ -52,10 +53,10 @@ describe("turn wal store", () => {
   });
 
   test("given an inflight record, when markDone is called, then record becomes done and leaves pending view", () => {
-    const workspace = createTestWorkspace("turn-wal-status-done");
-    const store = new TurnWALStore({
+    const workspace = createTestWorkspace("recovery-wal-status-done");
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "runtime",
     });
 
@@ -67,10 +68,10 @@ describe("turn wal store", () => {
   });
 
   test("given lifecycle transitions, when records are appended and updated, then wal file persists each transition", () => {
-    const workspace = createTestWorkspace("turn-wal-status-persist");
-    const store = new TurnWALStore({
+    const workspace = createTestWorkspace("recovery-wal-status-persist");
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "runtime",
     });
 
@@ -86,10 +87,10 @@ describe("turn wal store", () => {
   });
 
   test("given unknown wal id, when markDone is called, then result is undefined", () => {
-    const workspace = createTestWorkspace("turn-wal-unknown-id");
-    const store = new TurnWALStore({
+    const workspace = createTestWorkspace("recovery-wal-unknown-id");
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "channel-telegram",
     });
 
@@ -97,10 +98,10 @@ describe("turn wal store", () => {
   });
 
   test("given a done record, when markInflight is called again, then transition is ignored", () => {
-    const workspace = createTestWorkspace("turn-wal-terminal-transition");
-    const store = new TurnWALStore({
+    const workspace = createTestWorkspace("recovery-wal-terminal-transition");
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "channel-telegram",
     });
 
@@ -114,30 +115,30 @@ describe("turn wal store", () => {
   });
 
   test("given malformed wal lines, when store reloads, then integrity failure is surfaced", () => {
-    const workspace = createTestWorkspace("turn-wal-corrupt-lines");
-    const store = new TurnWALStore({
+    const workspace = createTestWorkspace("recovery-wal-corrupt-lines");
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "channel-telegram",
     });
     store.appendPending(createEnvelope("turn-corrupt"), "channel");
     appendFileSync(store.filePath, '\n{"schema":"bad"}\nnot-json\n', "utf8");
 
-    const reloaded = new TurnWALStore({
+    const reloaded = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "channel-telegram",
     });
-    expect(() => reloaded.listPending()).toThrow("turn_wal_integrity_error");
+    expect(() => reloaded.listPending()).toThrow("recovery_wal_integrity_error");
   });
 
   test("given terminal records beyond retention window, when compact runs, then stale records are dropped", () => {
-    const workspace = createTestWorkspace("turn-wal-compact");
+    const workspace = createTestWorkspace("recovery-wal-compact");
     let nowMs = 10_000;
-    const store = new TurnWALStore({
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
       config: {
-        ...DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+        ...DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
         compactAfterMs: 100,
       },
       scope: "gateway",
@@ -162,12 +163,12 @@ describe("turn wal store", () => {
   });
 
   test("given stale terminal ingress rows, when compact runs, then the latest ingress watermark is preserved without retaining turn rows", () => {
-    const workspace = createTestWorkspace("turn-wal-compact-ingress-watermark");
+    const workspace = createTestWorkspace("recovery-wal-compact-ingress-watermark");
     let nowMs = 10_000;
-    const store = new TurnWALStore({
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
       config: {
-        ...DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+        ...DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
         compactAfterMs: 100,
       },
       scope: "channel-telegram",
@@ -211,10 +212,10 @@ describe("turn wal store", () => {
   });
 
   test("given burst appends, when appendPending is called concurrently, then wal ids stay unique and rows remain ordered", async () => {
-    const workspace = createTestWorkspace("turn-wal-burst");
-    const store = new TurnWALStore({
+    const workspace = createTestWorkspace("recovery-wal-burst");
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "burst",
     });
 
@@ -231,10 +232,10 @@ describe("turn wal store", () => {
   });
 
   test("given a dedupe key, when appendPending is called multiple times, then existing recoverable record is reused", () => {
-    const workspace = createTestWorkspace("turn-wal-dedupe");
-    const store = new TurnWALStore({
+    const workspace = createTestWorkspace("recovery-wal-dedupe");
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "channel-telegram",
     });
 
@@ -252,10 +253,10 @@ describe("turn wal store", () => {
   });
 
   test("given a terminal record, when appendPending is called with the same dedupe key, then a new wal record is created", () => {
-    const workspace = createTestWorkspace("turn-wal-dedupe-terminal");
-    const store = new TurnWALStore({
+    const workspace = createTestWorkspace("recovery-wal-dedupe-terminal");
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "gateway",
     });
 
@@ -270,12 +271,12 @@ describe("turn wal store", () => {
   });
 
   test("given an expired recoverable record, when appendPending is called with the same dedupe key, then prior record is expired and a new record is created", () => {
-    const workspace = createTestWorkspace("turn-wal-dedupe-expired");
+    const workspace = createTestWorkspace("recovery-wal-dedupe-expired");
     let nowMs = 10_000;
-    const store = new TurnWALStore({
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
       config: {
-        ...DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+        ...DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
         defaultTtlMs: 25,
       },
       scope: "channel-telegram",
@@ -294,28 +295,29 @@ describe("turn wal store", () => {
     expect(store.listPending().map((row) => row.walId)).toEqual([second.walId]);
   });
 
-  test("runtime turnWal facade marks failed and expired rows directly", () => {
-    const workspace = createTestWorkspace("turn-wal-runtime-facade");
+  test("scheduler ingress port marks failed and expired rows directly", () => {
+    const workspace = createTestWorkspace("recovery-wal-runtime-facade");
     const runtime = new BrewvaRuntime({ cwd: workspace });
-    const failedRecord = runtime.turnWal.appendPending(
+    const schedulerIngress = createSchedulerIngressPort(runtime);
+    const failedRecord = schedulerIngress.appendPending(
       createEnvelope("turn-runtime-failed"),
       "channel",
     );
-    const expiredRecord = runtime.turnWal.appendPending(
+    const expiredRecord = schedulerIngress.appendPending(
       createEnvelope("turn-runtime-expired"),
       "channel",
     );
 
-    const failed = runtime.turnWal.markFailed(failedRecord.walId, "worker_crash");
-    const expired = runtime.turnWal.markExpired(expiredRecord.walId);
+    const failed = schedulerIngress.markFailed(failedRecord.walId, "worker_crash");
+    const expired = schedulerIngress.markExpired(expiredRecord.walId);
 
     expect(failed?.status).toBe("failed");
     expect(failed?.error).toBe("worker_crash");
     expect(expired?.status).toBe("expired");
-    expect(runtime.turnWal.listPending()).toHaveLength(0);
-    const store = new TurnWALStore({
+    expect(schedulerIngress.listPending()).toHaveLength(0);
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "runtime",
     });
     expect(store.listCurrent()).toEqual(

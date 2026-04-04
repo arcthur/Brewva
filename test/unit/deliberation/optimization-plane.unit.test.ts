@@ -11,6 +11,7 @@ import {
   SKILL_COMPLETED_EVENT_TYPE,
   buildScheduleIntentFiredEvent,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { patchDateNow } from "../../helpers/global-state.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
@@ -27,7 +28,7 @@ function recordGoalLoopCompletion(input: {
   nextTrigger?: string;
   nextTiming?: string;
 }): void {
-  input.runtime.events.record({
+  recordRuntimeEvent(input.runtime, {
     sessionId: input.sessionId,
     type: SKILL_COMPLETED_EVENT_TYPE,
     timestamp: input.timestamp,
@@ -95,7 +96,7 @@ describe("optimization continuity plane", () => {
     const workspace = createTestWorkspace("optimization-continuity-canonical-fields");
     const runtime = new BrewvaRuntime({ cwd: workspace });
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: "legacy-goal-loop-session",
       type: SKILL_COMPLETED_EVENT_TYPE,
       timestamp: 1_710_000_000_100,
@@ -136,7 +137,7 @@ describe("optimization continuity plane", () => {
       const loopKey = "coverage-raise-2026-03-23";
       const loopSource = `goal-loop:${loopKey}`;
 
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId: parentSessionId,
         type: "schedule_intent",
         timestamp: 1_710_000_000_010,
@@ -155,7 +156,7 @@ describe("optimization continuity plane", () => {
           }),
         },
       });
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId: parentSessionId,
         type: "schedule_intent",
         timestamp: 1_710_000_000_020,
@@ -192,7 +193,7 @@ describe("optimization continuity plane", () => {
         iterationKey: `${loopKey}/run-2/iter-1`,
       });
 
-      runtime.events.recordMetricObservation(parentSessionId, {
+      runtime.authority.events.recordMetricObservation(parentSessionId, {
         metricKey: "coverage_pct",
         value: 72,
         unit: "%",
@@ -201,7 +202,7 @@ describe("optimization continuity plane", () => {
         evidenceRefs: ["task:baseline"],
         summary: "Initial baseline",
       });
-      runtime.events.recordMetricObservation(childSessionId, {
+      runtime.authority.events.recordMetricObservation(childSessionId, {
         metricKey: "coverage_pct",
         value: 76,
         unit: "%",
@@ -210,7 +211,7 @@ describe("optimization continuity plane", () => {
         evidenceRefs: ["task:run-2"],
         summary: "Improved after implementation pass",
       });
-      runtime.events.recordGuardResult(childSessionId, {
+      runtime.authority.events.recordGuardResult(childSessionId, {
         guardKey: "unit-tests",
         status: "pass",
         source: loopSource,
@@ -219,7 +220,7 @@ describe("optimization continuity plane", () => {
         summary: "Guard remained green",
       });
 
-      runtime.events.recordMetricObservation(freshSessionId, {
+      runtime.authority.events.recordMetricObservation(freshSessionId, {
         metricKey: "coverage_pct",
         value: 99,
         unit: "%",

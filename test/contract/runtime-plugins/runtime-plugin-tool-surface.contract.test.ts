@@ -4,6 +4,7 @@ import {
   type ToolSurfaceRuntime,
 } from "@brewva/brewva-gateway/runtime-plugins";
 import type { SkillRoutingScope, TaskPhase } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { ToolInfo } from "@mariozechner/pi-coding-agent";
 import { createMockRuntimePluginApi, invokeHandlerAsync } from "../../helpers/runtime-plugin.js";
@@ -86,11 +87,11 @@ function createSkillDocument(
 }
 
 interface ToolSurfaceRuntimeOptions {
-  getActive?: ToolSurfaceRuntime["skills"]["getActive"];
-  getSkill?: ToolSurfaceRuntime["skills"]["get"];
-  listSkills?: ToolSurfaceRuntime["skills"]["list"];
-  taskState?: ReturnType<ToolSurfaceRuntime["task"]["getState"]>;
-  recordEvent?: ToolSurfaceRuntime["events"]["record"];
+  getActive?: ToolSurfaceRuntime["inspect"]["skills"]["getActive"];
+  getSkill?: ToolSurfaceRuntime["inspect"]["skills"]["get"];
+  listSkills?: ToolSurfaceRuntime["inspect"]["skills"]["list"];
+  taskState?: ReturnType<ToolSurfaceRuntime["inspect"]["task"]["getState"]>;
+  recordEvent?: ToolSurfaceRuntime["recordEvent"];
   routingScopes?: SkillRoutingScope[];
 }
 
@@ -101,20 +102,25 @@ function createToolSurfaceRuntime(options: ToolSurfaceRuntimeOptions = {}): Tool
       config.skills.routing.scopes = options.routingScopes ?? ["core", "domain"];
     }),
   });
-  Object.assign(runtime.skills, {
+  Object.assign(runtime.inspect.skills, {
     list: options.listSkills ?? (() => []),
     getActive: options.getActive ?? (() => undefined),
     get: options.getSkill ?? (() => undefined),
   });
   if (options.taskState) {
-    Object.assign(runtime.task, {
+    Object.assign(runtime.inspect.task, {
       getState: () => options.taskState!,
     });
   }
-  Object.assign(runtime.events, {
-    record: options.recordEvent ?? (() => undefined),
-  });
-  return runtime;
+  return {
+    config: runtime.config,
+    inspect: {
+      tools: runtime.inspect.tools,
+      skills: runtime.inspect.skills,
+      task: runtime.inspect.task,
+    },
+    recordEvent: options.recordEvent ?? ((input) => recordRuntimeEvent(runtime, input)),
+  };
 }
 
 describe("tool surface runtime plugin", () => {

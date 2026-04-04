@@ -1,5 +1,5 @@
 import type {
-  BrewvaRuntime,
+  BrewvaToolRuntimePort as RuntimeToolRuntimePort,
   DesignExecutionModeHint,
   DesignExecutionStep as RuntimeDesignExecutionStep,
   DesignImplementationTarget as RuntimeDesignImplementationTarget,
@@ -48,6 +48,31 @@ export interface BrewvaToolMetadata {
   surface: BrewvaToolSurface;
   governance: ToolGovernanceDescriptor;
   executionTraits?: BrewvaToolExecutionTraitsDefinition;
+}
+
+export interface BrewvaToolInternalRuntime {
+  recordEvent?(input: {
+    sessionId: string;
+    type: string;
+    turn?: number;
+    payload?: object;
+    timestamp?: number;
+    skipTapeCheckpoint?: boolean;
+  }): unknown;
+  onClearState?(listener: (sessionId: string) => void): void;
+  resolveCredentialBindings?(sessionId: string, toolName: string): Record<string, string>;
+  resolveSandboxApiKey?(sessionId: string): string | undefined;
+  appendSupplementalInjection?(
+    sessionId: string,
+    content: string,
+    sourceLabel?: string,
+    scopeId?: string,
+  ): {
+    accepted: boolean;
+    truncated?: boolean;
+    finalTokens?: number;
+    droppedReason?: "hard_limit" | "budget_exhausted";
+  };
 }
 
 export type BrewvaManagedToolDefinition = ToolDefinition & {
@@ -391,28 +416,27 @@ export interface BrewvaToolDelegationQuery {
   listPendingOutcomes?(sessionId: string, query?: { limit?: number }): DelegationRunRecord[];
 }
 
-export type BrewvaToolRuntime = Pick<
-  BrewvaRuntime,
-  | "cwd"
-  | "workspaceRoot"
-  | "agentId"
-  | "config"
-  | "skills"
-  | "verification"
-  | "tools"
-  | "ledger"
-  | "cost"
-  | "context"
-  | "events"
-  | "task"
-  | "schedule"
-  | "session"
-  | "proposals"
-> & {
+export type BrewvaToolRuntime = RuntimeToolRuntimePort & {
+  internal?: BrewvaToolInternalRuntime;
   orchestration?: BrewvaToolOrchestration;
   delegation?: BrewvaToolDelegationQuery;
   semanticOracle?: BrewvaSemanticOracle;
 };
+
+export type BrewvaBundledToolRuntime = RuntimeToolRuntimePort & {
+  internal: BrewvaToolInternalRuntime;
+  orchestration?: BrewvaToolOrchestration;
+  delegation?: BrewvaToolDelegationQuery;
+  semanticOracle?: BrewvaSemanticOracle;
+};
+
+export interface BrewvaBundledToolOptions {
+  runtime: BrewvaBundledToolRuntime;
+  verification?: {
+    executeCommands?: boolean;
+    timeoutMs?: number;
+  };
+}
 
 export interface BrewvaToolOptions {
   runtime: BrewvaToolRuntime;

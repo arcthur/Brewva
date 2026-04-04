@@ -2,64 +2,94 @@
 
 ## Runtime Shape
 
-`BrewvaRuntime` (`packages/brewva-runtime/src/runtime.ts`) is the governance facade.
-It exposes domain APIs instead of a flat method bag:
+`BrewvaRuntime` (`packages/brewva-runtime/src/runtime.ts`) is the stable runtime
+instance contract.
 
-- `runtime.skills`
-- `runtime.proposals`
-- `runtime.context`
-- `runtime.tools`
-- `runtime.task`
-- `runtime.truth`
-- `runtime.ledger`
-- `runtime.schedule`
-- `runtime.turnWal`
-- `runtime.events`
-- `runtime.verification`
-- `runtime.cost`
-- `runtime.session`
+Its public root shape is semantic, not implementation-organized:
 
-The facade should stay thin: constructor wiring + delegation into services.
+- `runtime.authority`
+- `runtime.inspect`
+- `runtime.maintain`
+
+This is the default product vocabulary that hosted sessions, tools, and
+operator products are expected to read against.
+
+The point is not to hide internal machinery. The point is to make the default
+public surface line up with authority boundaries instead of exposing a wide bag
+of mixed runtime mechanisms.
+
+## Surface Semantics
+
+The three root surfaces have different jobs:
+
+- `authority` changes commitments, replay truth, admission state, verification
+  sufficiency, or rollback identity
+- `inspect` is read-only and exists for explanation, inspection, and operator
+  products
+- `maintain` owns explicit rebuild, hydration, registration, and bounded
+  recovery machinery
+
+This is a semantic split, not a namespace taxonomy. A concern such as context
+or scheduling may contribute methods to more than one surface.
+
+## What Stays Internal
+
+Some machinery is still real, but it is not the public runtime contract:
+
+- raw event append
+- raw turn-WAL mutation
+- service classes, stores, trackers, and replay engines
+
+Repo-owned code may still use those capabilities through
+`@brewva/brewva-runtime/internal`, but they are not the default integration
+surface for products or external consumers.
+
+## Replay And Durability
+
+Replay remains tape-first.
+
+- tape and receipts are durable source of truth
+- Recovery WAL and rollback material are durable transient state
+- projections and other read models are rebuildable state
+- host/UI caches are not replay authority
+
+`TurnReplayEngine` and session hydration rebuild runtime state from persisted
+events. That replay model is what allows operator inspection and exact resume
+to stay deterministic.
 
 ## Governance Core
 
-Runtime behavior is organized around governance boundaries:
+Runtime behavior is still organized around hard boundaries:
 
-- trust boundary: evidence ledger + verification + truth facts
-- execution boundary: tool gate + security policy + context compaction gate
-- economic boundary: cost tracking + budget actions
-- durability boundary: event tape + checkpoint replay + turn WAL
+- effect authorization and exact resume
+- replay truth for task, truth, and schedule commitments
+- verification sufficiency
+- rollback identity
+- bounded maintenance and recovery
 
-The runtime does not attempt to make the model "smarter" through adaptive routing loops.
-Its role is to keep behavior explainable, bounded, and replayable.
-
-## Replay And Session State
-
-Session runtime maps are managed by
-`packages/brewva-runtime/src/services/session-state.ts` (`RuntimeSessionStateStore`).
-
-Cross-process reconstruction is tape-first:
-
-- `TurnReplayEngine` rebuilds state via checkpoint + delta
-- folded slices include task/truth/cost/evidence replay state; projection
-  remains rebuildable derived state
-- runtime bootstrap hydration restores control-plane state from persisted events
+The runtime does not try to become an adaptive planning loop in disguise. Its
+job is to keep execution explainable, replayable, and durable where it matters.
 
 ## Scheduling Boundary
 
-`ScheduleIntentService` lazily initializes scheduler internals and keeps
-scheduler orchestration behind a narrow runtime port boundary.
-This avoids hidden coupling from scheduling internals back into facade methods.
+Scheduling is split on purpose:
+
+- create, update, and cancel intent are authority operations
+- list and projection snapshot are inspection operations
+- raw WAL ingress for scheduler recovery stays internal
+
+That split keeps scheduler internals from becoming the default product-facing
+runtime contract.
 
 ## Shared Contract Surface
 
-Core contracts are defined in `packages/brewva-runtime/src/contracts/index.ts`, including:
+Core contracts are defined in `packages/brewva-runtime/src/contracts/index.ts`,
+including:
 
-- skill contracts and routing/scheduling types
-- ledger and truth/task payload contracts
-- event/replay/wal contracts
-- verification and cost summary contracts
-- context, cost, and governance contracts
+- task, truth, schedule, and evidence contracts
+- event, replay, receipt, and WAL contracts
+- context, verification, and cost contracts
+- governance and tool-boundary contracts
 
 ## Configuration Boundary
 
@@ -67,6 +97,7 @@ Config contract entry points:
 
 - defaults: `packages/brewva-runtime/src/config/defaults.ts`
 - loader: `packages/brewva-runtime/src/config/loader.ts`
-- merge/normalize: `packages/brewva-runtime/src/config/merge.ts`, `packages/brewva-runtime/src/config/normalize.ts`
+- normalize: `packages/brewva-runtime/src/config/normalize.ts`
 
-`BrewvaConfig.ui.quietStartup` remains runtime-owned and is read by CLI session bootstrap.
+`BrewvaConfig` remains runtime-owned configuration state. Products consume the
+normalized readonly snapshot exposed on the runtime instance.

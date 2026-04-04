@@ -4,6 +4,7 @@ import { relative, resolve } from "node:path";
 import type { BrewvaEventRecord } from "@brewva/brewva-runtime";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { resolveToolRuntimeEventPort } from "../runtime-internal.js";
 import type { BrewvaToolRuntime } from "../types.js";
 import { buildStringEnumSchema } from "../utils/input-alias.js";
 
@@ -239,15 +240,25 @@ export function runObservabilityQuery(
   spec: ObservabilityQuerySpec,
   now = Date.now(),
 ): ObservabilityQueryResult {
+  const eventPort = resolveToolRuntimeEventPort(runtime);
+  if (!eventPort?.list) {
+    return {
+      events: [],
+      matchCount: 0,
+      sampleSize: 0,
+      observedValue: null,
+    };
+  }
   const typeSet = new Set(spec.types);
   const minTimestamp = spec.windowMinutes === null ? null : now - spec.windowMinutes * 60_000;
   const sourceEvents =
     spec.types.length === 1
-      ? runtime.events.list(sessionId, {
+      ? eventPort.list(sessionId, {
           type: spec.types[0],
         })
-      : runtime.events.list(sessionId);
-  const matched = sourceEvents.filter((event) => {
+      : eventPort.list(sessionId);
+  const typedEvents = sourceEvents as BrewvaEventRecord[];
+  const matched = typedEvents.filter((event) => {
     if (typeSet.size > 0 && !typeSet.has(event.type)) {
       return false;
     }
@@ -399,10 +410,12 @@ export function getObservabilityThrottleEvents(
   sessionId: string,
   type: string,
 ): BrewvaEventRecord[] {
-  return runtime.events.list(sessionId, {
+  const eventPort = resolveToolRuntimeEventPort(runtime);
+  const events = eventPort?.list?.(sessionId, {
     type,
     last: SEARCH_THROTTLE_EVENT_LOOKBACK,
   });
+  return (events as BrewvaEventRecord[] | undefined) ?? [];
 }
 
 export function compareObservabilityValue(

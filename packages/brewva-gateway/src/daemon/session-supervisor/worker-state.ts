@@ -1,6 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import type { ManagedToolMode } from "@brewva/brewva-runtime";
-import type { TurnWALStore } from "@brewva/brewva-runtime/channels";
+import type { RecoveryWalStore } from "@brewva/brewva-runtime/internal";
 import type {
   ParentToWorkerMessage,
   WorkerResultErrorCode,
@@ -55,7 +55,7 @@ export interface WorkerHandle {
   pendingTurns: Map<string, PendingTurn>;
   turnQueue: QueuedTurn[];
   activeTurnId: string | null;
-  activeTurnWalIds: Map<string, string>;
+  activeRecoveryWalIds: Map<string, string>;
   readyRequestId?: string;
   readyResolve?: (payload: WorkerReadyPayload) => void;
   readyReject?: (error: Error) => void;
@@ -72,7 +72,7 @@ export type LoggerLike = Pick<StructuredLogger, "debug" | "info" | "warn" | "err
 
 export interface WorkerRpcControllerDeps {
   logger: LoggerLike;
-  turnWalStore?: TurnWALStore;
+  recoveryWalStore?: RecoveryWalStore;
   onWorkerEvent?: (event: Extract<WorkerToParentMessage, { kind: "event" }>) => void;
   touchActivity(handle: WorkerHandle): void;
   onTurnQueueReady(handle: WorkerHandle): void;
@@ -92,11 +92,11 @@ export interface TurnQueueControllerDeps {
   ): Promise<SendPromptOutput>;
   rejectPendingTurn(handle: WorkerHandle, turnId: string, error: unknown): void;
   rekeyPendingTurn(handle: WorkerHandle, fromTurnId: string, toTurnId: string): void;
-  trackTurnWalId(handle: WorkerHandle, turnId: string, walId: string): void;
-  untrackTurnWalId(handle: WorkerHandle, turnId: string): string | undefined;
-  rekeyTurnWalId(handle: WorkerHandle, fromTurnId: string, toTurnId: string): void;
+  trackRecoveryWalId(handle: WorkerHandle, turnId: string, walId: string): void;
+  untrackRecoveryWalId(handle: WorkerHandle, turnId: string): string | undefined;
+  rekeyRecoveryWalId(handle: WorkerHandle, fromTurnId: string, toTurnId: string): void;
   markQueuedTurnInflight(walId: string): void;
-  markTurnWalFailed(handle: WorkerHandle, turnId: string, error?: string): void;
+  markRecoveryWalFailed(handle: WorkerHandle, turnId: string, error?: string): void;
 }
 
 export interface WorkerRpcErrorInput {

@@ -14,6 +14,7 @@ import {
 import {
   BrewvaConfigLoadError,
   BrewvaRuntime,
+  createOperatorRuntimePort,
   createTrustedLocalGovernancePort,
   normalizeAgentId,
   parseTaskSpec,
@@ -799,7 +800,7 @@ function printReplayText(
 }
 
 function printCostSummary(sessionId: string, runtime: BrewvaRuntime): void {
-  const summary = runtime.cost.getSummary(sessionId);
+  const summary = runtime.inspect.cost.getSummary(sessionId);
   if (summary.totalTokens <= 0 && summary.totalCostUsd <= 0) return;
 
   const topSkill = Object.entries(summary.skills).toSorted(
@@ -838,7 +839,7 @@ function printGatewayCostSummary(input: {
     configPath: input.configPath,
     governancePort: createTrustedLocalGovernancePort(CLI_TRUSTED_LOCAL_GOVERNANCE),
   });
-  runtime.context.onTurnStart(replaySessionId, 0);
+  runtime.maintain.context.onTurnStart(replaySessionId, 0);
   printCostSummary(replaySessionId, runtime);
 }
 
@@ -1010,7 +1011,7 @@ async function run(): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    const events = runtime.events.queryStructured(targetSessionId);
+    const events = runtime.inspect.events.queryStructured(targetSessionId);
     if (mode === "print-json") {
       for (const event of events) {
         await writeJsonLine(event);
@@ -1027,12 +1028,12 @@ async function run(): Promise<void> {
       configPath: parsed.configPath,
       governancePort: createTrustedLocalGovernancePort(CLI_TRUSTED_LOCAL_GOVERNANCE),
     });
-    const targetSessionId = runtime.tools.resolveUndoSessionId(parsed.sessionId);
+    const targetSessionId = runtime.inspect.tools.resolveUndoSessionId(parsed.sessionId);
     if (!targetSessionId) {
       console.log("No rollback applied (no_patchset).");
       return;
     }
-    const rollback = runtime.tools.rollbackLastPatchSet(targetSessionId);
+    const rollback = runtime.authority.tools.rollbackLastPatchSet(targetSessionId);
     if (!rollback.ok) {
       const suffix = rollback.reason ? ` (${rollback.reason})` : "";
       console.log(`No rollback applied${suffix}.`);
@@ -1125,6 +1126,7 @@ async function run(): Promise<void> {
     agentId: parsed.agentId,
     governancePort: createTrustedLocalGovernancePort({ profile: "team" }),
   });
+  const operatorRuntime = createOperatorRuntimePort(runtime);
   const { session } = await createBrewvaSession({
     runtime,
     cwd: parsed.cwd,
@@ -1133,8 +1135,8 @@ async function run(): Promise<void> {
     agentId: parsed.agentId,
     managedToolMode: parsed.managedToolMode,
     runtimePlugins: [
-      createInspectCommandRuntimePlugin(runtime),
-      createInsightsCommandRuntimePlugin(runtime),
+      createInspectCommandRuntimePlugin(operatorRuntime),
+      createInsightsCommandRuntimePlugin(operatorRuntime),
       createQuestionsCommandRuntimePlugin(runtime),
       createAgentOverlaysCommandRuntimePlugin(runtime),
       createUpdateCommandRuntimePlugin(runtime),
@@ -1145,7 +1147,7 @@ async function run(): Promise<void> {
   const getSessionId = (): string => session.sessionManager.getSessionId();
   const initialSessionId = getSessionId();
   if (taskSpec) {
-    runtime.task.setSpec(initialSessionId, taskSpec);
+    runtime.authority.task.setSpec(initialSessionId, taskSpec);
   }
   const gracefulTimeoutMs = runtime.config.infrastructure.interruptRecovery.gracefulTimeoutMs;
   let terminatedBySignal = false;
@@ -1246,13 +1248,13 @@ async function run(): Promise<void> {
       const sessionId = getSessionId();
       ensureSessionShutdownRecorded(runtime, sessionId);
       if (emitJsonBundle) {
-        const replayEvents = runtime.events.queryStructured(sessionId);
+        const replayEvents = runtime.inspect.events.queryStructured(sessionId);
         await writeJsonLine({
           schema: "brewva.stream.v1",
           type: "brewva_event_bundle",
           sessionId,
           events: replayEvents,
-          costSummary: runtime.cost.getSummary(sessionId),
+          costSummary: runtime.inspect.cost.getSummary(sessionId),
         });
       }
       session.dispose();

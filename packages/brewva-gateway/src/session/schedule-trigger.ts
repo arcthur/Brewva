@@ -1,4 +1,4 @@
-import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import type { BrewvaHostedRuntimePort } from "@brewva/brewva-runtime";
 import type { SchedulePromptTrigger } from "../daemon/session-backend.js";
 
 export interface AppliedSchedulePromptTrigger {
@@ -8,7 +8,7 @@ export interface AppliedSchedulePromptTrigger {
 }
 
 export function applySchedulePromptTrigger(
-  runtime: Pick<BrewvaRuntime, "task" | "truth" | "events">,
+  runtime: Pick<BrewvaHostedRuntimePort, "authority">,
   sessionId: string,
   trigger: SchedulePromptTrigger,
 ): AppliedSchedulePromptTrigger {
@@ -22,13 +22,13 @@ export function applySchedulePromptTrigger(
 
   let taskSpecApplied = false;
   if (trigger.taskSpec) {
-    runtime.task.setSpec(sessionId, trigger.taskSpec);
+    runtime.authority.task.setSpec(sessionId, trigger.taskSpec);
     taskSpecApplied = true;
   }
 
   let truthFactsApplied = 0;
   for (const fact of trigger.truthFacts ?? []) {
-    const result = runtime.truth.upsertFact(sessionId, {
+    const result = runtime.authority.truth.upsertFact(sessionId, {
       id: fact.id,
       kind: fact.kind,
       severity: fact.severity,
@@ -44,7 +44,7 @@ export function applySchedulePromptTrigger(
 
   let anchorApplied = false;
   if (trigger.parentAnchor) {
-    runtime.events.recordTapeHandoff(sessionId, {
+    runtime.authority.events.recordTapeHandoff(sessionId, {
       name: `schedule:inherit:${trigger.parentAnchor.name ?? "parent"}`,
       summary: trigger.parentAnchor.summary,
       nextSteps: trigger.parentAnchor.nextSteps,

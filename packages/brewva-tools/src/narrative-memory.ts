@@ -19,8 +19,9 @@ import {
 } from "@brewva/brewva-runtime";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { recordToolRuntimeEvent } from "./runtime-internal.js";
 import { shouldInvokeSemanticRerank } from "./semantic-oracle.js";
-import type { BrewvaToolOptions } from "./types.js";
+import type { BrewvaBundledToolOptions } from "./types.js";
 import { buildStringEnumSchema } from "./utils/input-alias.js";
 import { failTextResult, inconclusiveTextResult, textResult } from "./utils/result.js";
 import { getSessionId } from "./utils/session.js";
@@ -346,7 +347,7 @@ async function promoteRecordToAgentMemory(input: {
   return { path, heading };
 }
 
-export function createNarrativeMemoryTool(options: BrewvaToolOptions): ToolDefinition {
+export function createNarrativeMemoryTool(options: BrewvaBundledToolOptions): ToolDefinition {
   return defineBrewvaTool({
     name: "narrative_memory",
     label: "Narrative Memory",
@@ -385,7 +386,7 @@ export function createNarrativeMemoryTool(options: BrewvaToolOptions): ToolDefin
       const recordId = readTrimmedString(params.record_id);
       const query = readTrimmedString(params.query);
       const limit = Math.max(1, Math.min(20, params.limit ?? 10));
-      const targetRoots = options.runtime.task.getTargetDescriptor(sessionId).roots;
+      const targetRoots = options.runtime.inspect.task.getTargetDescriptor(sessionId).roots;
 
       if (params.action === "stats") {
         const state = plane.getState();
@@ -593,7 +594,7 @@ export function createNarrativeMemoryTool(options: BrewvaToolOptions): ToolDefin
             },
           ],
         });
-        options.runtime.events.record({
+        recordToolRuntimeEvent(options.runtime, {
           sessionId,
           type: NARRATIVE_MEMORY_RECORDED_EVENT_TYPE,
           payload: {
@@ -657,7 +658,7 @@ export function createNarrativeMemoryTool(options: BrewvaToolOptions): ToolDefin
             recordId,
           });
         }
-        options.runtime.events.record({
+        recordToolRuntimeEvent(options.runtime, {
           sessionId,
           type: NARRATIVE_MEMORY_REVIEWED_EVENT_TYPE,
           payload: {
@@ -715,7 +716,7 @@ export function createNarrativeMemoryTool(options: BrewvaToolOptions): ToolDefin
             recordId,
           });
         }
-        options.runtime.events.record({
+        recordToolRuntimeEvent(options.runtime, {
           sessionId,
           type: NARRATIVE_MEMORY_ARCHIVED_EVENT_TYPE,
           payload: {
@@ -773,7 +774,7 @@ export function createNarrativeMemoryTool(options: BrewvaToolOptions): ToolDefin
             recordId,
           });
         }
-        options.runtime.events.record({
+        recordToolRuntimeEvent(options.runtime, {
           sessionId,
           type: NARRATIVE_MEMORY_FORGOTTEN_EVENT_TYPE,
           payload: {
@@ -838,7 +839,7 @@ export function createNarrativeMemoryTool(options: BrewvaToolOptions): ToolDefin
           error: "promotion_state_update_failed",
         });
       }
-      options.runtime.events.record({
+      recordToolRuntimeEvent(options.runtime, {
         sessionId,
         type: NARRATIVE_MEMORY_PROMOTED_EVENT_TYPE,
         payload: {

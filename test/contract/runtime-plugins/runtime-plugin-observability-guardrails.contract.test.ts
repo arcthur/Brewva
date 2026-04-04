@@ -53,7 +53,7 @@ blocktool`,
 
     const runtime = new BrewvaRuntime({ cwd: workspace, config: createOpsRuntimeConfig() });
     const sessionId = "ext-blocked-1";
-    expect(runtime.skills.activate(sessionId, "blocktool").ok).toBe(true);
+    expect(runtime.authority.skills.activate(sessionId, "blocktool").ok).toBe(true);
 
     const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
@@ -77,10 +77,12 @@ blocktool`,
     );
 
     findBlockedResult(results);
-    expect(runtime.events.query(sessionId, { type: "tool_call", last: 1 })).toHaveLength(1);
-    expect(runtime.events.query(sessionId, { type: "tool_call_marked", last: 1 })).toHaveLength(0);
+    expect(runtime.inspect.events.query(sessionId, { type: "tool_call", last: 1 })).toHaveLength(1);
     expect(
-      runtime.events.query(sessionId, { type: "file_snapshot_captured", last: 1 }),
+      runtime.inspect.events.query(sessionId, { type: "tool_call_marked", last: 1 }),
+    ).toHaveLength(0);
+    expect(
+      runtime.inspect.events.query(sessionId, { type: "file_snapshot_captured", last: 1 }),
     ).toHaveLength(0);
   });
 
@@ -123,16 +125,16 @@ maxcalls`,
 
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
     const sessionId = "ext-max-tool-calls-1";
-    expect(runtime.skills.activate(sessionId, "maxcalls").ok).toBe(true);
+    expect(runtime.authority.skills.activate(sessionId, "maxcalls").ok).toBe(true);
     expect(
-      runtime.skills.getActive(sessionId)?.contract.resources?.defaultLease?.maxToolCalls,
+      runtime.inspect.skills.getActive(sessionId)?.contract.resources?.defaultLease?.maxToolCalls,
     ).toBe(1);
 
     const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
     registerQualityGate(api, runtime);
 
-    runtime.tools.markCall(sessionId, "read");
+    runtime.authority.tools.markCall(sessionId, "read");
 
     const blocked = invokeHandlers(
       handlers,
@@ -172,9 +174,9 @@ maxcalls`,
       undefined,
     );
 
-    expect(runtime.events.query(sessionId, { type: "tool_call" })).toHaveLength(2);
-    expect(runtime.events.query(sessionId, { type: "tool_call_marked" })).toHaveLength(2);
-    const blockedEvents = runtime.events.query(sessionId, { type: "tool_call_blocked" });
+    expect(runtime.inspect.events.query(sessionId, { type: "tool_call" })).toHaveLength(2);
+    expect(runtime.inspect.events.query(sessionId, { type: "tool_call_marked" })).toHaveLength(2);
+    const blockedEvents = runtime.inspect.events.query(sessionId, { type: "tool_call_blocked" });
     requireDefined(
       blockedEvents.find(
         (event) =>
@@ -237,8 +239,8 @@ maxcalls`,
       ctx,
     );
 
-    expect(runtime.events.query(sessionId, { type: "message_update" })).toHaveLength(0);
-    const ends = runtime.events.query(sessionId, { type: "message_end" });
+    expect(runtime.inspect.events.query(sessionId, { type: "message_update" })).toHaveLength(0);
+    const ends = runtime.inspect.events.query(sessionId, { type: "message_end" });
     expect(ends).toHaveLength(1);
     const payload = ends[0]?.payload as { health?: { score?: number; windowChars?: number } };
     const health = requireRecord(payload.health, "Expected message_end health summary.") as {

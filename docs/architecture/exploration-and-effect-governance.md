@@ -260,10 +260,10 @@ for the small set of tools that need argument-aware classification.
 
 Current implementation notes:
 
-- `runtime.tools.start(...)` remains the single shared authorization entrypoint
+- `runtime.authority.tools.start(...)` remains the single shared authorization entrypoint
 - `ToolGateService` applies boundary-policy checks only for classified
   high-risk tools such as `exec` and browser entrypoints
-- `runtime.tools.explainAccess(...)` can explain boundary-policy decisions
+- `runtime.inspect.tools.explainAccess(...)` can explain boundary-policy decisions
   without executing the tool
 
 ## Secret And Guard Ownership

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
 describe("Output health guard disabled by default", () => {
@@ -8,7 +9,7 @@ describe("Output health guard disabled by default", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "output-health-guard-1";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "message_end",
       payload: {
@@ -21,7 +22,7 @@ describe("Output health guard disabled by default", () => {
       },
     });
 
-    const injection = await runtime.context.buildInjection(sessionId, "next");
+    const injection = await runtime.maintain.context.buildInjection(sessionId, "next");
     expect(injection.text).not.toContain("[OutputHealthGuard]");
   });
 
@@ -30,7 +31,7 @@ describe("Output health guard disabled by default", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "output-health-guard-ok-1";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "message_end",
       payload: {
@@ -43,7 +44,7 @@ describe("Output health guard disabled by default", () => {
       },
     });
 
-    const injection = await runtime.context.buildInjection(sessionId, "next");
+    const injection = await runtime.maintain.context.buildInjection(sessionId, "next");
     expect(injection.text).not.toContain("[OutputHealthGuard]");
   });
 });

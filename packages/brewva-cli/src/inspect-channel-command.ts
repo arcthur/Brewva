@@ -166,9 +166,10 @@ export async function handleInspectChannelCommand(
     sessionId: input.targetSession.sessionId,
     directory,
   });
-  const approvalRequests = input.targetSession.runtime.proposals.listEffectCommitmentRequests(
-    input.targetSession.sessionId,
-  );
+  const approvalRequests =
+    input.targetSession.runtime.inspect.proposals.listEffectCommitmentRequests(
+      input.targetSession.sessionId,
+    );
 
   return {
     text: formatInspectChannelText({

@@ -1,4 +1,4 @@
-import type { TurnWALStore } from "../channels/turn-wal.js";
+import type { RecoveryWalStore } from "../channels/recovery-wal.js";
 import type { ContextBudgetManager } from "../context/budget.js";
 import type { ContextInjectionCollector } from "../context/injection.js";
 import type {
@@ -48,7 +48,7 @@ export interface SessionLifecycleServiceOptions {
   projectionEngine: RuntimeKernelContext["projectionEngine"];
   turnReplay: RuntimeKernelContext["turnReplay"];
   eventStore: RuntimeKernelContext["eventStore"];
-  turnWalStore: TurnWALStore;
+  recoveryWalStore: RecoveryWalStore;
   evidenceLedger: RuntimeKernelContext["evidenceLedger"];
   reversibleMutationService: ReversibleMutationService;
   recordEvent: RuntimeKernelContext["recordEvent"];
@@ -85,7 +85,7 @@ export class SessionLifecycleService {
   private readonly projectionEngine: ProjectionEngine;
   private readonly turnReplay: TurnReplayEngine;
   private readonly events: BrewvaEventStore;
-  private readonly turnWal: TurnWALStore;
+  private readonly recoveryWal: RecoveryWalStore;
   private readonly ledger: EvidenceLedger;
   private readonly reversibleMutations: ReversibleMutationService;
   private readonly recordEvent: (input: {
@@ -112,7 +112,7 @@ export class SessionLifecycleService {
     this.projectionEngine = options.projectionEngine;
     this.turnReplay = options.turnReplay;
     this.events = options.eventStore;
-    this.turnWal = options.turnWalStore;
+    this.recoveryWal = options.recoveryWalStore;
     this.ledger = options.evidenceLedger;
     this.reversibleMutations = options.reversibleMutationService;
     this.recordEvent = (input) => options.recordEvent(input);
@@ -162,7 +162,7 @@ export class SessionLifecycleService {
     const hydration = this.getHydrationState(sessionId);
     const issues = structuredClone(hydration.issues);
     issues.push(
-      ...this.turnWal.getIntegrityIssues(),
+      ...this.recoveryWal.getIntegrityIssues(),
       ...this.getArtifactIntegrityIssues(sessionId),
     );
     return {

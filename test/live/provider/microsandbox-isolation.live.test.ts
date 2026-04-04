@@ -228,8 +228,8 @@ describe("live: microsandbox isolation", () => {
               },
             },
           },
-          events: {
-            record: (event: { type?: string; payload?: Record<string, unknown> }) => {
+          internal: {
+            recordEvent: (event: { type?: string; payload?: Record<string, unknown> }) => {
               events.push(event);
               return undefined;
             },
@@ -277,7 +277,7 @@ describe("live: microsandbox isolation", () => {
 
         const routedEvent = events.find((event) => event.type === "exec_routed");
         expect(routedEvent).toBeDefined();
-        expect(routedEvent?.payload?.configuredBackend).toBe("host");
+        expect(routedEvent?.payload?.configuredBackend).toBe("sandbox");
         expect(routedEvent?.payload?.resolvedBackend).toBe("sandbox");
         expect(routedEvent?.payload?.fallbackToHost).toBe(false);
         expect(routedEvent?.payload?.enforceIsolation).toBe(true);
@@ -321,8 +321,8 @@ describe("live: microsandbox isolation", () => {
               },
             },
           },
-          events: {
-            record: (event: { type?: string; payload?: Record<string, unknown> }) => {
+          internal: {
+            recordEvent: (event: { type?: string; payload?: Record<string, unknown> }) => {
               standardEvents.push(event);
               return undefined;
             },
@@ -376,8 +376,8 @@ describe("live: microsandbox isolation", () => {
               },
             },
           },
-          events: {
-            record: (event: { type?: string; payload?: Record<string, unknown> }) => {
+          internal: {
+            recordEvent: (event: { type?: string; payload?: Record<string, unknown> }) => {
               autoEvents.push(event);
               return undefined;
             },

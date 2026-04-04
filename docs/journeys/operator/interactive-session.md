@@ -38,7 +38,7 @@ evidence-ledger records.
 ```mermaid
 flowchart TD
   A["User prompt or task input"] --> B["CLI resolves mode and session backend"]
-  B --> C["Create hosted session + BrewvaRuntime"]
+  B --> C["Create hosted session + semantic runtime ports"]
   C --> D["Install hosted pipeline (context/tool/ledger/completion)"]
   D --> E["Hosted control plane recommends a skill-first path"]
   E --> F["Model selects skill via skill_load"]
@@ -47,7 +47,7 @@ flowchart TD
   H --> I{"skill_complete called?"}
   I -->|No| G
   I -->|Yes| J["Validate required outputs"]
-  J --> K["Run runtime.verification.verify(...)"]
+  J --> K["Run runtime.authority.verification.verify(...)"]
   K --> L{"Verification passed or read-only?"}
   L -->|No| M["Block completion and keep session active"]
   L -->|Yes| N["Complete skill and derive workflow posture"]
@@ -57,8 +57,9 @@ flowchart TD
 ## Key Steps
 
 1. The CLI resolves the active mode and creates a hosted session.
-2. The hosted pipeline installs context transform, quality gate, ledger writer,
-   and completion guard handlers.
+2. The hosted pipeline narrows runtime access into hosted, tool, and operator
+   views, then installs context transform, quality gate, ledger writer, and
+   completion guard handlers.
 3. Hosted control-plane logic first derives a skill-first recommendation from
    the loaded catalog and current task context.
 4. The model activates the current skill through `skill_load`; the runtime does
@@ -69,7 +70,7 @@ flowchart TD
    narrows the default tool surface so the turn resolves to `skill_load` before
    deeper repository work.
 7. `skill_complete` validates required outputs before calling
-   `runtime.verification.verify(...)`.
+   `runtime.authority.verification.verify(...)`.
 8. After verification passes, the runtime completes the skill and exposes the
    resulting workflow posture through explicit inspection surfaces.
 
@@ -78,10 +79,11 @@ flowchart TD
 - workflow remains an advisory surface, not a runtime-owned stage machine
 - `managedToolMode=runtime_plugin` and `managedToolMode=direct` only change how
   managed tools are registered; they do not change the hosted lifecycle spine
+  or the hosted/tool/operator port split
 - `skill_complete` closes only when required outputs are valid, verification
   passes or the session is read-only, and the completion guard has not surfaced
   a new hard blocker
-- delegated `qa` remains separate from `runtime.verification.*`: QA provides
+- delegated `qa` remains separate from `runtime.authority.verification.*`: QA provides
   executable break-it evidence, while the runtime verification gate decides
   whether the session has sufficient fresh evidence to complete
 - canonical QA outcome data preserves `pass`, `fail`, and `inconclusive`

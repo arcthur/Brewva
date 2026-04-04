@@ -92,7 +92,9 @@ function readStringArray(value: unknown): string[] | undefined {
 }
 
 function resolveVerificationEvidenceState(input: {
-  verificationOutcomes: ReturnType<BrewvaToolOptions["runtime"]["events"]["queryStructured"]>;
+  verificationOutcomes: ReturnType<
+    BrewvaToolOptions["runtime"]["inspect"]["events"]["queryStructured"]
+  >;
   latestWriteAt: number;
   hasConsumedVerificationEvidence: boolean;
 }): ReviewEvidenceState {
@@ -209,7 +211,9 @@ function resolveLatestSkillActivationTimestamp(
   sessionId: string,
   skillName: string,
 ): number | undefined {
-  const activations = runtime.events.queryStructured(sessionId, { type: "skill_activated" });
+  const activations = runtime.inspect.events.queryStructured(sessionId, {
+    type: "skill_activated",
+  });
   for (let index = activations.length - 1; index >= 0; index -= 1) {
     const event = activations[index];
     if (!event) {
@@ -245,14 +249,14 @@ function deriveEvidenceStateFromConsumedOutputs(input: {
   consumedKeys: readonly string[];
 }): ReviewEvidenceStateRecord | undefined {
   const out: ReviewEvidenceStateRecord = {};
-  const sessionEvents = input.runtime.events.query(input.sessionId);
+  const sessionEvents = input.runtime.inspect.events.query(input.sessionId);
   const latestWriteAt = resolveLatestWorkspaceWriteTimestamp(sessionEvents);
   const planningEvidenceState = derivePlanningEvidenceState({
     consumedOutputs: input.consumedOutputs,
     latestOutputTimestamps: collectLatestPlanningOutputTimestamps(sessionEvents),
     latestWriteAt,
   });
-  const verificationOutcomes = input.runtime.events.queryStructured(input.sessionId, {
+  const verificationOutcomes = input.runtime.inspect.events.queryStructured(input.sessionId, {
     type: VERIFICATION_OUTCOME_RECORDED_EVENT_TYPE,
   });
   for (const key of ["impact_map", ...PLANNING_EVIDENCE_KEYS, "verification_evidence"] as const) {
@@ -307,7 +311,7 @@ function buildReviewEnsembleOutputs(input: {
       message: string;
       details?: Record<string, unknown>;
     } {
-  const activeSkill = input.runtime.skills.getActive(input.sessionId);
+  const activeSkill = input.runtime.inspect.skills.getActive(input.sessionId);
   const activeSkillName = activeSkill?.name ?? null;
   if (!isReviewContractSkill(activeSkill)) {
     return {
@@ -332,7 +336,7 @@ function buildReviewEnsembleOutputs(input: {
     };
   }
 
-  const consumedOutputs = input.runtime.skills.getConsumedOutputs(
+  const consumedOutputs = input.runtime.inspect.skills.getConsumedOutputs(
     input.sessionId,
     activeSkill.name,
   );
@@ -582,7 +586,7 @@ export function createSkillCompleteTool(options: BrewvaToolOptions): ToolDefinit
         | undefined;
 
       if (learningResearch) {
-        const activeSkill = options.runtime.skills.getActive(sessionId);
+        const activeSkill = options.runtime.inspect.skills.getActive(sessionId);
         if (!activeSkill) {
           return failTextResult(
             "Learning research synthesis rejected. No active skill is loaded for the current session.",
@@ -595,7 +599,10 @@ export function createSkillCompleteTool(options: BrewvaToolOptions): ToolDefinit
         const synthesized = buildLearningResearchOutputs({
           activeSkill,
           rawOutputs,
-          consumedOutputs: options.runtime.skills.getConsumedOutputs(sessionId, activeSkill.name),
+          consumedOutputs: options.runtime.inspect.skills.getConsumedOutputs(
+            sessionId,
+            activeSkill.name,
+          ),
           searchRoots: scope.allowedRoots,
           params: learningResearch,
         });
@@ -632,7 +639,7 @@ export function createSkillCompleteTool(options: BrewvaToolOptions): ToolDefinit
         reviewSynthesis = synthesized.synthesis;
       }
 
-      const completion = options.runtime.skills.validateOutputs(sessionId, outputs);
+      const completion = options.runtime.inspect.skills.validateOutputs(sessionId, outputs);
       if (!completion.ok) {
         const details = [
           completion.missing.length > 0
@@ -655,10 +662,14 @@ export function createSkillCompleteTool(options: BrewvaToolOptions): ToolDefinit
         });
       }
 
-      const verification = await options.runtime.verification.verify(sessionId, undefined, {
-        executeCommands: options.verification?.executeCommands,
-        timeoutMs: options.verification?.timeoutMs,
-      });
+      const verification = await options.runtime.authority.verification.verify(
+        sessionId,
+        undefined,
+        {
+          executeCommands: options.verification?.executeCommands,
+          timeoutMs: options.verification?.timeoutMs,
+        },
+      );
 
       if (!verification.passed) {
         return inconclusiveTextResult(
@@ -672,7 +683,7 @@ export function createSkillCompleteTool(options: BrewvaToolOptions): ToolDefinit
         );
       }
 
-      const finalized = options.runtime.skills.complete(sessionId, outputs);
+      const finalized = options.runtime.authority.skills.complete(sessionId, outputs);
       if (!finalized.ok) {
         const details = [
           finalized.missing.length > 0

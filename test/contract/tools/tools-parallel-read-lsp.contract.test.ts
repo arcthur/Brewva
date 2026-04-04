@@ -7,11 +7,12 @@ import {
   buildBrewvaTools,
   createLspTools,
   resolveParallelReadConfig,
-  type BrewvaToolRuntime,
+  type BrewvaBundledToolRuntime,
 } from "@brewva/brewva-tools";
 import { requireDefined, requireNumber, requireRecord } from "../../helpers/assertions.js";
 import {
   createRuntime,
+  createBundledToolRuntime,
   expectTelemetryCountersConsistent,
   extractTextContent,
   fakeContext,
@@ -31,7 +32,7 @@ describe("tool parallel read lsp integration", () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-build-runtime-");
     const runtime = createRuntime(workspace);
     const sessionId = "parallel-read-build-runtime";
-    const tools = buildBrewvaTools({ runtime });
+    const tools = buildBrewvaTools({ runtime: createBundledToolRuntime(runtime) });
     const lspSymbols = requireTool(tools, "lsp_symbols");
 
     await lspSymbols.execute(
@@ -57,7 +58,7 @@ describe("tool parallel read lsp integration", () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-parallel-enabled-");
     const runtime = createRuntime(workspace);
     const sessionId = "parallel-read-enabled";
-    const tools = createLspTools({ runtime });
+    const tools = createLspTools({ runtime: createBundledToolRuntime(runtime) });
     const lspSymbols = requireTool(tools, "lsp_symbols");
 
     const result = await lspSymbols.execute(
@@ -76,7 +77,7 @@ describe("tool parallel read lsp integration", () => {
     ).toBeGreaterThan(0);
 
     const telemetry = requireRecord(
-      runtime.events
+      runtime.inspect.events
         .query(sessionId, { type: "tool_parallel_read" })
         .find((event) => event.payload?.toolName === "lsp_symbols")?.payload,
       "Expected lsp_symbols parallel-read telemetry.",
@@ -99,7 +100,7 @@ describe("tool parallel read lsp integration", () => {
     config.parallel.enabled = false;
     const runtime = createRuntime(workspace, config);
     const sessionId = "parallel-read-disabled";
-    const tools = createLspTools({ runtime });
+    const tools = createLspTools({ runtime: createBundledToolRuntime(runtime) });
     const lspSymbols = requireTool(tools, "lsp_symbols");
 
     await lspSymbols.execute(
@@ -115,7 +116,7 @@ describe("tool parallel read lsp integration", () => {
     );
 
     const telemetry = requireRecord(
-      runtime.events
+      runtime.inspect.events
         .query(sessionId, { type: "tool_parallel_read" })
         .find((event) => event.payload?.toolName === "lsp_symbols")?.payload,
       "Expected sequential lsp_symbols telemetry.",
@@ -130,6 +131,9 @@ describe("tool parallel read lsp integration", () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-slot-integration-");
     const calls: string[] = [];
     const runtime = {
+      cwd: workspace,
+      workspaceRoot: workspace,
+      agentId: "parallel-read-slot-runtime",
       config: {
         parallel: {
           enabled: true,
@@ -137,19 +141,23 @@ describe("tool parallel read lsp integration", () => {
           maxTotalPerSession: 100,
         },
       },
-      events: {
-        record: () => undefined,
-      },
-      tools: {
-        async acquireParallelSlotAsync(sessionId: string, runId: string) {
-          calls.push(`acquire:${sessionId}:${runId}`);
-          return { accepted: true };
+      authority: {
+        tools: {
+          async acquireParallelSlotAsync(sessionId: string, runId: string) {
+            calls.push(`acquire:${sessionId}:${runId}`);
+            return { accepted: true };
+          },
+          releaseParallelSlot(sessionId: string, runId: string) {
+            calls.push(`release:${sessionId}:${runId}`);
+          },
         },
-        releaseParallelSlot(sessionId: string, runId: string) {
-          calls.push(`release:${sessionId}:${runId}`);
+      },
+      internal: {
+        recordEvent() {
+          return undefined;
         },
       },
-    } as unknown as BrewvaToolRuntime;
+    } as unknown as BrewvaBundledToolRuntime;
     const sessionId = "parallel-read-slot-integration";
     const tools = createLspTools({ runtime });
     const lspSymbols = requireTool(tools, "lsp_symbols");
@@ -180,7 +188,7 @@ describe("tool parallel read lsp integration", () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-low-limit-");
     const runtime = createRuntime(workspace);
     const sessionId = "parallel-read-low-limit";
-    const tools = createLspTools({ runtime });
+    const tools = createLspTools({ runtime: createBundledToolRuntime(runtime) });
     const lspSymbols = requireTool(tools, "lsp_symbols");
 
     const result = await lspSymbols.execute(
@@ -200,7 +208,7 @@ describe("tool parallel read lsp integration", () => {
     ).toContain("export");
 
     const telemetry = requireRecord(
-      runtime.events
+      runtime.inspect.events
         .query(sessionId, { type: "tool_parallel_read" })
         .find((event) => event.payload?.toolName === "lsp_symbols")?.payload,
       "Expected low-limit lsp_symbols telemetry.",
@@ -215,7 +223,7 @@ describe("tool parallel read lsp integration", () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-findrefs-");
     const runtime = createRuntime(workspace);
     const sessionId = "parallel-read-findrefs";
-    const tools = createLspTools({ runtime });
+    const tools = createLspTools({ runtime: createBundledToolRuntime(runtime) });
     const lspFindReferences = requireTool(tools, "lsp_find_references");
 
     const result = await lspFindReferences.execute(
@@ -246,7 +254,7 @@ describe("tool parallel read lsp integration", () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-goto-def-");
     const runtime = createRuntime(workspace);
     const sessionId = "parallel-read-goto-definition";
-    const tools = createLspTools({ runtime });
+    const tools = createLspTools({ runtime: createBundledToolRuntime(runtime) });
     const lspGotoDefinition = requireTool(tools, "lsp_goto_definition");
 
     const result = await lspGotoDefinition.execute(
@@ -282,7 +290,7 @@ describe("tool parallel read lsp integration", () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-prepare-rename-");
     const runtime = createRuntime(workspace);
     const sessionId = "parallel-read-prepare-rename";
-    const tools = createLspTools({ runtime });
+    const tools = createLspTools({ runtime: createBundledToolRuntime(runtime) });
     const lspPrepareRename = requireTool(tools, "lsp_prepare_rename");
 
     const result = await lspPrepareRename.execute(
@@ -312,7 +320,7 @@ describe("tool parallel read lsp integration", () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-doc-scope-");
     const runtime = createRuntime(workspace);
     const sessionId = "parallel-read-doc-scope";
-    const tools = createLspTools({ runtime });
+    const tools = createLspTools({ runtime: createBundledToolRuntime(runtime) });
     const lspSymbols = requireTool(tools, "lsp_symbols");
 
     const result = await lspSymbols.execute(
@@ -337,7 +345,7 @@ describe("tool parallel read lsp integration", () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-doc-scope-dir-");
     const runtime = createRuntime(workspace);
     const sessionId = "parallel-read-doc-scope-dir";
-    const tools = createLspTools({ runtime });
+    const tools = createLspTools({ runtime: createBundledToolRuntime(runtime) });
     const lspSymbols = requireTool(tools, "lsp_symbols");
 
     const result = await lspSymbols.execute(
@@ -364,7 +372,7 @@ describe("tool parallel read lsp integration", () => {
     config.parallel.maxConcurrent = 1000;
     const runtime = createRuntime(workspace, config);
     const sessionId = "parallel-read-batch-cap";
-    const tools = createLspTools({ runtime });
+    const tools = createLspTools({ runtime: createBundledToolRuntime(runtime) });
     const lspSymbols = requireTool(tools, "lsp_symbols");
 
     await lspSymbols.execute(
@@ -392,7 +400,7 @@ describe("tool parallel read lsp integration", () => {
   test("does not emit telemetry when session id is unavailable in tool context", async () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-no-session-");
     const runtime = createRuntime(workspace);
-    const tools = createLspTools({ runtime });
+    const tools = createLspTools({ runtime: createBundledToolRuntime(runtime) });
     const lspSymbols = requireTool(tools, "lsp_symbols");
 
     await lspSymbols.execute(
@@ -408,7 +416,7 @@ describe("tool parallel read lsp integration", () => {
     );
 
     expect(
-      runtime.events.query("parallel-read-no-session", { type: "tool_parallel_read" }),
+      runtime.inspect.events.query("parallel-read-no-session", { type: "tool_parallel_read" }),
     ).toHaveLength(0);
   });
 
@@ -421,7 +429,7 @@ describe("tool parallel read lsp integration", () => {
     try {
       const runtime = createRuntime(workspace);
       const sessionId = "parallel-read-failures";
-      const tools = createLspTools({ runtime });
+      const tools = createLspTools({ runtime: createBundledToolRuntime(runtime) });
       const lspSymbols = requireTool(tools, "lsp_symbols");
 
       await lspSymbols.execute(
@@ -461,7 +469,7 @@ describe("tool parallel read lsp integration", () => {
     const workspace = workspaceWithSampleFiles("brewva-tools-invalid-cwd-file-");
     const runtime = createRuntime(workspace);
     const sessionId = "parallel-read-invalid-cwd-file";
-    const tools = createLspTools({ runtime });
+    const tools = createLspTools({ runtime: createBundledToolRuntime(runtime) });
     const lspSymbols = requireTool(tools, "lsp_symbols");
 
     const fileCwd = join(workspace, "src/a.ts");
@@ -519,7 +527,7 @@ describe("tool parallel read lsp integration", () => {
       writeFileSync(join(workspace, "src/a/foo.ts"), "export const ok: string = 'ok';\n", "utf8");
       writeFileSync(join(workspace, "src/b/foo.ts"), "export const broken: string = 1;\n", "utf8");
 
-      const tools = createLspTools({ runtime });
+      const tools = createLspTools({ runtime: createBundledToolRuntime(runtime) });
       const lspDiagnostics = requireTool(tools, "lsp_diagnostics");
 
       const result = await lspDiagnostics.execute(

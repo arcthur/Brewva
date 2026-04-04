@@ -7,6 +7,7 @@ import {
   DEFAULT_BREWVA_CONFIG,
   buildScheduleIntentFiredEvent,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { setStaticContextPressureThresholds } from "../../fixtures/config.js";
 import { patchDateNow } from "../../helpers/global-state.js";
 import { createOpsRuntimeConfig } from "../../helpers/runtime.js";
@@ -29,20 +30,20 @@ describe("runtime facade coverage", () => {
       const sessionId = "runtime-facade-poll-stall-1";
 
       now = 1_740_000_000_100;
-      runtime.task.setSpec(sessionId, {
+      runtime.authority.task.setSpec(sessionId, {
         schema: "brewva.task.v1",
         goal: "Detect stalled execution through the public runtime facade",
       });
 
-      runtime.session.pollStall(sessionId, {
+      runtime.maintain.session.pollStall(sessionId, {
         now: now + 1_001,
         thresholdMs: 1_000,
       });
 
-      const state = runtime.task.getState(sessionId);
+      const state = runtime.inspect.task.getState(sessionId);
       expect(state.blockers).toEqual([]);
 
-      const detected = runtime.events.query(sessionId, {
+      const detected = runtime.inspect.events.query(sessionId, {
         type: "task_stuck_detected",
       });
       expect(detected).toHaveLength(1);
@@ -52,12 +53,14 @@ describe("runtime facade coverage", () => {
         idleMs: 1_001,
       });
 
-      runtime.session.pollStall(sessionId, {
+      runtime.maintain.session.pollStall(sessionId, {
         now: now + 1_500,
         thresholdMs: 1_000,
       });
 
-      expect(runtime.events.query(sessionId, { type: "task_stuck_detected" })).toHaveLength(1);
+      expect(runtime.inspect.events.query(sessionId, { type: "task_stuck_detected" })).toHaveLength(
+        1,
+      );
     } finally {
       restoreNow();
     }
@@ -68,48 +71,48 @@ describe("runtime facade coverage", () => {
     const sessionId = "runtime-facade-clear-state-1";
     const observed: string[] = [];
 
-    const unsubscribeObserved = runtime.session.onClearState((id) => {
+    const unsubscribeObserved = runtime.maintain.session.onClearState((id) => {
       observed.push(id);
     });
-    runtime.session.onClearState(() => {
+    runtime.maintain.session.onClearState(() => {
       throw new Error("listener exploded");
     });
 
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "worker-1",
       status: "ok",
       summary: "first worker result",
     });
 
-    runtime.session.clearState(sessionId);
+    runtime.maintain.session.clearState(sessionId);
 
     expect(observed).toEqual([sessionId]);
-    expect(runtime.session.listWorkerResults(sessionId)).toHaveLength(0);
+    expect(runtime.inspect.session.listWorkerResults(sessionId)).toHaveLength(0);
 
     unsubscribeObserved();
     unsubscribeObserved();
 
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "worker-2",
       status: "ok",
       summary: "second worker result",
     });
 
-    runtime.session.clearState(sessionId);
+    runtime.maintain.session.clearState(sessionId);
 
     expect(observed).toEqual([sessionId]);
-    expect(runtime.session.listWorkerResults(sessionId)).toHaveLength(0);
+    expect(runtime.inspect.session.listWorkerResults(sessionId)).toHaveLength(0);
   });
 
   test("session.getIntegrity aggregates session and WAL durability issues", () => {
     const workspace = createTestWorkspace("runtime-facade-session-integrity");
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "runtime-facade-session-integrity-1";
-    const walDir = join(workspace, DEFAULT_BREWVA_CONFIG.infrastructure.turnWal.dir);
+    const walDir = join(workspace, DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal.dir);
     mkdirSync(walDir, { recursive: true });
     writeFileSync(join(walDir, "runtime.jsonl"), '{"broken":\n', "utf8");
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "tool_output_artifact_persist_failed",
       payload: {
@@ -117,14 +120,14 @@ describe("runtime facade coverage", () => {
       },
     });
 
-    const integrity = runtime.session.getIntegrity(sessionId);
+    const integrity = runtime.inspect.session.getIntegrity(sessionId);
     expect(integrity.status).toBe("unavailable");
     expect(integrity.issues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          domain: "turn_wal",
+          domain: "recovery_wal",
           severity: "unavailable",
-          reason: "turn_wal_malformed_row",
+          reason: "recovery_wal_malformed_row",
         }),
         expect.objectContaining({
           domain: "artifact",
@@ -145,7 +148,7 @@ describe("runtime facade coverage", () => {
     });
     const sessionId = "runtime-facade-structured-events-1";
 
-    const recorded = runtime.events.record({
+    const recorded = recordRuntimeEvent(runtime, {
       sessionId,
       type: "governance_cost_anomaly_detected",
       turn: 3,
@@ -159,8 +162,8 @@ describe("runtime facade coverage", () => {
       throw new Error("expected governance event to be recorded at debug level");
     }
 
-    const structured = runtime.events.toStructured(recorded);
-    const listed = runtime.events.queryStructured(sessionId, {
+    const structured = runtime.inspect.events.toStructured(recorded);
+    const listed = runtime.inspect.events.queryStructured(sessionId, {
       type: "governance_cost_anomaly_detected",
     });
     const listedStructured = listed[0];
@@ -188,7 +191,7 @@ describe("runtime facade coverage", () => {
     });
     const sessionId = "runtime-facade-iteration-facts-1";
 
-    const metricEvent = runtime.events.recordMetricObservation(sessionId, {
+    const metricEvent = runtime.authority.events.recordMetricObservation(sessionId, {
       metricKey: "latency_ms",
       value: 118,
       unit: "ms",
@@ -198,7 +201,7 @@ describe("runtime facade coverage", () => {
       evidenceRefs: ["verification:latency"],
       summary: "Measured after the first causal unit.",
     });
-    const guardEvent = runtime.events.recordGuardResult(sessionId, {
+    const guardEvent = runtime.authority.events.recordGuardResult(sessionId, {
       guardKey: "error_budget",
       status: "pass",
       iterationKey: "iter-1",
@@ -210,7 +213,9 @@ describe("runtime facade coverage", () => {
     expect(metricEvent?.type).toBe("iteration_metric_observed");
     expect(guardEvent?.type).toBe("iteration_guard_recorded");
 
-    expect(runtime.events.listMetricObservations(sessionId, { metricKey: "latency_ms" })).toEqual([
+    expect(
+      runtime.inspect.events.listMetricObservations(sessionId, { metricKey: "latency_ms" }),
+    ).toEqual([
       expect.objectContaining({
         metricKey: "latency_ms",
         value: 118,
@@ -220,7 +225,9 @@ describe("runtime facade coverage", () => {
         source: "goal-loop",
       }),
     ]);
-    expect(runtime.events.listGuardResults(sessionId, { guardKey: "error_budget" })).toEqual([
+    expect(
+      runtime.inspect.events.listGuardResults(sessionId, { guardKey: "error_budget" }),
+    ).toEqual([
       expect.objectContaining({
         guardKey: "error_budget",
         status: "pass",
@@ -229,7 +236,7 @@ describe("runtime facade coverage", () => {
       }),
     ]);
 
-    const structuredMetric = runtime.events.queryStructured(sessionId, {
+    const structuredMetric = runtime.inspect.events.queryStructured(sessionId, {
       type: "iteration_metric_observed",
     })[0];
     expect(structuredMetric).toMatchObject({
@@ -251,7 +258,7 @@ describe("runtime facade coverage", () => {
     });
     const sessionId = "runtime-facade-skill-refresh-1";
 
-    const refreshed = runtime.skills.refresh({
+    const refreshed = runtime.maintain.skills.refresh({
       sessionId,
       reason: "unit_test_refresh",
     });
@@ -267,7 +274,7 @@ describe("runtime facade coverage", () => {
     expect(writtenIndex.schemaVersion).toBe(1);
 
     expect(
-      runtime.events.query(sessionId, { type: "skill_refresh_recorded" })[0]?.payload,
+      runtime.inspect.events.query(sessionId, { type: "skill_refresh_recorded" })[0]?.payload,
     ).toMatchObject({
       reason: "unit_test_refresh",
       indexPath: refreshed.indexPath,
@@ -294,19 +301,19 @@ describe("runtime facade coverage", () => {
       }),
     });
     const sessionId = "runtime-facade-exact-call-guard-1";
-    runtime.tools.registerGovernanceDescriptor("browser_snapshot", {
+    runtime.maintain.tools.registerGovernanceDescriptor("browser_snapshot", {
       effects: ["runtime_observe"],
       boundary: "safe",
       defaultRisk: "low",
     });
-    runtime.tools.registerGovernanceDescriptor("browser_get", {
+    runtime.maintain.tools.registerGovernanceDescriptor("browser_get", {
       effects: ["runtime_observe"],
       boundary: "safe",
       defaultRisk: "low",
     });
 
     const start = (toolCallId: string, toolName: string, args: Record<string, unknown>) =>
-      runtime.tools.start({
+      runtime.authority.tools.start({
         sessionId,
         toolCallId,
         toolName,
@@ -326,15 +333,17 @@ describe("runtime facade coverage", () => {
     expect(blocked.allowed).toBe(false);
     expect(blocked.reason).toContain("identical arguments 3 times consecutively");
 
-    expect(runtime.events.listGuardResults(sessionId, { guardKey: "exact_call_loop" })).toEqual([
+    expect(
+      runtime.inspect.events.listGuardResults(sessionId, { guardKey: "exact_call_loop" }),
+    ).toEqual([
       expect.objectContaining({
         guardKey: "exact_call_loop",
         status: "fail",
       }),
     ]);
 
-    runtime.tools.unregisterGovernanceDescriptor("browser_snapshot");
-    runtime.tools.unregisterGovernanceDescriptor("browser_get");
+    runtime.maintain.tools.unregisterGovernanceDescriptor("browser_snapshot");
+    runtime.maintain.tools.unregisterGovernanceDescriptor("browser_get");
   });
 
   test("iteration fact helpers stay scoped to the current session", () => {
@@ -347,7 +356,7 @@ describe("runtime facade coverage", () => {
     const freshChildSessionId = "runtime-facade-iteration-lineage-fresh";
     const loopSource = "goal-loop:coverage-raise-2026-03-22";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: parentSessionId,
       type: "schedule_intent",
       timestamp: 10,
@@ -366,7 +375,7 @@ describe("runtime facade coverage", () => {
         }),
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: parentSessionId,
       type: "schedule_intent",
       timestamp: 11,
@@ -385,7 +394,7 @@ describe("runtime facade coverage", () => {
         }),
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: parentSessionId,
       type: "schedule_intent",
       timestamp: 12,
@@ -433,7 +442,7 @@ describe("runtime facade coverage", () => {
     ] as const;
 
     for (const entry of metricSessions) {
-      runtime.events.recordMetricObservation(entry.sessionId, {
+      runtime.authority.events.recordMetricObservation(entry.sessionId, {
         metricKey: "coverage_pct",
         value: entry.value,
         unit: "%",
@@ -442,7 +451,7 @@ describe("runtime facade coverage", () => {
         source: loopSource,
         timestamp: entry.timestamp,
       });
-      runtime.events.recordGuardResult(entry.sessionId, {
+      runtime.authority.events.recordGuardResult(entry.sessionId, {
         guardKey: "typecheck",
         status: "pass",
         iterationKey: entry.iterationKey,
@@ -451,7 +460,7 @@ describe("runtime facade coverage", () => {
       });
     }
 
-    runtime.events.recordMetricObservation(childSessionId, {
+    runtime.authority.events.recordMetricObservation(childSessionId, {
       metricKey: "coverage_pct",
       value: 55,
       unit: "%",
@@ -462,7 +471,7 @@ describe("runtime facade coverage", () => {
     });
 
     expect(
-      runtime.events.listMetricObservations(childSessionId, {
+      runtime.inspect.events.listMetricObservations(childSessionId, {
         metricKey: "coverage_pct",
         source: loopSource,
         sessionScope: "current_session",
@@ -475,7 +484,7 @@ describe("runtime facade coverage", () => {
     ]);
 
     expect(
-      runtime.events.listMetricObservations(childSessionId, {
+      runtime.inspect.events.listMetricObservations(childSessionId, {
         metricKey: "coverage_pct",
         source: loopSource,
         sessionScope: "current_session",
@@ -488,7 +497,7 @@ describe("runtime facade coverage", () => {
     ]);
 
     expect(
-      runtime.events.listMetricObservations(parentSessionId, {
+      runtime.inspect.events.listMetricObservations(parentSessionId, {
         metricKey: "coverage_pct",
         source: loopSource,
         sessionScope: "current_session",
@@ -496,7 +505,7 @@ describe("runtime facade coverage", () => {
     ).toEqual([expect.objectContaining({ sessionId: parentSessionId, value: 72 })]);
 
     expect(
-      runtime.events.listGuardResults(childSessionId, {
+      runtime.inspect.events.listGuardResults(childSessionId, {
         guardKey: "typecheck",
         source: loopSource,
         sessionScope: "current_session",
@@ -517,23 +526,23 @@ describe("runtime facade coverage", () => {
     });
     const sessionId = "runtime-facade-context-1";
 
-    expect(runtime.context.getUsageRatio(undefined)).toBeNull();
+    expect(runtime.inspect.context.getUsageRatio(undefined)).toBeNull();
     expect(
-      runtime.context.getUsageRatio({
+      runtime.inspect.context.getUsageRatio({
         tokens: 950,
         contextWindow: 1_000,
         percent: 95,
       }),
     ).toBe(0.95);
 
-    runtime.context.observeUsage(sessionId, {
+    runtime.maintain.context.observeUsage(sessionId, {
       tokens: 950,
       contextWindow: 1_000,
       percent: 95,
     });
 
-    expect(runtime.context.getPressureLevel(sessionId)).toBe("critical");
-    expect(runtime.context.getCompactionWindowTurns()).toBe(5);
+    expect(runtime.inspect.context.getPressureLevel(sessionId)).toBe("critical");
+    expect(runtime.inspect.context.getCompactionWindowTurns()).toBe(5);
   });
 
   test("context lifecycle hooks hydrate cold sessions and clear turn-local injection reservations", async () => {
@@ -556,22 +565,26 @@ describe("runtime facade coverage", () => {
 
     expect(sessionState.getExistingCell(sessionId)).toBeUndefined();
 
-    runtime.context.onUserInput(sessionId);
+    runtime.maintain.context.onUserInput(sessionId);
 
     expect(sessionState.getExistingCell(sessionId)?.hydration.status).toBe("ready");
 
-    runtime.context.onTurnStart(sessionId, 1);
-    await runtime.context.buildInjection(sessionId, "Summarize the current runtime posture.", {
-      tokens: 256,
-      contextWindow: 8_192,
-      percent: 0.03,
-    });
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    await runtime.maintain.context.buildInjection(
+      sessionId,
+      "Summarize the current runtime posture.",
+      {
+        tokens: 256,
+        contextWindow: 8_192,
+        percent: 0.03,
+      },
+    );
 
     expect(
       sessionState.getExistingCell(sessionId)?.reservedContextInjectionTokensByScope.size ?? 0,
     ).toBeGreaterThan(0);
 
-    runtime.context.onTurnEnd(sessionId);
+    runtime.maintain.context.onTurnEnd(sessionId);
 
     expect(sessionState.getExistingCell(sessionId)?.hydration.status).toBe("ready");
     expect(
@@ -584,7 +597,7 @@ describe("runtime facade coverage", () => {
     const sessionA = "runtime-facade-cost-a";
     const sessionB = "runtime-facade-cost-b";
 
-    expect(runtime.cost.getSummary(sessionA)).toEqual({
+    expect(runtime.inspect.cost.getSummary(sessionA)).toEqual({
       inputTokens: 0,
       outputTokens: 0,
       cacheReadTokens: 0,
@@ -602,9 +615,9 @@ describe("runtime facade coverage", () => {
       },
     });
 
-    runtime.context.onTurnStart(sessionA, 1);
-    runtime.tools.markCall(sessionA, "read");
-    runtime.cost.recordAssistantUsage({
+    runtime.maintain.context.onTurnStart(sessionA, 1);
+    runtime.authority.tools.markCall(sessionA, "read");
+    runtime.authority.cost.recordAssistantUsage({
       sessionId: sessionA,
       model: "test/model",
       inputTokens: 10,
@@ -615,8 +628,8 @@ describe("runtime facade coverage", () => {
       costUsd: 0.0002,
     });
 
-    const summaryA = runtime.cost.getSummary(sessionA);
-    const summaryB = runtime.cost.getSummary(sessionB);
+    const summaryA = runtime.inspect.cost.getSummary(sessionA);
+    const summaryB = runtime.inspect.cost.getSummary(sessionB);
 
     expect(summaryA.totalTokens).toBe(15);
     expect(summaryA.totalCostUsd).toBe(0.0002);
@@ -663,8 +676,8 @@ describe("runtime facade coverage", () => {
 
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "runtime-facade-worker-apply-1";
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "worker-a",
       status: "ok",
       summary: "worker apply candidate",
@@ -683,7 +696,7 @@ describe("runtime facade coverage", () => {
       },
     });
 
-    const report = runtime.session.applyMergedWorkerResults(sessionId, {
+    const report = runtime.authority.session.applyMergedWorkerResults(sessionId, {
       toolName: "worker_results_apply",
       toolCallId: "tc-runtime-facade-worker-apply",
     });
@@ -691,6 +704,6 @@ describe("runtime facade coverage", () => {
     expect(report.status).toBe("applied");
     expect(report.appliedPaths).toEqual(["src/facade.ts"]);
     expect(readFileSync(filePath, "utf8")).toBe(afterText);
-    expect(runtime.session.listWorkerResults(sessionId)).toHaveLength(0);
+    expect(runtime.inspect.session.listWorkerResults(sessionId)).toHaveLength(0);
   });
 });

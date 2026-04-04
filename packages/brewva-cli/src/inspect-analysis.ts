@@ -13,16 +13,18 @@ import {
   TOOL_RESULT_RECORDED_EVENT_TYPE,
   VERIFICATION_OUTCOME_RECORDED_EVENT_TYPE,
   VERIFICATION_WRITE_MARKED_EVENT_TYPE,
+  type BrewvaEventRecord,
+  type BrewvaOperatorRuntimePort,
+  type EvidenceLedgerRow,
+} from "@brewva/brewva-runtime";
+import {
   collectPathCandidates,
   collectPersistedPatchPaths,
   listPersistedPatchSets,
   resolveWorkspacePath,
   toWorkspaceRelativePath,
-  type BrewvaEventRecord,
-  type BrewvaRuntime,
-  type EvidenceLedgerRow,
   type PersistedPatchSet,
-} from "@brewva/brewva-runtime";
+} from "@brewva/brewva-runtime/internal";
 import { formatISO } from "date-fns";
 
 const IGNORED_WORKSPACE_PREFIXES = [".orchestrator/", ".brewva/", "node_modules/"] as const;
@@ -118,7 +120,7 @@ interface InspectBaseReportForAnalysis {
     path: string;
     integrityReason: string | null;
   };
-  turnWal: {
+  recoveryWal: {
     filePath: string;
   };
   snapshots: {
@@ -127,7 +129,7 @@ interface InspectBaseReportForAnalysis {
   };
   consistency: {
     ledgerIntegrity: "ok" | "invalid";
-    pendingTurnWal: number;
+    pendingRecoveryWal: number;
   };
 }
 
@@ -392,8 +394,8 @@ function buildDurabilityFinding(base: InspectBaseReportForAnalysis): InspectFind
       `ledger integrity invalid${base.ledger.integrityReason ? `: ${base.ledger.integrityReason}` : ""}`,
     );
   }
-  if (base.consistency.pendingTurnWal > 0) {
-    issues.push(`pending turn WAL entries=${base.consistency.pendingTurnWal}`);
+  if (base.consistency.pendingRecoveryWal > 0) {
+    issues.push(`pending Recovery WAL entries=${base.consistency.pendingRecoveryWal}`);
   }
 
   if (issues.length === 0) {
@@ -407,7 +409,10 @@ function buildDurabilityFinding(base: InspectBaseReportForAnalysis): InspectFind
       : "warn",
     confidence: "high",
     summary: `Durability and replay consistency issues detected: ${issues.join("; ")}.`,
-    evidenceRefs: topEvidenceRefs({ eventIds, paths: [base.ledger.path, base.turnWal.filePath] }),
+    evidenceRefs: topEvidenceRefs({
+      eventIds,
+      paths: [base.ledger.path, base.recoveryWal.filePath],
+    }),
   };
 }
 
@@ -684,7 +689,7 @@ export function clampText(value: string, maxChars: number): string {
 }
 
 export function resolveInspectDirectory(
-  runtime: BrewvaRuntime,
+  runtime: Pick<BrewvaOperatorRuntimePort, "cwd" | "workspaceRoot">,
   positionalDir: string | undefined,
   optionDir: string | undefined,
 ): InspectDirectory {
@@ -725,15 +730,15 @@ export function resolveInspectDirectory(
 }
 
 export function buildInspectAnalysis(input: {
-  runtime: BrewvaRuntime;
+  runtime: BrewvaOperatorRuntimePort;
   sessionId: string;
   directory: InspectDirectory;
   base: InspectBaseReportForAnalysis;
 }): InspectAnalysisReport {
-  const snapshotEvents = input.runtime.events.query(input.sessionId);
+  const snapshotEvents = input.runtime.inspect.events.query(input.sessionId);
   const cutoffEvent = snapshotEvents[snapshotEvents.length - 1] ?? null;
   const cutoffTimestamp = cutoffEvent?.timestamp ?? null;
-  const ledgerRows = input.runtime.ledger
+  const ledgerRows = input.runtime.inspect.ledger
     .listRows(input.sessionId)
     .filter((row) => cutoffTimestamp === null || row.timestamp <= cutoffTimestamp);
   const patchSets = listPersistedPatchSets({

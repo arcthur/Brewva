@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HostedDelegationStore } from "@brewva/brewva-gateway";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createWorkflowStatusTool } from "@brewva/brewva-tools";
 import { extractTextContent, mergeContext } from "./tools-flow.helpers.js";
 
@@ -27,7 +28,7 @@ describe("workflow_status contract", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "workflow-status-stale";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 100,
@@ -41,7 +42,7 @@ describe("workflow_status contract", () => {
         },
       } as Record<string, unknown>,
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_outcome_recorded",
       timestamp: 110,
@@ -53,7 +54,7 @@ describe("workflow_status contract", () => {
         evidenceFreshness: "fresh",
       } as Record<string, unknown>,
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_write_marked",
       timestamp: 120,
@@ -104,7 +105,7 @@ describe("workflow_status contract", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "workflow-status-pending";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 100,
@@ -118,7 +119,7 @@ describe("workflow_status contract", () => {
         },
       } as Record<string, unknown>,
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_outcome_recorded",
       timestamp: 110,
@@ -129,7 +130,7 @@ describe("workflow_status contract", () => {
         evidenceFreshness: "fresh",
       } as Record<string, unknown>,
     });
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "worker-1",
       status: "ok",
       summary: "Patch result ready for merge/apply.",
@@ -162,7 +163,7 @@ describe("workflow_status contract", () => {
     const sessionId = "workflow-status-handoff";
     const delegationStore = new HostedDelegationStore(runtime);
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "subagent_completed",
       payload: {
@@ -245,7 +246,7 @@ describe("workflow_status contract", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "workflow-status-stall";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "task_stall_adjudicated",
       timestamp: 200,
@@ -307,7 +308,7 @@ describe("workflow_status contract", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "workflow-status-expanded";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 100,
@@ -321,7 +322,7 @@ describe("workflow_status contract", () => {
         },
       } as Record<string, unknown>,
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 110,
@@ -335,7 +336,7 @@ describe("workflow_status contract", () => {
         },
       } as Record<string, unknown>,
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 120,
@@ -349,7 +350,7 @@ describe("workflow_status contract", () => {
         },
       } as Record<string, unknown>,
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 130,
@@ -374,7 +375,7 @@ describe("workflow_status contract", () => {
         },
       } as Record<string, unknown>,
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_outcome_recorded",
       timestamp: 140,
@@ -385,7 +386,7 @@ describe("workflow_status contract", () => {
         evidenceFreshness: "fresh",
       } as Record<string, unknown>,
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 150,
@@ -399,7 +400,7 @@ describe("workflow_status contract", () => {
         },
       } as Record<string, unknown>,
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 160,
@@ -442,7 +443,7 @@ describe("workflow_status contract", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "workflow-status-limit";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 100,
@@ -456,7 +457,7 @@ describe("workflow_status contract", () => {
         },
       } as Record<string, unknown>,
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_outcome_recorded",
       timestamp: 110,
@@ -494,7 +495,7 @@ describe("workflow_status contract", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "workflow-status-acceptance";
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Land the closure UX",
       acceptance: {
@@ -502,7 +503,7 @@ describe("workflow_status contract", () => {
         criteria: ["Operator accepts the result before done."],
       },
     });
-    runtime.task.addItem(sessionId, {
+    runtime.authority.task.addItem(sessionId, {
       id: "item-1",
       text: "Finish the task",
       status: "done",

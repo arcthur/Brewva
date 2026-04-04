@@ -19,7 +19,9 @@ describe("channel runtime manager", () => {
     expect(runtime.config.ledger.path).toBe(".brewva/agents/jack/state/ledger/evidence.jsonl");
     expect(runtime.config.projection.dir).toBe(".brewva/agents/jack/state/projection");
     expect(runtime.config.infrastructure.events.dir).toBe(".brewva/agents/jack/state/events");
-    expect(runtime.config.infrastructure.turnWal.dir).toBe(".brewva/agents/jack/state/turn-wal");
+    expect(runtime.config.infrastructure.recoveryWal.dir).toBe(
+      ".brewva/agents/jack/state/recovery-wal",
+    );
     expect(runtime.config.schedule.projectionPath).toBe(
       ".brewva/agents/jack/state/schedule/intents.jsonl",
     );

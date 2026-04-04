@@ -47,7 +47,7 @@ describe("provider request recovery", () => {
       },
     });
     expect(
-      runtime.events.queryStructured(sessionId, {
+      runtime.inspect.events.queryStructured(sessionId, {
         type: "session_turn_transition",
       })[0]?.payload,
     ).toMatchObject({
@@ -87,7 +87,7 @@ describe("provider request recovery", () => {
 
     expect(patched).toBeUndefined();
     expect(
-      runtime.events.queryStructured(sessionId, {
+      runtime.inspect.events.queryStructured(sessionId, {
         type: "session_turn_transition",
       })[0]?.payload,
     ).toMatchObject({

@@ -3,9 +3,10 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createSessionCompactTool, createTapeTools } from "@brewva/brewva-tools";
 import { requireDefined } from "../../helpers/assertions.js";
-import { createRuntimeConfig } from "../../helpers/runtime.js";
+import { createBundledToolRuntime, createRuntimeConfig } from "../../helpers/runtime.js";
 import { cleanupWorkspace, createTestWorkspace } from "../../helpers/workspace.js";
 import { extractTextContent, fakeContext, mergeContext } from "./tools-flow.helpers.js";
 
@@ -41,7 +42,7 @@ describe("session coordination tool contracts", () => {
     let capturedInstructions: string | undefined;
     let hiddenFollowUpCalls = 0;
 
-    const tool = createSessionCompactTool({ runtime });
+    const tool = createSessionCompactTool({ runtime: createBundledToolRuntime(runtime) });
     const result = await tool.execute(
       "tc-compact",
       { reason: "context pressure reached high" },
@@ -65,9 +66,9 @@ describe("session coordination tool contracts", () => {
     const text = extractTextContent(result);
     expect(text).toContain("Session compaction requested");
     expect(compactCalls).toBe(1);
-    expect(capturedInstructions).toBe(runtime.context.getCompactionInstructions());
+    expect(capturedInstructions).toBe(runtime.inspect.context.getCompactionInstructions());
     expect(hiddenFollowUpCalls).toBe(0);
-    const requestedEvent = runtime.events.query(sessionId, {
+    const requestedEvent = runtime.inspect.events.query(sessionId, {
       type: "session_compact_requested",
       last: 1,
     })[0];
@@ -84,31 +85,13 @@ describe("session coordination tool contracts", () => {
 
     const tool = createSessionCompactTool({
       runtime: {
-        context: {
-          getCompactionInstructions: () => "compact-now",
-          getUsage: () => undefined,
-          getPressureStatus: () => ({
-            level: "high",
-            usageRatio: 0.95,
-            hardLimitRatio: 0.97,
-            compactionThresholdRatio: 0.9,
-          }),
+        inspect: {
+          context: {
+            getCompactionInstructions: () => "compact-now",
+          },
         },
-        events: {
-          list: () => [],
-          getTapeStatus: () => ({
-            totalEntries: 0,
-            entriesSinceAnchor: 0,
-            entriesSinceCheckpoint: 0,
-            tapePressure: "low",
-            thresholds: { low: 10, medium: 20, high: 30 },
-            lastAnchor: null,
-            lastCheckpointId: null,
-            outputSearch: null,
-          }),
-          recordTapeHandoff: () => ({ ok: false, error: "unsupported" }),
-          searchTape: () => ({ matches: [], scannedEvents: 0, scope: "current_phase", query: "" }),
-          record: (event: {
+        internal: {
+          recordEvent: (event: {
             sessionId: string;
             type: string;
             payload?: Record<string, unknown>;
@@ -118,10 +101,9 @@ describe("session coordination tool contracts", () => {
               type: event.type,
               payload: event.payload,
             });
-            return undefined;
           },
         },
-      } as unknown as BrewvaRuntime,
+      } as any,
     });
 
     await tool.execute(
@@ -144,9 +126,9 @@ describe("session coordination tool contracts", () => {
     const tapeInfoWorkspace = mkdtempSync(join(tmpdir(), "brewva-tools-tape-info-"));
     const runtime = new BrewvaRuntime({ cwd: tapeInfoWorkspace });
     const sessionId = "s12";
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "validate tape tools",
     });
@@ -169,9 +151,9 @@ describe("session coordination tool contracts", () => {
 
     const handoffText = extractTextContent(handoffResult);
     expect(handoffText).toContain("Tape handoff recorded");
-    expect(runtime.events.query(sessionId, { type: "anchor" }).length).toBe(1);
+    expect(runtime.inspect.events.query(sessionId, { type: "anchor" }).length).toBe(1);
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "tool_output_search",
       payload: {
@@ -184,7 +166,7 @@ describe("session coordination tool contracts", () => {
         matchLayers: { q1: "exact" },
       } as Record<string, unknown>,
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "tool_output_search",
       payload: {
@@ -221,18 +203,18 @@ describe("session coordination tool contracts", () => {
     const tapeSearchWorkspace = mkdtempSync(join(tmpdir(), "brewva-tools-tape-search-"));
     const runtime = new BrewvaRuntime({ cwd: tapeSearchWorkspace });
     const sessionId = "s12-search";
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
 
-    runtime.events.recordTapeHandoff(sessionId, {
+    runtime.authority.events.recordTapeHandoff(sessionId, {
       name: "investigation",
       summary: "Collected flaky test evidence.",
       nextSteps: "Implement fix.",
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "task_event",
       payload: {
-        schema: "brewva.task.ledger.v1",
+        schema: "brewva.task.inspect.ledger.v1",
         kind: "item_added",
         item: { id: "i1", text: "Fix flaky pipeline", status: "todo" },
       } as Record<string, unknown>,

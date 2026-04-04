@@ -58,13 +58,10 @@ export function createResourceLeaseTool(options: BrewvaToolOptions): ToolDefinit
       const sessionId = getSessionId(ctx);
 
       if (params.action === "request") {
-        if (!options.runtime.tools.requestResourceLease) {
-          return failTextResult("Error: Resource lease API is unavailable.", { ok: false });
-        }
         if (typeof params.reason !== "string" || params.reason.trim().length === 0) {
           return failTextResult("Error: reason is required for action=request.", { ok: false });
         }
-        const result = options.runtime.tools.requestResourceLease(sessionId, {
+        const result = options.runtime.authority.tools.requestResourceLease(sessionId, {
           reason: params.reason,
           budget: {
             maxToolCalls: params.maxToolCalls,
@@ -85,10 +82,7 @@ export function createResourceLeaseTool(options: BrewvaToolOptions): ToolDefinit
       }
 
       if (params.action === "list") {
-        if (!options.runtime.tools.listResourceLeases) {
-          return failTextResult("Error: Resource lease API is unavailable.", { ok: false });
-        }
-        const leases = options.runtime.tools.listResourceLeases(sessionId, {
+        const leases = options.runtime.inspect.tools.listResourceLeases(sessionId, {
           includeInactive: params.includeInactive,
           skillName: params.skillName,
         });
@@ -105,13 +99,10 @@ export function createResourceLeaseTool(options: BrewvaToolOptions): ToolDefinit
         });
       }
 
-      if (!options.runtime.tools.cancelResourceLease) {
-        return failTextResult("Error: Resource lease API is unavailable.", { ok: false });
-      }
       if (typeof params.leaseId !== "string" || params.leaseId.trim().length === 0) {
         return failTextResult("Error: leaseId is required for action=cancel.", { ok: false });
       }
-      const result = options.runtime.tools.cancelResourceLease(
+      const result = options.runtime.authority.tools.cancelResourceLease(
         sessionId,
         params.leaseId,
         params.reason,

@@ -6,8 +6,9 @@ import {
   TOOL_OUTPUT_ARTIFACT_PERSISTED_EVENT_TYPE,
   TOOL_OUTPUT_DISTILLED_EVENT_TYPE,
   TOOL_OUTPUT_OBSERVED_EVENT_TYPE,
-  type BrewvaRuntime,
+  type BrewvaHostedRuntimePort,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { LRUCache } from "lru-cache";
 import { persistToolOutputArtifact } from "./tool-output-artifact-store.js";
@@ -241,7 +242,7 @@ function extractTextContent(content: unknown): string {
 }
 
 function buildOutputObservation(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   sessionId: string,
   outputText: string,
 ): {
@@ -255,8 +256,8 @@ function buildOutputObservation(
   contextHardLimitPercent: number;
   contextCompactionThresholdPercent: number;
 } {
-  const usage = runtime.context.getUsage(sessionId);
-  const pressure = runtime.context.getPressureStatus(sessionId, usage);
+  const usage = runtime.inspect.context.getUsage(sessionId);
+  const pressure = runtime.inspect.context.getPressureStatus(sessionId, usage);
   return {
     rawChars: outputText.length,
     rawBytes: Buffer.byteLength(outputText, "utf8"),
@@ -270,14 +271,14 @@ function buildOutputObservation(
   };
 }
 
-function resolveWorkspaceRoot(runtime: BrewvaRuntime, context: unknown): string {
+function resolveWorkspaceRoot(runtime: BrewvaHostedRuntimePort, context: unknown): string {
   if (!context || typeof context !== "object") return runtime.cwd;
   const cwd = (context as { cwd?: unknown }).cwd;
   return typeof cwd === "string" && cwd.trim().length > 0 ? cwd : runtime.cwd;
 }
 
 function recordArtifactFailure(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   input: {
     sessionId: string;
     toolCallId: string;
@@ -287,7 +288,7 @@ function recordArtifactFailure(
     artifactRef?: string | null;
   },
 ): void {
-  runtime.events.record({
+  recordRuntimeEvent(runtime, {
     sessionId: input.sessionId,
     type: TOOL_OUTPUT_ARTIFACT_PERSIST_FAILED_EVENT_TYPE,
     payload: {
@@ -301,7 +302,7 @@ function recordArtifactFailure(
 }
 
 function recordToolOutcome(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   input: {
     sessionId: string;
     context: unknown;
@@ -347,7 +348,7 @@ function recordToolOutcome(
     verdict: input.verdict,
   });
 
-  runtime.events.record({
+  recordRuntimeEvent(runtime, {
     sessionId: input.sessionId,
     type: TOOL_OUTPUT_OBSERVED_EVENT_TYPE,
     payload: {
@@ -370,7 +371,7 @@ function recordToolOutcome(
     });
   }
   if (outputArtifact) {
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: input.sessionId,
       type: TOOL_OUTPUT_ARTIFACT_PERSISTED_EVENT_TYPE,
       payload: {
@@ -385,7 +386,7 @@ function recordToolOutcome(
     });
   }
   if (outputDistillation.distillationApplied) {
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: input.sessionId,
       type: TOOL_OUTPUT_DISTILLED_EVENT_TYPE,
       payload: {
@@ -408,7 +409,7 @@ function recordToolOutcome(
     });
   }
 
-  runtime.tools.finish({
+  runtime.authority.tools.finish({
     sessionId: input.sessionId,
     toolCallId: input.toolCallId,
     toolName: input.toolName,
@@ -447,7 +448,10 @@ function recordToolOutcome(
   });
 }
 
-export function registerLedgerWriter(extensionApi: ExtensionAPI, runtime: BrewvaRuntime): void {
+export function registerLedgerWriter(
+  extensionApi: ExtensionAPI,
+  runtime: BrewvaHostedRuntimePort,
+): void {
   const lifecycleStatesBySession = new Map<string, Map<string, ToolLifecycleState>>();
   const finalizedToolCallsBySession = new Map<string, LRUCache<string, true>>();
 

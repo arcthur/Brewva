@@ -7,7 +7,7 @@ import {
 } from "@brewva/brewva-gateway";
 import {
   BrewvaRuntime,
-  PATCH_HISTORY_FILE,
+  createOperatorRuntimePort,
   TASK_EVENT_TYPE,
   TAPE_ANCHOR_EVENT_TYPE,
   TAPE_CHECKPOINT_EVENT_TYPE,
@@ -17,7 +17,9 @@ import {
   foldTaskLedgerEvents,
   foldTruthLedgerEvents,
   type BrewvaEventRecord,
+  type BrewvaOperatorRuntimePort,
 } from "@brewva/brewva-runtime";
+import { PATCH_HISTORY_FILE } from "@brewva/brewva-runtime/internal";
 import { formatISO } from "date-fns";
 import {
   buildInspectAnalysis,
@@ -131,7 +133,7 @@ interface InspectReport {
     workingPath: string;
     workingExists: boolean;
   };
-  turnWal: {
+  recoveryWal: {
     enabled: boolean;
     filePath: string;
     pendingCount: number;
@@ -145,7 +147,7 @@ interface InspectReport {
   };
   consistency: {
     ledgerIntegrity: "ok" | "invalid";
-    pendingTurnWal: number;
+    pendingRecoveryWal: number;
   };
 }
 
@@ -189,11 +191,11 @@ function toIso(timestamp: number | null | undefined): string | null {
 }
 
 function readLatestEventPayload<T extends object>(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaOperatorRuntimePort,
   sessionId: string,
   type: string,
 ): { payload: T; timestamp: number } | null {
-  const event = runtime.events.query(sessionId, { type, last: 1 })[0];
+  const event = runtime.inspect.events.query(sessionId, { type, last: 1 })[0];
   if (!event?.payload) return null;
   return {
     payload: event.payload as T,
@@ -226,7 +228,7 @@ function buildSkillInspection(events: BrewvaEventRecord[]): InspectReport["skill
 }
 
 function buildVerificationInspection(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaOperatorRuntimePort,
   sessionId: string,
 ): InspectVerification {
   const latest = readLatestEventPayload<Record<string, unknown>>(
@@ -273,15 +275,22 @@ function pathExists(path: string): boolean {
   }
 }
 
-function countSessionPendingWal(runtime: BrewvaRuntime, sessionId: string): number {
-  return runtime.turnWal.listPending().filter((row) => row.sessionId === sessionId).length;
+function countSessionPendingRecoveryWal(
+  runtime: BrewvaOperatorRuntimePort,
+  sessionId: string,
+): number {
+  return runtime.inspect.recovery.listPending().filter((row) => row.sessionId === sessionId).length;
 }
 
-function hasReplayEvent(runtime: BrewvaRuntime, sessionId: string, type: string): boolean {
-  return runtime.events.query(sessionId, { type, last: 1 }).length > 0;
+function hasReplayEvent(
+  runtime: BrewvaOperatorRuntimePort,
+  sessionId: string,
+  type: string,
+): boolean {
+  return runtime.inspect.events.query(sessionId, { type, last: 1 }).length > 0;
 }
 
-function scoreDefaultReplaySession(runtime: BrewvaRuntime, sessionId: string): number {
+function scoreDefaultReplaySession(runtime: BrewvaOperatorRuntimePort, sessionId: string): number {
   if (hasReplayEvent(runtime, sessionId, "session_bootstrap")) {
     return 3;
   }
@@ -296,11 +305,14 @@ function scoreDefaultReplaySession(runtime: BrewvaRuntime, sessionId: string): n
   return 1;
 }
 
-function listAllReplaySessions(runtime: BrewvaRuntime) {
-  return runtime.events.listReplaySessions();
+function listAllReplaySessions(runtime: BrewvaOperatorRuntimePort) {
+  return runtime.inspect.events.listReplaySessions();
 }
 
-function resolveTargetSession(runtime: BrewvaRuntime, requestedSessionId?: string): string | null {
+function resolveTargetSession(
+  runtime: BrewvaOperatorRuntimePort,
+  requestedSessionId?: string,
+): string | null {
   if (requestedSessionId && requestedSessionId.trim().length > 0) {
     return requestedSessionId.trim();
   }
@@ -323,7 +335,7 @@ function resolveTargetSession(runtime: BrewvaRuntime, requestedSessionId?: strin
 }
 
 function buildInspectReport(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaOperatorRuntimePort,
   sessionId: string,
   options: {
     directory?: InspectDirectory;
@@ -331,15 +343,15 @@ function buildInspectReport(
 ): InspectReport {
   const replaySession =
     listAllReplaySessions(runtime).find((entry) => entry.sessionId === sessionId) ?? null;
-  const events = runtime.events.query(sessionId);
-  const structuredEvents = runtime.events.queryStructured(sessionId);
-  const taskEvents = runtime.events.query(sessionId, { type: TASK_EVENT_TYPE });
-  const truthEvents = runtime.events.query(sessionId, { type: TRUTH_EVENT_TYPE });
+  const events = runtime.inspect.events.query(sessionId);
+  const structuredEvents = runtime.inspect.events.queryStructured(sessionId);
+  const taskEvents = runtime.inspect.events.query(sessionId, { type: TASK_EVENT_TYPE });
+  const truthEvents = runtime.inspect.events.query(sessionId, { type: TRUTH_EVENT_TYPE });
   const taskState = foldTaskLedgerEvents(taskEvents);
   const truthState = foldTruthLedgerEvents(truthEvents);
-  const tapeStatus = runtime.events.getTapeStatus(sessionId);
-  const hydration = runtime.session.getHydration(sessionId);
-  const integrity = runtime.session.getIntegrity(sessionId);
+  const tapeStatus = runtime.inspect.events.getTapeStatus(sessionId);
+  const hydration = runtime.inspect.session.getHydration(sessionId);
+  const integrity = runtime.inspect.session.getIntegrity(sessionId);
   const bootstrap = readLatestEventPayload<InspectBootstrapPayload>(
     runtime,
     sessionId,
@@ -347,8 +359,8 @@ function buildInspectReport(
   )?.payload;
   const skillState = buildSkillInspection(events);
   const verification = buildVerificationInspection(runtime, sessionId);
-  const ledgerIntegrity = runtime.ledger.verifyIntegrity(sessionId);
-  const ledgerRows = runtime.ledger.listRows(sessionId);
+  const ledgerIntegrity = runtime.inspect.ledger.verifyIntegrity(sessionId);
+  const ledgerRows = runtime.inspect.ledger.listRows(sessionId);
 
   const projectionRoot = resolve(runtime.workspaceRoot, runtime.config.projection.dir);
   const projectionWorkingPath = join(
@@ -359,7 +371,7 @@ function buildInspectReport(
   );
   const walFilePath = resolve(
     runtime.workspaceRoot,
-    runtime.config.infrastructure.turnWal.dir,
+    runtime.config.infrastructure.recoveryWal.dir,
     "runtime.jsonl",
   );
 
@@ -402,8 +414,9 @@ function buildInspectReport(
       eventCount: replaySession?.eventCount ?? events.length,
       firstEventAt: toIso(events[0]?.timestamp),
       lastEventAt: toIso(replaySession?.lastEventAt ?? events[events.length - 1]?.timestamp),
-      anchorCount: runtime.events.query(sessionId, { type: TAPE_ANCHOR_EVENT_TYPE }).length,
-      checkpointCount: runtime.events.query(sessionId, { type: TAPE_CHECKPOINT_EVENT_TYPE }).length,
+      anchorCount: runtime.inspect.events.query(sessionId, { type: TAPE_ANCHOR_EVENT_TYPE }).length,
+      checkpointCount: runtime.inspect.events.query(sessionId, { type: TAPE_CHECKPOINT_EVENT_TYPE })
+        .length,
       tapePressure: tapeStatus.tapePressure,
       entriesSinceAnchor: tapeStatus.entriesSinceAnchor,
     },
@@ -449,7 +462,7 @@ function buildInspectReport(
     verification,
     hostedTransitions: projectHostedTransitionSnapshot(structuredEvents),
     ledger: {
-      path: runtime.ledger.getPath(),
+      path: runtime.inspect.ledger.getPath(),
       rows: ledgerRows.length,
       integrityValid: ledgerIntegrity.valid,
       integrityReason: ledgerIntegrity.reason ?? null,
@@ -460,11 +473,11 @@ function buildInspectReport(
       workingPath: projectionWorkingPath,
       workingExists: pathExists(projectionWorkingPath),
     },
-    turnWal: {
-      enabled: runtime.config.infrastructure.turnWal.enabled,
+    recoveryWal: {
+      enabled: runtime.config.infrastructure.recoveryWal.enabled,
       filePath: walFilePath,
-      pendingCount: runtime.turnWal.listPending().length,
-      pendingSessionCount: countSessionPendingWal(runtime, sessionId),
+      pendingCount: runtime.inspect.recovery.listPending().length,
+      pendingSessionCount: countSessionPendingRecoveryWal(runtime, sessionId),
     },
     snapshots: {
       sessionDir: snapshotSessionDir,
@@ -474,7 +487,7 @@ function buildInspectReport(
     },
     consistency: {
       ledgerIntegrity: ledgerIntegrity.valid ? "ok" : "invalid",
-      pendingTurnWal: countSessionPendingWal(runtime, sessionId),
+      pendingRecoveryWal: countSessionPendingRecoveryWal(runtime, sessionId),
     },
   };
 
@@ -491,7 +504,7 @@ function buildInspectReport(
 }
 
 function buildSessionInspectReport(input: {
-  runtime: BrewvaRuntime;
+  runtime: BrewvaOperatorRuntimePort;
   sessionId: string;
   directory: InspectDirectory;
 }): SessionInspectReport {
@@ -527,9 +540,9 @@ function formatInspectText(report: InspectReport): string {
     `Hosted breakers: compaction_retry=${renderHostedBreaker(report.hostedTransitions, "compaction_retry")} provider_fallback_retry=${renderHostedBreaker(report.hostedTransitions, "provider_fallback_retry")} max_output_recovery=${renderHostedBreaker(report.hostedTransitions, "max_output_recovery")}`,
     `Ledger: rows=${report.ledger.rows} integrity=${report.ledger.integrityValid ? "valid" : "invalid"} path=${report.ledger.path}`,
     `Projection: enabled=${report.projection.enabled ? "yes" : "no"} working=${report.projection.workingExists ? "present" : "missing"} path=${report.projection.workingPath}`,
-    `Turn WAL: enabled=${report.turnWal.enabled ? "yes" : "no"} pending=${report.turnWal.pendingCount} sessionPending=${report.turnWal.pendingSessionCount} file=${report.turnWal.filePath}`,
+    `Recovery WAL: enabled=${report.recoveryWal.enabled ? "yes" : "no"} pending=${report.recoveryWal.pendingCount} sessionPending=${report.recoveryWal.pendingSessionCount} file=${report.recoveryWal.filePath}`,
     `Snapshots: sessionDir=${report.snapshots.sessionDirExists ? "present" : "missing"} patchHistory=${report.snapshots.patchHistoryExists ? "present" : "missing"} path=${report.snapshots.patchHistoryPath}`,
-    `Consistency: ledger=${report.consistency.ledgerIntegrity} pendingTurnWal=${report.consistency.pendingTurnWal}`,
+    `Consistency: ledger=${report.consistency.ledgerIntegrity} pendingRecoveryWal=${report.consistency.pendingRecoveryWal}`,
   ];
 
   if (report.ledger.integrityReason) {
@@ -634,8 +647,9 @@ export async function runInspectCli(argv: string[]): Promise<number> {
     configPath: typeof parsed.values.config === "string" ? parsed.values.config : undefined,
     governancePort: createTrustedLocalGovernancePort({ profile: "personal" }),
   });
+  const operatorRuntime = createOperatorRuntimePort(runtime);
   const targetSessionId = resolveTargetSession(
-    runtime,
+    operatorRuntime,
     typeof parsed.values.session === "string" ? parsed.values.session : undefined,
   );
   if (!targetSessionId) {
@@ -646,7 +660,7 @@ export async function runInspectCli(argv: string[]): Promise<number> {
   let directory: InspectDirectory;
   try {
     directory = resolveInspectDirectory(
-      runtime,
+      operatorRuntime,
       typeof parsed.positionals[0] === "string" ? parsed.positionals[0] : undefined,
       typeof parsed.values.dir === "string" ? parsed.values.dir : undefined,
     );
@@ -655,7 +669,7 @@ export async function runInspectCli(argv: string[]): Promise<number> {
     return 1;
   }
 
-  const report = buildInspectReport(runtime, targetSessionId, {
+  const report = buildInspectReport(operatorRuntime, targetSessionId, {
     directory,
   });
   if (parsed.values.json === true) {

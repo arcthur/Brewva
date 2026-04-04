@@ -35,7 +35,7 @@ describe("worker results tools contract", () => {
     const runtime = createCleanRuntime();
     const sessionId = "worker-results-merge-conflict";
 
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "worker-a",
       status: "ok",
       summary: "first patch",
@@ -45,7 +45,7 @@ describe("worker results tools contract", () => {
         changes: [{ path: "src/conflict.ts", action: "modify", diffText: "a" }],
       },
     });
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "worker-b",
       status: "ok",
       summary: "second patch",
@@ -67,7 +67,7 @@ describe("worker results tools contract", () => {
 
     expect(extractTextContent(result)).toContain("Merge status: conflicts");
     expect((result.details as { verdict?: string } | undefined)?.verdict).toBe("fail");
-    expect(runtime.session.listWorkerResults(sessionId)).toHaveLength(2);
+    expect(runtime.inspect.session.listWorkerResults(sessionId)).toHaveLength(2);
   });
 
   test("worker_results_apply adopts a clean merged patch set into the parent workspace", async () => {
@@ -90,8 +90,8 @@ describe("worker results tools contract", () => {
 
     const runtime = new BrewvaRuntime({ cwd: applyWorkspace });
     const sessionId = "worker-results-apply";
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "worker-a",
       status: "ok",
       summary: "clean patch",
@@ -127,9 +127,9 @@ describe("worker results tools contract", () => {
       ).startsWith("merged_"),
     ).toBe(true);
     expect(readFileSync(filePath, "utf8")).toBe(afterText);
-    expect(runtime.session.listWorkerResults(sessionId)).toHaveLength(0);
+    expect(runtime.inspect.session.listWorkerResults(sessionId)).toHaveLength(0);
 
-    const rollback = runtime.tools.rollbackLastPatchSet(sessionId);
+    const rollback = runtime.authority.tools.rollbackLastPatchSet(sessionId);
     expect(rollback.ok).toBe(true);
     expect(readFileSync(filePath, "utf8")).toBe(beforeText);
   });

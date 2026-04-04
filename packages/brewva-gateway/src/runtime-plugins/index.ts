@@ -1,10 +1,13 @@
 import {
   BrewvaRuntime,
+  createHostedRuntimePort,
+  createToolRuntimePort,
   createTrustedLocalGovernancePort,
   getExactToolGovernanceDescriptor,
   sameToolGovernanceDescriptor,
   type BrewvaRuntimeOptions,
 } from "@brewva/brewva-runtime";
+import { createToolRuntimeInternalPort, recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   buildBrewvaTools,
   getBrewvaToolMetadata,
@@ -74,11 +77,11 @@ function buildManagedTools(
       }
     : undefined;
   return buildBrewvaTools({
-    runtime: Object.assign(
-      {},
-      runtime,
-      options.semanticOracle ? { semanticOracle: options.semanticOracle } : {},
-    ),
+    runtime: {
+      ...createToolRuntimePort(runtime),
+      internal: createToolRuntimeInternalPort(runtime),
+      ...(options.semanticOracle ? { semanticOracle: options.semanticOracle } : {}),
+    },
     orchestration: options.orchestration,
     delegation,
     toolNames: options.managedToolNames,
@@ -98,7 +101,7 @@ function registerGovernanceDescriptors(
     if (sameToolGovernanceDescriptor(exactGovernance, metadata.governance)) {
       continue;
     }
-    runtime.tools.registerGovernanceDescriptor(tool.name, metadata.governance);
+    runtime.maintain.tools.registerGovernanceDescriptor(tool.name, metadata.governance);
   }
 }
 
@@ -118,29 +121,36 @@ function registerHostedPipeline(
     toolDefinitionsByName.set(tool.name, tool);
   }
   const turnClock = createRuntimeTurnClockStore();
-  const contextTransform = createContextTransformLifecycle(runtimePluginApi, runtime, {
+  const hostedRuntime = createHostedRuntimePort(runtime);
+  const toolSurfaceRuntime: ToolSurfaceRuntime = {
+    config: hostedRuntime.config,
+    inspect: hostedRuntime.inspect,
+    recordEvent: (input: { sessionId: string; type: string; payload?: object }) =>
+      recordRuntimeEvent(hostedRuntime, input),
+  };
+  const contextTransform = createContextTransformLifecycle(runtimePluginApi, hostedRuntime, {
     delegationStore,
     turnClock,
     contextProfile,
   });
   const deliberationMaintenance = createDeliberationMaintenanceLifecycle(runtime);
   const narrativeMemory = createNarrativeMemoryLifecycle(runtime, semanticOracle);
-  const qualityGate = createQualityGateLifecycle(runtime, {
+  const qualityGate = createQualityGateLifecycle(hostedRuntime, {
     toolDefinitionsByName,
   });
-  const toolSurface = createToolSurfaceLifecycle(runtimePluginApi, runtime, {
+  const toolSurface = createToolSurfaceLifecycle(runtimePluginApi, toolSurfaceRuntime, {
     dynamicToolDefinitions: registerTools ? toolDefinitionsByName : undefined,
   });
-  const completionGuard = createCompletionGuardLifecycle(runtimePluginApi, runtime);
+  const completionGuard = createCompletionGuardLifecycle(runtimePluginApi, hostedRuntime);
 
   runtimePluginApi.on("tool_call", qualityGate.toolCall);
   runtimePluginApi.on("context", contextTransform.context);
   registerProviderRequestRecovery(runtimePluginApi, runtime);
-  registerEventStream(runtimePluginApi, runtime, turnClock, {
+  registerEventStream(runtimePluginApi, hostedRuntime, turnClock, {
     toolDefinitionsByName,
   });
-  registerLedgerWriter(runtimePluginApi, runtime);
-  registerToolResultDistiller(runtimePluginApi, runtime);
+  registerLedgerWriter(runtimePluginApi, hostedRuntime);
+  registerToolResultDistiller(runtimePluginApi, hostedRuntime);
   registerTurnLifecyclePorts(runtimePluginApi, [
     {
       beforeAgentStart: deliberationMaintenance.beforeAgentStart,

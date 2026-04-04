@@ -222,7 +222,7 @@ export function createScheduleIntentTool(options: BrewvaToolOptions): ToolDefini
           );
         }
 
-        const created = await options.runtime.schedule.createIntent(sessionId, {
+        const created = await options.runtime.authority.schedule.createIntent(sessionId, {
           reason,
           intentId: normalizeOptionalString(params.intentId),
           goalRef: normalizeOptionalString(params.goalRef),
@@ -322,7 +322,10 @@ export function createScheduleIntentTool(options: BrewvaToolOptions): ToolDefini
           if (schedulePatch.timeZone !== undefined) updateInput.timeZone = schedulePatch.timeZone;
         }
 
-        const updated = await options.runtime.schedule.updateIntent(sessionId, updateInput);
+        const updated = await options.runtime.authority.schedule.updateIntent(
+          sessionId,
+          updateInput,
+        );
         if (!updated.ok) {
           return failTextResult(`Schedule intent update rejected (${updated.error}).`, {
             ok: false,
@@ -356,7 +359,7 @@ export function createScheduleIntentTool(options: BrewvaToolOptions): ToolDefini
           });
         }
 
-        const cancelled = await options.runtime.schedule.cancelIntent(sessionId, {
+        const cancelled = await options.runtime.authority.schedule.cancelIntent(sessionId, {
           intentId,
           reason: normalizeOptionalString(params.reason),
         });
@@ -381,8 +384,8 @@ export function createScheduleIntentTool(options: BrewvaToolOptions): ToolDefini
         parentSessionId: params.includeAllSessions ? undefined : sessionId,
         status: statusFilter,
       };
-      const intents = await options.runtime.schedule.listIntents(listQuery);
-      const snapshot = await options.runtime.schedule.getProjectionSnapshot();
+      const intents = await options.runtime.inspect.schedule.listIntents(listQuery);
+      const snapshot = await options.runtime.inspect.schedule.getProjectionSnapshot();
 
       const header = [
         "[ScheduleIntents]",

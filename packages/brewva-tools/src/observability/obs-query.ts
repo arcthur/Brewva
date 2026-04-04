@@ -1,7 +1,8 @@
 import { OBSERVABILITY_QUERY_EXECUTED_EVENT_TYPE } from "@brewva/brewva-runtime";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { BrewvaToolOptions } from "../types.js";
+import { recordToolRuntimeEvent } from "../runtime-internal.js";
+import type { BrewvaBundledToolOptions } from "../types.js";
 import { failTextResult, inconclusiveTextResult, textResult } from "../utils/result.js";
 import { getSessionId } from "../utils/session.js";
 import { defineBrewvaTool } from "../utils/tool.js";
@@ -37,7 +38,7 @@ function buildBlockedText(input: { recentSingleQueryCalls: number }): string {
   ].join("\n");
 }
 
-export function createObsQueryTool(options: BrewvaToolOptions): ToolDefinition {
+export function createObsQueryTool(options: BrewvaBundledToolOptions): ToolDefinition {
   return defineBrewvaTool({
     name: "obs_query",
     label: "Observability Query",
@@ -83,7 +84,7 @@ export function createObsQueryTool(options: BrewvaToolOptions): ToolDefinition {
         requestedLimit: requestedLast,
       });
       if (throttleState.level === "blocked") {
-        options.runtime.events.record?.({
+        recordToolRuntimeEvent(options.runtime, {
           sessionId,
           type: OBSERVABILITY_QUERY_EXECUTED_EVENT_TYPE,
           payload: {
@@ -165,7 +166,7 @@ export function createObsQueryTool(options: BrewvaToolOptions): ToolDefinition {
         }
       }
 
-      options.runtime.events.record?.({
+      recordToolRuntimeEvent(options.runtime, {
         sessionId,
         type: OBSERVABILITY_QUERY_EXECUTED_EVENT_TYPE,
         payload: {

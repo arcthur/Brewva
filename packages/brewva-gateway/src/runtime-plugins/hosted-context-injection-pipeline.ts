@@ -1,10 +1,10 @@
 import {
   CONTEXT_SOURCES,
   SKILL_RECOMMENDATION_DERIVED_EVENT_TYPE,
-  type BrewvaRuntime,
+  type BrewvaHostedRuntimePort,
   type ContextBudgetUsage,
-  type ContextInjectionEntry,
 } from "@brewva/brewva-runtime";
+import { type ContextInjectionEntry, recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { HostedDelegationStore } from "../subagents/delegation-store.js";
 import { type BuildCapabilityViewResult } from "./capability-view.js";
@@ -100,11 +100,13 @@ function resolveContextSourceAllowlist(
 }
 
 function createContextComposerRuntime(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   delegationStore: HostedDelegationStore | undefined,
 ): ContextComposerRuntime {
   return {
-    events: runtime.events,
+    inspect: {
+      events: runtime.inspect.events,
+    },
     delegation: delegationStore
       ? {
           listRuns: (sessionId, query) => delegationStore.listRuns(sessionId, query),
@@ -127,7 +129,7 @@ function markSurfacedDelegationOutcomes(
 }
 
 async function resolveContextInjection(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   input: {
     sessionId: string;
     prompt: string;
@@ -143,7 +145,7 @@ async function resolveContextInjection(
   finalTokens: number;
   truncated: boolean;
 }> {
-  return runtime.context.buildInjection(
+  return runtime.maintain.context.buildInjection(
     input.sessionId,
     input.prompt,
     input.usage,
@@ -201,7 +203,7 @@ function buildHiddenInjectionResult(input: {
 }
 
 function buildSkillRecommendationBlocks(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   input: {
     sessionId: string;
     recommendations: SkillRecommendationSet;
@@ -214,7 +216,7 @@ function buildSkillRecommendationBlocks(
   }
 
   if (input.emitEvent !== false) {
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: input.sessionId,
       type: SKILL_RECOMMENDATION_DERIVED_EVENT_TYPE,
       payload: {
@@ -244,7 +246,7 @@ function buildSkillRecommendationBlocks(
 
 export function createHostedContextInjectionPipeline(
   extensionApi: ExtensionAPI,
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   telemetry: HostedContextTelemetry,
   statePort: HostedContextGateStatePort,
   options: HostedContextInjectionPipelineOptions = {},
@@ -256,7 +258,7 @@ export function createHostedContextInjectionPipeline(
     async beforeAgentStart(input) {
       const turn = statePort.getTurnIndex(input.sessionId);
       const injectionScopeId = resolveInjectionScopeId(input.sessionManager);
-      runtime.context.observeUsage(input.sessionId, input.usage);
+      runtime.maintain.context.observeUsage(input.sessionId, input.usage);
 
       let { gateStatus, pendingCompactionReason, capabilityView, skillRecommendations } =
         prepareContextComposerSupport({

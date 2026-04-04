@@ -31,18 +31,18 @@ describe("S-004/S-005 verification gate", () => {
     const runtime = createCleanRuntime();
     const sessionId = "s4";
 
-    runtime.tools.markCall(sessionId, "edit");
-    const blocked = runtime.verification.evaluate(sessionId, "quick");
+    runtime.authority.tools.markCall(sessionId, "edit");
+    const blocked = runtime.authority.verification.evaluate(sessionId, "quick");
     expect(blocked.passed).toBe(false);
     expect(blocked.missingEvidence).toContain("tests");
 
-    const verified = await runtime.verification.verify(sessionId, "quick", {
+    const verified = await runtime.authority.verification.verify(sessionId, "quick", {
       executeCommands: true,
       timeoutMs: 5_000,
     });
     expect(verified.passed).toBe(true);
 
-    const passed = runtime.verification.evaluate(sessionId, "quick");
+    const passed = runtime.authority.verification.evaluate(sessionId, "quick");
     expect(passed.passed).toBe(true);
   });
 
@@ -50,7 +50,7 @@ describe("S-004/S-005 verification gate", () => {
     const runtime = createCleanRuntime();
     const sessionId = "s4-readonly";
 
-    const report = runtime.verification.evaluate(sessionId, "quick");
+    const report = runtime.authority.verification.evaluate(sessionId, "quick");
     expect(report.passed).toBe(true);
     expect(report.readOnly).toBe(true);
     expect(report.skipped).toBe(true);
@@ -64,8 +64,8 @@ describe("S-004/S-005 verification gate", () => {
     const runtime = createCleanRuntime();
     const sessionId = "s4-multi-edit";
 
-    runtime.tools.markCall(sessionId, "multi_edit");
-    const blocked = runtime.verification.evaluate(sessionId, "quick");
+    runtime.authority.tools.markCall(sessionId, "multi_edit");
+    const blocked = runtime.authority.verification.evaluate(sessionId, "quick");
     expect(blocked.passed).toBe(false);
     expect(blocked.missingEvidence).toContain("tests");
   });
@@ -74,8 +74,8 @@ describe("S-004/S-005 verification gate", () => {
     const runtime = createCleanRuntime();
     const sessionId = "s4-explicit-verdicts";
 
-    runtime.tools.markCall(sessionId, "edit");
-    runtime.tools.recordResult({
+    runtime.authority.tools.markCall(sessionId, "edit");
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "true" },
@@ -83,7 +83,7 @@ describe("S-004/S-005 verification gate", () => {
       channelSuccess: true,
       verdict: "pass",
     });
-    runtime.tools.recordResult({
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "brewva_verify",
       args: { check: "tests", command: "true" },
@@ -97,17 +97,17 @@ describe("S-004/S-005 verification gate", () => {
       },
     });
 
-    const inconclusive = runtime.verification.evaluate(sessionId, "quick");
+    const inconclusive = runtime.authority.verification.evaluate(sessionId, "quick");
     expect(inconclusive.passed).toBe(false);
     expect(inconclusive.missingEvidence).toContain("tests");
 
-    const verified = await runtime.verification.verify(sessionId, "quick", {
+    const verified = await runtime.authority.verification.verify(sessionId, "quick", {
       executeCommands: true,
       timeoutMs: 5_000,
     });
     expect(verified.passed).toBe(true);
 
-    const passed = runtime.verification.evaluate(sessionId, "quick");
+    const passed = runtime.authority.verification.evaluate(sessionId, "quick");
     expect(passed.passed).toBe(true);
   });
 });

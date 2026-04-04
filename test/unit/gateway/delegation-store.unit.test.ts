@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { HostedDelegationStore } from "@brewva/brewva-gateway";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { cleanupWorkspace, createTestWorkspace } from "../../helpers/workspace.js";
 
 let workspace = "";
@@ -24,7 +25,7 @@ function recordCompletedRun(input: {
   kind?: "review" | "plan";
   delegate?: string;
 }): void {
-  input.runtime.events.record({
+  recordRuntimeEvent(input.runtime, {
     sessionId: input.sessionId,
     type: "subagent_completed",
     timestamp: input.updatedAt,
@@ -78,7 +79,7 @@ describe("HostedDelegationStore", () => {
     const store = new HostedDelegationStore(runtime);
     const sessionId = "delegation-store-running";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "subagent_spawned",
       timestamp: 100,
@@ -88,7 +89,7 @@ describe("HostedDelegationStore", () => {
         status: "pending",
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "subagent_running",
       timestamp: 110,
@@ -112,7 +113,7 @@ describe("HostedDelegationStore", () => {
     const store = new HostedDelegationStore(runtime);
     const sessionId = "delegation-store-no-legacy-verification";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "subagent_completed",
       timestamp: 100,

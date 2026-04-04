@@ -84,8 +84,8 @@ describe("parallel-read utils", () => {
   test("recordParallelReadTelemetry emits only when runtime and session id are available", () => {
     const calls: Array<Record<string, unknown>> = [];
     const runtime = {
-      events: {
-        record(input: Record<string, unknown>) {
+      internal: {
+        recordEvent(input: Record<string, unknown>) {
           calls.push(input);
           return undefined;
         },
@@ -196,13 +196,15 @@ describe("parallel-read utils", () => {
   test("withParallelReadSlot acquires and releases runtime slots when session context is available", async () => {
     const calls: string[] = [];
     const runtime = {
-      tools: {
-        async acquireParallelSlotAsync(sessionId: string, runId: string) {
-          calls.push(`acquire:${sessionId}:${runId}`);
-          return { accepted: true };
-        },
-        releaseParallelSlot(sessionId: string, runId: string) {
-          calls.push(`release:${sessionId}:${runId}`);
+      authority: {
+        tools: {
+          async acquireParallelSlotAsync(sessionId: string, runId: string) {
+            calls.push(`acquire:${sessionId}:${runId}`);
+            return { accepted: true };
+          },
+          releaseParallelSlot(sessionId: string, runId: string) {
+            calls.push(`release:${sessionId}:${runId}`);
+          },
         },
       },
     } as unknown as BrewvaToolRuntime;
@@ -225,12 +227,14 @@ describe("parallel-read utils", () => {
   test("withParallelReadSlot falls back to local execution when runtime slot is rejected", async () => {
     let released = false;
     const runtime = {
-      tools: {
-        async acquireParallelSlotAsync() {
-          return { accepted: false, reason: "max_total" };
-        },
-        releaseParallelSlot() {
-          released = true;
+      authority: {
+        tools: {
+          async acquireParallelSlotAsync() {
+            return { accepted: false, reason: "max_total" };
+          },
+          releaseParallelSlot() {
+            released = true;
+          },
         },
       },
     } as unknown as BrewvaToolRuntime;

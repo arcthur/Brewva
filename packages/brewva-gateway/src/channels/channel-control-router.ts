@@ -4,8 +4,10 @@ import {
   CHANNEL_UPDATE_LOCK_BLOCKED_EVENT_TYPE,
   CHANNEL_UPDATE_REQUESTED_EVENT_TYPE,
   OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
+  createOperatorRuntimePort,
 } from "@brewva/brewva-runtime";
 import type { TurnEnvelope } from "@brewva/brewva-runtime/channels";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { formatCostViewText } from "@brewva/brewva-tools";
 import {
   buildOperatorQuestionAnswerPrompt,
@@ -115,7 +117,7 @@ export function createChannelControlRouter(input: {
       });
       if (reservation.kind === "blocked") {
         const blocked = reservation.blocked;
-        input.runtime.events.record({
+        recordRuntimeEvent(input.runtime, {
           sessionId: turn.sessionId,
           type: CHANNEL_UPDATE_LOCK_BLOCKED_EVENT_TYPE,
           payload: {
@@ -172,7 +174,7 @@ export function createChannelControlRouter(input: {
       }
 
       const operatorAction = resolveChannelOperatorAction(match);
-      input.runtime.events.record({
+      recordRuntimeEvent(input.runtime, {
         sessionId: turn.sessionId,
         type: CHANNEL_COMMAND_RECEIVED_EVENT_TYPE,
         payload: {
@@ -199,7 +201,7 @@ export function createChannelControlRouter(input: {
         }
 
         await input.registry.setFocus(scopeKey, match.agentId);
-        input.runtime.events.record({
+        recordRuntimeEvent(input.runtime, {
           sessionId: turn.sessionId,
           type: "channel_focus_changed",
           payload: {
@@ -222,7 +224,7 @@ export function createChannelControlRouter(input: {
           input.orchestrationConfig.aclModeWhenOwnersEmpty,
         );
         if (!authorized) {
-          input.runtime.events.record({
+          recordRuntimeEvent(input.runtime, {
             sessionId: turn.sessionId,
             type: "channel_command_rejected",
             payload: {
@@ -285,7 +287,7 @@ export function createChannelControlRouter(input: {
           turn,
           scopeKey,
           formatCostViewText(
-            targetSession.runtime.cost.getSummary(targetSession.agentSessionId),
+            targetSession.runtime.inspect.cost.getSummary(targetSession.agentSessionId),
             top,
           ),
           {
@@ -411,7 +413,7 @@ export function createChannelControlRouter(input: {
           );
           return { handled: true };
         }
-        questionSurface.runtime.events.record({
+        recordRuntimeEvent(questionSurface.runtime, {
           sessionId: question.sessionId,
           type: OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
           payload: buildOperatorQuestionAnsweredPayload({
@@ -458,7 +460,7 @@ export function createChannelControlRouter(input: {
               targetSession: targetSession
                 ? {
                     agentId: targetSession.agentId,
-                    runtime: targetSession.runtime,
+                    runtime: createOperatorRuntimePort(targetSession.runtime),
                     sessionId: targetSession.agentSessionId,
                   }
                 : undefined,
@@ -498,7 +500,7 @@ export function createChannelControlRouter(input: {
               targetSession: targetSession
                 ? {
                     agentId: targetSession.agentId,
-                    runtime: targetSession.runtime,
+                    runtime: createOperatorRuntimePort(targetSession.runtime),
                     sessionId: targetSession.agentSessionId,
                   }
                 : undefined,
@@ -534,7 +536,7 @@ export function createChannelControlRouter(input: {
           throw new Error("update_command_not_prepared");
         }
 
-        input.runtime.events.record({
+        recordRuntimeEvent(input.runtime, {
           sessionId: turn.sessionId,
           type: CHANNEL_UPDATE_REQUESTED_EVENT_TYPE,
           payload: {
@@ -562,7 +564,7 @@ export function createChannelControlRouter(input: {
             requestedAgentId: match.agentId,
             model: match.model,
           });
-          input.runtime.events.record({
+          recordRuntimeEvent(input.runtime, {
             sessionId: turn.sessionId,
             type: "channel_agent_created",
             payload: {
@@ -598,7 +600,7 @@ export function createChannelControlRouter(input: {
           await input.registry.softDeleteAgent(match.agentId);
           await input.cleanupAgentSessions(match.agentId);
           input.disposeAgentRuntime(match.agentId);
-          input.runtime.events.record({
+          recordRuntimeEvent(input.runtime, {
             sessionId: turn.sessionId,
             type: "channel_agent_deleted",
             payload: {
@@ -624,7 +626,7 @@ export function createChannelControlRouter(input: {
       if (match.kind === "focus") {
         try {
           const focused = await input.registry.setFocus(scopeKey, match.agentId);
-          input.runtime.events.record({
+          recordRuntimeEvent(input.runtime, {
             sessionId: turn.sessionId,
             type: "channel_focus_changed",
             payload: {
@@ -645,7 +647,7 @@ export function createChannelControlRouter(input: {
       }
 
       if (match.kind === "run") {
-        input.runtime.events.record({
+        recordRuntimeEvent(input.runtime, {
           sessionId: turn.sessionId,
           type: "channel_fanout_started",
           payload: {
@@ -666,7 +668,7 @@ export function createChannelControlRouter(input: {
               : `- @${entry.agentId}: ERROR ${entry.error ?? "unknown_error"}`,
           ),
         ];
-        input.runtime.events.record({
+        recordRuntimeEvent(input.runtime, {
           sessionId: turn.sessionId,
           type: "channel_fanout_finished",
           payload: {
@@ -693,7 +695,7 @@ export function createChannelControlRouter(input: {
             : `Discussion failed: ${discussion.reason ?? "unknown_error"}`,
         ];
         for (const round of discussion.rounds) {
-          input.runtime.events.record({
+          recordRuntimeEvent(input.runtime, {
             sessionId: turn.sessionId,
             type: "channel_discussion_round",
             payload: {

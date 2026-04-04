@@ -19,7 +19,7 @@
 - Proposal: an envelope submitted to the kernel for authorization; contains issuer, subject, payload, evidence references, and optional confidence/expiry metadata
 - DecisionReceipt: the kernel decision record for a Proposal; captures the decision, policy basis, reasons, committed effects, evidence references, turn, and timestamp
 - Context Arena: the context injection workspace that manages source reservations and token budgets per turn
-- Turn WAL: write-ahead log for turn durability; enables crash recovery and replay of in-flight turns
+- Recovery WAL: write-ahead log for turn durability; enables crash recovery and replay of in-flight turns
 - Effect Boundary: the runtime execution class for a tool invocation: `safe` or `effectful`
 - Working State: non-authoritative session-local working surfaces such as projection, context arena, active tool surface, and derived workflow posture
 - Working Projection: a tape-derived working snapshot maintained across turns; rebuilt from source events rather than agent reasoning memory

@@ -16,34 +16,38 @@ describe("task watchdog cleanup", () => {
       const sessionId = "watchdog-cleanup-1";
 
       now = 1_730_000_000_100;
-      runtime.task.setSpec(sessionId, {
+      runtime.authority.task.setSpec(sessionId, {
         schema: "brewva.task.v1",
         goal: "Resume work after a previous stall",
       });
 
       now = 1_730_000_000_200;
-      runtime.session.pollStall(sessionId, {
+      runtime.maintain.session.pollStall(sessionId, {
         now,
         thresholdMs: 1_000,
       });
-      expect(runtime.events.query(sessionId, { type: "task_stuck_detected" })).toHaveLength(0);
+      expect(runtime.inspect.events.query(sessionId, { type: "task_stuck_detected" })).toHaveLength(
+        0,
+      );
 
       now = 1_730_000_001_300;
-      runtime.session.pollStall(sessionId, {
+      runtime.maintain.session.pollStall(sessionId, {
         now,
         thresholdMs: 1_000,
       });
-      expect(runtime.events.query(sessionId, { type: "task_stuck_detected" })).toHaveLength(1);
+      expect(runtime.inspect.events.query(sessionId, { type: "task_stuck_detected" })).toHaveLength(
+        1,
+      );
 
       now = 1_730_000_001_400;
-      runtime.task.addItem(sessionId, {
+      runtime.authority.task.addItem(sessionId, {
         text: "Semantic progress resumes with a new task item",
       });
 
       now = 1_730_000_001_500;
-      runtime.context.onTurnStart(sessionId, 1);
+      runtime.maintain.context.onTurnStart(sessionId, 1);
 
-      const clearEvent = runtime.events.query(sessionId, {
+      const clearEvent = runtime.inspect.events.query(sessionId, {
         type: "task_stuck_cleared",
         last: 1,
       })[0];

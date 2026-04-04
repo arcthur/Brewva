@@ -57,7 +57,7 @@ flowchart TD
    rebuildable artifacts.
 2. On first hydration, the runtime performs checkpoint-plus-delta replay and
    restores task, truth, cost, verification, and related fold slices.
-3. `runtime.session.getIntegrity(...)` aggregates tape, turn WAL, and artifact
+3. `runtime.inspect.session.getIntegrity(...)` aggregates tape, Recovery WAL, and artifact
    persistence issues into one health surface.
 4. `--replay` prints a replay-visible timeline from the durable tape rather
    than from the live hosted stream.
@@ -65,13 +65,13 @@ flowchart TD
    and resets verification state.
 6. Delegated inspect surfaces now reflect the canonical specialist cutover:
    public delegated outcomes are `exploration`, `plan`, `review`, `qa`, or `patch`,
-   while kernel `runtime.verification.*` remains a separate replayed authority.
+   while kernel `runtime.authority.verification.*` remains a separate replayed authority.
 
 ## Execution Semantics
 
 - the durable source of truth is the event tape, checkpoints, receipts, approval
   events, and linked tool outcomes
-- turn WAL and snapshots are `durable transient` artifacts used for bounded
+- Recovery WAL and snapshots are `durable transient` artifacts used for bounded
   recovery or undo, not historical truth
 - projection files are `rebuildable state`; removing them must not change replay
   correctness
@@ -104,7 +104,7 @@ flowchart TD
   - `brewva inspect`
   - `brewva --replay`
   - `brewva --undo`
-  - `runtime.session.getIntegrity(...)`
+  - `runtime.inspect.session.getIntegrity(...)`
 - key report sections:
   - hydration status
   - integrity issues

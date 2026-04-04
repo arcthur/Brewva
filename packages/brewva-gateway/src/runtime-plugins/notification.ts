@@ -1,16 +1,16 @@
-import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import type { BrewvaHostedRuntimePort } from "@brewva/brewva-runtime";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 function buildActionableNotification(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   sessionId: string,
 ): string | undefined {
-  const budget = runtime.cost.getSummary(sessionId).budget;
+  const budget = runtime.inspect.cost.getSummary(sessionId).budget;
   if (budget.blocked) {
     return "Brewva: cost budget is blocking tools in this session.";
   }
 
-  const blockers = runtime.task.getState(sessionId).blockers;
+  const blockers = runtime.inspect.task.getState(sessionId).blockers;
   if (blockers.length > 0) {
     return `Brewva: ${blockers.length} unresolved blocker(s) remain.`;
   }
@@ -22,7 +22,9 @@ export interface NotificationLifecycle {
   agentEnd: (event: unknown, ctx: unknown) => undefined;
 }
 
-export function createNotificationLifecycle(runtime: BrewvaRuntime): NotificationLifecycle {
+export function createNotificationLifecycle(
+  runtime: BrewvaHostedRuntimePort,
+): NotificationLifecycle {
   return {
     agentEnd(_event, ctx) {
       if (!(ctx as { hasUI?: boolean }).hasUI) return undefined;
@@ -40,7 +42,10 @@ export function createNotificationLifecycle(runtime: BrewvaRuntime): Notificatio
   };
 }
 
-export function registerNotification(extensionApi: ExtensionAPI, runtime: BrewvaRuntime): void {
+export function registerNotification(
+  extensionApi: ExtensionAPI,
+  runtime: BrewvaHostedRuntimePort,
+): void {
   const hooks = extensionApi as unknown as {
     on(event: string, handler: (event: unknown, ctx: unknown) => unknown): void;
   };

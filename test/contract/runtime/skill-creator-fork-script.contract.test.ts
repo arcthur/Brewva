@@ -106,7 +106,9 @@ describe("skill-authoring fork script", () => {
         description: "workspace chaincraft",
       });
       const runtime = new BrewvaRuntime({ cwd: workspace });
-      expect(runtime.skills.get("chaincraft")?.overlayFiles).toContain(resolve(destination));
+      expect(runtime.inspect.skills.get("chaincraft")?.overlayFiles).toContain(
+        resolve(destination),
+      );
     } finally {
       rmSync(workspace, { recursive: true, force: true });
       rmSync(xdgRoot, { recursive: true, force: true });
@@ -148,7 +150,9 @@ describe("skill-authoring fork script", () => {
         description: "workspace nestedcraft",
       });
       const runtime = new BrewvaRuntime({ cwd: nested });
-      expect(runtime.skills.get("nestedcraft")?.overlayFiles).toContain(resolve(destination));
+      expect(runtime.inspect.skills.get("nestedcraft")?.overlayFiles).toContain(
+        resolve(destination),
+      );
     } finally {
       rmSync(workspace, { recursive: true, force: true });
       rmSync(xdgRoot, { recursive: true, force: true });

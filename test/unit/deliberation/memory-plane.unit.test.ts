@@ -185,7 +185,7 @@ describe("deliberation memory plane", () => {
     const sessionId = "deliberation-provider-session";
     const statePath = resolveDeliberationMemoryStatePath(workspace);
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Keep deliberation memory aligned with repository verification discipline.",
       verification: {

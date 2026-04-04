@@ -5,7 +5,7 @@ to miss when reading individual module docs.
 
 ## Runtime Surface
 
-- `runtime.events.subscribe(...)` is in-process and ephemeral.
+- `runtime.inspect.events.subscribe(...)` is in-process and ephemeral.
 
 ## Event Pipeline
 

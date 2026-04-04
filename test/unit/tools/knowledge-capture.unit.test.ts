@@ -50,7 +50,7 @@ describe("knowledge capture tool", () => {
           title: "WAL recovery race during replay",
           problem_kind: "bugfix",
           module: "brewva-runtime",
-          boundaries: ["runtime.turnWal", "runtime.tools"],
+          boundaries: ["runtime.maintain.recovery", "runtime.authority.tools"],
           source_artifacts: ["investigation_record", "review_findings", "retro_findings"],
           tags: ["wal", "recovery"],
           sections: [

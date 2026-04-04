@@ -6,11 +6,13 @@ describe("context composer supplemental", () => {
   test("derives delegation and diagnostics blocks from runtime state", () => {
     const blocks = resolveSupplementalContextBlocks({
       runtime: {
-        events: {
-          getTapeStatus: () => ({
-            tapePressure: "high",
-            entriesSinceAnchor: 9,
-          }),
+        inspect: {
+          events: {
+            getTapeStatus: () => ({
+              tapePressure: "high",
+              entriesSinceAnchor: 9,
+            }),
+          },
         },
         delegation: {
           listRuns: (_sessionId, query) => {

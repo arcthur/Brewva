@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerEventStream, registerLedgerWriter } from "@brewva/brewva-gateway/runtime-plugins";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   createObsQueryTool,
   createObsSloAssertTool,
@@ -11,6 +12,7 @@ import {
   defineBrewvaTool,
 } from "@brewva/brewva-tools";
 import { createMockRuntimePluginApi, invokeHandlers } from "../../helpers/runtime-plugin.js";
+import { createBundledToolRuntime } from "../../helpers/runtime.js";
 
 describe("Runtime plugin integration: observability ledger", () => {
   test("records invocation-resolved execution traits into hosted tool lifecycle events", () => {
@@ -18,7 +20,7 @@ describe("Runtime plugin integration: observability ledger", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "ext-execution-traits-1";
     const { api, handlers } = createMockRuntimePluginApi();
-    const baseTool = createOutputSearchTool({ runtime });
+    const baseTool = createOutputSearchTool({ runtime: createBundledToolRuntime(runtime) });
 
     const customTool = defineBrewvaTool(baseTool, {
       executionTraits: ({ args }) => {
@@ -69,7 +71,7 @@ describe("Runtime plugin integration: observability ledger", () => {
       ctx,
     );
 
-    const toolCallPayload = runtime.events.query(sessionId, {
+    const toolCallPayload = runtime.inspect.events.query(sessionId, {
       type: "tool_call",
       last: 1,
     })[0]?.payload as
@@ -89,7 +91,7 @@ describe("Runtime plugin integration: observability ledger", () => {
       contextModifying: false,
     });
 
-    const toolStartPayload = runtime.events.query(sessionId, {
+    const toolStartPayload = runtime.inspect.events.query(sessionId, {
       type: "tool_execution_start",
       last: 1,
     })[0]?.payload as
@@ -146,7 +148,7 @@ describe("Runtime plugin integration: observability ledger", () => {
       ctx,
     );
 
-    const observed = runtime.events.query(sessionId, {
+    const observed = runtime.inspect.events.query(sessionId, {
       type: "tool_output_observed",
       last: 1,
     })[0];
@@ -157,7 +159,7 @@ describe("Runtime plugin integration: observability ledger", () => {
       (observed?.payload as { isError?: boolean; verdict?: string } | undefined)?.verdict,
     ).toBe("fail");
 
-    const distilled = runtime.events.query(sessionId, {
+    const distilled = runtime.inspect.events.query(sessionId, {
       type: "tool_output_distilled",
       last: 1,
     })[0];
@@ -182,7 +184,7 @@ describe("Runtime plugin integration: observability ledger", () => {
 
     const artifactRef =
       (
-        runtime.events.query(sessionId, {
+        runtime.inspect.events.query(sessionId, {
           type: "tool_output_artifact_persisted",
           last: 1,
         })[0]?.payload as { artifactRef?: string } | undefined
@@ -191,7 +193,7 @@ describe("Runtime plugin integration: observability ledger", () => {
     expect(existsSync(artifactPath)).toBe(true);
     expect(readFileSync(artifactPath, "utf8")).toContain("error at step");
 
-    const recordedPayload = runtime.events.query(sessionId, {
+    const recordedPayload = runtime.inspect.events.query(sessionId, {
       type: "tool_result_recorded",
       last: 1,
     })[0]?.payload as
@@ -244,7 +246,7 @@ describe("Runtime plugin integration: observability ledger", () => {
       },
     );
 
-    const recordedPayload = runtime.events.query(sessionId, {
+    const recordedPayload = runtime.inspect.events.query(sessionId, {
       type: "tool_result_recorded",
       last: 1,
     })[0]?.payload as
@@ -255,8 +257,8 @@ describe("Runtime plugin integration: observability ledger", () => {
       | undefined;
     expect(recordedPayload?.verdict).toBe("inconclusive");
     expect(recordedPayload?.channelSuccess).toBe(true);
-    expect(runtime.ledger.listRows(sessionId)).toHaveLength(1);
-    expect(runtime.ledger.listRows(sessionId)[0]?.verdict).toBe("inconclusive");
+    expect(runtime.inspect.ledger.listRows(sessionId)).toHaveLength(1);
+    expect(runtime.inspect.ledger.listRows(sessionId)[0]?.verdict).toBe("inconclusive");
   });
 
   test("given compaction interrupts live tool lifecycle after tool_result, when session_before_compact fires, then event stream closes tool_execution_end before compaction", () => {
@@ -323,7 +325,7 @@ describe("Runtime plugin integration: observability ledger", () => {
       ctx,
     );
 
-    const events = runtime.events.query(sessionId);
+    const events = runtime.inspect.events.query(sessionId);
     const eventTypes = events.map((event) => event.type);
     expect(eventTypes.filter((type) => type === "tool_execution_end")).toHaveLength(1);
     expect(eventTypes.filter((type) => type === "session_before_compact")).toHaveLength(1);
@@ -414,7 +416,7 @@ describe("Runtime plugin integration: observability ledger", () => {
       },
       ctx,
     );
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "session_turn_transition",
       payload: {
@@ -433,7 +435,7 @@ describe("Runtime plugin integration: observability ledger", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 80));
 
-    const payloads = runtime.events
+    const payloads = runtime.inspect.events
       .query(sessionId, { type: "tool_execution_end" })
       .map((event) => {
         return event.payload as
@@ -471,7 +473,7 @@ describe("Runtime plugin integration: observability ledger", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "ext-obs-query-1";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "startup_sample",
       payload: {
@@ -479,7 +481,7 @@ describe("Runtime plugin integration: observability ledger", () => {
         startupMs: 780,
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "startup_sample",
       payload: {
@@ -498,7 +500,7 @@ describe("Runtime plugin integration: observability ledger", () => {
       },
     };
 
-    const tool = createObsQueryTool({ runtime });
+    const tool = createObsQueryTool({ runtime: createBundledToolRuntime(runtime) });
     const toolResult = await tool.execute(
       "tc-obs-query",
       {
@@ -533,7 +535,7 @@ describe("Runtime plugin integration: observability ledger", () => {
 
     const artifactRef =
       (
-        runtime.events.query(sessionId, {
+        runtime.inspect.events.query(sessionId, {
           type: "tool_output_artifact_persisted",
           last: 1,
         })[0]?.payload as { artifactRef?: string } | undefined
@@ -541,7 +543,9 @@ describe("Runtime plugin integration: observability ledger", () => {
     expect(artifactRef.length).toBeGreaterThan(0);
     expect(readFileSync(join(workspace, artifactRef), "utf8")).toContain('"toolName": "obs_query"');
 
-    const outputSearchTool = createOutputSearchTool({ runtime });
+    const outputSearchTool = createOutputSearchTool({
+      runtime: createBundledToolRuntime(runtime),
+    });
     const outputSearchResult = await outputSearchTool.execute(
       "tc-output-search",
       { query: "startupMs" },
@@ -554,7 +558,7 @@ describe("Runtime plugin integration: observability ledger", () => {
       .join("\n");
     expect(outputSearchText).toContain(artifactRef);
 
-    const recordedPayload = runtime.events.query(sessionId, {
+    const recordedPayload = runtime.inspect.events.query(sessionId, {
       type: "tool_result_recorded",
       last: 1,
     })[0]?.payload as
@@ -572,7 +576,7 @@ describe("Runtime plugin integration: observability ledger", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "ext-obs-assert-1";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "startup_sample",
       payload: {
@@ -580,7 +584,7 @@ describe("Runtime plugin integration: observability ledger", () => {
         startupMs: 910,
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "startup_sample",
       payload: {
@@ -598,7 +602,7 @@ describe("Runtime plugin integration: observability ledger", () => {
         getSessionId: () => sessionId,
       },
     };
-    const tool = createObsSloAssertTool({ runtime });
+    const tool = createObsSloAssertTool({ runtime: createBundledToolRuntime(runtime) });
 
     const failResult = await tool.execute(
       "tc-obs-assert-fail",
@@ -637,9 +641,9 @@ describe("Runtime plugin integration: observability ledger", () => {
       ctx,
     );
 
-    expect(runtime.ledger.listRows(sessionId).at(-1)?.verdict).toBe("fail");
+    expect(runtime.inspect.ledger.listRows(sessionId).at(-1)?.verdict).toBe("fail");
     expect(
-      runtime.truth
+      runtime.inspect.truth
         .getState(sessionId)
         .facts.some(
           (fact) => fact.kind === "observability_slo_violation" && fact.status === "active",
@@ -683,7 +687,7 @@ describe("Runtime plugin integration: observability ledger", () => {
       ctx,
     );
 
-    expect(runtime.ledger.listRows(sessionId).at(-1)?.verdict).toBe("inconclusive");
+    expect(runtime.inspect.ledger.listRows(sessionId).at(-1)?.verdict).toBe("inconclusive");
   });
 
   test("given failed tool_execution_end without tool_result, when observability handlers run, then fallback output and ledger events are persisted", () => {
@@ -723,7 +727,7 @@ describe("Runtime plugin integration: observability ledger", () => {
       ctx,
     );
 
-    const observedPayload = runtime.events.query(sessionId, {
+    const observedPayload = runtime.inspect.events.query(sessionId, {
       type: "tool_output_observed",
       last: 1,
     })[0]?.payload as
@@ -735,7 +739,7 @@ describe("Runtime plugin integration: observability ledger", () => {
     expect(observedPayload?.toolCallId).toBe("tc-fallback-lsp");
     expect(observedPayload?.toolName).toBe("lsp_symbols");
 
-    const recordedPayload = runtime.events.query(sessionId, {
+    const recordedPayload = runtime.inspect.events.query(sessionId, {
       type: "tool_result_recorded",
       last: 1,
     })[0]?.payload as
@@ -744,11 +748,11 @@ describe("Runtime plugin integration: observability ledger", () => {
         }
       | undefined;
     expect(recordedPayload?.verdict).toBe("fail");
-    expect(runtime.ledger.listRows(sessionId)).toHaveLength(1);
-    expect(runtime.ledger.listRows(sessionId)[0]?.tool).toBe("lsp_symbols");
+    expect(runtime.inspect.ledger.listRows(sessionId)).toHaveLength(1);
+    expect(runtime.inspect.ledger.listRows(sessionId)[0]?.tool).toBe("lsp_symbols");
     expect(
       (
-        runtime.ledger.listRows(sessionId)[0]?.metadata as
+        runtime.inspect.ledger.listRows(sessionId)[0]?.metadata as
           | {
               lifecycleFallbackReason?: string;
             }

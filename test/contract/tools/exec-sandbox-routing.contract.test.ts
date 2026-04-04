@@ -327,7 +327,7 @@ describe("exec sandbox routing", () => {
     ).rejects.toThrow("exec_blocked_isolation");
 
     const routed = requireEvent(events, "exec_routed");
-    expect(routed.payload?.configuredBackend).toBe("host");
+    expect(routed.payload?.configuredBackend).toBe("sandbox");
     expect(routed.payload?.resolvedBackend).toBe("sandbox");
     expect(routed.payload?.routingPolicy).toBe("fail_closed");
     expect(routed.payload?.fallbackToHost).toBe(false);

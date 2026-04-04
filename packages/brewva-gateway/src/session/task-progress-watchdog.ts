@@ -66,7 +66,7 @@ export class TaskProgressWatchdog {
 
   poll(): void {
     const polledAt = this.now();
-    this.runtime.session.pollStall(this.sessionId, {
+    this.runtime.maintain.session.pollStall(this.sessionId, {
       now: polledAt,
       thresholdMs: this.thresholdMs,
     });

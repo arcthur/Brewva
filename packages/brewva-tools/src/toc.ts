@@ -4,6 +4,10 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { LRUCache } from "lru-cache";
 import ts from "typescript";
+import {
+  recordToolRuntimeEvent,
+  registerToolRuntimeClearStateListener,
+} from "./runtime-internal.js";
 import { escapeRegexLiteral, tokenizeSearchTerms } from "./shared/query.js";
 import { DEFAULT_SKIPPED_WORKSPACE_DIRS, walkWorkspaceFiles } from "./shared/workspace-walk.js";
 import { resolveScopedPath, resolveToolTargetScope, type ToolTargetScope } from "./target-scope.js";
@@ -12,7 +16,7 @@ import {
   registerTocSourceCacheRuntime,
   resolveTocSessionKey,
 } from "./toc-cache.js";
-import type { BrewvaToolRuntime } from "./types.js";
+import type { BrewvaBundledToolRuntime } from "./types.js";
 import { getOrCreateLruValue } from "./utils/lru.js";
 import { getToolSessionId } from "./utils/parallel-read.js";
 import { failTextResult, inconclusiveTextResult, textResult } from "./utils/result.js";
@@ -602,7 +606,7 @@ function cacheLookup(input: {
   };
 }
 
-function resolveBaseDir(ctx: unknown, runtime?: BrewvaToolRuntime): ToolTargetScope {
+function resolveBaseDir(ctx: unknown, runtime?: BrewvaBundledToolRuntime): ToolTargetScope {
   return resolveToolTargetScope(runtime, ctx);
 }
 
@@ -990,12 +994,12 @@ function summarizeIndexBudgetExceeded(input: {
 }
 
 function recordTocEvent(
-  runtime: BrewvaToolRuntime | undefined,
+  runtime: BrewvaBundledToolRuntime | undefined,
   sessionId: string | undefined,
   payload: Record<string, unknown>,
 ): void {
-  if (!runtime?.events.record || !sessionId) return;
-  runtime.events.record({
+  if (!sessionId) return;
+  recordToolRuntimeEvent(runtime, {
     sessionId,
     type: TOC_EVENT_TYPE,
     payload,
@@ -1020,12 +1024,12 @@ function resolveBroadQuery(input: {
   return input.candidateFiles >= BROAD_QUERY_MIN_FILE_COUNT && ratio >= ratioThreshold;
 }
 
-export function createTocTools(options?: { runtime?: BrewvaToolRuntime }): ToolDefinition[] {
+export function createTocTools(options?: { runtime?: BrewvaBundledToolRuntime }): ToolDefinition[] {
   const sessionCache: TocSessionCacheStore = new LRUCache({
     max: MAX_CACHE_SESSIONS,
   });
   registerTocSourceCacheRuntime(options?.runtime);
-  options?.runtime?.session?.onClearState?.((sessionId) => {
+  registerToolRuntimeClearStateListener(options?.runtime, (sessionId) => {
     sessionCache.delete(resolveTocSessionKey(sessionId));
   });
 

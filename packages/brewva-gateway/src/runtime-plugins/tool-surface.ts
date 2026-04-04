@@ -59,33 +59,33 @@ export interface ToolSurfaceRuntime {
       };
     };
   };
-  tools?: {
-    getGovernanceDescriptor?(
-      toolName: string,
-      args?: Record<string, unknown>,
-    ): ReturnType<typeof getToolGovernanceDescriptor>;
+  inspect: {
+    tools: {
+      getGovernanceDescriptor(
+        toolName: string,
+        args?: Record<string, unknown>,
+      ): ReturnType<typeof getToolGovernanceDescriptor>;
+    };
+    skills: {
+      list(): ToolSurfaceSkill[];
+      getActive(sessionId: string): ToolSurfaceSkill | null | undefined;
+      get(name: string): ToolSurfaceSkill | undefined;
+    };
+    task: {
+      getState(sessionId: string):
+        | {
+            spec?: unknown;
+            status?: {
+              phase?: string;
+            };
+            items?: unknown[];
+            blockers?: unknown[];
+            updatedAt?: unknown;
+          }
+        | undefined;
+    };
   };
-  skills: {
-    list(): ToolSurfaceSkill[];
-    getActive(sessionId: string): ToolSurfaceSkill | null | undefined;
-    get(name: string): ToolSurfaceSkill | undefined;
-  };
-  task: {
-    getState(sessionId: string):
-      | {
-          spec?: unknown;
-          status?: {
-            phase?: string;
-          };
-          items?: unknown[];
-          blockers?: unknown[];
-          updatedAt?: unknown;
-        }
-      | undefined;
-  };
-  events: {
-    record(input: { sessionId: string; type: string; payload?: object }): unknown;
-  };
+  recordEvent(input: { sessionId: string; type: string; payload?: object }): unknown;
 }
 
 function normalizeToolName(name: string): string {
@@ -119,12 +119,12 @@ function appendSkillName(names: string[], skillName: string | null | undefined):
 
 function resolveSurfaceSkills(runtime: ToolSurfaceRuntime, sessionId: string): ToolSurfaceSkill[] {
   const names: string[] = [];
-  const active = runtime.skills.getActive(sessionId);
+  const active = runtime.inspect.skills.getActive(sessionId);
 
   appendSkillName(names, active?.name);
 
   return names
-    .map((name) => runtime.skills.get(name))
+    .map((name) => runtime.inspect.skills.get(name))
     .filter((skill): skill is ToolSurfaceSkill => skill !== undefined);
 }
 
@@ -136,7 +136,7 @@ function resolveManagedToolGovernanceDescriptor(
   const dynamicMetadata = getBrewvaToolMetadata(dynamicToolDefinitions?.get(toolName));
   return (
     dynamicMetadata?.governance ??
-    runtime.tools?.getGovernanceDescriptor?.(toolName) ??
+    runtime.inspect.tools.getGovernanceDescriptor(toolName) ??
     getToolGovernanceDescriptor(toolName)
   );
 }
@@ -492,7 +492,7 @@ export function createToolSurfaceLifecycle(
       });
       setActiveTools.call(extensionApi, resolved.activeToolNames);
 
-      runtime.events.record({
+      runtime.recordEvent({
         sessionId,
         type: TOOL_SURFACE_RESOLVED_EVENT_TYPE,
         payload: {

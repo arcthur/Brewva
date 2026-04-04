@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { HostedDelegationStore } from "@brewva/brewva-gateway";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   createSubagentCancelTool,
   createSubagentStatusTool,
@@ -45,7 +46,7 @@ describe("subagent control tools", () => {
       cwd: createTestWorkspace("subagent-status-runtime"),
     });
     const store = new HostedDelegationStore(runtime);
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: "session-status",
       type: "subagent_spawned",
       payload: {
@@ -93,7 +94,7 @@ describe("subagent control tools", () => {
       cwd: createTestWorkspace("subagent-status-handoff-runtime"),
     });
     const store = new HostedDelegationStore(runtime);
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: "session-status-handoff",
       type: "subagent_completed",
       payload: {

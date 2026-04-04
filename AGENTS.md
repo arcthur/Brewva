@@ -25,22 +25,25 @@
 
 ### Workspace Boundaries
 
-- Use workspace package imports across package boundaries. Allowed public imports are `@brewva/brewva-runtime`, `@brewva/brewva-runtime/channels`, `@brewva/brewva-deliberation`, `@brewva/brewva-skill-broker`, `@brewva/brewva-channels-telegram`, `@brewva/brewva-ingress`, `@brewva/brewva-tools`, `@brewva/brewva-cli`, `@brewva/brewva-gateway`, `@brewva/brewva-gateway/host`, and `@brewva/brewva-gateway/runtime-plugins`.
+- Use workspace package imports across package boundaries. Allowed package entrypoints are `@brewva/brewva-runtime`, `@brewva/brewva-runtime/channels`, the repo-owned implementation escape hatch `@brewva/brewva-runtime/internal`, `@brewva/brewva-deliberation`, `@brewva/brewva-skill-broker`, `@brewva/brewva-channels-telegram`, `@brewva/brewva-ingress`, `@brewva/brewva-tools`, `@brewva/brewva-cli`, `@brewva/brewva-gateway`, `@brewva/brewva-gateway/host`, and `@brewva/brewva-gateway/runtime-plugins`.
 - Do not reintroduce local alias schemes such as `@/...`.
 - Do not mix `src` and `dist` class types at public boundaries.
 - Do not import from `distribution/**` packages inside workspace package code; treat them as release artifacts.
 
 ### Runtime Contract
 
-- `BrewvaRuntime` stays domain-based, not a flat method bag. Keep the public API organized under the existing runtime domains in `packages/brewva-runtime/src/runtime.ts`.
-- Current runtime domain groups are `runtime.skills.*`, `runtime.proposals.*`, `runtime.context.*`, `runtime.tools.*`, `runtime.task.*`, `runtime.truth.*`, `runtime.ledger.*`, `runtime.schedule.*`, `runtime.turnWal.*`, `runtime.events.*`, `runtime.verification.*`, `runtime.cost.*`, and `runtime.session.*`.
+- `BrewvaRuntime` stays semantic-surface based. Keep the public API organized around `runtime.authority`, `runtime.inspect`, and `runtime.maintain`; do not widen it back into a mixed top-level implementation surface.
+- Caller ports are role-specific views over the same semantic contract: hosted gets all three surfaces, tools get `authority + inspect`, operators get `inspect + limited maintain`.
+- Repo-owned managed-tool bundles that need runtime-owned telemetry, credential resolution, or supplemental-injection hooks must compose `BrewvaToolRuntimePort` with explicit injected `internal` hooks. Do not rediscover raw `BrewvaRuntime` internals from tool code.
+- Raw WAL mutation and raw event append stay out of the public root runtime contract. Use `createSchedulerIngressPort(...)` and `recordRuntimeEvent(...)` / `createRuntimeInternalEventAppendPort(...)` only where repo-owned implementation wiring genuinely requires them.
+- Keep `@brewva/brewva-runtime` root exports narrow: stable contracts, runtime construction, semantic port types, governance helpers, and stable vocabularies. Service/store/tracker/engine classes belong under `@brewva/brewva-runtime/internal`, not the root entrypoint.
 - Integration direction is async-first; do not add parallel sync facade APIs.
 - Preserve the current security, event-level, and fail-fast config semantics described in `packages/brewva-runtime/src/contracts/index.ts`, `packages/brewva-runtime/src/security/mode.ts`, and `docs/reference/configuration.md`.
 - Preserve the current runtime execution shape: shared invocation spine first, then execution boundary policy (`safe`, `effectful`), then receipt-bearing effect authorization or rollback.
 - Preserve the current context model: deterministic single-path injection, explicit context source labels, working-only projection, explicit workflow inspection surfaces, and WAL-based turn durability/recovery.
 - Keep `governancePort` governance-only and do not re-expose removed internal tuning knobs unless they represent a clear user-facing decision boundary.
 - Keep commitment flows replay-first: `effect_commitment` proposals, operator-desk approval events, and explicit resume via `effectCommitmentRequestId` are the source of truth, not process-local approval state.
-- Keep reversible mutation flows receipt-based: `reversible_mutate` must continue producing rollback/journal artifacts and remain recoverable through `runtime.tools.rollbackLastMutation(...)`.
+- Keep reversible mutation flows receipt-based: `reversible_mutate` must continue producing rollback/journal artifacts and remain recoverable through `runtime.authority.tools.rollbackLastMutation(...)`.
 
 ### Build Baseline
 
@@ -80,7 +83,7 @@
 
 - Runtime API and contracts: `packages/brewva-runtime/src/runtime.ts`, `packages/brewva-runtime/src/contracts/index.ts`
 - Runtime config and semantics: `packages/brewva-runtime/src/config/defaults.ts`, `packages/brewva-runtime/src/config/normalize.ts`, `packages/brewva-runtime/src/security/mode.ts`, `packages/brewva-runtime/src/services/event-pipeline.ts`
-- Runtime context and durability: `packages/brewva-runtime/src/context/arena.ts`, `packages/brewva-runtime/src/context/injection-orchestrator.ts`, `packages/brewva-runtime/src/services/context*.ts`, `packages/brewva-runtime/src/channels/turn-wal*.ts`, `packages/brewva-runtime/src/governance/port.ts`
+- Runtime context and durability: `packages/brewva-runtime/src/context/arena.ts`, `packages/brewva-runtime/src/context/injection-orchestrator.ts`, `packages/brewva-runtime/src/services/context*.ts`, `packages/brewva-runtime/src/channels/recovery-wal*.ts`, `packages/brewva-runtime/src/governance/port.ts`
 - Runtime authorization / rollback / diagnostics: `packages/brewva-runtime/src/services/tool-gate.ts`, `packages/brewva-runtime/src/services/effect-commitment-desk.ts`, `packages/brewva-runtime/src/services/reversible-mutation.ts`, `packages/brewva-runtime/src/services/mutation-rollback.ts`, `packages/brewva-runtime/src/services/task-watchdog.ts`
 - Package entrypoints: `packages/brewva-tools/src/index.ts`, `packages/brewva-gateway/src/runtime-plugins/index.ts`, `packages/brewva-gateway/src/channels/host.ts`, `packages/brewva-gateway/src/host/create-hosted-session.ts`, `packages/brewva-gateway/src/subagents`, `packages/brewva-ingress/src/index.ts`, `packages/brewva-cli/src/index.ts`, `packages/brewva-gateway/src`
 - Verification and release tooling: `script/verify-dist.ts`, `script/build-binaries.ts`, `distribution/worker`, `.github/workflows/ci.yml`
@@ -91,7 +94,9 @@
 - Cross-package relative imports such as `../../packages/...`
 - Reintroducing alias-based import models
 - `as any`, `@ts-ignore`, or `@ts-expect-error` quick fixes
-- Adding new flat runtime methods instead of extending domain APIs
+- Reintroducing a mixed top-level runtime implementation surface or bypassing semantic root surfaces
+- Presenting repo-owned `@brewva/brewva-runtime/internal` helpers as the default integration surface or stable product contract
+- Passing raw `BrewvaRuntime` into internal-aware tool factories or reintroducing tool-side fallback rediscovery of runtime internals
 - Re-exposing removed low-level tuning knobs as public config
 - Editing generated distribution artifacts by hand
 - Skipping `test:dist` for export, CLI, or distribution changes

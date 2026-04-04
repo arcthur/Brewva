@@ -67,7 +67,7 @@ flowchart TD
 
 ## Execution Semantics
 
-- polling restart offset comes from the durably accepted TurnWAL ingress
+- polling restart offset comes from the durably accepted Recovery WAL ingress
   watermark rather than from Telegram redelivery
 - the ingress watermark is ingress-level state, not proof that local execution
   finished successfully
@@ -78,9 +78,9 @@ flowchart TD
 
 ## Failure And Recovery
 
-- once an update is durably accepted into TurnWAL, local unfinished work is
+- once an update is durably accepted into Recovery WAL, local unfinished work is
   recovered from WAL instead of relying on Telegram redelivery
-- TurnWAL compaction preserves the latest ingress watermark in a metadata-only
+- Recovery WAL compaction preserves the latest ingress watermark in a metadata-only
   marker so polling restart does not fall back
 - outbound requests use bounded retry only for explicitly retryable provider
   rejections

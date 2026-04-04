@@ -1,19 +1,31 @@
-import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import type { BrewvaHostedRuntimePort } from "@brewva/brewva-runtime";
 import type {
   ChannelAdapter,
   ChannelTurnBridge,
   TurnEnvelope,
 } from "@brewva/brewva-runtime/channels";
 import { ChannelTurnBridge as RuntimeChannelTurnBridge } from "@brewva/brewva-runtime/channels";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 
 export interface CreateRuntimeChannelTurnBridgeOptions {
-  runtime: BrewvaRuntime;
+  runtime: BrewvaHostedRuntimePort;
   adapter: ChannelAdapter;
   onInboundTurn: (turn: TurnEnvelope) => Promise<void>;
   onAdapterError?: (error: unknown) => Promise<void> | void;
   resolveIngestedSessionId?: (
     turn: TurnEnvelope,
   ) => Promise<string | undefined> | string | undefined;
+}
+
+function recordBridgeEvent(
+  runtime: BrewvaHostedRuntimePort,
+  input: {
+    sessionId: string;
+    type: string;
+    payload: Record<string, unknown>;
+  },
+): void {
+  recordRuntimeEvent(runtime, input);
 }
 
 function summarizeTurn(turn: TurnEnvelope): Record<string, unknown> {
@@ -36,7 +48,7 @@ export function createRuntimeChannelTurnBridge(
   return new RuntimeChannelTurnBridge(options.adapter, {
     onInboundTurn: options.onInboundTurn,
     onAdapterError: async (error) => {
-      options.runtime.events.record({
+      recordBridgeEvent(options.runtime, {
         sessionId: "channel:system",
         type: "channel_turn_bridge_error",
         payload: {
@@ -49,7 +61,7 @@ export function createRuntimeChannelTurnBridge(
     onTurnIngested: async (turn) => {
       const resolvedSessionId = await options.resolveIngestedSessionId?.(turn);
       const eventSessionId = resolvedSessionId?.trim() || turn.sessionId;
-      options.runtime.events.record({
+      recordBridgeEvent(options.runtime, {
         sessionId: eventSessionId,
         type: "channel_turn_ingested",
         payload: {
@@ -60,7 +72,7 @@ export function createRuntimeChannelTurnBridge(
       });
     },
     onTurnEmitted: async (input) => {
-      options.runtime.events.record({
+      recordBridgeEvent(options.runtime, {
         sessionId: input.deliveredTurn.sessionId,
         type: "channel_turn_emitted",
         payload: {

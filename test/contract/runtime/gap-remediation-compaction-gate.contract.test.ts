@@ -35,16 +35,16 @@ describe("Gap remediation: runtime core compaction gate", () => {
       governancePort: createTrustedLocalGovernancePort(),
     });
     const sessionId = "core-compaction-gate-1";
-    runtime.context.onTurnStart(sessionId, 3);
+    runtime.maintain.context.onTurnStart(sessionId, 3);
 
     const usage = {
       tokens: 95,
       contextWindow: 100,
       percent: 0.95,
     };
-    runtime.context.observeUsage(sessionId, usage);
+    runtime.maintain.context.observeUsage(sessionId, usage);
 
-    const blocked = runtime.tools.start({
+    const blocked = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-blocked",
       toolName: "exec",
@@ -54,10 +54,10 @@ describe("Gap remediation: runtime core compaction gate", () => {
     expect(blocked.allowed).toBe(false);
     expect(blocked.reason).toContain("session_compact");
     expect(
-      runtime.events.query(sessionId, { type: "context_compaction_gate_blocked_tool" }),
+      runtime.inspect.events.query(sessionId, { type: "context_compaction_gate_blocked_tool" }),
     ).toHaveLength(1);
 
-    const compactAllowed = runtime.tools.start({
+    const compactAllowed = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-compact",
       toolName: "session_compact",
@@ -66,12 +66,12 @@ describe("Gap remediation: runtime core compaction gate", () => {
     });
     expect(compactAllowed.allowed).toBe(true);
 
-    runtime.context.markCompacted(sessionId, {
+    runtime.maintain.context.markCompacted(sessionId, {
       fromTokens: usage.tokens,
       toTokens: 40,
     });
 
-    const unblocked = runtime.tools.start({
+    const unblocked = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-after-compact",
       toolName: "exec",

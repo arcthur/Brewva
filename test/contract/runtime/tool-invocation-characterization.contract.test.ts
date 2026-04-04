@@ -235,7 +235,7 @@ describe("Tool invocation characterization", () => {
     const runtime = createRuntime();
     const sessionId = "tool-char-shell";
 
-    const started = runtime.tools.start({
+    const started = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-shell",
       toolName: "shell",
@@ -247,7 +247,7 @@ describe("Tool invocation characterization", () => {
       boundary: "effectful",
       reason: "Tool 'shell' has been removed. Use 'exec' with 'process' for command execution.",
     });
-    expect(summarizeEvents(runtime.events.query(sessionId))).toEqual([
+    expect(summarizeEvents(runtime.inspect.events.query(sessionId))).toEqual([
       {
         type: "tool_effect_gate_selected",
         payload: {
@@ -276,7 +276,7 @@ describe("Tool invocation characterization", () => {
     });
     const sessionId = "tool-char-accept";
 
-    const started = runtime.tools.start({
+    const started = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-exec-accept",
       toolName: "exec",
@@ -286,7 +286,7 @@ describe("Tool invocation characterization", () => {
     expect(started.allowed).toBe(true);
     expect(started.boundary).toBe("effectful");
     expect(started.commitmentReceipt?.decision).toBe("accept");
-    expect(summarizeEvents(runtime.events.query(sessionId))).toEqual([
+    expect(summarizeEvents(runtime.inspect.events.query(sessionId))).toEqual([
       {
         type: "tool_effect_gate_selected",
         payload: {
@@ -335,7 +335,7 @@ describe("Tool invocation characterization", () => {
     const runtime = createRuntime();
     const sessionId = "tool-char-defer";
 
-    const started = runtime.tools.start({
+    const started = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-exec-defer",
       toolName: "exec",
@@ -346,7 +346,7 @@ describe("Tool invocation characterization", () => {
     expect(started.boundary).toBe("effectful");
     expect(started.commitmentReceipt?.decision).toBe("defer");
     expect(typeof started.effectCommitmentRequestId).toBe("string");
-    expect(summarizeEvents(runtime.events.query(sessionId))).toEqual([
+    expect(summarizeEvents(runtime.inspect.events.query(sessionId))).toEqual([
       {
         type: "tool_effect_gate_selected",
         payload: {
@@ -406,24 +406,28 @@ describe("Tool invocation characterization", () => {
     const sessionId = "tool-char-args-mismatch";
     const sharedPrefix = "x".repeat(320);
 
-    const deferred = runtime.tools.start({
+    const deferred = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-exec-mismatch",
       toolName: "exec",
       args: { command: `${sharedPrefix}A` },
     });
-    const pending = runtime.proposals.listPendingEffectCommitments(sessionId);
+    const pending = runtime.inspect.proposals.listPendingEffectCommitments(sessionId);
     expect(deferred.allowed).toBe(false);
     expect(pending).toHaveLength(1);
 
-    const decision = runtime.proposals.decideEffectCommitment(sessionId, pending[0]!.requestId, {
-      decision: "accept",
-      actor: "operator:test",
-      reason: "exact payload reviewed",
-    });
+    const decision = runtime.authority.proposals.decideEffectCommitment(
+      sessionId,
+      pending[0]!.requestId,
+      {
+        decision: "accept",
+        actor: "operator:test",
+        reason: "exact payload reviewed",
+      },
+    );
     expect(decision.ok).toBe(true);
 
-    const mismatched = runtime.tools.start({
+    const mismatched = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-exec-mismatch",
       toolName: "exec",
@@ -437,7 +441,7 @@ describe("Tool invocation characterization", () => {
       reason: expect.stringContaining("effect_commitment_request_args_mismatch:"),
       effectCommitmentRequestId: pending[0]!.requestId,
     });
-    expect(summarizeEvents(runtime.events.query(sessionId, { last: 3 }))).toEqual([
+    expect(summarizeEvents(runtime.inspect.events.query(sessionId, { last: 3 }))).toEqual([
       {
         type: "effect_commitment_approval_decided",
       },
@@ -479,11 +483,11 @@ describe("Tool invocation characterization", () => {
       governancePort: createTrustedLocalGovernancePort(),
     });
     const sessionId = "tool-char-compact";
-    runtime.context.onTurnStart(sessionId, 3);
+    runtime.maintain.context.onTurnStart(sessionId, 3);
     const usage = { tokens: 95, contextWindow: 100, percent: 0.95 };
-    runtime.context.observeUsage(sessionId, usage);
+    runtime.maintain.context.observeUsage(sessionId, usage);
 
-    const blocked = runtime.tools.start({
+    const blocked = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-exec-compact",
       toolName: "exec",
@@ -496,7 +500,7 @@ describe("Tool invocation characterization", () => {
       boundary: "effectful",
       reason: expect.stringContaining("session_compact"),
     });
-    expect(summarizeEvents(runtime.events.query(sessionId))).toEqual([
+    expect(summarizeEvents(runtime.inspect.events.query(sessionId))).toEqual([
       { type: "context_usage" },
       { type: "context_usage" },
       {
@@ -518,7 +522,7 @@ describe("Tool invocation characterization", () => {
       },
     ]);
 
-    const compactAllowed = runtime.tools.start({
+    const compactAllowed = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-compact",
       toolName: "session_compact",
@@ -527,11 +531,11 @@ describe("Tool invocation characterization", () => {
     });
     expect(compactAllowed.allowed).toBe(true);
 
-    runtime.context.markCompacted(sessionId, {
+    runtime.maintain.context.markCompacted(sessionId, {
       fromTokens: usage.tokens,
       toTokens: 40,
     });
-    const unblocked = runtime.tools.start({
+    const unblocked = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-exec-after-compact",
       toolName: "exec",
@@ -551,9 +555,9 @@ describe("Tool invocation characterization", () => {
       config: createOpsRuntimeConfig(),
     });
     const sessionId = "tool-char-finish";
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
 
-    const started = runtime.tools.start({
+    const started = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-edit",
       toolName: "edit",
@@ -573,7 +577,7 @@ describe("Tool invocation characterization", () => {
     });
 
     writeFileSync(filePath, "export const value = 2;\n", "utf8");
-    runtime.tools.finish({
+    runtime.authority.tools.finish({
       sessionId,
       toolCallId: "tc-edit",
       toolName: "edit",
@@ -587,14 +591,14 @@ describe("Tool invocation characterization", () => {
       verdict: "pass",
     });
 
-    const directRollback = runtime.tools.rollbackLastPatchSet(sessionId);
-    const mutationRollback = runtime.tools.rollbackLastMutation(sessionId);
+    const directRollback = runtime.authority.tools.rollbackLastPatchSet(sessionId);
+    const mutationRollback = runtime.authority.tools.rollbackLastMutation(sessionId);
     expect(directRollback.ok).toBe(true);
     expect(mutationRollback).toMatchObject({
       ok: false,
       reason: "no_mutation_receipt",
     });
-    expect(summarizeEvents(runtime.events.query(sessionId))).toEqual([
+    expect(summarizeEvents(runtime.inspect.events.query(sessionId))).toEqual([
       {
         type: "tool_effect_gate_selected",
         payload: {
@@ -684,7 +688,7 @@ describe("Tool invocation characterization", () => {
     const runtime = createRuntime();
     const sessionId = "tool-char-record-result";
 
-    const ledgerId = runtime.tools.recordResult({
+    const ledgerId = runtime.authority.tools.recordResult({
       sessionId,
       toolCallId: "tc-fallback",
       toolName: "grep",
@@ -700,7 +704,7 @@ describe("Tool invocation characterization", () => {
     });
 
     expect(typeof ledgerId).toBe("string");
-    expect(summarizeEvents(runtime.events.query(sessionId))).toEqual([
+    expect(summarizeEvents(runtime.inspect.events.query(sessionId))).toEqual([
       {
         type: "tool_result_recorded",
         payload: {

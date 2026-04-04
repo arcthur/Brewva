@@ -36,27 +36,33 @@ import { createTapeTools } from "./tape.js";
 import { createTaskLedgerTools } from "./task-ledger.js";
 import { createTocTools } from "./toc.js";
 import type {
+  BrewvaBundledToolRuntime,
   BrewvaToolDelegationQuery,
   BrewvaToolOrchestration,
-  BrewvaToolRuntime,
 } from "./types.js";
 import { createWorkerResultsApplyTool, createWorkerResultsMergeTool } from "./worker-results.js";
 import { createWorkflowStatusTool } from "./workflow-status.js";
 
 export interface BuildBrewvaToolsOptions {
-  runtime: BrewvaToolRuntime;
+  runtime: BrewvaBundledToolRuntime;
   orchestration?: BrewvaToolOrchestration;
   delegation?: BrewvaToolDelegationQuery;
   toolNames?: readonly string[];
 }
 
+function extendBundledToolRuntime(
+  runtime: BrewvaBundledToolRuntime,
+  options: Pick<BuildBrewvaToolsOptions, "orchestration" | "delegation">,
+): BrewvaBundledToolRuntime {
+  return {
+    ...runtime,
+    ...(options.orchestration ? { orchestration: options.orchestration } : {}),
+    ...(options.delegation ? { delegation: options.delegation } : {}),
+  };
+}
+
 export function buildBrewvaTools(options: BuildBrewvaToolsOptions): ToolDefinition[] {
-  const runtime = Object.assign(
-    {},
-    options.runtime,
-    options.orchestration ? { orchestration: options.orchestration } : {},
-    options.delegation ? { delegation: options.delegation } : {},
-  ) as BrewvaToolRuntime;
+  const runtime = extendBundledToolRuntime(options.runtime, options);
 
   const tools = [
     ...createLspTools({ runtime }),
@@ -275,6 +281,8 @@ export type {
   SubagentStatusResult,
   SubagentCancelResult,
   BrewvaToolDelegationQuery,
+  BrewvaBundledToolOptions,
+  BrewvaBundledToolRuntime,
   BrewvaToolExecutionTraitResolverInput,
   BrewvaToolExecutionTraits,
   BrewvaToolExecutionTraitsResolver,

@@ -8,8 +8,8 @@ import {
   CONTEXT_SOURCES,
   CONTEXT_SOURCE_BUDGET_CLASSES,
   type ContextInjectionBudgetClass,
-  type ContextInjectionEntry,
 } from "@brewva/brewva-runtime";
+import type { ContextInjectionEntry } from "@brewva/brewva-runtime/internal";
 
 function resolveBudgetClass(source: string): ContextInjectionBudgetClass {
   return (
@@ -51,15 +51,17 @@ function createComposerRuntime(
   } = {},
 ): ContextComposerInput["runtime"] {
   return {
-    events: {
-      getTapeStatus: () => ({
-        tapePressure,
-        totalEntries: 32,
-        entriesSinceAnchor,
-        entriesSinceCheckpoint: 7,
-        lastAnchor: tapePressure === "low" ? null : { id: "a-1", name: "handoff" },
-      }),
-      query: () => [],
+    inspect: {
+      events: {
+        getTapeStatus: () => ({
+          tapePressure,
+          totalEntries: 32,
+          entriesSinceAnchor,
+          entriesSinceCheckpoint: 7,
+          lastAnchor: tapePressure === "low" ? null : { id: "a-1", name: "handoff" },
+        }),
+        query: () => [],
+      },
     },
     delegation: {
       listRuns: (

@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   TAPE_CHECKPOINT_EVENT_TYPE,
-  TurnReplayEngine,
   buildTapeCheckpointPayload,
   type BrewvaEventRecord,
 } from "@brewva/brewva-runtime";
+import { TurnReplayEngine } from "@brewva/brewva-runtime/internal";
 import { checkpointEvent, taskEvent } from "./turn-replay-engine.helpers.js";
 
 describe("TurnReplayEngine checkpoint replay", () => {

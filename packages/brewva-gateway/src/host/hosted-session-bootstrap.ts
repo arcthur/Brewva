@@ -8,11 +8,13 @@ import {
 import {
   BrewvaRuntime,
   CONTEXT_SOURCES,
+  createToolRuntimePort,
   createTrustedLocalGovernancePort,
   resolveBrewvaAgentDir,
   type CreateBrewvaSessionOptions as RuntimeCreateBrewvaSessionOptions,
   type ManagedToolMode,
 } from "@brewva/brewva-runtime";
+import { createToolRuntimeInternalPort, recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createSkillPromotionContextProvider } from "@brewva/brewva-skill-broker";
 import {
   attachBrewvaToolExecutionTraits,
@@ -371,44 +373,44 @@ function createKernelRuntime(options: CreateHostedSessionOptions, cwd: string): 
 
 function installContextProviders(runtime: BrewvaRuntime): void {
   if (
-    !runtime.context
+    !runtime.inspect.context
       .listProviders()
       .some((provider) => provider.source === CONTEXT_SOURCES.narrativeMemory)
   ) {
-    runtime.context.registerProvider(
+    runtime.maintain.context.registerProvider(
       createNarrativeMemoryContextProvider({
         runtime,
       }),
     );
   }
   if (
-    !runtime.context
+    !runtime.inspect.context
       .listProviders()
       .some((provider) => provider.source === CONTEXT_SOURCES.deliberationMemory)
   ) {
-    runtime.context.registerProvider(
+    runtime.maintain.context.registerProvider(
       createDeliberationMemoryContextProvider({
         runtime,
       }),
     );
   }
   if (
-    !runtime.context
+    !runtime.inspect.context
       .listProviders()
       .some((provider) => provider.source === CONTEXT_SOURCES.optimizationContinuity)
   ) {
-    runtime.context.registerProvider(
+    runtime.maintain.context.registerProvider(
       createOptimizationContinuityContextProvider({
         runtime,
       }),
     );
   }
   if (
-    !runtime.context
+    !runtime.inspect.context
       .listProviders()
       .some((provider) => provider.source === CONTEXT_SOURCES.skillPromotionDrafts)
   ) {
-    runtime.context.registerProvider(
+    runtime.maintain.context.registerProvider(
       createSkillPromotionContextProvider({
         runtime,
       }),
@@ -444,7 +446,7 @@ function createDelegationStore(
     return undefined;
   }
   const delegationStore = new HostedDelegationStore(runtime);
-  runtime.session.onClearState((sessionId) => {
+  runtime.maintain.session.onClearState((sessionId) => {
     delegationStore.clearSession(sessionId);
   });
   return delegationStore;
@@ -551,11 +553,11 @@ function createDirectManagedTools(input: {
     return undefined;
   }
   return buildBrewvaTools({
-    runtime: Object.assign(
-      {},
-      input.runtime,
-      input.semanticOracle ? { semanticOracle: input.semanticOracle } : {},
-    ),
+    runtime: {
+      ...createToolRuntimePort(input.runtime),
+      internal: createToolRuntimeInternalPort(input.runtime),
+      ...(input.semanticOracle ? { semanticOracle: input.semanticOracle } : {}),
+    },
     orchestration: input.orchestration,
     delegation: createDelegationQuery(input.delegationStore),
     toolNames: input.options.managedToolNames,
@@ -568,8 +570,8 @@ function recordHostedBootstrap(input: {
   cwd: string;
   managedToolMode: ManagedToolMode;
 }): void {
-  const skillLoadReport = input.runtime.skills.getLoadReport();
-  input.runtime.events.record({
+  const skillLoadReport = input.runtime.inspect.skills.getLoadReport();
+  recordRuntimeEvent(input.runtime, {
     sessionId: input.sessionId,
     type: "session_bootstrap",
     payload: {

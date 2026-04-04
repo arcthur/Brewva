@@ -1,5 +1,9 @@
 import type { BrewvaRuntime } from "@brewva/brewva-runtime";
-import { TurnWALRecovery, type TurnWALStore } from "@brewva/brewva-runtime/channels";
+import {
+  RecoveryWalRecovery,
+  type RecoveryWalStore,
+  recordRuntimeEvent,
+} from "@brewva/brewva-runtime/internal";
 import { waitForAllSettledWithTimeout } from "../utils/async.js";
 import { toErrorMessage } from "../utils/errors.js";
 import { createSerializedAsyncTaskRunner } from "../utils/serialized-async-task-runner.js";
@@ -13,8 +17,8 @@ export async function runChannelHostLifecycle(input: {
   channel: string;
   verbose: boolean;
   bundle: ChannelModeLaunchBundle;
-  turnWalStore: TurnWALStore;
-  turnWalCompactIntervalMs: number;
+  recoveryWalStore: RecoveryWalStore;
+  recoveryWalCompactIntervalMs: number;
   dispatcher: Pick<ChannelTurnDispatcher, "enqueueInboundTurn" | "listQueueTails">;
   sessionCoordinator: Pick<
     ChannelSessionCoordinator,
@@ -24,14 +28,14 @@ export async function runChannelHostLifecycle(input: {
   shutdownSignal?: AbortSignal;
   setShuttingDown(value: boolean): void;
 }): Promise<void> {
-  const turnWalMaintenance = createSerializedAsyncTaskRunner(async () => {
+  const recoveryWalMaintenance = createSerializedAsyncTaskRunner(async () => {
     try {
-      input.turnWalStore.compact();
+      input.recoveryWalStore.compact();
       await input.sessionCoordinator.evictIdleAgentRuntimesByTtl(Date.now());
       const evicted = input.runtimeManager.evictIdleRuntimes(Date.now());
       if (evicted.length > 0) {
-        input.runtime.events.record({
-          sessionId: input.turnWalStore.scope,
+        recordRuntimeEvent(input.runtime, {
+          sessionId: input.recoveryWalStore.scope,
           type: "channel_runtime_evicted",
           payload: {
             agentIds: evicted,
@@ -46,12 +50,12 @@ export async function runChannelHostLifecycle(input: {
       }
     }
   });
-  let turnWalCompactTimer: ReturnType<typeof setInterval> | null = null;
+  let recoveryWalCompactTimer: ReturnType<typeof setInterval> | null = null;
 
-  const stopTurnWalMaintenance = (): void => {
-    if (!turnWalCompactTimer) return;
-    clearInterval(turnWalCompactTimer);
-    turnWalCompactTimer = null;
+  const stopRecoveryWalMaintenance = (): void => {
+    if (!recoveryWalCompactTimer) return;
+    clearInterval(recoveryWalCompactTimer);
+    recoveryWalCompactTimer = null;
   };
 
   const disposeQueues = async (): Promise<void> => {
@@ -63,12 +67,12 @@ export async function runChannelHostLifecycle(input: {
     input.runtimeManager.disposeAll();
   };
 
-  const recovery = new TurnWALRecovery({
+  const recovery = new RecoveryWalRecovery({
     workspaceRoot: input.runtime.workspaceRoot,
-    config: input.runtime.config.infrastructure.turnWal,
-    scopeFilter: (scope) => scope === input.turnWalStore.scope,
+    config: input.runtime.config.infrastructure.recoveryWal,
+    scopeFilter: (scope) => scope === input.recoveryWalStore.scope,
     recordEvent: (event) => {
-      input.runtime.events.record({
+      recordRuntimeEvent(input.runtime, {
         sessionId: event.sessionId,
         type: event.type,
         payload: event.payload,
@@ -82,21 +86,21 @@ export async function runChannelHostLifecycle(input: {
     },
   });
   await recovery.recover();
-  input.turnWalStore.compact();
+  input.recoveryWalStore.compact();
 
-  if (input.turnWalStore.isEnabled) {
-    turnWalCompactTimer = setInterval(() => {
-      void turnWalMaintenance.run();
-    }, input.turnWalCompactIntervalMs);
-    turnWalCompactTimer.unref?.();
+  if (input.recoveryWalStore.isEnabled) {
+    recoveryWalCompactTimer = setInterval(() => {
+      void recoveryWalMaintenance.run();
+    }, input.recoveryWalCompactIntervalMs);
+    recoveryWalCompactTimer.unref?.();
   }
 
   try {
     await input.bundle.bridge.start();
     await input.bundle.onStart?.();
   } catch (error) {
-    stopTurnWalMaintenance();
-    await turnWalMaintenance.whenIdle();
+    stopRecoveryWalMaintenance();
+    await recoveryWalMaintenance.whenIdle();
     await Promise.allSettled([input.bundle.onStop?.(), input.bundle.bridge.stop()]);
     throw error;
   }
@@ -126,8 +130,8 @@ export async function runChannelHostLifecycle(input: {
           if (input.verbose) {
             console.error(`[channel] received ${signal}, stopping...`);
           }
-          stopTurnWalMaintenance();
-          await turnWalMaintenance.whenIdle();
+          stopRecoveryWalMaintenance();
+          await recoveryWalMaintenance.whenIdle();
           await input.bundle.onStop?.();
           await input.bundle.bridge.stop();
           await disposeQueues();

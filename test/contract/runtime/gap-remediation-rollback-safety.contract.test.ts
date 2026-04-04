@@ -20,9 +20,9 @@ describe("Gap remediation: rollback safety net", () => {
     writeFileSync(filePath, "export const value = 1;\n", "utf8");
 
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.tools.markCall(sessionId, "edit");
-    runtime.tools.recordResult({
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.tools.markCall(sessionId, "edit");
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "lsp_diagnostics",
       args: { severity: "all" },
@@ -30,25 +30,25 @@ describe("Gap remediation: rollback safety net", () => {
       channelSuccess: true,
     });
 
-    runtime.tools.trackCallStart({
+    runtime.authority.tools.trackCallStart({
       sessionId,
       toolCallId: "tool-1",
       toolName: "edit",
       args: { file_path: "src/main.ts" },
     });
     writeFileSync(filePath, "export const value = 2;\n", "utf8");
-    runtime.tools.trackCallEnd({
+    runtime.authority.tools.trackCallEnd({
       sessionId,
       toolCallId: "tool-1",
       toolName: "edit",
       channelSuccess: true,
     });
 
-    const rollback = runtime.tools.rollbackLastPatchSet(sessionId);
+    const rollback = runtime.authority.tools.rollbackLastPatchSet(sessionId);
     expect(rollback.ok).toBe(true);
     expect(readFileSync(filePath, "utf8")).toBe("export const value = 1;\n");
 
-    const verificationResets = runtime.events.query(sessionId, {
+    const verificationResets = runtime.inspect.events.query(sessionId, {
       type: VERIFICATION_STATE_RESET_EVENT_TYPE,
       last: 1,
     });
@@ -66,23 +66,23 @@ describe("Gap remediation: rollback safety net", () => {
     const sessionId = "rollback-add-1";
     const createdPath = join(workspace, "src/new-file.ts");
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
 
-    runtime.tools.trackCallStart({
+    runtime.authority.tools.trackCallStart({
       sessionId,
       toolCallId: "tool-add",
       toolName: "write",
       args: { file_path: "src/new-file.ts" },
     });
     writeFileSync(createdPath, "export const created = true;\n", "utf8");
-    runtime.tools.trackCallEnd({
+    runtime.authority.tools.trackCallEnd({
       sessionId,
       toolCallId: "tool-add",
       toolName: "write",
       channelSuccess: true,
     });
 
-    const rollback = runtime.tools.rollbackLastPatchSet(sessionId);
+    const rollback = runtime.authority.tools.rollbackLastPatchSet(sessionId);
     expect(rollback.ok).toBe(true);
     expect(existsSync(createdPath)).toBe(false);
   });
@@ -97,16 +97,16 @@ describe("Gap remediation: rollback safety net", () => {
     writeFileSync(filePath, "export const value = 1;\n", "utf8");
 
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
 
-    runtime.tools.trackCallStart({
+    runtime.authority.tools.trackCallStart({
       sessionId,
       toolCallId: "tool-1",
       toolName: "edit",
       args: { file_path: "src/main.ts" },
     });
     writeFileSync(filePath, "export const value = 2;\n", "utf8");
-    runtime.tools.trackCallEnd({
+    runtime.authority.tools.trackCallEnd({
       sessionId,
       toolCallId: "tool-1",
       toolName: "edit",
@@ -119,12 +119,12 @@ describe("Gap remediation: rollback safety net", () => {
       rmSync(join(snapshotDir, entry), { force: true });
     }
 
-    const rollback = runtime.tools.rollbackLastPatchSet(sessionId);
+    const rollback = runtime.authority.tools.rollbackLastPatchSet(sessionId);
     expect(rollback.ok).toBe(false);
     expect(rollback.reason).toBe("restore_failed");
     expect(rollback.failedPaths).toContain("src/main.ts");
     expect(readFileSync(filePath, "utf8")).toBe("export const value = 2;\n");
-    expect(runtime.tools.resolveUndoSessionId(sessionId)).toBe(sessionId);
+    expect(runtime.inspect.tools.resolveUndoSessionId(sessionId)).toBe(sessionId);
   });
 
   test("does not track file paths outside workspace during snapshot capture", async () => {
@@ -134,14 +134,14 @@ describe("Gap remediation: rollback safety net", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "rollback-path-traversal-1";
 
-    runtime.tools.trackCallStart({
+    runtime.authority.tools.trackCallStart({
       sessionId,
       toolCallId: "tc-outside",
       toolName: "edit",
       args: { file_path: "../outside.ts" },
     });
 
-    runtime.tools.trackCallStart({
+    runtime.authority.tools.trackCallStart({
       sessionId,
       toolCallId: "tc-abs",
       toolName: "edit",
@@ -149,14 +149,14 @@ describe("Gap remediation: rollback safety net", () => {
     });
 
     mkdirSync(join(workspace, "src"), { recursive: true });
-    runtime.tools.trackCallStart({
+    runtime.authority.tools.trackCallStart({
       sessionId,
       toolCallId: "tc-inside",
       toolName: "edit",
       args: { file_path: "src/inside.ts" },
     });
 
-    const snapshots = runtime.events.query(sessionId, { type: "file_snapshot_captured" });
+    const snapshots = runtime.inspect.events.query(sessionId, { type: "file_snapshot_captured" });
     expect(snapshots).toHaveLength(1);
     const payload = snapshots[0]?.payload as { files?: string[] } | undefined;
     expect(payload?.files).toEqual(["src/inside.ts"]);
@@ -175,15 +175,15 @@ describe("Gap remediation: rollback safety net", () => {
       cwd: workspace,
       configPath: GAP_REMEDIATION_CONFIG_PATH,
     });
-    runtimeA.context.onTurnStart(sessionId, 1);
-    runtimeA.tools.trackCallStart({
+    runtimeA.maintain.context.onTurnStart(sessionId, 1);
+    runtimeA.authority.tools.trackCallStart({
       sessionId,
       toolCallId: "persist-1",
       toolName: "edit",
       args: { file_path: "src/persisted.ts" },
     });
     writeFileSync(filePath, "export const persisted = 2;\n", "utf8");
-    runtimeA.tools.trackCallEnd({
+    runtimeA.authority.tools.trackCallEnd({
       sessionId,
       toolCallId: "persist-1",
       toolName: "edit",
@@ -194,10 +194,10 @@ describe("Gap remediation: rollback safety net", () => {
       cwd: workspace,
       configPath: GAP_REMEDIATION_CONFIG_PATH,
     });
-    const resolved = runtimeB.tools.resolveUndoSessionId();
+    const resolved = runtimeB.inspect.tools.resolveUndoSessionId();
     expect(resolved).toBe(sessionId);
 
-    const rollback = runtimeB.tools.rollbackLastPatchSet(sessionId);
+    const rollback = runtimeB.authority.tools.rollbackLastPatchSet(sessionId);
     expect(rollback.ok).toBe(true);
     expect(readFileSync(filePath, "utf8")).toBe("export const persisted = 1;\n");
   });

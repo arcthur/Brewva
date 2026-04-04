@@ -5,6 +5,7 @@ import {
   SCHEDULE_EVENT_TYPE,
   buildScheduleIntentCreatedEvent,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   ReloadPayload,
   SessionsClosePayload,
@@ -651,7 +652,7 @@ describe("gateway daemon control-plane methods", () => {
     try {
       const runtime = new BrewvaRuntime({ cwd: harness.root });
       const nowMs = Date.now();
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId: "parent-session",
         type: SCHEDULE_EVENT_TYPE,
         payload: buildScheduleIntentCreatedEvent({

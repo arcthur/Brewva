@@ -10,6 +10,7 @@ import type {
   SkillRoutingScope,
 } from "@brewva/brewva-runtime";
 import { isDelegationRunTerminalStatus } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type {
   DelegationPacket,
   SubagentCancelResult,
@@ -144,7 +145,7 @@ function matchesWorkerResultPredicate(
     { source: "worker_results" }
   >,
 ): boolean {
-  return runtime.session.listWorkerResults(parentSessionId).some((result) => {
+  return runtime.inspect.session.listWorkerResults(parentSessionId).some((result) => {
     if (predicate.workerId && result.workerId !== predicate.workerId) {
       return false;
     }
@@ -188,11 +189,11 @@ function evaluateCompletionPredicate(input: {
     if (input.currentEvent) {
       return matchesEventPredicate(input.currentEvent, input.parentSessionId, predicate);
     }
-    return input.runtime.events
+    return input.runtime.inspect.events
       .query(input.parentSessionId, { type: predicate.type })
       .some((event) =>
         matchesEventPredicate(
-          input.runtime.events.toStructured(event),
+          input.runtime.inspect.events.toStructured(event),
           input.parentSessionId,
           predicate,
         ),
@@ -253,8 +254,8 @@ export function createDetachedSubagentBackgroundController(
         : undefined,
     };
     trackedPredicates.delete(record.runId);
-    options.runtime.tools.releaseParallelSlot(record.parentSessionId, record.runId);
-    options.runtime.events.record({
+    options.runtime.authority.tools.releaseParallelSlot(record.parentSessionId, record.runId);
+    recordRuntimeEvent(options.runtime, {
       sessionId: record.parentSessionId,
       type: terminalStatus === "cancelled" ? "subagent_cancelled" : "subagent_failed",
       payload: {
@@ -326,7 +327,7 @@ export function createDetachedSubagentBackgroundController(
     async startRun(input) {
       const runId = randomUUID();
       const createdAt = Date.now();
-      const parentSkill = options.runtime.skills.getActive(input.parentSessionId)?.name;
+      const parentSkill = options.runtime.inspect.skills.getActive(input.parentSessionId)?.name;
       const delegate =
         input.delegate ??
         input.target.agentSpecName ??
@@ -394,7 +395,7 @@ export function createDetachedSubagentBackgroundController(
           updatedAt: createdAt,
           summary: "completion_predicate_satisfied",
         };
-        options.runtime.events.record({
+        recordRuntimeEvent(options.runtime, {
           sessionId: input.parentSessionId,
           type: "subagent_cancelled",
           payload: {
@@ -405,7 +406,10 @@ export function createDetachedSubagentBackgroundController(
         return cloneDelegationRunRecord(cancelledRecord);
       }
 
-      const parallel = options.runtime.tools.acquireParallelSlot(input.parentSessionId, runId);
+      const parallel = options.runtime.authority.tools.acquireParallelSlot(
+        input.parentSessionId,
+        runId,
+      );
       if (!parallel.accepted) {
         return writeTerminalFailure(
           initialRecord,
@@ -414,7 +418,7 @@ export function createDetachedSubagentBackgroundController(
         );
       }
 
-      options.runtime.events.record({
+      recordRuntimeEvent(options.runtime, {
         sessionId: input.parentSessionId,
         type: "subagent_spawned",
         payload: buildDelegationLifecyclePayload(initialRecord),
@@ -665,7 +669,7 @@ export function createDetachedSubagentBackgroundController(
       }
     },
   };
-  options.runtime.events.subscribe((event) => {
+  options.runtime.inspect.events.subscribe((event) => {
     for (const [runId, tracked] of trackedPredicates.entries()) {
       if (tracked.parentSessionId !== event.sessionId) {
         continue;

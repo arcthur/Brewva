@@ -73,8 +73,8 @@ status: active
 problem_kind: bugfix
 module: brewva-runtime
 boundaries:
-  - runtime.turnWal
-  - runtime.tools
+  - runtime.maintain.recovery
+  - runtime.authority.tools
 source_artifacts:
   - investigation_record
   - review_findings

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ParallelBudgetManager } from "@brewva/brewva-runtime";
+import { ParallelBudgetManager } from "@brewva/brewva-runtime/internal";
 
 describe("S-007 parallel budget control", () => {
   test("given configured parallel limits, when acquiring and releasing runs, then maxConcurrent and maxTotal are enforced", async () => {

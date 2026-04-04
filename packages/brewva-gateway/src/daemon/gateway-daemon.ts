@@ -5,13 +5,17 @@ import { resolve } from "node:path";
 import process from "node:process";
 import {
   BrewvaRuntime,
-  SchedulerService,
   createTrustedLocalGovernancePort,
   loadBrewvaConfig,
   resolveWorkspaceRootDir,
   type ManagedToolMode,
 } from "@brewva/brewva-runtime";
-import { TurnWALStore } from "@brewva/brewva-runtime/channels";
+import {
+  RecoveryWalStore,
+  SchedulerService,
+  createSchedulerIngressPort,
+  recordRuntimeEvent,
+} from "@brewva/brewva-runtime/internal";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { loadOrCreateGatewayToken, rotateGatewayToken } from "../auth.js";
 import { assertLoopbackHost, normalizeGatewayHost } from "../network.js";
@@ -277,7 +281,7 @@ export class GatewayDaemon {
   private readonly schedulerRuntime: BrewvaRuntime | null;
   private readonly scheduler: SchedulerService | null;
   private readonly schedulerUnavailableReason?: "schedule_disabled" | "events_disabled";
-  private readonly turnWalStore?: TurnWALStore;
+  private readonly recoveryWalStore?: RecoveryWalStore;
   private readonly heartbeatScheduler: HeartbeatScheduler;
   private readonly heartbeatSessionByRule = new Map<string, string>();
   private readonly broadcastObservers = new Set<(event: GatewayEvent, payload?: unknown) => void>();
@@ -387,11 +391,11 @@ export class GatewayDaemon {
             }
           : undefined,
       );
-    this.turnWalStore = options.sessionBackend
+    this.recoveryWalStore = options.sessionBackend
       ? undefined
-      : new TurnWALStore({
+      : new RecoveryWalStore({
           workspaceRoot,
-          config: runtimeConfig.infrastructure.turnWal,
+          config: runtimeConfig.infrastructure.recoveryWal,
           scope: "gateway",
         });
     this.authToken = loadOrCreateGatewayToken(this.tokenFilePath, this.stateStore);
@@ -414,10 +418,10 @@ export class GatewayDaemon {
         maxWorkers: options.maxWorkers,
         maxPendingSessionOpens: options.maxPendingSessionOpens,
         stateStore: this.stateStore,
-        turnWalStore: this.turnWalStore,
-        turnWalCompactIntervalMs: Math.max(
+        recoveryWalStore: this.recoveryWalStore,
+        recoveryWalCompactIntervalMs: Math.max(
           30_000,
-          Math.floor(runtimeConfig.infrastructure.turnWal.compactAfterMs / 2),
+          Math.floor(runtimeConfig.infrastructure.recoveryWal.compactAfterMs / 2),
         ),
         onWorkerEvent: (event) => {
           this.handleWorkerEvent(event.event, event.payload);
@@ -440,24 +444,25 @@ export class GatewayDaemon {
       : null;
     if (this.schedulerRuntime && !this.schedulerUnavailableReason) {
       const schedulerRuntime = this.schedulerRuntime;
+      const schedulerIngress = createSchedulerIngressPort(schedulerRuntime);
       this.scheduler = new SchedulerService({
         runtime: {
           workspaceRoot: schedulerRuntime.workspaceRoot,
           scheduleConfig: schedulerRuntime.config.schedule,
-          listSessionIds: () => schedulerRuntime.events.listSessionIds(),
-          listEvents: (sessionId, query) => schedulerRuntime.events.list(sessionId, query),
-          recordEvent: (input) => schedulerRuntime.events.record(input),
-          subscribeEvents: (listener) => schedulerRuntime.events.subscribe(listener),
-          getTruthState: (sessionId) => schedulerRuntime.truth.getState(sessionId),
-          getTaskState: (sessionId) => schedulerRuntime.task.getState(sessionId),
-          turnWal: {
+          listSessionIds: () => schedulerRuntime.inspect.events.listSessionIds(),
+          listEvents: (sessionId, query) => schedulerRuntime.inspect.events.list(sessionId, query),
+          recordEvent: (input) => recordRuntimeEvent(schedulerRuntime, input),
+          subscribeEvents: (listener) => schedulerRuntime.inspect.events.subscribe(listener),
+          getTruthState: (sessionId) => schedulerRuntime.inspect.truth.getState(sessionId),
+          getTaskState: (sessionId) => schedulerRuntime.inspect.task.getState(sessionId),
+          recoveryWal: {
             appendPending: (envelope, source, walOptions) =>
-              schedulerRuntime.turnWal.appendPending(envelope, source, walOptions),
-            markInflight: (walId) => schedulerRuntime.turnWal.markInflight(walId),
-            markDone: (walId) => schedulerRuntime.turnWal.markDone(walId),
-            markFailed: (walId, error) => schedulerRuntime.turnWal.markFailed(walId, error),
-            markExpired: (walId) => schedulerRuntime.turnWal.markExpired(walId),
-            listPending: () => schedulerRuntime.turnWal.listPending(),
+              schedulerIngress.appendPending(envelope, source, walOptions),
+            markInflight: (walId) => schedulerIngress.markInflight(walId),
+            markDone: (walId) => schedulerIngress.markDone(walId),
+            markFailed: (walId, error) => schedulerIngress.markFailed(walId, error),
+            markExpired: (walId) => schedulerIngress.markExpired(walId),
+            listPending: () => schedulerIngress.listPending(),
           },
         },
         shouldExecute: () => !this.schedulerExecutionState.paused,

@@ -38,9 +38,9 @@ describe("cost governance events", () => {
         },
       });
       const sessionId = "cost-governance-none-1";
-      runtime.context.onTurnStart(sessionId, 1);
+      runtime.maintain.context.onTurnStart(sessionId, 1);
 
-      runtime.cost.recordAssistantUsage({
+      runtime.authority.cost.recordAssistantUsage({
         sessionId,
         model: "test/model",
         inputTokens: 60,
@@ -58,12 +58,12 @@ describe("cost governance events", () => {
         totalTokens: 75,
         totalCostUsd: 0.0009,
       });
-      expect(runtime.events.query(sessionId, { type: "cost_update" })).toHaveLength(1);
+      expect(runtime.inspect.events.query(sessionId, { type: "cost_update" })).toHaveLength(1);
       expect(
-        runtime.events.query(sessionId, { type: "governance_cost_anomaly_detected" }),
+        runtime.inspect.events.query(sessionId, { type: "governance_cost_anomaly_detected" }),
       ).toHaveLength(0);
       expect(
-        runtime.events.query(sessionId, { type: "governance_cost_anomaly_error" }),
+        runtime.inspect.events.query(sessionId, { type: "governance_cost_anomaly_error" }),
       ).toHaveLength(0);
     } finally {
       cleanupTestWorkspace(workspace);
@@ -86,9 +86,9 @@ describe("cost governance events", () => {
         },
       });
       const sessionId = "cost-governance-detected-1";
-      runtime.context.onTurnStart(sessionId, 1);
+      runtime.maintain.context.onTurnStart(sessionId, 1);
 
-      runtime.cost.recordAssistantUsage({
+      runtime.authority.cost.recordAssistantUsage({
         sessionId,
         model: "test/model",
         inputTokens: 120,
@@ -101,7 +101,9 @@ describe("cost governance events", () => {
 
       await flushAsyncEvents();
 
-      const events = runtime.events.query(sessionId, { type: "governance_cost_anomaly_detected" });
+      const events = runtime.inspect.events.query(sessionId, {
+        type: "governance_cost_anomaly_detected",
+      });
       expect(events).toHaveLength(1);
       const payload = events[0]?.payload as { reason?: string; totalTokens?: number } | undefined;
       expect(payload?.reason).toBe("looping_token_burn");
@@ -126,9 +128,9 @@ describe("cost governance events", () => {
         },
       });
       const sessionId = "cost-governance-error-1";
-      runtime.context.onTurnStart(sessionId, 1);
+      runtime.maintain.context.onTurnStart(sessionId, 1);
 
-      runtime.cost.recordAssistantUsage({
+      runtime.authority.cost.recordAssistantUsage({
         sessionId,
         model: "test/model",
         inputTokens: 80,
@@ -141,7 +143,9 @@ describe("cost governance events", () => {
 
       await flushAsyncEvents();
 
-      const events = runtime.events.query(sessionId, { type: "governance_cost_anomaly_error" });
+      const events = runtime.inspect.events.query(sessionId, {
+        type: "governance_cost_anomaly_error",
+      });
       expect(events).toHaveLength(1);
       const payload = events[0]?.payload as { error?: string } | undefined;
       expect(payload?.error).toContain("cost-anomaly-check-failed");

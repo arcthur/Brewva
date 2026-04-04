@@ -7,6 +7,7 @@ import {
 } from "@brewva/brewva-gateway";
 import type { RuntimePlugin, RuntimePluginApi } from "@brewva/brewva-gateway/runtime-plugins";
 import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { clampText } from "./inspect-analysis.js";
 
@@ -150,7 +151,7 @@ export function createQuestionsCommandRuntimePlugin(runtime: BrewvaRuntime): Run
         } else {
           runtimePluginApi.sendUserMessage(prompt, { deliverAs: "followUp" });
         }
-        runtime.events.record({
+        recordRuntimeEvent(runtime, {
           sessionId,
           type: OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
           payload: buildOperatorQuestionAnsweredPayload({

@@ -1,6 +1,10 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type, type Static, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import {
+  appendToolRuntimeSupplementalInjection,
+  canAppendToolRuntimeSupplementalInjection,
+} from "./runtime-internal.js";
 import type {
   BrewvaToolOptions,
   DelegationPacket,
@@ -534,10 +538,10 @@ function deliverSubagentOutcome(input: {
   } = {};
 
   if (includesSupplementalReturn(input.returnMode)) {
-    const decision = input.runtime.context?.appendSupplementalInjection?.(
+    const decision = appendToolRuntimeSupplementalInjection(
+      input.runtime,
       input.sessionId,
       content,
-      undefined,
       input.returnScopeId ?? `subagent:${input.delegate}`,
     );
     delivery.supplemental = {
@@ -556,7 +560,10 @@ function validateDeliveryConfiguration(
   runtime: BrewvaToolOptions["runtime"],
   returnMode: SubagentReturnMode,
 ): { ok: true } | { ok: false; message: string } {
-  if (includesSupplementalReturn(returnMode) && !runtime.context?.appendSupplementalInjection) {
+  if (
+    includesSupplementalReturn(returnMode) &&
+    !canAppendToolRuntimeSupplementalInjection(runtime)
+  ) {
     return {
       ok: false,
       message:

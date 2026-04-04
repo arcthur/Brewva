@@ -96,12 +96,12 @@ Execution posture is intentionally split:
 - `review-operability` remains the internal audit lane for stale evidence,
   missing probes, rollback posture, and operator-visible recovery burden
 
-`runtime.verification.*` remains kernel authority over evidence sufficiency and
+`runtime.authority.verification.*` remains kernel authority over evidence sufficiency and
 freshness. It is not a delegated specialist.
 
 ## Inspectable Stall Adjudication
 
-Stall detection still starts with `runtime.session.pollStall(...)`, but the
+Stall detection still starts with `runtime.maintain.session.pollStall(...)`, but the
 gateway worker now adds a second, inspectable adjudication step.
 
 - `task_stuck_detected` remains the idle-threshold detection signal

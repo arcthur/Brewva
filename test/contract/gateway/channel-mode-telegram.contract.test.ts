@@ -15,11 +15,8 @@ import {
 } from "@brewva/brewva-gateway";
 import { createHostedSession } from "@brewva/brewva-gateway/host";
 import { DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
-import {
-  TurnWALStore,
-  type ChannelTurnBridge,
-  type TurnEnvelope,
-} from "@brewva/brewva-runtime/channels";
+import { type ChannelTurnBridge, type TurnEnvelope } from "@brewva/brewva-runtime/channels";
+import { RecoveryWalStore, recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { waitUntil } from "../../helpers/process.js";
 import { cleanupTestWorkspace, createTestWorkspace } from "../../helpers/workspace.js";
 
@@ -78,9 +75,9 @@ describe("gateway contract: telegram channel dispatch", () => {
   test("recovers telegram polling offset from the existing channel wal before launcher startup", async () => {
     const workspace = createTestWorkspace("channel-telegram-polling-offset");
     const configPath = writeChannelConfig(workspace);
-    const store = new TurnWALStore({
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "channel-telegram",
     });
     const row = store.appendPending(
@@ -157,10 +154,10 @@ describe("gateway contract: telegram channel dispatch", () => {
     const workspace = createTestWorkspace("channel-telegram-polling-offset-compacted");
     const configPath = writeChannelConfig(workspace);
     let nowMs = 10_000;
-    const store = new TurnWALStore({
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
       config: {
-        ...DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+        ...DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
         compactAfterMs: 100,
       },
       scope: "channel-telegram",
@@ -241,7 +238,7 @@ describe("gateway contract: telegram channel dispatch", () => {
   test("fails closed before launcher startup when the telegram wal is malformed", async () => {
     const workspace = createTestWorkspace("channel-telegram-malformed-wal");
     const configPath = writeChannelConfig(workspace);
-    const walDir = join(workspace, DEFAULT_BREWVA_CONFIG.infrastructure.turnWal.dir);
+    const walDir = join(workspace, DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal.dir);
     mkdirSync(walDir, { recursive: true });
     writeFileSync(join(walDir, "channel-telegram.jsonl"), '{"bad":true}\n', "utf8");
 
@@ -594,7 +591,7 @@ describe("gateway contract: telegram channel dispatch", () => {
             5_000,
             "timed out waiting for agent session bootstrap",
           );
-          hostedSession!.runtime.events.record({
+          recordRuntimeEvent(hostedSession!.runtime, {
             sessionId: hostedSession!.sessionId,
             type: "skill_completed",
             payload: {
@@ -715,7 +712,7 @@ describe("gateway contract: telegram channel dispatch", () => {
             5_000,
             "timed out waiting for agent session bootstrap",
           );
-          const questionEvent = hostedSession!.runtime.events.record({
+          const questionEvent = recordRuntimeEvent(hostedSession!.runtime, {
             sessionId: hostedSession!.sessionId,
             type: "skill_completed",
             payload: {
@@ -735,7 +732,7 @@ describe("gateway contract: telegram channel dispatch", () => {
           await waitUntil(
             () =>
               capturedPrompts.length >= 2 &&
-              (hostedSession?.runtime.events
+              (hostedSession?.runtime.inspect.events
                 .query(hostedSession.sessionId)
                 .filter((event) => event.type === OPERATOR_QUESTION_ANSWERED_EVENT_TYPE).length ??
                 0) >= 1,
@@ -743,7 +740,7 @@ describe("gateway contract: telegram channel dispatch", () => {
             "timed out waiting for answer routing prompt and event",
           );
           observedAnswerEventCount =
-            hostedSession?.runtime.events
+            hostedSession?.runtime.inspect.events
               .query(hostedSession.sessionId)
               .filter((event) => event.type === OPERATOR_QUESTION_ANSWERED_EVENT_TYPE).length ?? 0;
           abortController.abort();
@@ -849,7 +846,7 @@ describe("gateway contract: telegram channel dispatch", () => {
             5_000,
             "timed out waiting for default agent session bootstrap",
           );
-          const questionEvent = defaultSession!.runtime.events.record({
+          const questionEvent = recordRuntimeEvent(defaultSession!.runtime, {
             sessionId: defaultSession!.sessionId,
             type: "skill_completed",
             payload: {
@@ -907,7 +904,7 @@ describe("gateway contract: telegram channel dispatch", () => {
               capturedPrompts.some((prompt) =>
                 prompt.includes(`Question ID: ${defaultSession!.questionId}`),
               ) &&
-              (defaultSession?.runtime.events
+              (defaultSession?.runtime.inspect.events
                 .query(defaultSession.sessionId)
                 .filter((event) => event.type === OPERATOR_QUESTION_ANSWERED_EVENT_TYPE).length ??
                 0) >= 1,
@@ -915,7 +912,7 @@ describe("gateway contract: telegram channel dispatch", () => {
             "timed out waiting for durable answer routing after eviction",
           );
           observedAnswerEventCount =
-            defaultSession?.runtime.events
+            defaultSession?.runtime.inspect.events
               .query(defaultSession.sessionId)
               .filter((event) => event.type === OPERATOR_QUESTION_ANSWERED_EVENT_TYPE).length ?? 0;
           abortController.abort();
@@ -1030,7 +1027,7 @@ describe("gateway contract: telegram channel dispatch", () => {
             5_000,
             "timed out waiting for default session bootstrap",
           );
-          const questionEvent = defaultSession!.runtime.events.record({
+          const questionEvent = recordRuntimeEvent(defaultSession!.runtime, {
             sessionId: defaultSession!.sessionId,
             type: "skill_completed",
             payload: {
@@ -1051,7 +1048,7 @@ describe("gateway contract: telegram channel dispatch", () => {
           await waitUntil(
             () =>
               promptCount >= 2 &&
-              (defaultSession?.runtime.events
+              (defaultSession?.runtime.inspect.events
                 .query(defaultSession.sessionId)
                 .filter((event) => event.type === OPERATOR_QUESTION_ANSWERED_EVENT_TYPE).length ??
                 0) >= 1,
@@ -1059,7 +1056,7 @@ describe("gateway contract: telegram channel dispatch", () => {
             "timed out waiting for durable answer receipt after route failure",
           );
           observedAnswerEventCount =
-            defaultSession?.runtime.events
+            defaultSession?.runtime.inspect.events
               .query(defaultSession.sessionId)
               .filter((event) => event.type === OPERATOR_QUESTION_ANSWERED_EVENT_TYPE).length ?? 0;
           abortController.abort();

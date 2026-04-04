@@ -90,7 +90,7 @@ export function createWorkerResultsMergeTool(options: BrewvaToolOptions): ToolDe
     parameters: Type.Object({}, { additionalProperties: false }),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       const sessionId = getSessionId(ctx);
-      const report = options.runtime.session.mergeWorkerResults(sessionId);
+      const report = options.runtime.inspect.session.mergeWorkerResults(sessionId);
       if (report.status === "conflicts") {
         return failTextResult(formatMergeReport(report), {
           ok: false,
@@ -134,7 +134,7 @@ export function createWorkerResultsApplyTool(options: BrewvaToolOptions): ToolDe
     parameters: Type.Object({}, { additionalProperties: false }),
     async execute(toolCallId, _params, _signal, _onUpdate, ctx) {
       const sessionId = getSessionId(ctx);
-      const report = options.runtime.session.applyMergedWorkerResults(sessionId, {
+      const report = options.runtime.authority.session.applyMergedWorkerResults(sessionId, {
         toolName: "worker_results_apply",
         toolCallId,
       });

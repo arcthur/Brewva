@@ -17,11 +17,11 @@ describe("context compaction request dedupe", () => {
     });
     const sessionId = "context-compaction-request-dedupe";
 
-    runtime.context.requestCompaction(sessionId, "usage_threshold");
-    runtime.context.requestCompaction(sessionId, "usage_threshold");
-    runtime.context.requestCompaction(sessionId, "hard_limit");
+    runtime.maintain.context.requestCompaction(sessionId, "usage_threshold");
+    runtime.maintain.context.requestCompaction(sessionId, "usage_threshold");
+    runtime.maintain.context.requestCompaction(sessionId, "hard_limit");
 
-    const events = runtime.events.query(sessionId, {
+    const events = runtime.inspect.events.query(sessionId, {
       type: "context_compaction_requested",
     });
     const reasons = events.map(

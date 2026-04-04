@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { TASK_EVENT_TYPE, type BrewvaEventRecord } from "@brewva/brewva-runtime";
+import {
+  TASK_EVENT_TYPE,
+  TASK_LEDGER_SCHEMA,
+  type BrewvaEventRecord,
+} from "@brewva/brewva-runtime";
 import { ProjectionEngine } from "../../../packages/brewva-runtime/src/projection/engine.js";
 
 function taskSpecEvent(input: {
@@ -20,7 +24,7 @@ function taskSpecEvent(input: {
     turn: input.turn,
     timestamp,
     payload: {
-      schema: "brewva.task.ledger.v1",
+      schema: TASK_LEDGER_SCHEMA,
       kind: "spec_set",
       spec: {
         schema: "brewva.task.v1",

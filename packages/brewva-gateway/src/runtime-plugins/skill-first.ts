@@ -35,12 +35,14 @@ interface ScoredSignal {
 }
 
 export interface SkillFirstRuntimeLike {
-  skills: {
-    list(): SkillRecommendationCandidate[];
-    getActive(sessionId: string): Pick<SkillRecommendationCandidate, "name"> | null | undefined;
-  };
-  task: {
-    getState(sessionId: string): TaskStateLike | undefined;
+  inspect: {
+    skills: {
+      list(): SkillRecommendationCandidate[];
+      getActive(sessionId: string): Pick<SkillRecommendationCandidate, "name"> | null | undefined;
+    };
+    task: {
+      getState(sessionId: string): TaskStateLike | undefined;
+    };
   };
 }
 
@@ -505,7 +507,7 @@ export function deriveSkillRecommendations(
     prompt: string;
   },
 ): SkillRecommendationSet {
-  const activeSkillName = runtime.skills.getActive(input.sessionId)?.name ?? null;
+  const activeSkillName = runtime.inspect.skills.getActive(input.sessionId)?.name ?? null;
   if (activeSkillName) {
     return {
       activeSkillName,
@@ -514,7 +516,7 @@ export function deriveSkillRecommendations(
     };
   }
 
-  const taskState = runtime.task.getState(input.sessionId);
+  const taskState = runtime.inspect.task.getState(input.sessionId);
   const signals = collectPromptSignals(input.prompt, taskState);
   if (!signals.normalizedText) {
     return {
@@ -524,7 +526,7 @@ export function deriveSkillRecommendations(
     };
   }
 
-  const scored = runtime.skills
+  const scored = runtime.inspect.skills
     .list()
     .map((skill) => scoreSkill(skill, signals))
     .filter((entry): entry is SkillRecommendation => entry !== null)

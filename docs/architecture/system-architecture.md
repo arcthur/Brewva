@@ -143,8 +143,8 @@ Boundary reminder:
 
 - delegated `qa` may execute adversarial checks and produce release-confidence
   evidence
-- `runtime.verification.*` remains the kernel authority over whether evidence is
-  sufficient and fresh for session completion
+- `runtime.authority.verification.*` remains the kernel authority over whether
+  evidence is sufficient and fresh for session completion
 - neither surface becomes repository merge or release authority on its own
 
 ## Repository-Native Precedent Layer
@@ -232,7 +232,7 @@ Default mappings in Brewva:
 
 - event tape, checkpoints, receipts, task/truth/schedule intent events
   - `durable source of truth`
-- turn WAL and rollback patch/snapshot history
+- Recovery WAL and rollback patch/snapshot history
   - `durable transient`
 - working projection, workflow posture, and other derived inspection products
   - `rebuildable state`
@@ -247,6 +247,56 @@ Boundary rule:
   inputs
 - `Control Plane` surfaces default to `cache` unless an explicit crash-recovery
   argument narrows them into `durable transient`
+
+## Public Surface Interpretation
+
+`BrewvaRuntime` may expose a public facade that is wider than the smallest
+authority contract. That width must not be read as authority width.
+
+Stable interpretation should distinguish three kinds of public surface:
+
+- `stable runtime facade`
+  - `runtime.authority`
+  - `runtime.inspect`
+  - `runtime.maintain`
+  - narrower role ports derived from the same semantic contract
+- `authority-facing contract`
+  - effect authorization
+  - proposal / approval / exact resume
+  - durable linked outcomes
+  - task commitment writes and closure records
+  - truth commitment writes
+  - schedule intent create, update, and cancel
+  - verification sufficiency
+  - rollback identity
+- `operator / inspection surface`
+  - event, ledger, cost, integrity, and replay inspection products
+  - schedule read models such as list and projection views
+  - tool access explanation and similar query-only views
+- `rebuild / maintenance surface`
+  - context refresh and admission helpers
+  - skill refresh and registry rebuild
+  - WAL-backed crash-recovery helpers
+  - raw tape-recording escape hatches and explicit session-maintenance helpers
+
+Interpretation rules:
+
+- `public` does not mean `equally authoritative`
+- semantic root surfaces should compress toward authority width even when
+  inspection and maintenance remain rich
+- surface tiering applies at the method or method-group level, not at the
+  namespace level
+- rich inspection and recovery surfaces may remain explicit
+- default host, plugin, and skill coupling should prefer the narrowest surface
+  that preserves correctness
+- raw durability mechanisms should not become the default product vocabulary
+  when a narrower receipt, verification report, or read model would suffice
+- Tier 2 is read-only; APIs that write tape, mutate session state, mutate
+  runtime-owned registries, or change admission state belong to Tier 1 or Tier
+  3
+- explicit access to WAL-backed recovery state, ledger, projection, and related rebuild helpers
+  may be necessary for audit, undo, recovery, and inspection, but that does
+  not make them the default semantic center for surrounding products
 
 ## Core Kernel
 
@@ -274,7 +324,7 @@ Boundary rule:
 
 - event tape
 - checkpoint + delta replay
-- turn WAL
+- Recovery WAL
 
 ## Iteration-Fact Substrate
 

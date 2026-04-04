@@ -6,6 +6,7 @@ import {
   SKILL_COMPLETED_EVENT_TYPE,
   buildScheduleIntentFiredEvent,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createOptimizationContinuityTool } from "@brewva/brewva-tools";
 import { patchDateNow } from "../../helpers/global-state.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
@@ -23,7 +24,7 @@ function recordGoalLoopState(runtime: BrewvaRuntime): { loopKey: string; parentS
   const loopKey = "scheduler-verification-2026-03-23";
   const loopSource = `goal-loop:${loopKey}`;
 
-  runtime.events.record({
+  recordRuntimeEvent(runtime, {
     sessionId: parentSessionId,
     type: "schedule_intent",
     timestamp: 1_710_100_000_010,
@@ -42,7 +43,7 @@ function recordGoalLoopState(runtime: BrewvaRuntime): { loopKey: string; parentS
       }),
     },
   });
-  runtime.events.record({
+  recordRuntimeEvent(runtime, {
     sessionId: parentSessionId,
     type: "schedule_intent",
     timestamp: 1_710_100_000_020,
@@ -67,7 +68,7 @@ function recordGoalLoopState(runtime: BrewvaRuntime): { loopKey: string; parentS
     [childSessionId, `${loopKey}/run-2`, 2],
     [freshSessionId, `${loopKey}/run-fresh`, 9],
   ] as const) {
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: SKILL_COMPLETED_EVENT_TYPE,
       timestamp: 1_710_100_000_100 + value,
@@ -125,7 +126,7 @@ function recordGoalLoopState(runtime: BrewvaRuntime): { loopKey: string; parentS
         },
       },
     });
-    runtime.events.recordMetricObservation(sessionId, {
+    runtime.authority.events.recordMetricObservation(sessionId, {
       metricKey: "failed_checks",
       value,
       source: loopSource,

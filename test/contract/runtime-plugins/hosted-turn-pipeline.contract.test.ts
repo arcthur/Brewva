@@ -41,10 +41,11 @@ function createRuntimeFixture(
     config: createRuntimeConfig((config) => {
       config.skills.routing.enabled = true;
       config.skills.routing.scopes = ["core", "domain"];
+      config.infrastructure.events.level = "debug";
     }),
   });
 
-  Object.assign(runtime.tools, {
+  Object.assign(runtime.authority.tools, {
     start(payload: Record<string, unknown>) {
       calls.started.push(payload);
       return {
@@ -53,31 +54,23 @@ function createRuntimeFixture(
         advisory: input.startAdvisory,
       };
     },
-    explainAccess() {
-      return { allowed: true };
-    },
     finish(payload: Record<string, unknown>) {
       calls.finished.push(payload);
     },
   });
 
-  Object.assign(runtime.context, {
+  Object.assign(runtime.inspect.tools, {
+    explainAccess() {
+      return { allowed: true };
+    },
+  });
+
+  Object.assign(runtime.maintain.context, {
     markCompacted(sessionId: string, payload: Record<string, unknown>) {
       calls.compacted.push({ sessionId, input: payload });
     },
     observeUsage(sessionId: string, usage: unknown) {
       calls.observedContext.push({ sessionId, usage });
-    },
-    getUsage() {
-      return { tokens: 320, contextWindow: 4096, percent: 0.078 };
-    },
-    getPressureStatus(_sessionId: string, usage?: { percent?: number }) {
-      return {
-        level: "low",
-        usageRatio: typeof usage?.percent === "number" ? usage.percent : 0.078,
-        hardLimitRatio: 0.98,
-        compactionThresholdRatio: 0.8,
-      };
     },
     async buildInjection() {
       return {
@@ -87,6 +80,20 @@ function createRuntimeFixture(
         originalTokens: 0,
         finalTokens: 0,
         truncated: false,
+      };
+    },
+  });
+
+  Object.assign(runtime.inspect.context, {
+    getUsage() {
+      return { tokens: 320, contextWindow: 4096, percent: 0.078 };
+    },
+    getPressureStatus(_sessionId: string, usage?: { percent?: number }) {
+      return {
+        level: "low",
+        usageRatio: typeof usage?.percent === "number" ? usage.percent : 0.078,
+        hardLimitRatio: 0.98,
+        compactionThresholdRatio: 0.8,
       };
     },
     getCompactionGateStatus() {
@@ -118,11 +125,11 @@ function createRuntimeFixture(
     },
   });
 
-  Object.assign(runtime.events, {
-    record(payload: Record<string, unknown>) {
-      calls.events.push(payload);
-      return undefined;
-    },
+  runtime.inspect.events.subscribe((event) => {
+    calls.events.push(event as unknown as Record<string, unknown>);
+  });
+
+  Object.assign(runtime.inspect.events, {
     query() {
       return [];
     },
@@ -144,7 +151,7 @@ function createRuntimeFixture(
     },
   });
 
-  Object.assign(runtime.task, {
+  Object.assign(runtime.inspect.task, {
     getState() {
       return {
         spec: {
@@ -159,7 +166,7 @@ function createRuntimeFixture(
     },
   });
 
-  Object.assign(runtime.skills, {
+  Object.assign(runtime.inspect.skills, {
     getActive() {
       return null;
     },
@@ -168,7 +175,7 @@ function createRuntimeFixture(
     },
   });
 
-  Object.assign(runtime.session, {
+  Object.assign(runtime.maintain.session, {
     clearState(sessionId: string) {
       calls.cleared.push(sessionId);
     },

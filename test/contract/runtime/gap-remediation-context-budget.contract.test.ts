@@ -14,11 +14,15 @@ describe("Gap remediation: context budget", () => {
     writeConfig(workspace, createConfig({}));
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
 
-    const decision = await runtime.context.buildInjection("ctx-1", "fix broken test in runtime", {
-      tokens: 195_000,
-      contextWindow: 200_000,
-      percent: 0.975,
-    });
+    const decision = await runtime.maintain.context.buildInjection(
+      "ctx-1",
+      "fix broken test in runtime",
+      {
+        tokens: 195_000,
+        contextWindow: 200_000,
+        percent: 0.975,
+      },
+    );
     expect(decision.accepted).toBe(false);
   });
 
@@ -30,10 +34,11 @@ describe("Gap remediation: context budget", () => {
       configPath: GAP_REMEDIATION_CONFIG_PATH,
     });
     const sessionId = "context-injection-dedup-1";
-    runtime.ledger.getDigest = () => "[Ledger Digest]\nrecords=0 pass=0 fail=0 inconclusive=0";
+    runtime.inspect.ledger.getDigest = () =>
+      "[Ledger Digest]\nrecords=0 pass=0 fail=0 inconclusive=0";
 
-    runtime.context.onTurnStart(sessionId, 1);
-    const first = await runtime.context.buildInjection(
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    const first = await runtime.maintain.context.buildInjection(
       sessionId,
       "fix duplicate injection",
       {
@@ -46,8 +51,8 @@ describe("Gap remediation: context budget", () => {
     expect(first.accepted).toBe(true);
     expect(first.text.length).toBeGreaterThan(0);
 
-    runtime.context.onTurnStart(sessionId, 2);
-    const second = await runtime.context.buildInjection(
+    runtime.maintain.context.onTurnStart(sessionId, 2);
+    const second = await runtime.maintain.context.buildInjection(
       sessionId,
       "fix duplicate injection",
       {
@@ -59,8 +64,8 @@ describe("Gap remediation: context budget", () => {
     );
     expect(second.accepted).toBe(false);
 
-    runtime.context.onTurnStart(sessionId, 3);
-    const third = await runtime.context.buildInjection(
+    runtime.maintain.context.onTurnStart(sessionId, 3);
+    const third = await runtime.maintain.context.buildInjection(
       sessionId,
       "fix duplicate injection",
       {
@@ -73,13 +78,13 @@ describe("Gap remediation: context budget", () => {
     expect(third.accepted).toBe(true);
     expect(third.text.length).toBeGreaterThan(0);
 
-    runtime.context.markCompacted(sessionId, {
+    runtime.maintain.context.markCompacted(sessionId, {
       fromTokens: 1500,
       toTokens: 500,
     });
-    runtime.context.onTurnStart(sessionId, 4);
+    runtime.maintain.context.onTurnStart(sessionId, 4);
 
-    const fourth = await runtime.context.buildInjection(
+    const fourth = await runtime.maintain.context.buildInjection(
       sessionId,
       "fix duplicate injection",
       {
@@ -103,7 +108,7 @@ describe("Gap remediation: context budget", () => {
     const sessionId = "context-injection-truncate-1";
 
     for (let i = 0; i < 12; i += 1) {
-      runtime.tools.recordResult({
+      runtime.authority.tools.recordResult({
         sessionId,
         toolName: "exec",
         args: { command: `echo ${"x".repeat(240)} ${i}` },
@@ -112,7 +117,7 @@ describe("Gap remediation: context budget", () => {
       });
     }
 
-    const injection = await runtime.context.buildInjection(sessionId, "fix bug", {
+    const injection = await runtime.maintain.context.buildInjection(sessionId, "fix bug", {
       tokens: 1000,
       contextWindow: 2000,
       percent: 0.5,
@@ -133,7 +138,7 @@ describe("Gap remediation: context budget", () => {
     const sessionId = "context-budget-disabled-1";
 
     for (let i = 0; i < 12; i += 1) {
-      runtime.tools.recordResult({
+      runtime.authority.tools.recordResult({
         sessionId,
         toolName: "exec",
         args: { command: `echo ${"x".repeat(240)} ${i}` },
@@ -142,8 +147,8 @@ describe("Gap remediation: context budget", () => {
       });
     }
 
-    runtime.context.onTurnStart(sessionId, 1);
-    const primary = await runtime.context.buildInjection(
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    const primary = await runtime.maintain.context.buildInjection(
       sessionId,
       "fix flaky test and keep complete context",
       {
@@ -156,7 +161,7 @@ describe("Gap remediation: context budget", () => {
     expect(primary.accepted).toBe(true);
     expect(primary.finalTokens).toBeGreaterThan(0);
 
-    const supplemental = runtime.context.appendSupplementalInjection(
+    const supplemental = runtime.maintain.context.appendSupplementalInjection(
       sessionId,
       "y".repeat(800),
       {
@@ -185,14 +190,14 @@ describe("Gap remediation: context budget", () => {
       percent: 0.2,
     };
 
-    runtime.context.onTurnStart(sessionId, 1);
-    const primary = await runtime.context.buildInjection(
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    const primary = await runtime.maintain.context.buildInjection(
       sessionId,
       "fix flaky tests",
       usage,
       "leaf-a",
     );
-    const supplemental = runtime.context.appendSupplementalInjection(
+    const supplemental = runtime.maintain.context.appendSupplementalInjection(
       sessionId,
       "x".repeat(2000),
       usage,
@@ -205,7 +210,7 @@ describe("Gap remediation: context budget", () => {
       expect(supplemental.droppedReason).toBe("budget_exhausted");
     }
 
-    const otherScope = runtime.context.appendSupplementalInjection(
+    const otherScope = runtime.maintain.context.appendSupplementalInjection(
       sessionId,
       "y".repeat(120),
       usage,
@@ -213,8 +218,8 @@ describe("Gap remediation: context budget", () => {
     );
     expect(otherScope.accepted).toBe(true);
 
-    runtime.context.onTurnStart(sessionId, 2);
-    const afterTurnReset = runtime.context.appendSupplementalInjection(
+    runtime.maintain.context.onTurnStart(sessionId, 2);
+    const afterTurnReset = runtime.maintain.context.appendSupplementalInjection(
       sessionId,
       "z".repeat(120),
       usage,
@@ -237,8 +242,8 @@ describe("Gap remediation: context budget", () => {
       percent: 0.08,
     };
 
-    runtime.context.onTurnStart(sessionId, 1);
-    const first = runtime.context.appendSupplementalInjection(
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    const first = runtime.maintain.context.appendSupplementalInjection(
       sessionId,
       "x".repeat(2000),
       usage,
@@ -246,7 +251,7 @@ describe("Gap remediation: context budget", () => {
     );
     expect(first.accepted).toBe(true);
 
-    const second = runtime.context.appendSupplementalInjection(
+    const second = runtime.maintain.context.appendSupplementalInjection(
       sessionId,
       "x".repeat(2000),
       usage,
@@ -255,7 +260,7 @@ describe("Gap remediation: context budget", () => {
     expect(second.accepted).toBe(false);
     expect(second.droppedReason).toBe("budget_exhausted");
 
-    const exhausted = runtime.context.appendSupplementalInjection(
+    const exhausted = runtime.maintain.context.appendSupplementalInjection(
       sessionId,
       "x".repeat(2000),
       usage,
@@ -264,7 +269,7 @@ describe("Gap remediation: context budget", () => {
     expect(exhausted.accepted).toBe(false);
     expect(exhausted.droppedReason).toBe("budget_exhausted");
 
-    const otherScope = runtime.context.appendSupplementalInjection(
+    const otherScope = runtime.maintain.context.appendSupplementalInjection(
       sessionId,
       "x".repeat(2000),
       usage,
@@ -272,8 +277,8 @@ describe("Gap remediation: context budget", () => {
     );
     expect(otherScope.accepted).toBe(true);
 
-    runtime.context.onTurnStart(sessionId, 2);
-    const afterTurnReset = runtime.context.appendSupplementalInjection(
+    runtime.maintain.context.onTurnStart(sessionId, 2);
+    const afterTurnReset = runtime.maintain.context.appendSupplementalInjection(
       sessionId,
       "x".repeat(2000),
       usage,
@@ -296,13 +301,13 @@ describe("Gap remediation: context budget", () => {
       percent: 0.08,
     };
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Preserve supplemental reservation after duplicate primary injection.",
     });
 
-    runtime.context.onTurnStart(sessionId, 1);
-    const primary = await runtime.context.buildInjection(
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    const primary = await runtime.maintain.context.buildInjection(
       sessionId,
       "stabilize duplicate scope budget",
       usage,
@@ -310,7 +315,7 @@ describe("Gap remediation: context budget", () => {
     );
     expect(primary.accepted).toBe(true);
 
-    const firstSupplemental = runtime.context.appendSupplementalInjection(
+    const firstSupplemental = runtime.maintain.context.appendSupplementalInjection(
       sessionId,
       "s".repeat(28),
       usage,
@@ -319,7 +324,7 @@ describe("Gap remediation: context budget", () => {
     expect(firstSupplemental.accepted).toBe(true);
     expect(firstSupplemental.finalTokens).toBeGreaterThan(0);
 
-    const duplicatePrimary = await runtime.context.buildInjection(
+    const duplicatePrimary = await runtime.maintain.context.buildInjection(
       sessionId,
       "stabilize duplicate scope budget",
       usage,
@@ -327,7 +332,7 @@ describe("Gap remediation: context budget", () => {
     );
     expect(duplicatePrimary.accepted).toBe(false);
 
-    const secondSupplemental = runtime.context.appendSupplementalInjection(
+    const secondSupplemental = runtime.maintain.context.appendSupplementalInjection(
       sessionId,
       "z".repeat(4000),
       usage,

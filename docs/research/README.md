@@ -5,7 +5,7 @@ yet stable enough for `docs/architecture/` or `docs/reference/`.
 
 ## When to add a research note
 
-- A decision spans multiple packages or runtime domains.
+- A decision spans multiple packages or runtime semantic surfaces / authority boundaries.
 - The team needs to compare alternatives before locking a contract.
 - Validation criteria are known, but implementation is still evolving.
 
@@ -65,6 +65,7 @@ yet stable enough for `docs/architecture/` or `docs/reference/`.
 - `docs/research/rfc-repository-fitness-plane-and-runtime-boundary.md`
 - `docs/research/rfc-skill-distribution-refresh-and-catalog-surface.md`
 - `docs/research/rfc-skill-first-delegation-and-execution-envelopes.md`
+- `docs/research/rfc-authority-surface-narrowing-and-runtime-facade-compression.md`
 - `docs/research/rfc-workflow-artifacts-and-posture-control-plane.md`
 - `docs/research/rfc-hosted-turn-transitions-and-bounded-recovery.md`
 
@@ -80,9 +81,13 @@ terminology, including the older delegation `profile` model. Current
 delegation contracts should be read from stable docs and the promoted
 skill-first delegation RFC.
 
+They may also retain historical runtime-domain vocabulary. Current runtime
+surface terminology should be read from stable docs: `authority`, `inspect`,
+and `maintain`.
+
 Promoted notes may also retain intermediate delegation terminology inside
 historical rationale sections. When a promoted note includes a current-state
 clarification, that clarification overrides older examples or transition code
 snippets. Current delegated result kinds should be read from stable docs:
 `exploration`, `plan`, `review`, `qa`, and `patch`, while
-`runtime.verification.*` remains a separate kernel authority.
+`runtime.authority.verification.*` remains a separate kernel authority.

@@ -3,6 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrewvaRuntime, buildScheduleIntentFiredEvent } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createIterationFactTool } from "@brewva/brewva-tools";
 import { requireNonEmptyString } from "../../helpers/assertions.js";
 import { extractTextContent, mergeContext } from "./tools-flow.helpers.js";
@@ -77,9 +78,11 @@ describe("iteration_fact contract", () => {
     expect(text).toContain("key=error_budget");
 
     expect(
-      runtime.events.listMetricObservations(sessionId, { iterationKey: "iter-2" }),
+      runtime.inspect.events.listMetricObservations(sessionId, { iterationKey: "iter-2" }),
     ).toHaveLength(1);
-    expect(runtime.events.listGuardResults(sessionId, { iterationKey: "iter-2" })).toHaveLength(1);
+    expect(
+      runtime.inspect.events.listGuardResults(sessionId, { iterationKey: "iter-2" }),
+    ).toHaveLength(1);
   });
 
   test("rejects metric and guard writes without evidence refs", async () => {
@@ -113,8 +116,8 @@ describe("iteration_fact contract", () => {
 
     expect(extractTextContent(metricResult)).toContain("evidence_refs");
     expect(extractTextContent(guardResult)).toContain("evidence_refs");
-    expect(runtime.events.listMetricObservations(sessionId)).toEqual([]);
-    expect(runtime.events.listGuardResults(sessionId)).toEqual([]);
+    expect(runtime.inspect.events.listMetricObservations(sessionId)).toEqual([]);
+    expect(runtime.inspect.events.listGuardResults(sessionId)).toEqual([]);
   });
 
   test("lists lineage-scoped facts through the managed tool surface", async () => {
@@ -126,7 +129,7 @@ describe("iteration_fact contract", () => {
     const loopSource = "goal-loop:coverage-raise-2026-03-22";
     const tool = createIterationFactTool({ runtime });
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: parentSessionId,
       type: "schedule_intent",
       timestamp: 10,
@@ -145,7 +148,7 @@ describe("iteration_fact contract", () => {
         }),
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: parentSessionId,
       type: "schedule_intent",
       timestamp: 11,
@@ -165,7 +168,7 @@ describe("iteration_fact contract", () => {
       },
     });
 
-    runtime.events.recordMetricObservation(parentSessionId, {
+    runtime.authority.events.recordMetricObservation(parentSessionId, {
       metricKey: "coverage_pct",
       value: 72,
       unit: "%",
@@ -174,7 +177,7 @@ describe("iteration_fact contract", () => {
       source: loopSource,
       timestamp: 100,
     });
-    runtime.events.recordMetricObservation(childSessionId, {
+    runtime.authority.events.recordMetricObservation(childSessionId, {
       metricKey: "coverage_pct",
       value: 74,
       unit: "%",
@@ -183,7 +186,7 @@ describe("iteration_fact contract", () => {
       source: loopSource,
       timestamp: 110,
     });
-    runtime.events.recordMetricObservation(siblingSessionId, {
+    runtime.authority.events.recordMetricObservation(siblingSessionId, {
       metricKey: "coverage_pct",
       value: 76,
       unit: "%",

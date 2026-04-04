@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { CredentialVaultService } from "@brewva/brewva-runtime";
+import { CredentialVaultService } from "@brewva/brewva-runtime/internal";
 
 export interface ChildRegistryEntry {
   sessionId: string;

@@ -190,7 +190,7 @@ instead of by presence or absence in the file.
 
 `skills_index.json` is a versioned inspect artifact (`schemaVersion=1`), not a
 durable source of truth. Runtime may rebuild it at startup or through explicit
-`runtime.skills.refresh(...)`.
+`runtime.maintain.skills.refresh(...)`.
 
 ## Model-Native Sequencing
 

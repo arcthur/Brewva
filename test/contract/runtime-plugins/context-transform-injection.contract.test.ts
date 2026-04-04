@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { HostedDelegationStore } from "@brewva/brewva-gateway";
 import type { SkillDocument } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   CONTEXT_SOURCES,
   createMockRuntimePluginApi,
@@ -180,7 +181,7 @@ describe("context transform injection contract", () => {
         }),
       },
     });
-    Object.assign(runtime.skills, {
+    Object.assign(runtime.inspect.skills, {
       getActive(activeSessionId: string) {
         return activeSessionId === sessionId ? activeSkill : undefined;
       },
@@ -229,7 +230,7 @@ describe("context transform injection contract", () => {
     });
     const delegationStore = new HostedDelegationStore(runtime);
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "subagent_completed",
       payload: {
@@ -272,7 +273,9 @@ describe("context transform injection contract", () => {
     expect(delegationStore.getRun(sessionId, "run-completed-1")?.delivery?.handoffState).toBe(
       "surfaced",
     );
-    expect(runtime.events.list(sessionId, { type: "subagent_delivery_surfaced" })).toHaveLength(1);
+    expect(
+      runtime.inspect.events.list(sessionId, { type: "subagent_delivery_surfaced" }),
+    ).toHaveLength(1);
 
     const secondResults = await invokeHandlersAsync<{
       message?: {
@@ -297,6 +300,8 @@ describe("context transform injection contract", () => {
       (candidate) => typeof candidate?.message?.content === "string",
     );
     expect(second?.message?.content ?? "").not.toContain("[CompletedDelegationOutcomes]");
-    expect(runtime.events.list(sessionId, { type: "subagent_delivery_surfaced" })).toHaveLength(1);
+    expect(
+      runtime.inspect.events.list(sessionId, { type: "subagent_delivery_surfaced" }),
+    ).toHaveLength(1);
   });
 });

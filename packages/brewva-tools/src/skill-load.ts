@@ -115,7 +115,7 @@ export function createSkillLoadTool(options: BrewvaToolOptions): ToolDefinition 
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const sessionId = getSessionId(ctx);
-      const result = options.runtime.skills.activate(sessionId, params.name);
+      const result = options.runtime.authority.skills.activate(sessionId, params.name);
       if (!result.ok) {
         return failTextResult(`Error: ${result.reason}`, {
           ok: false,
@@ -123,7 +123,7 @@ export function createSkillLoadTool(options: BrewvaToolOptions): ToolDefinition 
       }
       const skill = result.skill;
 
-      const availableConsumedOutputs = options.runtime.skills.getConsumedOutputs(
+      const availableConsumedOutputs = options.runtime.inspect.skills.getConsumedOutputs(
         sessionId,
         params.name,
       );

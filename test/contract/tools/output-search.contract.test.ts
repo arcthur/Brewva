@@ -3,7 +3,9 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createOutputSearchTool } from "@brewva/brewva-tools";
+import { createBundledToolRuntime } from "../../helpers/runtime.js";
 import { extractTextContent, mergeContext } from "./tools-flow.helpers.js";
 
 describe("output_search contract", () => {
@@ -23,7 +25,7 @@ describe("output_search contract", () => {
     ].join("\n");
     writeFileSync(join(workspace, artifactRef), artifactText, "utf8");
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "tool_output_artifact_persisted",
       payload: {
@@ -33,7 +35,7 @@ describe("output_search contract", () => {
       } as Record<string, unknown>,
     });
 
-    const tool = createOutputSearchTool({ runtime });
+    const tool = createOutputSearchTool({ runtime: createBundledToolRuntime(runtime) });
     const result = await tool.execute(
       "tc-output-search",
       {
@@ -68,7 +70,7 @@ describe("output_search contract", () => {
     ].join("\n");
     writeFileSync(join(workspace, artifactRef), artifactText, "utf8");
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "tool_output_artifact_persisted",
       payload: {
@@ -78,7 +80,7 @@ describe("output_search contract", () => {
       } as Record<string, unknown>,
     });
 
-    const tool = createOutputSearchTool({ runtime });
+    const tool = createOutputSearchTool({ runtime: createBundledToolRuntime(runtime) });
     const result = await tool.execute(
       "tc-output-search-fuzzy",
       {
@@ -111,7 +113,7 @@ describe("output_search contract", () => {
     ].join("\n");
     writeFileSync(join(workspace, artifactRef), artifactText, "utf8");
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "tool_output_artifact_persisted",
       payload: {
@@ -121,7 +123,7 @@ describe("output_search contract", () => {
       } as Record<string, unknown>,
     });
 
-    const tool = createOutputSearchTool({ runtime });
+    const tool = createOutputSearchTool({ runtime: createBundledToolRuntime(runtime) });
     const result = await tool.execute(
       "tc-output-search-partial",
       {
@@ -154,7 +156,7 @@ describe("output_search contract", () => {
     ].join("\n");
     writeFileSync(join(workspace, artifactRef), artifactText, "utf8");
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "tool_output_artifact_persisted",
       payload: {
@@ -164,7 +166,7 @@ describe("output_search contract", () => {
       } as Record<string, unknown>,
     });
 
-    const tool = createOutputSearchTool({ runtime });
+    const tool = createOutputSearchTool({ runtime: createBundledToolRuntime(runtime) });
     const result = await tool.execute(
       "tc-output-search-fuzzy-gate",
       {
@@ -201,7 +203,7 @@ describe("output_search contract", () => {
 
     for (const artifact of artifacts) {
       writeFileSync(join(workspace, artifact.ref), artifact.text, "utf8");
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId,
         type: "tool_output_artifact_persisted",
         payload: {
@@ -212,7 +214,7 @@ describe("output_search contract", () => {
       });
     }
 
-    const tool = createOutputSearchTool({ runtime });
+    const tool = createOutputSearchTool({ runtime: createBundledToolRuntime(runtime) });
     for (let call = 0; call < 4; call += 1) {
       const result = await tool.execute(
         `tc-output-search-throttle-normal-${call}`,
@@ -269,7 +271,7 @@ describe("output_search contract", () => {
 
     let artifactText = "cache marker alpha";
     writeFileSync(join(workspace, artifactRef), artifactText, "utf8");
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "tool_output_artifact_persisted",
       payload: {
@@ -279,7 +281,7 @@ describe("output_search contract", () => {
       } as Record<string, unknown>,
     });
 
-    const tool = createOutputSearchTool({ runtime });
+    const tool = createOutputSearchTool({ runtime: createBundledToolRuntime(runtime) });
     const first = await tool.execute(
       "tc-output-search-cache-first",
       { query: "marker alpha", limit: 2 },
@@ -303,7 +305,7 @@ describe("output_search contract", () => {
 
     artifactText = "cache marker beta with updated payload";
     writeFileSync(join(workspace, artifactRef), artifactText, "utf8");
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "tool_output_artifact_persisted",
       payload: {

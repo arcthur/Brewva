@@ -6,8 +6,8 @@ import {
   CONTEXT_SOURCES,
   CONTEXT_SOURCE_BUDGET_CLASSES,
   type ContextInjectionBudgetClass,
-  type ContextInjectionEntry,
 } from "@brewva/brewva-runtime";
+import type { ContextInjectionEntry } from "@brewva/brewva-runtime/internal";
 import {
   createMockRuntimePluginApi,
   invokeHandler,

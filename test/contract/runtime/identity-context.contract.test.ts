@@ -46,7 +46,10 @@ describe("Identity context injection", () => {
       agentId: "Code Reviewer",
     });
 
-    const injection = await runtime.context.buildInjection("identity-existing-1", "review");
+    const injection = await runtime.maintain.context.buildInjection(
+      "identity-existing-1",
+      "review",
+    );
     expect(injection.accepted).toBe(true);
     expect(injection.text).toContain("[PersonaProfile]");
     expect(injection.text).toContain("[WhoIAm]");
@@ -64,7 +67,10 @@ describe("Identity context injection", () => {
       agentId: "missing-agent",
     });
 
-    const injection = await runtime.context.buildInjection("identity-missing-1", "continue");
+    const injection = await runtime.maintain.context.buildInjection(
+      "identity-missing-1",
+      "continue",
+    );
     expect(injection.accepted).toBe(true);
     expect(injection.text).not.toContain("[PersonaProfile]");
 
@@ -81,7 +87,7 @@ describe("Identity context injection", () => {
       cwd: workspace,
       agentId: "reviewer-a",
     });
-    const first = await runtimeA.context.buildInjection(
+    const first = await runtimeA.maintain.context.buildInjection(
       "identity-agent-scope-1",
       "continue",
       undefined,
@@ -90,7 +96,7 @@ describe("Identity context injection", () => {
     expect(first.text).toContain("Reviewer A");
     expect(first.text).not.toContain("Reviewer B");
 
-    const second = await runtimeA.context.buildInjection(
+    const second = await runtimeA.maintain.context.buildInjection(
       "identity-agent-scope-1",
       "continue",
       undefined,
@@ -99,8 +105,11 @@ describe("Identity context injection", () => {
     expect(second.accepted).toBe(true);
     expect(second.text).not.toContain("[PersonaProfile]");
 
-    runtimeA.context.markCompacted("identity-agent-scope-1", { fromTokens: 1000, toTokens: 300 });
-    const third = await runtimeA.context.buildInjection(
+    runtimeA.maintain.context.markCompacted("identity-agent-scope-1", {
+      fromTokens: 1000,
+      toTokens: 300,
+    });
+    const third = await runtimeA.maintain.context.buildInjection(
       "identity-agent-scope-1",
       "continue",
       undefined,
@@ -113,7 +122,7 @@ describe("Identity context injection", () => {
       cwd: workspace,
       agentId: "reviewer-b",
     });
-    const b = await runtimeB.context.buildInjection("identity-agent-scope-2", "continue");
+    const b = await runtimeB.maintain.context.buildInjection("identity-agent-scope-2", "continue");
     expect(b.accepted).toBe(true);
     expect(b.text).toContain("Reviewer B");
     expect(b.text).not.toContain("Reviewer A");
@@ -128,7 +137,10 @@ describe("Identity context injection", () => {
       agentId: "reviewer-a",
     });
 
-    const injection = await runtime.context.buildInjection("identity-no-headings-1", "continue");
+    const injection = await runtime.maintain.context.buildInjection(
+      "identity-no-headings-1",
+      "continue",
+    );
     expect(injection.accepted).toBe(true);
     expect(injection.text).not.toContain("[PersonaProfile]");
   });
@@ -166,7 +178,10 @@ describe("Identity context injection", () => {
       agentId: "reviewer-a",
     });
 
-    const injection = await runtime.context.buildInjection("identity-self-bundle-1", "continue");
+    const injection = await runtime.maintain.context.buildInjection(
+      "identity-self-bundle-1",
+      "continue",
+    );
     expect(injection.accepted).toBe(true);
     expect(injection.text).toContain("[PersonaProfile]");
     expect(injection.text).toContain("[AgentConstitution]");

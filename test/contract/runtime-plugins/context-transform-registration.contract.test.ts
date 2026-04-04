@@ -175,12 +175,12 @@ describe("context transform registration contract", () => {
       },
     );
 
-    expect(runtime.events.query(sessionId, { type: "skill_routing_selection", last: 1 })).toEqual(
-      [],
-    );
+    expect(
+      runtime.inspect.events.query(sessionId, { type: "skill_routing_selection", last: 1 }),
+    ).toEqual([]);
     expect(result.message.details?.routingSelection).toBeUndefined();
 
-    const summary = runtime.cost.getSummary(sessionId);
+    const summary = runtime.inspect.cost.getSummary(sessionId);
     expect(summary.totalTokens).toBe(0);
     expect(summary.totalCostUsd).toBe(0);
   });

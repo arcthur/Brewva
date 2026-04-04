@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
 import { createBrowserTools } from "@brewva/brewva-tools";
+import { createBundledToolRuntime } from "../../helpers/runtime.js";
 
 function fakeContext(sessionId: string, cwd: string): any {
   return {
@@ -112,7 +113,10 @@ describe("browser tools", () => {
     const logPath = join(workspace, "browser-args.log");
     const fakeBrowser = writeFakeAgentBrowser(workspace, logPath);
     const runtime = new BrewvaRuntime({ cwd: workspace });
-    const tools = createBrowserTools({ runtime }, { command: fakeBrowser });
+    const tools = createBrowserTools(
+      { runtime: createBundledToolRuntime(runtime) },
+      { command: fakeBrowser },
+    );
     const snapshotTool = tools.find((tool) => tool.name === "browser_snapshot");
 
     const result = await snapshotTool!.execute(
@@ -151,7 +155,10 @@ describe("browser tools", () => {
     const logPath = join(workspace, "browser-args.log");
     const fakeBrowser = writeFakeAgentBrowser(workspace, logPath);
     const runtime = new BrewvaRuntime({ cwd: workspace });
-    const tools = createBrowserTools({ runtime }, { command: fakeBrowser });
+    const tools = createBrowserTools(
+      { runtime: createBundledToolRuntime(runtime) },
+      { command: fakeBrowser },
+    );
     const screenshotTool = tools.find((tool) => tool.name === "browser_screenshot");
 
     const result = await screenshotTool!.execute(
@@ -175,7 +182,10 @@ describe("browser tools", () => {
     const logPath = join(workspace, "browser-args.log");
     const fakeBrowser = writeFakeAgentBrowser(workspace, logPath);
     const runtime = new BrewvaRuntime({ cwd: workspace });
-    const tools = createBrowserTools({ runtime }, { command: fakeBrowser });
+    const tools = createBrowserTools(
+      { runtime: createBundledToolRuntime(runtime) },
+      { command: fakeBrowser },
+    );
     const stateLoadTool = tools.find((tool) => tool.name === "browser_state_load");
 
     const result = await stateLoadTool!.execute(
@@ -200,7 +210,10 @@ describe("browser tools", () => {
     const logPath = join(workspace, "browser-args.log");
     const fakeBrowser = writeFakeAgentBrowser(workspace, logPath);
     const runtime = new BrewvaRuntime({ cwd: workspace });
-    const tools = createBrowserTools({ runtime }, { command: fakeBrowser });
+    const tools = createBrowserTools(
+      { runtime: createBundledToolRuntime(runtime) },
+      { command: fakeBrowser },
+    );
     const waitTool = tools.find((tool) => tool.name === "browser_wait");
 
     const result = await waitTool!.execute(
@@ -226,7 +239,10 @@ describe("browser tools", () => {
     const logPath = join(workspace, "browser-args.log");
     const fakeBrowser = writeFakeAgentBrowser(workspace, logPath);
     const runtime = new BrewvaRuntime({ cwd: workspace });
-    const tools = createBrowserTools({ runtime }, { command: fakeBrowser });
+    const tools = createBrowserTools(
+      { runtime: createBundledToolRuntime(runtime) },
+      { command: fakeBrowser },
+    );
     const getTool = tools.find((tool) => tool.name === "browser_get");
 
     const result = await getTool!.execute(
@@ -265,7 +281,10 @@ describe("browser tools", () => {
     config.security.boundaryPolicy.network.mode = "allowlist";
     config.security.boundaryPolicy.network.outbound = [{ host: "allowed.example", ports: [443] }];
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
-    const tools = createBrowserTools({ runtime }, { command: fakeBrowser });
+    const tools = createBrowserTools(
+      { runtime: createBundledToolRuntime(runtime) },
+      { command: fakeBrowser },
+    );
     const openTool = tools.find((tool) => tool.name === "browser_open");
 
     const result = await openTool!.execute(
@@ -280,9 +299,9 @@ describe("browser tools", () => {
 
     const text = extractText(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("outside security.boundaryPolicy.network.allowlist");
-    expect(runtime.events.query("browser-boundary-1", { type: "tool_call_blocked" })).toHaveLength(
-      1,
-    );
+    expect(
+      runtime.inspect.events.query("browser-boundary-1", { type: "tool_call_blocked" }),
+    ).toHaveLength(1);
     expect(existsSync(logPath)).toBe(false);
   });
 });

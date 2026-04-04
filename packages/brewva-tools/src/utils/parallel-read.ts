@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { recordToolRuntimeEvent, resolveToolRuntimeAuthorityTools } from "../runtime-internal.js";
 import type { BrewvaToolRuntime } from "../types.js";
 
 const DEFAULT_PARALLEL_READ_BATCH_SIZE = 16;
@@ -130,10 +131,8 @@ export function recordParallelReadTelemetry(
   sessionId: string | undefined,
   telemetry: ParallelReadTelemetry,
 ): void {
-  const events = runtime?.events;
-  if (!events?.record) return;
   if (!sessionId) return;
-  events.record({
+  recordToolRuntimeEvent(runtime, {
     sessionId,
     type: "tool_parallel_read",
     payload: {
@@ -186,7 +185,7 @@ export async function withParallelReadSlot<T>(
   work: () => Promise<T>,
   options: ParallelReadSlotOptions = {},
 ): Promise<T> {
-  const tools = runtime?.tools;
+  const tools = resolveToolRuntimeAuthorityTools(runtime);
   if (!sessionId || !tools?.acquireParallelSlotAsync || !tools.releaseParallelSlot) {
     return work();
   }

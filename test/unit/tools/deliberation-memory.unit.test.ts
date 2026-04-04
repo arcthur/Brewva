@@ -22,7 +22,7 @@ describe("deliberation memory tool", () => {
     const workspace = createTestWorkspace("deliberation-memory-tool");
     const runtime = new BrewvaRuntime({ cwd: workspace });
 
-    runtime.task.setSpec("memory-session-1", {
+    runtime.authority.task.setSpec("memory-session-1", {
       schema: "brewva.task.v1",
       goal: "Keep repository verification strict and evidence-backed.",
       verification: {
@@ -33,7 +33,7 @@ describe("deliberation memory tool", () => {
         files: ["packages/brewva-runtime/src/runtime.ts"],
       },
     });
-    runtime.task.setSpec("memory-session-2", {
+    runtime.authority.task.setSpec("memory-session-2", {
       schema: "brewva.task.v1",
       goal: "Preserve explicit constraints and narrow file scope.",
       verification: {
@@ -44,7 +44,7 @@ describe("deliberation memory tool", () => {
         files: ["packages/brewva-deliberation/src/memory.ts"],
       },
     });
-    runtime.events.recordMetricObservation("memory-session-1", {
+    runtime.authority.events.recordMetricObservation("memory-session-1", {
       metricKey: "failed_checks",
       value: 3,
       source: "goal-loop:memory-loop",

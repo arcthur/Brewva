@@ -22,12 +22,12 @@ export function createObsSnapshotTool(options: BrewvaToolOptions): ToolDefinitio
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       const sessionId = getSessionId(ctx);
-      const tape = options.runtime.events.getTapeStatus(sessionId);
-      const usage = options.runtime.context.getUsage(sessionId);
-      const pressure = options.runtime.context.getPressureStatus(sessionId, usage);
-      const cost = options.runtime.cost.getSummary(sessionId);
-      const task = options.runtime.task.getState(sessionId);
-      const verificationEvent = options.runtime.events.list(sessionId, {
+      const tape = options.runtime.inspect.events.getTapeStatus(sessionId);
+      const usage = options.runtime.inspect.context.getUsage(sessionId);
+      const pressure = options.runtime.inspect.context.getPressureStatus(sessionId, usage);
+      const cost = options.runtime.inspect.cost.getSummary(sessionId);
+      const task = options.runtime.inspect.task.getState(sessionId);
+      const verificationEvent = options.runtime.inspect.events.list(sessionId, {
         type: VERIFICATION_OUTCOME_RECORDED_EVENT_TYPE,
         last: 1,
       })[0];

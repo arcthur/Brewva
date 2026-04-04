@@ -1,5 +1,6 @@
-import type { BrewvaRuntime, ContextCompactionGateStatus } from "@brewva/brewva-runtime";
+import type { BrewvaHostedRuntimePort, ContextCompactionGateStatus } from "@brewva/brewva-runtime";
 import { CONTEXT_COMPOSED_EVENT_TYPE } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   buildContextComposedEventPayload,
   type ContextComposerResult,
@@ -62,14 +63,16 @@ function normalizeRuntimeError(error: unknown): string {
   return "unknown_error";
 }
 
-export function createHostedContextTelemetry(runtime: BrewvaRuntime): HostedContextTelemetry {
+export function createHostedContextTelemetry(
+  runtime: BrewvaHostedRuntimePort,
+): HostedContextTelemetry {
   const emitRuntimeEvent = (input: {
     sessionId: string;
     turn: number;
     type: string;
     payload: Record<string, unknown>;
   }): void => {
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: input.sessionId,
       turn: input.turn,
       type: input.type,

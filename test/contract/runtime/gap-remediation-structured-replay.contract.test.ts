@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   GAP_REMEDIATION_CONFIG_PATH,
   createGapRemediationConfig as createConfig,
@@ -14,15 +15,20 @@ describe("Gap remediation: structured replay events", () => {
 
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "replay-1";
-    runtime.events.record({ sessionId, type: "session_start", payload: { cwd: workspace } });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, { sessionId, type: "session_start", payload: { cwd: workspace } });
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "channel_session_bound",
       payload: { channel: "telegram", conversationId: "12345" },
     });
-    runtime.events.record({ sessionId, type: "tool_call", turn: 1, payload: { toolName: "read" } });
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      type: "tool_call",
+      turn: 1,
+      payload: { toolName: "read" },
+    });
 
-    const structured = runtime.events.queryStructured(sessionId);
+    const structured = runtime.inspect.events.queryStructured(sessionId);
     expect(structured.length).toBe(3);
     expect(structured[0]?.schema).toBe("brewva.event.v1");
     expect(structured.map((event) => `${event.type}:${event.category}`)).toEqual(
@@ -33,7 +39,7 @@ describe("Gap remediation: structured replay events", () => {
       ]),
     );
 
-    const sessions = runtime.events.listReplaySessions();
+    const sessions = runtime.inspect.events.listReplaySessions();
     expect(sessions.map((entry) => entry.sessionId)).toContain(sessionId);
   });
 });

@@ -1,4 +1,4 @@
-import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import type { BrewvaOperatorRuntimePort, BrewvaRuntime } from "@brewva/brewva-runtime";
 import type { TurnEnvelope } from "@brewva/brewva-runtime/channels";
 
 export interface ChannelInspectCommandInput {
@@ -9,7 +9,7 @@ export interface ChannelInspectCommandInput {
   targetAgentId: string;
   targetSession?: {
     agentId: string;
-    runtime: BrewvaRuntime;
+    runtime: BrewvaOperatorRuntimePort;
     sessionId: string;
   };
 }
@@ -27,7 +27,7 @@ export interface ChannelInsightsCommandInput {
   targetAgentId: string;
   targetSession?: {
     agentId: string;
-    runtime: BrewvaRuntime;
+    runtime: BrewvaOperatorRuntimePort;
     sessionId: string;
   };
 }

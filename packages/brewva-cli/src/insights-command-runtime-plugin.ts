@@ -1,5 +1,5 @@
 import type { RuntimePlugin, RuntimePluginApi } from "@brewva/brewva-gateway/runtime-plugins";
-import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import type { BrewvaOperatorRuntimePort } from "@brewva/brewva-runtime";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { buildProjectInsightsReport, formatProjectInsightsText } from "./insights.js";
 import { clampText, resolveInspectDirectory } from "./inspect-analysis.js";
@@ -36,7 +36,7 @@ function resolveInsightsNotifyLevel(input: {
 }
 
 export function createInsightsCommandRuntimePlugin(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaOperatorRuntimePort,
   options: {
     widgetId?: string;
     maxWidgetLines?: number;

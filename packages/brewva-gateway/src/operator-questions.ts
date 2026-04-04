@@ -248,7 +248,7 @@ export async function collectOpenSessionQuestions(
   runtime: BrewvaRuntime,
   sessionId: string,
 ): Promise<SessionQuestionCollection> {
-  const events = runtime.events.query(sessionId);
+  const events = runtime.inspect.events.query(sessionId);
   const questions: SessionOpenQuestion[] = [];
   const answeredQuestionIds = new Set<string>();
   const warnings: string[] = [];

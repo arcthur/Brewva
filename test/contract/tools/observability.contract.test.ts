@@ -3,13 +3,14 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrewvaRuntime, VERIFICATION_OUTCOME_RECORDED_EVENT_TYPE } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   createCostViewTool,
   createObsQueryTool,
   createObsSloAssertTool,
   createObsSnapshotTool,
 } from "@brewva/brewva-tools";
-import { createRuntimeConfig } from "../../helpers/runtime.js";
+import { createBundledToolRuntime, createRuntimeConfig } from "../../helpers/runtime.js";
 import { cleanupWorkspace, createTestWorkspace } from "../../helpers/workspace.js";
 import { extractTextContent, fakeContext } from "./tools-flow.helpers.js";
 
@@ -34,9 +35,9 @@ describe("observability tool contracts", () => {
   test("cost_view returns session, skill, and tool breakdowns", async () => {
     const runtime = createCleanRuntime();
     const sessionId = "s10";
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.tools.markCall(sessionId, "read");
-    runtime.cost.recordAssistantUsage({
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.tools.markCall(sessionId, "read");
+    runtime.authority.cost.recordAssistantUsage({
       sessionId,
       model: "test/model",
       inputTokens: 10,
@@ -66,7 +67,7 @@ describe("observability tool contracts", () => {
     const runtime = new BrewvaRuntime({ cwd: obsQueryWorkspace });
     const sessionId = "s10-obs-query";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "latency_sample",
       payload: {
@@ -74,7 +75,7 @@ describe("observability tool contracts", () => {
         latencyMs: 810,
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "latency_sample",
       payload: {
@@ -83,7 +84,7 @@ describe("observability tool contracts", () => {
       },
     });
 
-    const tool = createObsQueryTool({ runtime });
+    const tool = createObsQueryTool({ runtime: createBundledToolRuntime(runtime) });
     const result = await tool.execute(
       "tc-obs-query",
       {
@@ -115,7 +116,7 @@ describe("observability tool contracts", () => {
     const runtime = new BrewvaRuntime({ cwd: obsSnapshotWorkspace });
     const sessionId = "s10-obs-snapshot";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "startup_sample",
       payload: {
@@ -123,7 +124,7 @@ describe("observability tool contracts", () => {
         startupMs: 920,
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: VERIFICATION_OUTCOME_RECORDED_EVENT_TYPE,
       payload: {
@@ -132,7 +133,7 @@ describe("observability tool contracts", () => {
       },
     });
 
-    const assertTool = createObsSloAssertTool({ runtime });
+    const assertTool = createObsSloAssertTool({ runtime: createBundledToolRuntime(runtime) });
     const assertResult = await assertTool.execute(
       "tc-obs-assert",
       {

@@ -4,7 +4,8 @@ import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { BrewvaToolOptions } from "./types.js";
+import { recordToolRuntimeEvent } from "./runtime-internal.js";
+import type { BrewvaBundledToolOptions } from "./types.js";
 import { buildStringEnumSchema } from "./utils/input-alias.js";
 import { failTextResult, textResult } from "./utils/result.js";
 import { getSessionId } from "./utils/session.js";
@@ -115,7 +116,7 @@ function isPathInsideRoot(path: string, root: string): boolean {
   return resolvedPath.startsWith(rootPrefix);
 }
 
-function resolveBaseCwd(options: BrewvaToolOptions, ctx: unknown): string {
+function resolveBaseCwd(options: BrewvaBundledToolOptions, ctx: unknown): string {
   const ctxCwd = (ctx as { cwd?: unknown } | undefined)?.cwd;
   if (typeof ctxCwd === "string" && ctxCwd.trim().length > 0) {
     return resolve(ctxCwd);
@@ -126,7 +127,7 @@ function resolveBaseCwd(options: BrewvaToolOptions, ctx: unknown): string {
   return process.cwd();
 }
 
-function resolveWorkspaceRoot(options: BrewvaToolOptions): string {
+function resolveWorkspaceRoot(options: BrewvaBundledToolOptions): string {
   if (
     typeof options.runtime.workspaceRoot === "string" &&
     options.runtime.workspaceRoot.trim().length > 0
@@ -146,18 +147,13 @@ function formatBrowserLabel(toolName: string): string {
 }
 
 function enforceRuntimeToolAccess(input: {
-  options: BrewvaToolOptions;
+  options: BrewvaBundledToolOptions;
   sessionId: string;
   toolName: string;
   args?: Record<string, unknown>;
   cwd: string;
 }): { allowed: true } | { allowed: false; result: ReturnType<typeof failTextResult> } {
-  const runtimeTools = input.options.runtime.tools;
-  if (typeof runtimeTools?.explainAccess !== "function") {
-    return { allowed: true };
-  }
-
-  const decision = runtimeTools.explainAccess({
+  const decision = input.options.runtime.inspect.tools.explainAccess({
     sessionId: input.sessionId,
     toolName: input.toolName,
     args: input.args,
@@ -167,7 +163,7 @@ function enforceRuntimeToolAccess(input: {
     return { allowed: true };
   }
 
-  input.options.runtime.events.record?.({
+  recordToolRuntimeEvent(input.options.runtime, {
     sessionId: input.sessionId,
     type: "tool_call_blocked",
     payload: {
@@ -517,7 +513,7 @@ function buildStatusPayload(input: {
 }
 
 export function createBrowserTools(
-  options: BrewvaToolOptions,
+  options: BrewvaBundledToolOptions,
   deps: BrowserToolDeps = {},
 ): ToolDefinition[] {
   const browserOpen = defineBrewvaTool({

@@ -226,7 +226,7 @@
                 }
               }
             },
-            "turnWal": {
+            "recoveryWal": {
               "type": "object",
               "additionalProperties": false,
               "properties": {

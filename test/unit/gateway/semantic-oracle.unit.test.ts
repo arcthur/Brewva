@@ -56,13 +56,15 @@ describe("hosted semantic oracle", () => {
     });
 
     expect(result?.orderedIds).toEqual(["b", "a"]);
-    const rerankEvent = runtime.events.query(sessionId, {
+    const rerankEvent = runtime.inspect.events.query(sessionId, {
       type: SEMANTIC_RERANK_INVOKED_EVENT_TYPE,
       last: 1,
     })[0];
     expect(rerankEvent?.payload?.outcome).toBe("reranked");
     expect(rerankEvent?.payload?.cached).toBe(false);
-    expect(runtime.events.query(sessionId, { type: COST_UPDATE_EVENT_TYPE })).toHaveLength(1);
+    expect(runtime.inspect.events.query(sessionId, { type: COST_UPDATE_EVENT_TYPE })).toHaveLength(
+      1,
+    );
   });
 
   test("records extraction receipts even when the oracle rejects the candidate", async () => {
@@ -87,13 +89,15 @@ describe("hosted semantic oracle", () => {
     });
 
     expect(result).toBeNull();
-    const extractionEvent = runtime.events.query(sessionId, {
+    const extractionEvent = runtime.inspect.events.query(sessionId, {
       type: SEMANTIC_EXTRACTION_INVOKED_EVENT_TYPE,
       last: 1,
     })[0];
     expect(extractionEvent?.payload?.outcome).toBe("rejected");
     expect(extractionEvent?.payload?.accepted).toBe(false);
-    expect(runtime.events.query(sessionId, { type: COST_UPDATE_EVENT_TYPE })).toHaveLength(1);
+    expect(runtime.inspect.events.query(sessionId, { type: COST_UPDATE_EVENT_TYPE })).toHaveLength(
+      1,
+    );
   });
 
   test("builds Claude-style extraction instructions for durable narrative quality", async () => {

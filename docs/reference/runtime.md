@@ -1,108 +1,192 @@
-# Reference: Runtime API
+# Reference: Runtime Contract
 
-Primary class: `packages/brewva-runtime/src/runtime.ts`.
+Primary implementation anchor: `packages/brewva-runtime/src/runtime.ts`.
 
-## Runtime Role
+Related boundary references:
 
-`BrewvaRuntime` is the public facade for runtime governance. Internally,
-execution is delegated to services under `packages/brewva-runtime/src/services/`
-and replay/state folding is handled by `TurnReplayEngine`.
+- `docs/architecture/design-axioms.md`
+- `docs/reference/proposal-boundary.md`
 
-## Durability Posture
+## Role
 
-`BrewvaRuntime` exposes both authoritative replay surfaces and derived working
-views.
+`BrewvaRuntime` is the stable runtime instance contract for hosted sessions,
+tools, and operator products.
 
-The public runtime follows the repository durability taxonomy:
+It is intentionally organized around semantic root surfaces:
 
-- `durable source of truth`
-  - event tape, checkpoints, task/truth/schedule intent events, proposal
-    receipts, approval events, and linked tool outcomes
-- `durable transient`
-  - `runtime.turnWal.*` crash-recovery state and rollback patch/snapshot
-    material used by undo
-- `rebuildable state`
-  - working projection, `workflow_status`, and other explicit inspection views
-    rebuilt from durable truth plus workspace state
-- `cache`
-  - host or channel helper state outside the runtime replay contract
+- `authority`
+- `inspect`
+- `maintain`
 
-The runtime never requires channel helper state or projection cache files to
-reconstruct commitment history or approval truth after restart.
+It is no longer organized as a wide top-level implementation bag.
 
-Public access is organized into domain APIs. Alongside those domains, runtime
-exposes read-only identity and environment state:
+The goal is not to hide runtime machinery. The goal is to make the default
+coupling surface match the actual authority boundary.
+
+Short version:
+
+`public width is not authority width`
+
+## Stable Root Shape
+
+```ts
+interface BrewvaRuntime {
+  readonly cwd: string;
+  readonly workspaceRoot: string;
+  readonly agentId: string;
+  readonly config: DeepReadonly<BrewvaConfig>;
+  readonly authority: BrewvaAuthorityPort;
+  readonly inspect: BrewvaInspectionPort;
+  readonly maintain: BrewvaMaintenancePort;
+}
+```
+
+Identity fields are read-only runtime facts:
 
 - `cwd`
 - `workspaceRoot`
 - `agentId`
 - `config`
 
-`runtime.config` is a deep-readonly snapshot after construction.
+`config` is a deep-readonly snapshot after normalization.
 
-## Public Surface (Domain APIs)
+## Surface Rules
 
-### `runtime.skills.*`
+Interpret every public runtime method through these rules:
 
-- `refresh(input?)`
+1. Surface tiers apply at the method or method-group level.
+   A conceptual area such as scheduling or context may contribute methods to
+   more than one surface.
+2. `authority` is the commitment-facing surface.
+   If an API changes replay truth, effect authorization, admission state,
+   rollback identity, or verification sufficiency, it belongs here.
+3. `inspect` is read-only.
+   If an API writes tape, mutates session state, mutates runtime-owned
+   registries, or changes admission state, it is not `inspect`.
+4. `maintain` is explicit rebuild and bounded-recovery machinery.
+   It may mutate working state, registration state, or recovery state, but it
+   does not replace authority contracts.
+5. Raw durability mechanisms are not the default product vocabulary.
+   Prefer a narrower authority call or read model when one exists.
+
+## `authority`
+
+`authority` owns actions that change commitments, replay truth, admission
+state, or rollback identity.
+
+### `authority.skills`
+
+- `activate(sessionId, name)`
+- `complete(sessionId, output, options?)`
+
+### `authority.proposals`
+
+- `submit(sessionId, proposal)`
+- `decideEffectCommitment(sessionId, requestId, input)`
+
+This is the proposal / approval authority surface. Inspection of proposal state
+lives under `inspect.proposals`. The stable proposal boundary is described in
+`docs/reference/proposal-boundary.md`.
+
+### `authority.tools`
+
+- `start(input)`
+- `finish(input)`
+- `acquireParallelSlot(sessionId, runId)`
+- `acquireParallelSlotAsync(sessionId, runId, options?)`
+- `releaseParallelSlot(sessionId, runId)`
+- `requestResourceLease(sessionId, request)`
+- `cancelResourceLease(sessionId, leaseId, reason?)`
+- `markCall(sessionId, toolName)`
+- `trackCallStart(input)`
+- `trackCallEnd(input)`
+- `rollbackLastPatchSet(sessionId)`
+- `rollbackLastMutation(sessionId)`
+- `recordResult(input)`
+
+`authority.tools.start(...)` remains the shared authorization spine:
+
+- boundary classification
+- governance resolution
+- approval-bearing exact resume
+- mutation receipt creation
+
+Raw tape append is not part of this public tool authority surface.
+
+### `authority.task`
+
+- `setSpec(sessionId, spec)`
+- `addItem(sessionId, input)`
+- `updateItem(sessionId, input)`
+- `recordBlocker(sessionId, input)`
+- `recordAcceptance(sessionId, input)`
+- `resolveBlocker(sessionId, blockerId)`
+
+### `authority.truth`
+
+- `upsertFact(sessionId, input)`
+- `resolveFact(sessionId, truthFactId)`
+
+### `authority.schedule`
+
+- `createIntent(sessionId, input)`
+- `cancelIntent(sessionId, input)`
+- `updateIntent(sessionId, input)`
+
+### `authority.events`
+
+These are typed authority-side evidence writes, not a general event append API:
+
+- `recordMetricObservation(sessionId, input)`
+- `recordGuardResult(sessionId, input)`
+- `recordTapeHandoff(sessionId, input)`
+
+### `authority.verification`
+
+`verification` remains an authority surface.
+
+The current public methods are:
+
+- `evaluate(sessionId, level?)`
+- `verify(sessionId, level?, options?)`
+
+Verification semantics to preserve:
+
+- default verification checks are expanded per target root
+- command-backed checks only become authoritative after `brewva_verify`
+- ordinary verifier blockers are verification debt, not automatic hard blockers
+
+### `authority.cost`
+
+- `recordAssistantUsage(sessionId, input)`
+
+### `authority.session`
+
+- `applyMergedWorkerResults(sessionId, report)`
+
+## `inspect`
+
+`inspect` is the read-only operator and host read-model surface.
+
+### `inspect.skills`
+
 - `getLoadReport()`
 - `list()`
 - `get(name)`
-- `activate(sessionId, name)`
 - `getActive(sessionId)`
 - `validateOutputs(sessionId, outputs)`
-- `complete(sessionId, output)`
 - `getOutputs(sessionId, skillName)`
 - `getConsumedOutputs(sessionId, targetSkillName)`
 
-`runtime.skills.refresh(input?)` is the explicit rebuild path for session-scoped
-skill runtimes. It is a rebuildable control-plane operation, not kernel
-durability:
+### `inspect.proposals`
 
-- installs or validates bundled system skills under the Brewva system skill
-  root
-- reloads the skill registry
-- rewrites the workspace-root `.brewva/skills_index.json`
-- returns structured result data:
-  - `generatedAt`
-  - `systemInstall`
-  - `loadReport`
-  - `indexPath`
-
-When `input.sessionId` is present, runtime also records an ops-level
-`skill_refresh_recorded` event for inspection. No file watcher or automatic
-refresh path is implied by this API; hosts that want reactive behavior must
-call it explicitly.
-
-### `runtime.proposals.*`
-
-- `submit(sessionId, proposal)`
 - `list(sessionId, query?)`
 - `listEffectCommitmentRequests(sessionId, query?)`
 - `listPendingEffectCommitments(sessionId)`
-- `decideEffectCommitment(sessionId, requestId, input)`
 
-Proposal boundary semantics:
+### `inspect.context`
 
-- proposal admission is effect-commitment-only
-- `list(sessionId, query?)` returns `EffectCommitmentRecord[]` newest first by receipt
-  timestamp
-- approval-bearing requests are replay-hydrated from tape after restart
-- `listEffectCommitmentRequests(sessionId, query?)` returns request-scoped approval
-  state, including `accepted` requests that are not yet consumed
-- accepted approval does not auto-apply to later matching calls; the caller
-  must resume the exact approved request through `runtime.tools.start(...)` with
-  the original `toolCallId` and canonical argument identity
-
-Reference: `docs/reference/proposal-boundary.md`.
-
-### `runtime.context.*`
-
-- `onUserInput(sessionId)`
-- `onTurnStart(sessionId, turnIndex)`
-- `onTurnEnd(sessionId)`
 - `sanitizeInput(text)`
-- `observeUsage(sessionId, usage)`
 - `getUsage(sessionId)`
 - `getUsageRatio(usage)`
 - `getHardLimitRatio(sessionId, usage?)`
@@ -111,159 +195,29 @@ Reference: `docs/reference/proposal-boundary.md`.
 - `getPressureLevel(sessionId, usage?)`
 - `getCompactionGateStatus(sessionId, usage?)`
 - `checkCompactionGate(sessionId, toolName, usage?)`
-- `registerProvider(provider)`
-- `unregisterProvider(source)`
 - `listProviders()`
-- `buildInjection(sessionId, prompt, usage?, injectionScopeId?)`
-- `appendSupplementalInjection(sessionId, inputText, usage?, injectionScopeId?)`
-- `checkAndRequestCompaction(sessionId, usage)`
-- `requestCompaction(sessionId, reason)`
 - `getPendingCompactionReason(sessionId)`
 - `getCompactionInstructions()`
 - `getCompactionWindowTurns()`
-- `markCompacted(sessionId, input)`
 
-`buildInjection(...)` returns admitted context entries after deterministic
-budgeting, deduplication, and source governance. Runtime plugins may compose those
-entries for the model, but they do not bypass kernel admission.
+### `inspect.tools`
 
-Lifecycle note:
-
-- `onTurnStart(...)` initializes turn-local context budgeting state
-- `onUserInput(...)` eagerly hydrates session-scoped runtime state for hosted
-  input hooks
-- `onTurnEnd(...)` clears pending turn-local injection reservations
-
-Default runtime-owned injected sources:
-
-- `brewva.identity`
-- `brewva.agent-constitution`
-- `brewva.agent-memory`
-- `brewva.runtime-status`
-- `brewva.task-state`
-- `brewva.projection-working`
-- `brewva.tool-outputs-distilled` (optional)
-
-Hosted sessions additionally register these internal deliberation sources:
-
-- `brewva.narrative-memory`
-- `brewva.deliberation-memory`
-- `brewva.optimization-continuity`
-- `brewva.skill-promotion-drafts`
-
-Naming note:
-
-- agent-facing tool ids stay `snake_case` (for example `skill_promotion`)
-- context source ids stay scoped dotted identifiers (for example
-  `brewva.skill-promotion-drafts`)
-- a source id may name the folded artifact more narrowly than the tool that
-  inspects or advances it
-
-These hosted sources fold existing evidence into reusable context, but they do
-not become kernel authority. Runtime truth, task state, schedule events,
-receipts, and turn durability remain the authoritative replay surfaces.
-
-`brewva.narrative-memory` is distinct from both `brewva.agent-memory` and
-repository precedent under `docs/solutions/**`:
-
-- `brewva.agent-memory` is the operator-authored self bundle
-- `brewva.narrative-memory` is typed, provenance-bearing, non-authoritative
-  collaboration memory
-- repository precedent remains explicit and repository-native through
-  `knowledge_search`, `knowledge_capture`, `precedent_audit`, and
-  `precedent_sweep`
-
-There is no default proposal-backed context source anymore. There is no default
-injected workflow advisory or `workflow_status` context source.
-
-### `runtime.tools.*`
-
-- `checkAccess(sessionId, toolName)`
+- `checkAccess(sessionId, toolName, args?)`
 - `explainAccess(input)`
-- `getGovernanceDescriptor(toolName)`
-- `registerGovernanceDescriptor(toolName, input)`
-- `unregisterGovernanceDescriptor(toolName)`
-- `start(input)`
-- `finish(input)`
-- `recordResult(input)`
-- `acquireParallelSlot(sessionId, runId)`
-- `acquireParallelSlotAsync(sessionId, runId, options?)`
-- `releaseParallelSlot(sessionId, runId)`
-- `markCall(sessionId, toolName)`
-- `trackCallStart(input)`
-- `trackCallEnd(input)`
-- `requestResourceLease(sessionId, request)`
+- `getGovernanceDescriptor(toolName, args?)`
 - `listResourceLeases(sessionId, query?)`
-- `cancelResourceLease(sessionId, leaseId, reason?)`
-- `rollbackLastPatchSet(sessionId)`
-- `rollbackLastMutation(sessionId)`
 - `resolveUndoSessionId(preferredSessionId?)`
 
-Tool semantics:
+### `inspect.task`
 
-- `explainAccess(input)` accepts optional `args` and `cwd` so runtime can
-  explain boundary-policy decisions for tools such as `exec` and
-  `browser_open` without executing them
-- `start(input)` accepts optional `effectCommitmentRequestId` when resuming an
-  operator-approved effect commitment
-- `start(input)` also accepts optional `cwd`; exact-call loop detection and
-  boundary-policy evaluation run on the same shared invocation path before tool
-  execution proceeds
-- deferred approval-bearing starts return the same
-  `effectCommitmentRequestId` on the result surface
-- `finish(input)` and `recordResult(input)` use `channelSuccess` for transport
-  success and `verdict` for semantic outcome
-- durable linked tool results consume accepted approvals
-- `rollbackLastPatchSet(sessionId)` is the runtime `PatchSet` rollback entrypoint
-  behind the stable tool id `rollback_last_patch` and the CLI `--undo` flow
-
-Tool-governance note:
-
-- managed Brewva tools resolve exact governance descriptors first
-- custom or third-party tools may register runtime-scoped exact descriptors
-- regex hint fallback is advisory only; it can emit metadata warnings, but it
-  does not authorize effectful execution or proposal admission
-- effectful execution requires durable tape receipts; with
-  `infrastructure.events.enabled=false`, effectful tools fail closed instead of
-  running in a no-audit path
-- `rollbackLastMutation(...)` is the receipt-aware rollback surface
-  - only receipt-backed rollbackable mutations participate; audit-only
-    `memory_write` flows do not imply a rollback anchor
-  - durable `reversible_mutation_*` receipts are replay-hydrated, so restart
-    does not remove the latest rollback candidate
-
-### `runtime.task.*`
-
-- `setSpec(sessionId, spec)`
-- `addItem(sessionId, input)`
-- `updateItem(sessionId, input)`
-- `recordBlocker(sessionId, input)`
-- `recordAcceptance(sessionId, input)`
-- `resolveBlocker(sessionId, blockerId)`
+- `getTargetDescriptor(sessionId)`
 - `getState(sessionId)`
 
-Task closure semantics:
-
-- verification remains evidence sufficiency
-- acceptance is an explicit operator-visible closure layer
-- non-verifier blockers, including governance-owned verifier blockers, are hard
-  blockers and keep the task in `blocked`
-- ordinary verifier blockers are verification debt, not execution erasure; if
-  task items remain open the task stays in `execute`, and it moves to `verify`
-  only after execute items are complete
-- when `TaskSpec.acceptance.required === true`, a verification pass moves the
-  task to `ready_for_acceptance`
-- only recorded acceptance moves the task to `done`
-- acceptance writes are non-rollbackable closure records rather than reversible
-  task-state edits
-
-### `runtime.truth.*`
+### `inspect.truth`
 
 - `getState(sessionId)`
-- `upsertFact(sessionId, input)`
-- `resolveFact(sessionId, truthFactId)`
 
-### `runtime.ledger.*`
+### `inspect.ledger`
 
 - `getDigest(sessionId)`
 - `query(sessionId, query)`
@@ -271,184 +225,210 @@ Task closure semantics:
 - `verifyIntegrity(sessionId)`
 - `getPath()`
 
-Ledger note:
+### `inspect.schedule`
 
-- evidence rows are durable evidence material, but `verifyIntegrity(...)`
-  validates local row coherence, not anti-tamper or distributed-security
-  guarantees
-
-### `runtime.schedule.*`
-
-- `createIntent(sessionId, input)`
-- `cancelIntent(sessionId, input)`
-- `updateIntent(sessionId, input)`
 - `listIntents(query?)`
 - `getProjectionSnapshot()`
 
-Schedule note:
+### `inspect.recovery`
 
-- schedule intent events remain the authoritative replay surface
-- `getProjectionSnapshot()` is a rebuildable derived view rather than a
-  correctness prerequisite
-- recurring cron-backed intents persist deterministic forward-jittered
-  `nextRunAt` values through create, update, and fire paths
-- stale one-shot recovery defer policy is config-driven through
-  `schedule.staleOneShotRecoveryThresholdMs`
-
-### `runtime.turnWal.*`
-
-- `appendPending(envelope, source, options?)`
-- `markInflight(walId)`
-- `markDone(walId)`
-- `markFailed(walId, error?)`
-- `markExpired(walId)`
 - `listPending()`
-- `recover()`
-- `compact()`
 
-### `runtime.events.*`
+This is the public read model for pending WAL-backed recovery state.
+Mutation of WAL rows is not part of the public runtime contract.
 
-- `record(input)`
+### `inspect.events`
+
 - `query(sessionId, query?)`
 - `queryStructured(sessionId, query?)`
-- `recordMetricObservation(sessionId, input)`
 - `listMetricObservations(sessionId, query?)`
-- `recordGuardResult(sessionId, input)`
 - `listGuardResults(sessionId, query?)`
 - `getTapeStatus(sessionId)`
 - `getTapePressureThresholds()`
-- `recordTapeHandoff(sessionId, input)`
-- `searchTape(sessionId, input)`
-- `listReplaySessions(limit?)`
+- `searchTape(sessionId, query, scope?)`
+- `listReplaySessions()`
 - `subscribe(listener)`
 - `toStructured(event)`
 - `list(sessionId, query?)`
 - `listSessionIds()`
 
-Hosted-session event boundary notes:
+`inspect.events` does not expose raw event append.
 
-- `runtime.events.query(...)` and `runtime.events.queryStructured(...)` expose
-  the durable tape, not the ephemeral hosted live stream
-- `session_turn_transition` is the durable hosted-flow contract for explicit
-  continuation, interruption, and bounded-recovery posture
-- iteration fact helpers persist and query receipt-grade objective facts:
-  metric observations and guard results
-- iteration fact list helpers accept optional `source` and `sessionScope`
-  filters; the stable runtime contract only supports
-  `sessionScope=current_session`
-- live-only hosted events such as `message_update` and `tool_execution_update`
-  are intentionally not replay-visible through the runtime event API
-- hosted sessions do not expose a separate provider-normalization event family;
-  durable replay surfaces start at admitted runtime events such as `tool_call`,
-  `tool_result_recorded`, and related governance receipts
-- hosted tool execution traits remain scheduler metadata layered above runtime
-  governance; runtime events may expose their resolved values for observability,
-  but the runtime authority contract stays effect- and receipt-based
-- structured events classify operator/control-plane receipts such as
-  `narrative_memory_*` and `semantic_*` under `category=control`
+### `inspect.cost`
 
-### `runtime.verification.*`
-
-- `evaluate(sessionId, level?)`
-- `verify(sessionId, level?, options?)`
-
-Read-only verification semantics:
-
-- `evaluate(...)` / `verify(...)` return `report.readOnly=true`,
-  `report.skipped=true`, `report.reason="read_only"` when no write was
-  observed in session
-- skipped read-only evaluation records `outcome="skipped"` rather than `pass`
-- authoritative verification state is replayed from tape via
-  `verification_write_marked`, `verification_outcome_recorded`, and
-  `tool_result_recorded.verificationProjection`
-- default verification checks are expanded per target root for the active task;
-  multi-root tasks therefore record separate check identities and check-run
-  provenance per root
-- auto-discovered package verification scripts execute through the root package
-  manager command (`bun run`, `pnpm run`, `yarn`, or `npm run`) rather than the
-  raw script body
-- command-backed checks only become authoritative after `brewva_verify`
-  materializes root-scoped `checkRuns`; verification freshness is judged
-  against the most recent `verification_write_marked` boundary
-
-### `runtime.cost.*`
-
-- `recordAssistantUsage(input)`
 - `getSummary(sessionId)`
 
-### `runtime.session.*`
+### `inspect.session`
 
-- `recordWorkerResult(sessionId, result)`
-- `listWorkerResults(sessionId)`
-- `mergeWorkerResults(sessionId)`
-- `applyMergedWorkerResults(sessionId, input)`
+- `listWorkerResults(sessionId, query?)`
+- `mergeWorkerResults(sessionId, query?)`
+- `getHydration(sessionId)`
+- `getIntegrity(sessionId)`
+
+## `maintain`
+
+`maintain` is the explicit rebuild and bounded-recovery surface.
+
+### `maintain.skills`
+
+- `refresh(input?)`
+
+This is the explicit skill-registry rebuild path.
+
+### `maintain.context`
+
+- `onTurnStart(sessionId, turnIndex)`
+- `onTurnEnd(sessionId)`
+- `onUserInput(sessionId)`
+- `observeUsage(sessionId, usage)`
+- `registerProvider(provider)`
+- `unregisterProvider(source)`
+- `buildInjection(sessionId, prompt, usage?, injectionScopeId?, sourceAllowlist?)`
+- `appendSupplementalInjection(sessionId, inputText, usage?, injectionScopeId?)`
+- `checkAndRequestCompaction(sessionId, usage)`
+- `requestCompaction(sessionId, reason)`
+- `markCompacted(sessionId, input)`
+
+This surface owns deterministic context admission and explicit compaction
+maintenance. It does not authorize effects.
+
+### `maintain.tools`
+
+- `registerGovernanceDescriptor(toolName, input)`
+- `registerGovernanceResolver(toolName, resolver)`
+- `unregisterGovernanceDescriptor(toolName)`
+
+These are maintenance-time governance registry operations. They are not
+read-only inspection and they are not effect authority by themselves.
+
+### `maintain.session`
+
+- `recordWorkerResult(sessionId, input)`
 - `clearWorkerResults(sessionId)`
 - `pollStall(sessionId, input?)`
 - `clearState(sessionId)`
 - `onClearState(listener)`
-- `getHydration(sessionId)`
-- `getIntegrity(sessionId)`
 - `resolveCredentialBindings(sessionId, toolName)`
 - `resolveSandboxApiKey(sessionId)`
 
-Delegation taxonomy:
+### `maintain.recovery`
 
-- `subagent_*` is the model/operator-facing tool family for starting,
-  inspecting, and cancelling delegated child runs
-- `DelegationRunRecord` is owned by the hosted control-plane read model, not by
-  `runtime.session.*`
-- `WorkerResult` is a child-produced patch/adoption artifact for patch-producing
-  delegated runs; it is not the delegated run record itself
+- `recover()`
+- `compact()`
 
-Worker-result adoption semantics:
+This is the public recovery-maintenance surface.
 
-- `mergeWorkerResults(...)` is read-only and reports `empty | conflicts | merged`
-- `applyMergedWorkerResults(...)` mutates the parent workspace only after the
-  parent explicitly adopts the merged result
+## Caller-Specific Ports
 
-Session durability semantics:
+The stable runtime package also exposes narrower role ports.
 
-- `getHydration(...)` reports replay hydration status for session-local state
-  rebuild
-- `getIntegrity(...)` reports the unified durability health surface across
-  session tape issues, runtime WAL integrity failures, and artifact persistence
-  gaps
-- integrity issues carry explicit `domain` / `severity` metadata instead of
-  overloading hydration-only issue shapes
+### `BrewvaHostedRuntimePort`
 
-Execution-secret semantics:
+Hosted runtime consumers receive the full semantic surface:
 
-- `resolveCredentialBindings(...)` returns the env var map resolved from
-  `security.credentials.bindings` for the requested tool
-- `resolveSandboxApiKey(...)` resolves the configured sandbox API key ref from
-  the encrypted credential vault
-- these helpers are execution-layer surfaces for trusted host/runtime adapters;
-  they are not a model-facing secret read API
+- identity fields
+- `authority`
+- `inspect`
+- `maintain`
 
-Delegation inspection semantics:
+This is the default lifecycle-facing runtime view for hosted pipeline wiring.
 
-- hosted delegation status and pending handoff inspection are provided by the
-  gateway control-plane read model
-- pending delegation outcomes remain explicit inspection state; they do not
-  auto-inject patches, auto-complete skills, or widen child authority
+### `BrewvaToolRuntimePort`
 
-## Execution Model
+Tool consumers receive:
 
-Public effect vocabulary is:
+- identity fields
+- `authority`
+- `inspect`
 
-- `safe`
-- `effectful`
+They do not receive `maintain` by default.
 
-Runtime still distinguishes three internal realities:
+This is the stable public minimum for tool-facing runtime access.
 
-- `safe`
-- `effectful` and rollbackable
-- `effectful` and approval-bound
+Repo-owned bundled tools that need runtime-owned telemetry, credential
+resolution, supplemental injection, or similar implementation-side hooks do not
+rediscover a raw `BrewvaRuntime`. Instead, `@brewva/brewva-tools` composes this
+semantic port with explicit injected `internal` hooks to form
+`BrewvaBundledToolRuntime`.
 
-The public API stays smaller than the internal machinery:
+### `BrewvaOperatorRuntimePort`
 
-- capability disclosure talks about boundary, approval, and rollbackability
-- rollback receipts stay durable
-- approval requests stay replayable
+Operator products receive:
 
-There are no public runtime plugin profiles such as `memory` or `full`.
+- identity fields
+- full `inspect`
+- limited `maintain`
+  - `maintain.session`
+  - `maintain.recovery`
+
+This keeps inspection rich while narrowing mutation authority.
+
+Embedded operator commands such as `/inspect` and `/insights` are built against
+this port rather than against the full hosted runtime surface.
+
+## Internal Subpath
+
+Some capabilities remain explicit for repo-owned implementation wiring, but
+they are intentionally outside the stable root runtime contract.
+
+Use `@brewva/brewva-runtime/internal` only when repository-owned code genuinely
+needs raw ingress or raw append semantics.
+
+Stable docs may name this subpath to explain repository wiring boundaries. That
+does not make it a default product integration surface.
+
+Examples:
+
+- `createSchedulerIngressPort(runtime)` for scheduler / channel WAL ingress
+- `RecoveryWalStore` / `RecoveryWalRecovery` for repo-owned Recovery WAL machinery
+- `createRuntimeInternalEventAppendPort(runtime)` for raw event append ports
+- `recordRuntimeEvent(runtime, input)` for repo-owned tape append wiring
+
+Raw event append is available only as an internal subpath capability, not as a
+product-level runtime surface.
+
+## Export Policy
+
+`@brewva/brewva-runtime` root exports:
+
+- stable contracts
+- `BrewvaRuntime`
+- semantic port types
+- caller-port constructors
+- governance helpers
+- stable event and artifact vocabularies
+
+Repo-owned implementation escape hatches live under:
+
+- `@brewva/brewva-runtime/internal`
+
+Examples:
+
+- scheduler service
+- event store
+- replay engine
+- patch-history helpers
+- credential-vault service
+- context arena / collector / budget managers
+
+`internal` is for repository-owned implementation coupling. It is not part of
+the stable product contract described by this reference.
+
+## Durability Reading
+
+The semantic surfaces above sit on top of the repository durability taxonomy:
+
+- `durable source of truth`
+  - tape, receipts, task/truth/schedule commitment events
+- `durable transient`
+  - Recovery WAL and rollback material
+- `rebuildable state`
+  - projection and other derived inspection products
+- `cache`
+  - host or UX helper state outside replay correctness
+
+This taxonomy explains why:
+
+- `authority` must remain narrow and replay-first
+- `inspect` can stay rich without becoming authority
+- `maintain` can stay explicit without becoming the default product language

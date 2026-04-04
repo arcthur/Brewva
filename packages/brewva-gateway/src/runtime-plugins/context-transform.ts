@@ -1,4 +1,4 @@
-import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import type { BrewvaHostedRuntimePort } from "@brewva/brewva-runtime";
 import { coerceContextBudgetUsage } from "@brewva/brewva-runtime";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { getHostedTurnTransitionCoordinator } from "../session/turn-transition.js";
@@ -74,7 +74,7 @@ function resolveUsage(ctx: RuntimePluginLifecycleContext) {
 
 export function createContextTransformLifecycle(
   extensionApi: ExtensionAPI,
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   options: ContextTransformOptions = {},
 ): ContextTransformLifecycle {
   getHostedTurnTransitionCoordinator(runtime);
@@ -150,7 +150,7 @@ export function createContextTransformLifecycle(
 
 export function registerContextTransform(
   extensionApi: ExtensionAPI,
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   options: ContextTransformOptions = {},
 ): void {
   const hooks = extensionApi as unknown as {

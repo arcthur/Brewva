@@ -182,6 +182,13 @@ Both modes keep the same tool policy, compaction gate, ledger write, event
 stream, and lifecycle-port behavior. There is no reduced runtime-core bridge
 variant anymore.
 
+Both modes also preserve the same semantic runtime split:
+
+- hosted lifecycle wiring uses the hosted runtime port
+- operator commands use the operator runtime port
+- the repo-owned default managed-tool bundle receives explicit injected
+  internal hooks only where bundled tool behavior genuinely needs them
+
 `--backend` selects the primary session backend:
 
 - `auto` (default): for `--print`, try gateway first then fall back to embedded only on pre-ack failures.

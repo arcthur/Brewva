@@ -250,11 +250,11 @@ describe("subagent_run tool", () => {
     const appendCalls: Array<{ sessionId: string; text: string; scopeId?: string }> = [];
     const tool = createSubagentRunTool({
       runtime: {
-        context: {
+        internal: {
           appendSupplementalInjection(
             sessionId: string,
             text: string,
-            _usage?: unknown,
+            _sourceLabel?: string,
             scopeId?: string,
           ) {
             appendCalls.push({ sessionId, text, scopeId });

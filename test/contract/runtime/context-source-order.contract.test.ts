@@ -8,6 +8,7 @@ import {
   type BrewvaConfig,
   type ContextSourceProvider,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { setStaticContextInjectionBudget } from "../../fixtures/config.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
@@ -68,7 +69,7 @@ function registerCustomContextProvider(runtime: BrewvaRuntime): void {
       });
     },
   };
-  runtime.context.registerProvider(provider);
+  runtime.maintain.context.registerProvider(provider);
 }
 
 describe("context source order integration", () => {
@@ -81,17 +82,17 @@ describe("context source order integration", () => {
     patchProjection(runtime);
 
     const sessionId = "context-source-order";
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.task.setSpec(sessionId, {
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Validate semantic source ordering",
       constraints: ["Keep deterministic source order"],
     });
-    runtime.task.recordBlocker(sessionId, {
+    runtime.authority.task.recordBlocker(sessionId, {
       message: "tool failure blocks completion",
       source: "test",
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 100,
@@ -103,20 +104,20 @@ describe("context source order integration", () => {
         },
       } as Record<string, unknown>,
     });
-    runtime.tools.recordResult({
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "bun test" },
       outputText: "Error: deterministic source order failure block",
       channelSuccess: false,
     });
-    runtime.truth.upsertFact(sessionId, {
+    runtime.authority.truth.upsertFact(sessionId, {
       id: "truth:order",
       kind: "diagnostic",
       severity: "warn",
       summary: "deterministic truth fact",
     });
-    expect(runtime.context.listProviders()).toEqual([
+    expect(runtime.inspect.context.listProviders()).toEqual([
       { source: CONTEXT_SOURCES.identity, category: "narrative", budgetClass: "core", order: 10 },
       {
         source: CONTEXT_SOURCES.agentConstitution,
@@ -150,7 +151,7 @@ describe("context source order integration", () => {
       },
     ]);
 
-    const injected = await runtime.context.buildInjection(
+    const injected = await runtime.maintain.context.buildInjection(
       sessionId,
       "verify context source ordering",
       { tokens: 320, contextWindow: 16_000, percent: 0.02 },
@@ -179,12 +180,12 @@ describe("context source order integration", () => {
     registerCustomContextProvider(runtime);
 
     const sessionId = "context-source-custom-provider";
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.task.setSpec(sessionId, {
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Validate externally registered provider order",
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 100,
@@ -198,7 +199,7 @@ describe("context source order integration", () => {
         },
       } as Record<string, unknown>,
     });
-    runtime.tools.recordResult({
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "bun test" },
@@ -206,7 +207,7 @@ describe("context source order integration", () => {
       channelSuccess: false,
     });
 
-    const providers = runtime.context.listProviders();
+    const providers = runtime.inspect.context.listProviders();
     expect(providers.some((provider) => provider.source === "brewva.custom-operator-note")).toBe(
       true,
     );
@@ -219,7 +220,7 @@ describe("context source order integration", () => {
       },
     );
 
-    const injected = await runtime.context.buildInjection(
+    const injected = await runtime.maintain.context.buildInjection(
       sessionId,
       "verify externally registered provider order",
       { tokens: 320, contextWindow: 16_000, percent: 0.02 },
@@ -235,21 +236,21 @@ describe("context source order integration", () => {
     expect(workingProjectionPosition).toBeGreaterThan(taskLedgerPosition);
     expect(customProviderPosition).toBeGreaterThan(workingProjectionPosition);
 
-    expect(runtime.context.unregisterProvider("brewva.custom-operator-note")).toBe(true);
-    expect(runtime.context.unregisterProvider("brewva.custom-operator-note")).toBe(false);
+    expect(runtime.maintain.context.unregisterProvider("brewva.custom-operator-note")).toBe(true);
+    expect(runtime.maintain.context.unregisterProvider("brewva.custom-operator-note")).toBe(false);
     expect(
-      runtime.context
+      runtime.inspect.context
         .listProviders()
         .some((provider) => provider.source === "brewva.custom-operator-note"),
     ).toBe(false);
 
     const otherSessionId = "context-source-custom-provider-removed";
-    runtime.context.onTurnStart(otherSessionId, 1);
-    runtime.task.setSpec(otherSessionId, {
+    runtime.maintain.context.onTurnStart(otherSessionId, 1);
+    runtime.authority.task.setSpec(otherSessionId, {
       schema: "brewva.task.v1",
       goal: "Validate provider removal",
     });
-    runtime.tools.recordResult({
+    runtime.authority.tools.recordResult({
       sessionId: otherSessionId,
       toolName: "exec",
       args: { command: "bun test" },
@@ -257,7 +258,7 @@ describe("context source order integration", () => {
       channelSuccess: false,
     });
 
-    const afterRemoval = await runtime.context.buildInjection(
+    const afterRemoval = await runtime.maintain.context.buildInjection(
       otherSessionId,
       "verify provider removal",
       { tokens: 320, contextWindow: 16_000, percent: 0.02 },
@@ -290,7 +291,7 @@ describe("context source order integration", () => {
       agentId: "default",
     });
 
-    expect(runtime.context.listProviders()).toEqual([
+    expect(runtime.inspect.context.listProviders()).toEqual([
       { source: CONTEXT_SOURCES.identity, category: "narrative", budgetClass: "core", order: 10 },
       {
         source: CONTEXT_SOURCES.agentConstitution,

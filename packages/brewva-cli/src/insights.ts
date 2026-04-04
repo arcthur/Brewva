@@ -1,7 +1,9 @@
 import { parseArgs as parseNodeArgs } from "node:util";
 import {
   BrewvaRuntime,
+  createOperatorRuntimePort,
   createTrustedLocalGovernancePort,
+  type BrewvaOperatorRuntimePort,
   type BrewvaReplaySession,
 } from "@brewva/brewva-runtime";
 import { formatISO } from "date-fns";
@@ -207,8 +209,11 @@ function extractSessionFacet(report: SessionInspectReport): SessionInspectFacet 
   };
 }
 
-function listAvailableSessions(runtime: BrewvaRuntime, limit: number): BrewvaReplaySession[] {
-  return runtime.events
+function listAvailableSessions(
+  runtime: BrewvaOperatorRuntimePort,
+  limit: number,
+): BrewvaReplaySession[] {
+  return runtime.inspect.events
     .listReplaySessions()
     .toSorted((left, right) => right.lastEventAt - left.lastEventAt)
     .slice(0, limit);
@@ -523,12 +528,12 @@ function buildNotableSessions(
 }
 
 function buildProjectInsightsReport(input: {
-  runtime: BrewvaRuntime;
+  runtime: BrewvaOperatorRuntimePort;
   directory: { absolutePath: string; workspaceRelativePath: string };
   sessionIds?: string[];
   limit?: number;
   analyzeSession?: (input: {
-    runtime: BrewvaRuntime;
+    runtime: BrewvaOperatorRuntimePort;
     sessionId: string;
     directory: { absolutePath: string; workspaceRelativePath: string };
   }) => SessionInspectReport;
@@ -541,7 +546,7 @@ function buildProjectInsightsReport(input: {
   const analyzeSession =
     input.analyzeSession ??
     ((analysisInput: {
-      runtime: BrewvaRuntime;
+      runtime: BrewvaOperatorRuntimePort;
       sessionId: string;
       directory: { absolutePath: string; workspaceRelativePath: string };
     }) => buildSessionInspectReport(analysisInput));
@@ -755,11 +760,12 @@ async function runInsightsCli(argv: string[]): Promise<number> {
     configPath: typeof parsed.values.config === "string" ? parsed.values.config : undefined,
     governancePort: createTrustedLocalGovernancePort({ profile: "personal" }),
   });
+  const operatorRuntime = createOperatorRuntimePort(runtime);
 
   let directory: ReturnType<typeof resolveInspectDirectory>;
   try {
     directory = resolveInspectDirectory(
-      runtime,
+      operatorRuntime,
       typeof parsed.positionals[0] === "string" ? parsed.positionals[0] : undefined,
       typeof parsed.values.dir === "string" ? parsed.values.dir : undefined,
     );
@@ -769,7 +775,7 @@ async function runInsightsCli(argv: string[]): Promise<number> {
   }
 
   const report = buildProjectInsightsReport({
-    runtime,
+    runtime: operatorRuntime,
     directory,
     limit: limitArg ?? DEFAULT_SESSION_LIMIT,
   });

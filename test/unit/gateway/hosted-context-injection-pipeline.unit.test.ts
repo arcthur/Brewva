@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { ContextBudgetUsage, ContextCompactionGateStatus } from "@brewva/brewva-runtime";
+import { type ContextBudgetUsage, type ContextCompactionGateStatus } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createHostedContextInjectionPipeline } from "../../../packages/brewva-gateway/src/runtime-plugins/hosted-context-injection-pipeline.js";
 import { createHostedContextTelemetry } from "../../../packages/brewva-gateway/src/runtime-plugins/hosted-context-telemetry.js";
 import { createMockRuntimePluginApi } from "../../helpers/runtime-plugin.js";
@@ -27,7 +28,7 @@ const HARD_GATE_STATUS: ContextCompactionGateStatus = {
 };
 
 function installRuntimeForensicsSkill(runtime: ReturnType<typeof createRuntimeFixture>): void {
-  Object.assign(runtime.skills, {
+  Object.assign(runtime.inspect.skills, {
     list: () => [
       {
         name: "runtime-forensics",
@@ -157,11 +158,11 @@ describe("hosted context injection pipeline", () => {
       },
     });
     const sessionId = "s-recovery-working-set";
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Continue the interrupted task",
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "session_turn_transition",
       payload: {
@@ -241,7 +242,7 @@ describe("hosted context injection pipeline", () => {
       },
     });
     installRuntimeForensicsSkill(runtime);
-    Object.assign(runtime.task, {
+    Object.assign(runtime.inspect.task, {
       getState: () => ({
         status: { phase: "investigate" },
       }),
@@ -307,7 +308,7 @@ describe("hosted context injection pipeline", () => {
       },
     });
     installRuntimeForensicsSkill(runtime);
-    Object.assign(runtime.task, {
+    Object.assign(runtime.inspect.task, {
       getState: () => ({
         status: { phase: "investigate" },
         blockers: [
@@ -368,7 +369,7 @@ describe("hosted context injection pipeline", () => {
       },
     });
     installRuntimeForensicsSkill(runtime);
-    Object.assign(runtime.task, {
+    Object.assign(runtime.inspect.task, {
       getState: () => ({
         status: { phase: "investigate" },
       }),

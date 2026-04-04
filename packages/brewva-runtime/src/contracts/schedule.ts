@@ -62,37 +62,37 @@ export interface ScheduleIntentProjectionRecord {
   eventOffset: number;
 }
 
-export type TurnWALStatus = "pending" | "inflight" | "done" | "failed" | "expired";
+export type RecoveryWalStatus = "pending" | "inflight" | "done" | "failed" | "expired";
 
-export type TurnWALSource = "channel" | "schedule" | "gateway" | "heartbeat";
+export type RecoveryWalSource = "channel" | "schedule" | "gateway" | "heartbeat";
 
-export interface TurnWALRecord {
-  schema: "brewva.turn-wal.v1";
+export interface RecoveryWalRecord {
+  schema: "brewva.recovery-wal.v1";
   walId: string;
   turnId: string;
   sessionId: string;
   channel: string;
   conversationId: string;
-  status: TurnWALStatus;
+  status: RecoveryWalStatus;
   envelope: TurnEnvelope;
   createdAt: number;
   updatedAt: number;
   attempts: number;
-  source: TurnWALSource;
+  source: RecoveryWalSource;
   error?: string;
   ttlMs?: number;
   dedupeKey?: string;
 }
 
-export interface TurnWALIngressWatermarkRecord {
-  schema: "brewva.turn-wal.ingress-watermark.v1";
-  source: TurnWALSource;
+export interface RecoveryWalIngressWatermarkRecord {
+  schema: "brewva.recovery-wal.ingress-watermark.v1";
+  source: RecoveryWalSource;
   channel: string;
   ingressSequence: number;
   updatedAt: number;
 }
 
-export interface TurnWALRecoverySummaryBySource {
+export interface RecoveryWalRecoverySummaryBySource {
   scanned: number;
   retried: number;
   expired: number;
@@ -100,7 +100,7 @@ export interface TurnWALRecoverySummaryBySource {
   skipped: number;
 }
 
-export interface TurnWALRecoveryResult {
+export interface RecoveryWalRecoveryResult {
   recoveredAt: number;
   scanned: number;
   retried: number;
@@ -108,7 +108,7 @@ export interface TurnWALRecoveryResult {
   failed: number;
   skipped: number;
   compacted: number;
-  bySource: Record<TurnWALSource, TurnWALRecoverySummaryBySource>;
+  bySource: Record<RecoveryWalSource, RecoveryWalRecoverySummaryBySource>;
 }
 
 export interface ScheduleProjectionSnapshot {

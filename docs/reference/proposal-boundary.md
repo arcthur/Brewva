@@ -96,7 +96,7 @@ Accepted effect:
 - kernel creates a replayable pending approval request
 - operator approval is recorded through the effect-commitment desk
 - the caller must resume the exact request with
-  `runtime.tools.start({ ..., effectCommitmentRequestId })`
+  `runtime.authority.tools.start({ ..., effectCommitmentRequestId })`
 - exact resume binds to the approved `requestId`, original `toolCallId`, and
   canonical `argsDigest`
 - approval is consumed only after a durable linked tool result is recorded
@@ -154,15 +154,15 @@ Approval state is layered on top through:
 - `effect_commitment_approval_decided`
 - `effect_commitment_approval_consumed`
 
-`runtime.proposals.list(sessionId, query?)` returns newest-first
+`runtime.inspect.proposals.list(sessionId, query?)` returns newest-first
 `EffectCommitmentRecord` values by receipt timestamp.
 
 The operator desk surface lives in the same domain:
 
-- `runtime.proposals.listEffectCommitmentRequests(sessionId, query?)`
-- `runtime.proposals.listPendingEffectCommitments(sessionId)`
-- `runtime.proposals.decideEffectCommitment(sessionId, requestId, input)`
-- `runtime.tools.start({ ..., effectCommitmentRequestId })`
+- `runtime.inspect.proposals.listEffectCommitmentRequests(sessionId, query?)`
+- `runtime.inspect.proposals.listPendingEffectCommitments(sessionId)`
+- `runtime.authority.proposals.decideEffectCommitment(sessionId, requestId, input)`
+- `runtime.authority.tools.start({ ..., effectCommitmentRequestId })`
 
 This keeps approval state and proposal history in one replay-first namespace.
 

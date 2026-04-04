@@ -5,12 +5,12 @@ import {
   type TelegramChannelAdapterOptions,
   type TelegramHttpTransportOptions,
 } from "@brewva/brewva-channels-telegram";
-import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import type { BrewvaHostedRuntimePort } from "@brewva/brewva-runtime";
 import type { ChannelTurnBridge, TurnEnvelope } from "@brewva/brewva-runtime/channels";
 import { createRuntimeChannelTurnBridge } from "./channel-turn-bridge.js";
 
 export interface CreateRuntimeTelegramChannelBridgeOptions {
-  runtime: BrewvaRuntime;
+  runtime: BrewvaHostedRuntimePort;
   token?: string;
   onInboundTurn: (turn: TurnEnvelope) => Promise<void>;
   onAdapterError?: (error: unknown) => Promise<void> | void;

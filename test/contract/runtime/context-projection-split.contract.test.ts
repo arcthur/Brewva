@@ -36,12 +36,12 @@ describe("context projection split", () => {
       config: createConfig(),
     });
     patchProjection(runtime);
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "baseline task state",
     });
 
-    const injection = await runtime.context.buildInjection(
+    const injection = await runtime.maintain.context.buildInjection(
       sessionId,
       "deterministic projection split",
     );

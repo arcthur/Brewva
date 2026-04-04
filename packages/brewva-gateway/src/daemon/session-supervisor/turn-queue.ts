@@ -12,7 +12,7 @@ export class SessionTurnQueueCoordinator {
     if (handle.activeTurnId === turnId) {
       return true;
     }
-    if (handle.activeTurnWalIds.has(turnId) || handle.pendingTurns.has(turnId)) {
+    if (handle.activeRecoveryWalIds.has(turnId) || handle.pendingTurns.has(turnId)) {
       return true;
     }
     return handle.turnQueue.some((queued) => queued.requestedTurnId === turnId);
@@ -47,7 +47,7 @@ export class SessionTurnQueueCoordinator {
     try {
       if (queued.walId) {
         this.deps.markQueuedTurnInflight(queued.walId);
-        this.deps.trackTurnWalId(handle, queued.requestedTurnId, queued.walId);
+        this.deps.trackRecoveryWalId(handle, queued.requestedTurnId, queued.walId);
       }
     } catch (error) {
       this.deps.rejectPendingTurn(handle, queued.requestedTurnId, error);
@@ -92,7 +92,7 @@ export class SessionTurnQueueCoordinator {
     } catch (error) {
       const busyTurnId = extractBusyTurnId(error);
       if (busyTurnId && busyTurnId !== queued.requestedTurnId) {
-        this.deps.untrackTurnWalId(handle, queued.requestedTurnId);
+        this.deps.untrackRecoveryWalId(handle, queued.requestedTurnId);
         this.deps.rejectPendingTurn(handle, queued.requestedTurnId, new Error("turn requeued"));
         handle.activeTurnId = busyTurnId;
         handle.turnQueue.unshift(queued);
@@ -100,7 +100,7 @@ export class SessionTurnQueueCoordinator {
       }
 
       if (queued.walId) {
-        this.deps.markTurnWalFailed(
+        this.deps.markRecoveryWalFailed(
           handle,
           queued.requestedTurnId,
           error instanceof Error ? error.message : String(error),
@@ -114,7 +114,7 @@ export class SessionTurnQueueCoordinator {
     }
 
     if (acknowledgedTurnId !== queued.requestedTurnId) {
-      this.deps.rekeyTurnWalId(handle, queued.requestedTurnId, acknowledgedTurnId);
+      this.deps.rekeyRecoveryWalId(handle, queued.requestedTurnId, acknowledgedTurnId);
       if (completionPromise) {
         this.deps.rekeyPendingTurn(handle, queued.requestedTurnId, acknowledgedTurnId);
       }

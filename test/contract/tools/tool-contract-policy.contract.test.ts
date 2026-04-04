@@ -47,13 +47,17 @@ describe("effect governance policy modes", () => {
     const runtime = createRuntime(workspace, { security: { mode: "standard" } });
     const sessionId = "effect-governance-warn-1";
 
-    expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
+    expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
 
-    expect(runtime.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
-    expect(runtime.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(1);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
+    expect(runtime.inspect.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(
+      1,
+    );
 
-    expect(runtime.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
-    expect(runtime.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(1);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
+    expect(runtime.inspect.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(
+      1,
+    );
   });
 
   test("warning state survives restart without re-emitting duplicates", () => {
@@ -62,15 +66,19 @@ describe("effect governance policy modes", () => {
     const sessionId = "effect-governance-warn-restart-1";
 
     const runtime = createRuntime(workspace, options);
-    runtime.context.onTurnStart(sessionId, 1);
-    expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
-    expect(runtime.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
+    expect(runtime.inspect.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(
+      1,
+    );
 
     const reloaded = createRuntime(workspace, options);
-    reloaded.context.onTurnStart(sessionId, 1);
-    expect(reloaded.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
-    expect(reloaded.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(1);
+    reloaded.maintain.context.onTurnStart(sessionId, 1);
+    expect(reloaded.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
+    expect(
+      reloaded.inspect.events.query(sessionId, { type: "tool_contract_warning" }),
+    ).toHaveLength(1);
   });
 
   test("denied effects stay blocked even in permissive mode", () => {
@@ -87,12 +95,12 @@ describe("effect governance policy modes", () => {
     });
     const sessionId = "effect-governance-permissive-denied-1";
 
-    expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
+    expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
 
-    const blocked = runtime.tools.checkAccess(sessionId, "grep");
+    const blocked = runtime.inspect.tools.checkAccess(sessionId, "grep");
     expect(blocked.allowed).toBe(false);
     expect(blocked.reason).toContain("denied effects");
-    expect(runtime.events.query(sessionId, { type: "tool_call_blocked" })).toHaveLength(1);
+    expect(runtime.inspect.events.query(sessionId, { type: "tool_call_blocked" })).toHaveLength(1);
   });
 
   test("strict mode blocks unauthorized effects while control-plane tools stay allowed", () => {
@@ -100,21 +108,23 @@ describe("effect governance policy modes", () => {
     const runtime = createRuntime(workspace, { security: { mode: "strict" } });
     const sessionId = "effect-governance-enforce-1";
 
-    expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
+    expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
 
-    const blocked = runtime.tools.checkAccess(sessionId, "task_add_item");
+    const blocked = runtime.inspect.tools.checkAccess(sessionId, "task_add_item");
     expect(blocked.allowed).toBe(false);
     expect(blocked.reason).toContain("unauthorized effects");
-    expect(runtime.events.query(sessionId, { type: "tool_call_blocked" })).toHaveLength(1);
+    expect(runtime.inspect.events.query(sessionId, { type: "tool_call_blocked" })).toHaveLength(1);
 
-    expect(runtime.tools.checkAccess(sessionId, "resource_lease").allowed).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "cost_view").allowed).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "tape_handoff").allowed).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "tape_info").allowed).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "tape_search").allowed).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "optimization_continuity").allowed).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "session_compact").allowed).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "rollback_last_patch").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "resource_lease").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "cost_view").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "tape_handoff").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "tape_info").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "tape_search").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "optimization_continuity").allowed).toBe(
+      true,
+    );
+    expect(runtime.inspect.tools.checkAccess(sessionId, "session_compact").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "rollback_last_patch").allowed).toBe(true);
   });
 
   test("standard mode with effect enforcement override blocks unauthorized effects", () => {
@@ -132,8 +142,8 @@ describe("effect governance policy modes", () => {
     });
     const sessionId = "effect-governance-standard-override-1";
 
-    expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
-    const blocked = runtime.tools.checkAccess(sessionId, "task_add_item");
+    expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
+    const blocked = runtime.inspect.tools.checkAccess(sessionId, "task_add_item");
     expect(blocked.allowed).toBe(false);
     expect(blocked.reason).toContain("unauthorized effects");
   });
@@ -143,13 +153,15 @@ describe("effect governance policy modes", () => {
     const runtime = createRuntime(workspace, { security: { mode: "strict" } });
     const sessionId = "effect-governance-unknown-tool-1";
 
-    expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
+    expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
 
-    const access = runtime.tools.checkAccess(sessionId, "custom_tool");
+    const access = runtime.inspect.tools.checkAccess(sessionId, "custom_tool");
     expect(access.allowed).toBe(false);
     expect(access.reason).toContain("exact governance descriptor");
-    expect(runtime.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(1);
-    expect(runtime.events.query(sessionId, { type: "tool_call_blocked" })).toHaveLength(1);
+    expect(runtime.inspect.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(
+      1,
+    );
+    expect(runtime.inspect.events.query(sessionId, { type: "tool_call_blocked" })).toHaveLength(1);
   });
 
   test("custom governance descriptors let strict mode enforce third-party tools", () => {
@@ -157,17 +169,17 @@ describe("effect governance policy modes", () => {
     const runtime = createRuntime(workspace, { security: { mode: "strict" } });
     const sessionId = "effect-governance-custom-descriptor-1";
 
-    runtime.tools.registerGovernanceDescriptor("custom_exec_tool", {
+    runtime.maintain.tools.registerGovernanceDescriptor("custom_exec_tool", {
       effects: ["local_exec"],
       defaultRisk: "high",
     });
     try {
-      expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
-      const blocked = runtime.tools.checkAccess(sessionId, "custom_exec_tool");
+      expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
+      const blocked = runtime.inspect.tools.checkAccess(sessionId, "custom_exec_tool");
       expect(blocked.allowed).toBe(false);
       expect(blocked.reason).toContain("local_exec");
     } finally {
-      runtime.tools.unregisterGovernanceDescriptor("custom_exec_tool");
+      runtime.maintain.tools.unregisterGovernanceDescriptor("custom_exec_tool");
     }
   });
 
@@ -176,7 +188,7 @@ describe("effect governance policy modes", () => {
     const runtime = createRuntime(workspace, { security: { mode: "strict" } });
 
     expect(() =>
-      runtime.tools.registerGovernanceDescriptor("custom_invalid_tool", {
+      runtime.maintain.tools.registerGovernanceDescriptor("custom_invalid_tool", {
         effects: ["local_exec", "workspace_write"],
         defaultRisk: "high",
         rollbackable: true,
@@ -189,20 +201,20 @@ describe("effect governance policy modes", () => {
     const runtime = createRuntime(workspace, { security: { mode: "strict" } });
     const sessionId = "effect-governance-explain-custom-1";
 
-    runtime.tools.registerGovernanceDescriptor("custom_exec_tool", {
+    runtime.maintain.tools.registerGovernanceDescriptor("custom_exec_tool", {
       effects: ["local_exec"],
       defaultRisk: "high",
     });
     try {
-      expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
-      const explained = runtime.tools.explainAccess({
+      expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
+      const explained = runtime.inspect.tools.explainAccess({
         sessionId,
         toolName: "custom_exec_tool",
       });
       expect(explained.allowed).toBe(false);
       expect(explained.reason).toContain("local_exec");
     } finally {
-      runtime.tools.unregisterGovernanceDescriptor("custom_exec_tool");
+      runtime.maintain.tools.unregisterGovernanceDescriptor("custom_exec_tool");
     }
   });
 
@@ -211,14 +223,14 @@ describe("effect governance policy modes", () => {
     const runtime = createRuntime(workspace, { security: { mode: "strict" } });
     const sessionId = "effect-governance-hint-metadata-1";
 
-    expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
+    expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
 
-    const first = runtime.tools.checkAccess(sessionId, "custom_query_tool");
-    const second = runtime.tools.checkAccess(sessionId, "custom_query_tool");
+    const first = runtime.inspect.tools.checkAccess(sessionId, "custom_query_tool");
+    const second = runtime.inspect.tools.checkAccess(sessionId, "custom_query_tool");
 
     expect(first.allowed).toBe(true);
     expect(second.allowed).toBe(true);
-    const events = runtime.events.query(sessionId, { type: "governance_metadata_missing" });
+    const events = runtime.inspect.events.query(sessionId, { type: "governance_metadata_missing" });
     expect(events).toHaveLength(1);
     expect(events[0]?.payload).toMatchObject({
       skill: "design",
@@ -232,13 +244,15 @@ describe("effect governance policy modes", () => {
     const runtime = createRuntime(workspace, { security: { mode: "strict" } });
     const sessionId = "effect-governance-hint-effectful-1";
 
-    expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
+    expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
 
-    const access = runtime.tools.checkAccess(sessionId, "custom_command_runner");
+    const access = runtime.inspect.tools.checkAccess(sessionId, "custom_command_runner");
 
     expect(access.allowed).toBe(false);
     expect(access.reason).toContain("exact governance descriptor");
-    const metadataEvents = runtime.events.query(sessionId, { type: "governance_metadata_missing" });
+    const metadataEvents = runtime.inspect.events.query(sessionId, {
+      type: "governance_metadata_missing",
+    });
     expect(metadataEvents).toHaveLength(1);
     expect(metadataEvents[0]?.payload).toMatchObject({
       skill: "design",
@@ -253,19 +267,19 @@ describe("effect governance policy modes", () => {
     const sessionId = "effect-governance-hint-restart-1";
 
     const runtime = createRuntime(workspace, options);
-    runtime.context.onTurnStart(sessionId, 1);
-    expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "custom_query_tool").allowed).toBe(true);
-    expect(runtime.events.query(sessionId, { type: "governance_metadata_missing" })).toHaveLength(
-      1,
-    );
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "custom_query_tool").allowed).toBe(true);
+    expect(
+      runtime.inspect.events.query(sessionId, { type: "governance_metadata_missing" }),
+    ).toHaveLength(1);
 
     const reloaded = createRuntime(workspace, options);
-    reloaded.context.onTurnStart(sessionId, 1);
-    expect(reloaded.tools.checkAccess(sessionId, "custom_query_tool").allowed).toBe(true);
-    expect(reloaded.events.query(sessionId, { type: "governance_metadata_missing" })).toHaveLength(
-      1,
-    );
+    reloaded.maintain.context.onTurnStart(sessionId, 1);
+    expect(reloaded.inspect.tools.checkAccess(sessionId, "custom_query_tool").allowed).toBe(true);
+    expect(
+      reloaded.inspect.events.query(sessionId, { type: "governance_metadata_missing" }),
+    ).toHaveLength(1);
   });
 
   test("runtime-scoped governance descriptors do not leak across runtime instances", () => {
@@ -276,25 +290,29 @@ describe("effect governance policy modes", () => {
       security: { mode: "strict" },
     });
 
-    runtimeA.tools.registerGovernanceDescriptor("custom_remote_tool", {
+    runtimeA.maintain.tools.registerGovernanceDescriptor("custom_remote_tool", {
       effects: ["local_exec"],
       defaultRisk: "high",
     });
     try {
-      expect(runtimeA.skills.activate("runtime-a", "design").ok).toBe(true);
-      expect(runtimeB.skills.activate("runtime-b", "design").ok).toBe(true);
+      expect(runtimeA.authority.skills.activate("runtime-a", "design").ok).toBe(true);
+      expect(runtimeB.authority.skills.activate("runtime-b", "design").ok).toBe(true);
 
-      const blocked = runtimeA.tools.checkAccess("runtime-a", "custom_remote_tool");
-      const warned = runtimeB.tools.checkAccess("runtime-b", "custom_remote_tool");
+      const blocked = runtimeA.inspect.tools.checkAccess("runtime-a", "custom_remote_tool");
+      const warned = runtimeB.inspect.tools.checkAccess("runtime-b", "custom_remote_tool");
 
       expect(blocked.allowed).toBe(false);
       expect(blocked.reason).toContain("local_exec");
       expect(warned.allowed).toBe(false);
       expect(warned.reason).toContain("exact governance descriptor");
-      expect(runtimeA.events.query("runtime-a", { type: "tool_contract_warning" })).toHaveLength(0);
-      expect(runtimeB.events.query("runtime-b", { type: "tool_contract_warning" })).toHaveLength(1);
+      expect(
+        runtimeA.inspect.events.query("runtime-a", { type: "tool_contract_warning" }),
+      ).toHaveLength(0);
+      expect(
+        runtimeB.inspect.events.query("runtime-b", { type: "tool_contract_warning" }),
+      ).toHaveLength(1);
     } finally {
-      runtimeA.tools.unregisterGovernanceDescriptor("custom_remote_tool");
+      runtimeA.maintain.tools.unregisterGovernanceDescriptor("custom_remote_tool");
     }
   });
 
@@ -313,16 +331,16 @@ describe("effect governance policy modes", () => {
     const runtime = createRuntime(workspace, { security: { mode: "strict" } });
     const sessionId = "effect-governance-narrative-memory-actions-1";
 
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
 
-    expect(runtime.tools.getGovernanceDescriptor("narrative_memory")).toEqual({
+    expect(runtime.inspect.tools.getGovernanceDescriptor("narrative_memory")).toEqual({
       effects: ["runtime_observe", "memory_write", "workspace_write"],
       defaultRisk: "medium",
       boundary: "effectful",
       rollbackable: false,
     });
     expect(
-      runtime.tools.getGovernanceDescriptor("narrative_memory", {
+      runtime.inspect.tools.getGovernanceDescriptor("narrative_memory", {
         action: "list",
       }),
     ).toEqual({
@@ -332,7 +350,7 @@ describe("effect governance policy modes", () => {
       rollbackable: undefined,
     });
     expect(
-      runtime.tools.getGovernanceDescriptor("narrative_memory", {
+      runtime.inspect.tools.getGovernanceDescriptor("narrative_memory", {
         action: "promote",
       }),
     ).toEqual({
@@ -342,7 +360,7 @@ describe("effect governance policy modes", () => {
       rollbackable: false,
     });
 
-    const inspectStart = runtime.tools.start({
+    const inspectStart = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-narrative-inspect",
       toolName: "narrative_memory",
@@ -352,7 +370,7 @@ describe("effect governance policy modes", () => {
     expect(inspectStart.boundary).toBe("safe");
     expect(inspectStart.mutationReceipt).toBeUndefined();
 
-    const promoteStart = runtime.tools.start({
+    const promoteStart = runtime.authority.tools.start({
       sessionId,
       toolCallId: "tc-narrative-promote",
       toolName: "narrative_memory",
@@ -379,9 +397,9 @@ describe("skill resource budgets", () => {
     });
     const sessionId = "skill-max-tokens-warn-1";
 
-    expect(runtime.skills.activate(sessionId, "implementation").ok).toBe(true);
+    expect(runtime.authority.skills.activate(sessionId, "implementation").ok).toBe(true);
 
-    runtime.cost.recordAssistantUsage({
+    runtime.authority.cost.recordAssistantUsage({
       sessionId,
       model: "test/model",
       inputTokens: 0,
@@ -392,11 +410,15 @@ describe("skill resource budgets", () => {
       costUsd: 0,
     });
 
-    expect(runtime.tools.checkAccess(sessionId, "grep").allowed).toBe(true);
-    expect(runtime.events.query(sessionId, { type: "skill_budget_warning" })).toHaveLength(1);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "grep").allowed).toBe(true);
+    expect(runtime.inspect.events.query(sessionId, { type: "skill_budget_warning" })).toHaveLength(
+      1,
+    );
 
-    expect(runtime.tools.checkAccess(sessionId, "grep").allowed).toBe(true);
-    expect(runtime.events.query(sessionId, { type: "skill_budget_warning" })).toHaveLength(1);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "grep").allowed).toBe(true);
+    expect(runtime.inspect.events.query(sessionId, { type: "skill_budget_warning" })).toHaveLength(
+      1,
+    );
   });
 
   test("strict mode blocks non-lifecycle tools when maxTokens is exceeded", () => {
@@ -413,9 +435,9 @@ describe("skill resource budgets", () => {
     });
     const sessionId = "skill-max-tokens-enforce-1";
 
-    expect(runtime.skills.activate(sessionId, "implementation").ok).toBe(true);
+    expect(runtime.authority.skills.activate(sessionId, "implementation").ok).toBe(true);
 
-    runtime.cost.recordAssistantUsage({
+    runtime.authority.cost.recordAssistantUsage({
       sessionId,
       model: "test/model",
       inputTokens: 0,
@@ -426,13 +448,13 @@ describe("skill resource budgets", () => {
       costUsd: 0,
     });
 
-    const blocked = runtime.tools.checkAccess(sessionId, "grep");
+    const blocked = runtime.inspect.tools.checkAccess(sessionId, "grep");
     expect(blocked.allowed).toBe(false);
     expect(blocked.reason).toContain("exceeded maxTokens");
 
-    expect(runtime.tools.checkAccess(sessionId, "resource_lease").allowed).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "skill_complete").allowed).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "skill_load").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "resource_lease").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "skill_complete").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "skill_load").allowed).toBe(true);
   });
 
   test("maxToolCalls warnings are deduplicated in standard mode", () => {
@@ -449,14 +471,18 @@ describe("skill resource budgets", () => {
     });
     const sessionId = "skill-max-tool-calls-warn-1";
 
-    expect(runtime.skills.activate(sessionId, "implementation").ok).toBe(true);
-    runtime.tools.markCall(sessionId, "read");
+    expect(runtime.authority.skills.activate(sessionId, "implementation").ok).toBe(true);
+    runtime.authority.tools.markCall(sessionId, "read");
 
-    expect(runtime.tools.checkAccess(sessionId, "grep").allowed).toBe(true);
-    expect(runtime.events.query(sessionId, { type: "skill_budget_warning" })).toHaveLength(1);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "grep").allowed).toBe(true);
+    expect(runtime.inspect.events.query(sessionId, { type: "skill_budget_warning" })).toHaveLength(
+      1,
+    );
 
-    expect(runtime.tools.checkAccess(sessionId, "grep").allowed).toBe(true);
-    expect(runtime.events.query(sessionId, { type: "skill_budget_warning" })).toHaveLength(1);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "grep").allowed).toBe(true);
+    expect(runtime.inspect.events.query(sessionId, { type: "skill_budget_warning" })).toHaveLength(
+      1,
+    );
   });
 
   test("strict mode blocks non-lifecycle tools when maxToolCalls is exceeded", () => {
@@ -473,10 +499,10 @@ describe("skill resource budgets", () => {
     });
     const sessionId = "skill-max-tool-calls-enforce-1";
 
-    expect(runtime.skills.activate(sessionId, "implementation").ok).toBe(true);
-    runtime.tools.markCall(sessionId, "read");
+    expect(runtime.authority.skills.activate(sessionId, "implementation").ok).toBe(true);
+    runtime.authority.tools.markCall(sessionId, "read");
 
-    const blocked = runtime.tools.checkAccess(sessionId, "grep");
+    const blocked = runtime.inspect.tools.checkAccess(sessionId, "grep");
     expect(blocked.allowed).toBe(false);
     expect(blocked.reason).toContain("exceeded maxToolCalls");
   });
@@ -495,11 +521,11 @@ describe("skill resource budgets", () => {
     });
     const sessionId = "skill-max-tool-calls-lifecycle-1";
 
-    expect(runtime.skills.activate(sessionId, "implementation").ok).toBe(true);
-    runtime.tools.markCall(sessionId, "read");
+    expect(runtime.authority.skills.activate(sessionId, "implementation").ok).toBe(true);
+    runtime.authority.tools.markCall(sessionId, "read");
 
-    expect(runtime.tools.checkAccess(sessionId, "skill_complete").allowed).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "skill_load").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "skill_complete").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "skill_load").allowed).toBe(true);
   });
 });
 
@@ -518,11 +544,13 @@ describe("skill parallel lease budgets", () => {
     });
     const sessionId = "skill-max-parallel-warn-1";
 
-    expect(runtime.skills.activate(sessionId, "implementation").ok).toBe(true);
+    expect(runtime.authority.skills.activate(sessionId, "implementation").ok).toBe(true);
 
-    expect(runtime.tools.acquireParallelSlot(sessionId, "run-1").accepted).toBe(true);
-    expect(runtime.tools.acquireParallelSlot(sessionId, "run-2").accepted).toBe(true);
-    expect(runtime.events.query(sessionId, { type: "skill_parallel_warning" })).toHaveLength(1);
+    expect(runtime.authority.tools.acquireParallelSlot(sessionId, "run-1").accepted).toBe(true);
+    expect(runtime.authority.tools.acquireParallelSlot(sessionId, "run-2").accepted).toBe(true);
+    expect(
+      runtime.inspect.events.query(sessionId, { type: "skill_parallel_warning" }),
+    ).toHaveLength(1);
   });
 
   test("strict mode rejects parallel slots beyond the effective lease", () => {
@@ -539,10 +567,10 @@ describe("skill parallel lease budgets", () => {
     });
     const sessionId = "skill-max-parallel-enforce-1";
 
-    expect(runtime.skills.activate(sessionId, "implementation").ok).toBe(true);
+    expect(runtime.authority.skills.activate(sessionId, "implementation").ok).toBe(true);
 
-    expect(runtime.tools.acquireParallelSlot(sessionId, "run-1").accepted).toBe(true);
-    const rejected = runtime.tools.acquireParallelSlot(sessionId, "run-2");
+    expect(runtime.authority.tools.acquireParallelSlot(sessionId, "run-1").accepted).toBe(true);
+    const rejected = runtime.authority.tools.acquireParallelSlot(sessionId, "run-2");
     expect(rejected.accepted).toBe(false);
     expect(rejected.reason).toBe("skill_max_parallel");
   });
@@ -554,7 +582,7 @@ describe("resource lease negotiation", () => {
     const runtime = createRuntime(workspace, { security: { mode: "strict" } });
     const sessionId = "resource-lease-active-skill-1";
 
-    const lease = runtime.tools.requestResourceLease(sessionId, {
+    const lease = runtime.authority.tools.requestResourceLease(sessionId, {
       reason: "Need one extra read call.",
       budget: { maxToolCalls: 1 },
       ttlTurns: 1,
@@ -564,7 +592,7 @@ describe("resource lease negotiation", () => {
     if (!lease.ok) {
       expect(lease.error).toContain("active skill");
     }
-    expect(runtime.tools.listResourceLeases(sessionId)).toHaveLength(0);
+    expect(runtime.inspect.tools.listResourceLeases(sessionId)).toHaveLength(0);
   });
 
   test("resource leases do not alter effect authorization", () => {
@@ -582,17 +610,17 @@ describe("resource lease negotiation", () => {
     });
     const sessionId = "resource-lease-effect-1";
 
-    expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(false);
+    expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(false);
 
-    const lease = runtime.tools.requestResourceLease(sessionId, {
+    const lease = runtime.authority.tools.requestResourceLease(sessionId, {
       reason: "Need one more read call while staying within the design skill boundary.",
       budget: { maxToolCalls: 1 },
       ttlTurns: 2,
     });
     expect(lease.ok).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(false);
-    expect(runtime.tools.listResourceLeases(sessionId)).toHaveLength(1);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(false);
+    expect(runtime.inspect.tools.listResourceLeases(sessionId)).toHaveLength(1);
   });
 
   test("resource leases can expand maxToolCalls within the hard ceiling", () => {
@@ -610,17 +638,17 @@ describe("resource lease negotiation", () => {
     });
     const sessionId = "resource-lease-budget-1";
 
-    expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
-    runtime.tools.markCall(sessionId, "read");
-    expect(runtime.tools.checkAccess(sessionId, "grep").allowed).toBe(false);
+    expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
+    runtime.authority.tools.markCall(sessionId, "read");
+    expect(runtime.inspect.tools.checkAccess(sessionId, "grep").allowed).toBe(false);
 
-    const lease = runtime.tools.requestResourceLease(sessionId, {
+    const lease = runtime.authority.tools.requestResourceLease(sessionId, {
       reason: "Need one more read tool call to finish inventory.",
       budget: { maxToolCalls: 1 },
       ttlTurns: 1,
     });
     expect(lease.ok).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "grep").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "grep").allowed).toBe(true);
   });
 
   test("resource leases can be cancelled explicitly and disappear from the active budget view", () => {
@@ -637,10 +665,10 @@ describe("resource lease negotiation", () => {
       },
     });
     const sessionId = "resource-lease-cancel-1";
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
 
-    expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
-    const granted = runtime.tools.requestResourceLease(sessionId, {
+    expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
+    const granted = runtime.authority.tools.requestResourceLease(sessionId, {
       reason: "Need one additional read budget while wrapping the review.",
       budget: { maxToolCalls: 1 },
       ttlTurns: 2,
@@ -650,7 +678,7 @@ describe("resource lease negotiation", () => {
       return;
     }
 
-    const cancelled = runtime.tools.cancelResourceLease(
+    const cancelled = runtime.authority.tools.cancelResourceLease(
       sessionId,
       granted.lease.id,
       "review_complete",
@@ -662,16 +690,20 @@ describe("resource lease negotiation", () => {
 
     expect(cancelled.lease.status).toBe("cancelled");
     expect(cancelled.lease.cancelledReason).toBe("review_complete");
-    expect(runtime.tools.listResourceLeases(sessionId)).toHaveLength(0);
-    expect(runtime.tools.listResourceLeases(sessionId, { includeInactive: true })).toEqual([
+    expect(runtime.inspect.tools.listResourceLeases(sessionId)).toHaveLength(0);
+    expect(runtime.inspect.tools.listResourceLeases(sessionId, { includeInactive: true })).toEqual([
       expect.objectContaining({
         id: granted.lease.id,
         status: "cancelled",
         cancelledReason: "review_complete",
       }),
     ]);
-    expect(runtime.events.query(sessionId, { type: "resource_lease_granted" })).toHaveLength(1);
-    expect(runtime.events.query(sessionId, { type: "resource_lease_cancelled" })).toHaveLength(1);
+    expect(
+      runtime.inspect.events.query(sessionId, { type: "resource_lease_granted" }),
+    ).toHaveLength(1);
+    expect(
+      runtime.inspect.events.query(sessionId, { type: "resource_lease_cancelled" }),
+    ).toHaveLength(1);
   });
 
   test("resource leases explain when hard ceilings leave no headroom", () => {
@@ -689,8 +721,8 @@ describe("resource lease negotiation", () => {
     });
     const sessionId = "resource-lease-no-headroom-1";
 
-    expect(runtime.skills.activate(sessionId, "design").ok).toBe(true);
-    const lease = runtime.tools.requestResourceLease(sessionId, {
+    expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
+    const lease = runtime.authority.tools.requestResourceLease(sessionId, {
       reason: "Need one more call.",
       budget: { maxToolCalls: 1 },
       ttlTurns: 1,

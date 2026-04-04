@@ -12,12 +12,16 @@ import {
   SCHEDULE_CHILD_SESSION_FINISHED_EVENT_TYPE,
   SCHEDULE_CHILD_SESSION_STARTED_EVENT_TYPE,
   SCHEDULE_RECOVERY_DEFERRED_EVENT_TYPE,
-  SchedulerService,
   createTrustedLocalGovernancePort,
   parseScheduleIntentEvent,
   type ManagedToolMode,
 } from "@brewva/brewva-runtime";
-import { TurnWALStore } from "@brewva/brewva-runtime/channels";
+import {
+  RecoveryWalStore,
+  SchedulerService,
+  createSchedulerIngressPort,
+  recordRuntimeEvent,
+} from "@brewva/brewva-runtime/internal";
 import { differenceInSeconds, formatISO } from "date-fns";
 
 export interface RunDaemonOptions {
@@ -101,9 +105,9 @@ export async function runDaemon(parsed: RunDaemonOptions): Promise<void> {
     return;
   }
 
-  const turnWalStore = new TurnWALStore({
+  const recoveryWalStore = new RecoveryWalStore({
     workspaceRoot: runtime.workspaceRoot,
-    config: runtime.config.infrastructure.turnWal,
+    config: runtime.config.infrastructure.recoveryWal,
     scope: "scheduler",
   });
   const supervisor = new SessionSupervisor({
@@ -113,10 +117,10 @@ export async function runDaemon(parsed: RunDaemonOptions): Promise<void> {
     defaultConfigPath: parsed.configPath,
     defaultModel: parsed.model,
     defaultManagedToolMode: parsed.managedToolMode,
-    turnWalStore,
-    turnWalCompactIntervalMs: Math.max(
+    recoveryWalStore,
+    recoveryWalCompactIntervalMs: Math.max(
       30_000,
-      Math.floor(runtime.config.infrastructure.turnWal.compactAfterMs / 2),
+      Math.floor(runtime.config.infrastructure.recoveryWal.compactAfterMs / 2),
     ),
   });
   const summaryWindow = {
@@ -145,7 +149,7 @@ export async function runDaemon(parsed: RunDaemonOptions): Promise<void> {
     summaryWindow.childFinished = 0;
     summaryWindow.childFailed = 0;
   };
-  const unsubscribeEvents = runtime.events.subscribe((event) => {
+  const unsubscribeEvents = runtime.inspect.events.subscribe((event) => {
     if (event.type === SCHEDULE_RECOVERY_DEFERRED_EVENT_TYPE) {
       summaryWindow.deferredIntents += 1;
       return;
@@ -193,24 +197,25 @@ export async function runDaemon(parsed: RunDaemonOptions): Promise<void> {
   try {
     await supervisor.start();
     supervisorStarted = true;
+    const schedulerIngress = createSchedulerIngressPort(runtime);
     scheduler = new SchedulerService({
       runtime: {
         workspaceRoot: runtime.workspaceRoot,
         scheduleConfig: runtime.config.schedule,
-        listSessionIds: () => runtime.events.listSessionIds(),
-        listEvents: (sessionId, query) => runtime.events.list(sessionId, query),
-        recordEvent: (input) => runtime.events.record(input),
-        subscribeEvents: (listener) => runtime.events.subscribe(listener),
-        getTruthState: (sessionId) => runtime.truth.getState(sessionId),
-        getTaskState: (sessionId) => runtime.task.getState(sessionId),
-        turnWal: {
+        listSessionIds: () => runtime.inspect.events.listSessionIds(),
+        listEvents: (sessionId, query) => runtime.inspect.events.list(sessionId, query),
+        recordEvent: (input) => recordRuntimeEvent(runtime, input),
+        subscribeEvents: (listener) => runtime.inspect.events.subscribe(listener),
+        getTruthState: (sessionId) => runtime.inspect.truth.getState(sessionId),
+        getTaskState: (sessionId) => runtime.inspect.task.getState(sessionId),
+        recoveryWal: {
           appendPending: (envelope, source, options) =>
-            runtime.turnWal.appendPending(envelope, source, options),
-          markInflight: (walId) => runtime.turnWal.markInflight(walId),
-          markDone: (walId) => runtime.turnWal.markDone(walId),
-          markFailed: (walId, error) => runtime.turnWal.markFailed(walId, error),
-          markExpired: (walId) => runtime.turnWal.markExpired(walId),
-          listPending: () => runtime.turnWal.listPending(),
+            schedulerIngress.appendPending(envelope, source, options),
+          markInflight: (walId) => schedulerIngress.markInflight(walId),
+          markDone: (walId) => schedulerIngress.markDone(walId),
+          markFailed: (walId, error) => schedulerIngress.markFailed(walId, error),
+          markExpired: (walId) => schedulerIngress.markExpired(walId),
+          listPending: () => schedulerIngress.listPending(),
         },
       },
       executeIntent: async (intent) => {

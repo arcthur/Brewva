@@ -1,13 +1,14 @@
 import {
   CONTEXT_COMPACTION_GATE_BLOCKED_TOOL_EVENT_TYPE,
+  type BrewvaHostedRuntimePort,
   EFFECT_COMMITMENT_APPROVAL_DECIDED_EVENT_TYPE,
   EFFECT_COMMITMENT_APPROVAL_REQUESTED_EVENT_TYPE,
   ROLLBACK_EVENT_TYPE,
   SESSION_SHUTDOWN_EVENT_TYPE,
   SESSION_TURN_TRANSITION_EVENT_TYPE,
-  type BrewvaRuntime,
   type BrewvaStructuredEvent,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 
 export type TurnTransitionReason =
   | "compaction_gate_blocked"
@@ -85,7 +86,10 @@ export interface RecordSessionTurnTransitionInput {
 
 export const HOSTED_TRANSITION_BREAKER_THRESHOLD = 3;
 
-const coordinatorByRuntime = new WeakMap<BrewvaRuntime, HostedTurnTransitionCoordinator>();
+const coordinatorByRuntime = new WeakMap<
+  BrewvaHostedRuntimePort,
+  HostedTurnTransitionCoordinator
+>();
 const operatorVisibleEventTypes = new Set<string>([
   "tool_call_blocked",
   CONTEXT_COMPACTION_GATE_BLOCKED_TOOL_EVENT_TYPE,
@@ -283,8 +287,8 @@ class HostedTurnTransitionCoordinator {
   private readonly stateBySession = new Map<string, HostedSessionTransitionState>();
   private readonly unsubscribe: () => void;
 
-  constructor(private readonly runtime: BrewvaRuntime) {
-    this.unsubscribe = runtime.events.subscribe((event) => {
+  constructor(private readonly runtime: BrewvaHostedRuntimePort) {
+    this.unsubscribe = runtime.inspect.events.subscribe((event) => {
       this.handleEvent(event);
     });
   }
@@ -308,7 +312,7 @@ class HostedTurnTransitionCoordinator {
   ): void {
     if (!state.hydrated) {
       state.hydrated = true;
-      const persisted = this.runtime.events.queryStructured(sessionId);
+      const persisted = this.runtime.inspect.events.queryStructured(sessionId);
       for (const event of persisted) {
         if (options.excludeEventId && event.id === options.excludeEventId) {
           continue;
@@ -427,7 +431,7 @@ class HostedTurnTransitionCoordinator {
     const state = this.getState(input.sessionId);
     const family = input.family ?? transitionReasonFamily[input.reason];
     const sequence = state.sequence + 1;
-    this.runtime.events.record({
+    recordRuntimeEvent(this.runtime, {
       sessionId: input.sessionId,
       turn: input.turn,
       type: SESSION_TURN_TRANSITION_EVENT_TYPE,
@@ -454,7 +458,7 @@ class HostedTurnTransitionCoordinator {
 }
 
 export function getHostedTurnTransitionCoordinator(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
 ): HostedTurnTransitionCoordinator {
   const existing = coordinatorByRuntime.get(runtime);
   if (existing) {
@@ -466,7 +470,7 @@ export function getHostedTurnTransitionCoordinator(
 }
 
 export function recordSessionTurnTransition(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   input: RecordSessionTurnTransitionInput,
 ): void {
   getHostedTurnTransitionCoordinator(runtime).record(input);
