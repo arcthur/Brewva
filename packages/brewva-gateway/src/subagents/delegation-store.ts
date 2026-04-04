@@ -19,6 +19,7 @@ import {
   type ToolExecutionBoundary,
 } from "@brewva/brewva-runtime";
 import { isDelegationRunTerminalStatus } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { recordSessionTurnTransition } from "../session/turn-transition.js";
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -520,7 +521,7 @@ export class HostedDelegationStore {
     } = {},
   ) {
     if (options.subscribe !== false) {
-      this.unsubscribe = runtime.events.subscribe((event) => {
+      this.unsubscribe = runtime.inspect.events.subscribe((event) => {
         const runs = this.sessionRuns.get(event.sessionId);
         if (!runs || !this.hydratedSessions.has(event.sessionId)) {
           return;
@@ -597,7 +598,7 @@ export class HostedDelegationStore {
           updatedAt: surfacedAt,
         },
       };
-      this.runtime.events.record({
+      recordRuntimeEvent(this.runtime, {
         sessionId: input.sessionId,
         turn: input.turn,
         type: SUBAGENT_DELIVERY_SURFACED_EVENT_TYPE,
@@ -629,7 +630,7 @@ export class HostedDelegationStore {
     }
     const runs = this.getOrCreateRuns(sessionId);
     runs.clear();
-    for (const event of this.runtime.events.queryStructured(sessionId)) {
+    for (const event of this.runtime.inspect.events.queryStructured(sessionId)) {
       applyDelegationEvent(runs, event);
     }
     this.hydratedSessions.add(sessionId);

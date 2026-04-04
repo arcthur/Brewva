@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG, type BrewvaConfig } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { cleanupTestWorkspace, createTestWorkspace } from "../../helpers/workspace.js";
 
 function createConfig(): BrewvaConfig {
@@ -19,12 +20,12 @@ describe("system: workflow recovery", () => {
 
     try {
       const runtime = new BrewvaRuntime({ cwd: workspace, config });
-      runtime.context.onTurnStart(sessionId, 1);
-      runtime.task.setSpec(sessionId, {
+      runtime.maintain.context.onTurnStart(sessionId, 1);
+      runtime.authority.task.setSpec(sessionId, {
         schema: "brewva.task.v1",
         goal: "Recover workflow state after projection loss",
       });
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId,
         type: "skill_completed",
         timestamp: 100,
@@ -80,7 +81,7 @@ describe("system: workflow recovery", () => {
           },
         },
       });
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId,
         type: "verification_write_marked",
         timestamp: 110,
@@ -88,7 +89,7 @@ describe("system: workflow recovery", () => {
           toolName: "edit",
         },
       });
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId,
         type: "skill_completed",
         timestamp: 120,
@@ -120,7 +121,7 @@ describe("system: workflow recovery", () => {
           },
         },
       });
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId,
         type: "verification_outcome_recorded",
         timestamp: 130,
@@ -136,8 +137,8 @@ describe("system: workflow recovery", () => {
       rmSync(projectionRoot, { recursive: true, force: true });
 
       const reloaded = new BrewvaRuntime({ cwd: workspace, config });
-      reloaded.context.onTurnStart(sessionId, 1);
-      const injected = await reloaded.context.buildInjection(
+      reloaded.maintain.context.onTurnStart(sessionId, 1);
+      const injected = await reloaded.maintain.context.buildInjection(
         sessionId,
         "continue",
         { tokens: 320, contextWindow: 16_000, percent: 0.02 },

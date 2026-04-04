@@ -86,7 +86,7 @@ Promotion is backed by:
 - `packages/brewva-runtime/src/services/event-pipeline.ts`
 - `packages/brewva-runtime/src/services/reversible-mutation.ts`
 - `packages/brewva-runtime/src/services/session-lifecycle.ts`
-- `packages/brewva-runtime/src/channels/turn-wal.ts`
+- `packages/brewva-runtime/src/channels/recovery-wal.ts`
 - `packages/brewva-gateway/src/channels/host.ts`
 - `packages/brewva-channels-telegram/src/adapter.ts`
 - `packages/brewva-channels-telegram/src/projector.ts`

@@ -272,11 +272,11 @@ const OPS_EVENT_TYPES = new Set<string>([
 
 const DEBUG_EVENT_TYPES = new Set<string>(["tool_parallel_read"]);
 
-const TURN_WAL_EVENT_TYPES = new Set<string>([
-  "turn_wal_appended",
-  "turn_wal_status_changed",
-  "turn_wal_recovery_completed",
-  "turn_wal_compacted",
+const RECOVERY_WAL_EVENT_TYPES = new Set<string>([
+  "recovery_wal_appended",
+  "recovery_wal_status_changed",
+  "recovery_wal_recovery_completed",
+  "recovery_wal_compacted",
 ]);
 
 const RESERVED_RUNTIME_EVENT_PREFIXES = [
@@ -424,7 +424,7 @@ export class EventPipelineService {
     if (DEBUG_EVENT_TYPES.has(type)) return "debug";
     if (AUDIT_EVENT_TYPES.has(type)) return "audit";
     if (type === EVENT_LISTENER_ERROR_EVENT_TYPE) return "audit";
-    if (TURN_WAL_EVENT_TYPES.has(type)) return "ops";
+    if (RECOVERY_WAL_EVENT_TYPES.has(type)) return "ops";
     if (OPS_EVENT_TYPES.has(type)) return "ops";
     for (const prefix of RESERVED_RUNTIME_EVENT_PREFIXES) {
       if (type.startsWith(prefix)) {

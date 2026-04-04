@@ -33,7 +33,7 @@ describe("narrative memory lifecycle", () => {
 
     const runtime = new BrewvaRuntime({ cwd: workspace, agentId: "default" });
     const sessionId = "narrative-memory-lifecycle-session";
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Reject contradictory passive narrative memory.",
       targets: {
@@ -70,7 +70,7 @@ describe("narrative memory lifecycle", () => {
     const workspace = createTestWorkspace("narrative-memory-lifecycle-positive-feedback");
     const runtime = new BrewvaRuntime({ cwd: workspace, agentId: "default" });
     const sessionId = "narrative-memory-positive-feedback-session";
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Capture durable positive collaboration feedback.",
       targets: {

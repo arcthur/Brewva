@@ -16,15 +16,15 @@ describe("cli contract: undo", () => {
     try {
       const runtime = new BrewvaRuntime({ cwd: workspace });
       const sessionId = "system-undo-session";
-      runtime.context.onTurnStart(sessionId, 1);
-      runtime.tools.trackCallStart({
+      runtime.maintain.context.onTurnStart(sessionId, 1);
+      runtime.authority.tools.trackCallStart({
         sessionId,
         toolCallId: "tc-edit",
         toolName: "edit",
         args: { file_path: "undo_fixture.txt" },
       });
       writeFileSync(filePath, changed, "utf8");
-      runtime.tools.trackCallEnd({
+      runtime.authority.tools.trackCallEnd({
         sessionId,
         toolCallId: "tc-edit",
         toolName: "edit",

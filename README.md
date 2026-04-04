@@ -32,7 +32,7 @@ flowchart TD
   SPINE["Invocation Spine<br/>usage + WAL/events + ledger + tracking"]
   EFFECT["Effect Gate<br/>safe / effectful"]
   BOUNDARY["Commitment Boundary<br/>receipts + operator/governance decisions"]
-  DURABILITY["Durability Layer<br/>Event Tape + Replay + Turn WAL"]
+  DURABILITY["Durability Layer<br/>Event Tape + Replay + Recovery WAL"]
   PROJECTION["Working Projection<br/>units.jsonl + working.md"]
   OPERATORS["Operator Surfaces<br/>CLI + Gateway + Runtime Plugins + Channels"]
 

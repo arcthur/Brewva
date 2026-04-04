@@ -145,7 +145,7 @@ describe("brewva session ui settings wiring", () => {
     });
     try {
       const sessionId = result.session.sessionManager.getSessionId();
-      const bootstrap = result.runtime.events.query(sessionId, {
+      const bootstrap = result.runtime.inspect.events.query(sessionId, {
         type: "session_bootstrap",
         last: 1,
       })[0];
@@ -179,7 +179,7 @@ describe("brewva session ui settings wiring", () => {
     });
     try {
       const sessionId = result.session.sessionManager.getSessionId();
-      const bootstrap = result.runtime.events.query(sessionId, {
+      const bootstrap = result.runtime.inspect.events.query(sessionId, {
         type: "session_bootstrap",
         last: 1,
       })[0];
@@ -225,7 +225,7 @@ describe("brewva session ui settings wiring", () => {
     });
     try {
       const sessionId = result.session.sessionManager.getSessionId();
-      const bootstrap = result.runtime.events.query(sessionId, {
+      const bootstrap = result.runtime.inspect.events.query(sessionId, {
         type: "session_bootstrap",
         last: 1,
       })[0];
@@ -270,7 +270,7 @@ describe("brewva session ui settings wiring", () => {
     });
     try {
       const sessionId = result.session.sessionManager.getSessionId();
-      const bootstrap = result.runtime.events.query(sessionId, {
+      const bootstrap = result.runtime.inspect.events.query(sessionId, {
         type: "session_bootstrap",
         last: 1,
       })[0];

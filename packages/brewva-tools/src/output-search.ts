@@ -5,8 +5,9 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import Fuse from "fuse.js";
 import { LRUCache } from "lru-cache";
+import { recordToolRuntimeEvent, resolveToolRuntimeEventPort } from "./runtime-internal.js";
 import { tokenizeSearchTerms } from "./shared/query.js";
-import type { BrewvaToolOptions } from "./types.js";
+import type { BrewvaBundledToolOptions } from "./types.js";
 import { inconclusiveTextResult, textResult } from "./utils/result.js";
 import { getSessionId } from "./utils/session.js";
 import { defineBrewvaTool } from "./utils/tool.js";
@@ -637,7 +638,7 @@ function clampOutput(text: string, maxChars: number): string {
   return `${text.slice(0, keep)}\n...[output truncated due to max_output_chars]`;
 }
 
-export function createOutputSearchTool(options: BrewvaToolOptions): ToolDefinition {
+export function createOutputSearchTool(options: BrewvaBundledToolOptions): ToolDefinition {
   return defineBrewvaTool({
     name: "output_search",
     label: "Output Search",
@@ -660,6 +661,7 @@ export function createOutputSearchTool(options: BrewvaToolOptions): ToolDefiniti
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const sessionId = getSessionId(ctx);
+      const eventPort = resolveToolRuntimeEventPort(options.runtime);
       const queryList = normalizeOptionalQueryList({
         query: params.query,
         queries: params.queries,
@@ -695,18 +697,23 @@ export function createOutputSearchTool(options: BrewvaToolOptions): ToolDefiniti
       ].filter((value): value is string => Boolean(value));
       const uniqueRoots = [...new Set(roots.map((root) => resolve(root)))];
       const recordSearchEvent = (payload: Record<string, unknown>) => {
-        options.runtime.events.record?.({
+        recordToolRuntimeEvent(options.runtime, {
           sessionId,
           type: "tool_output_search",
           payload,
         });
       };
+      if (!eventPort?.list) {
+        return inconclusiveTextResult(
+          "[OutputSearch]\nstatus: unavailable\nreason: runtime event inspection unavailable",
+        );
+      }
       const recentSearchEvents =
         queryList.length > 0
-          ? options.runtime.events.list(sessionId, {
+          ? (eventPort.list(sessionId, {
               type: "tool_output_search",
               last: SEARCH_THROTTLE_EVENT_LOOKBACK,
-            })
+            }) as BrewvaEventRecord[])
           : [];
       const throttleState =
         queryList.length > 0
@@ -722,10 +729,10 @@ export function createOutputSearchTool(options: BrewvaToolOptions): ToolDefiniti
             };
       const effectiveLimit = Math.max(1, throttleState.effectiveLimit);
 
-      const events = options.runtime.events.list(sessionId, {
+      const events = eventPort.list(sessionId, {
         type: "tool_output_artifact_persisted",
         last: Math.min(MAX_ARTIFACT_EVENTS * 4, Math.max(artifactsLast * 4, 60)),
-      });
+      }) as BrewvaEventRecord[];
       const candidates = extractArtifactCandidates({
         events,
         roots: uniqueRoots,

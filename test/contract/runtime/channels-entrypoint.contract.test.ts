@@ -13,5 +13,13 @@ describe("runtime channels entrypoint", () => {
     expect(typeof channels.ChannelTurnBridge).toBe("function");
     expect(typeof channels.buildChannelSessionId).toBe("function");
     expect(channels.DEFAULT_CHANNEL_CAPABILITIES.inlineActions).toBe(false);
+    expect("RecoveryWalStore" in channels).toBe(false);
+    expect("RecoveryWalRecovery" in channels).toBe(false);
+  });
+
+  test("keeps raw Recovery WAL machinery on the internal subpath", async () => {
+    const internal = await import("@brewva/brewva-runtime/internal");
+    expect(typeof internal.RecoveryWalStore).toBe("function");
+    expect(typeof internal.RecoveryWalRecovery).toBe("function");
   });
 });

@@ -1,4 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import {
   collectSessionPromptOutput,
@@ -40,15 +45,9 @@ function createSessionMock(eventsToEmit: AgentSessionEvent[]): SessionLike {
 }
 
 function createRuntimeEventBridge() {
-  const listeners = new Set<
-    (event: {
-      id: string;
-      sessionId: string;
-      type: string;
-      timestamp: number;
-      payload?: Record<string, unknown>;
-    }) => void
-  >();
+  const runtime = new BrewvaRuntime({
+    cwd: mkdtempSync(join(tmpdir(), "brewva-collect-output-")),
+  });
   const events: Array<{
     id: string;
     sessionId: string;
@@ -56,53 +55,17 @@ function createRuntimeEventBridge() {
     timestamp: number;
     payload?: Record<string, unknown>;
   }> = [];
+  runtime.inspect.events.subscribe((event) => {
+    events.push({
+      id: event.id,
+      sessionId: event.sessionId,
+      type: event.type,
+      timestamp: event.timestamp,
+      payload: event.payload,
+    });
+  });
 
-  return {
-    runtime: {
-      events: {
-        subscribe(listener: (event: (typeof events)[number]) => void) {
-          listeners.add(listener);
-          return () => {
-            listeners.delete(listener);
-          };
-        },
-        queryStructured(sessionId: string, query?: { type?: string }) {
-          return events
-            .filter(
-              (event) =>
-                event.sessionId === sessionId && (!query?.type || event.type === query.type),
-            )
-            .map((event) => {
-              return {
-                id: event.id,
-                sessionId: event.sessionId,
-                type: event.type,
-                timestamp: event.timestamp,
-                payload: event.payload,
-                schema: "brewva.event.v1" as const,
-                isoTime: new Date(event.timestamp).toISOString(),
-                category: event.type.startsWith("session_") ? "session" : "other",
-              };
-            });
-        },
-        record(input: { sessionId: string; type: string; payload?: Record<string, unknown> }) {
-          const event = {
-            id: `evt-${events.length + 1}`,
-            sessionId: input.sessionId,
-            type: input.type,
-            timestamp: Date.now(),
-            payload: input.payload,
-          };
-          events.push(event);
-          for (const listener of listeners) {
-            listener(event);
-          }
-          return undefined;
-        },
-      },
-    },
-    events,
-  };
+  return { runtime, events };
 }
 
 function readTransitionPayloads(eventBridge: ReturnType<typeof createRuntimeEventBridge>) {
@@ -231,7 +194,7 @@ describe("gateway collect output", () => {
             result: "requested",
             isError: false,
           } as AgentSessionEvent);
-          eventBridge.runtime.events.record({
+          recordRuntimeEvent(eventBridge.runtime, {
             sessionId: "agent-session-1",
             type: "session_compact",
             payload: {

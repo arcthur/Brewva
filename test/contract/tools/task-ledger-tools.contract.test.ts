@@ -77,7 +77,7 @@ describe("task ledger tool contracts", () => {
         undefined,
         fakeContext(sessionId),
       );
-      expect(runtime.task.getState(sessionId).spec?.verification).toEqual({
+      expect(runtime.inspect.task.getState(sessionId).spec?.verification).toEqual({
         commands: ["bun test test/quality/docs"],
       });
     } finally {
@@ -117,7 +117,7 @@ describe("task ledger tool contracts", () => {
       );
 
       expect(extractTextContent(result)).toContain("Task item added");
-      expect(runtime.task.getState(sessionId).items[0]?.status).toBe("doing");
+      expect(runtime.inspect.task.getState(sessionId).items[0]?.status).toBe("doing");
     } finally {
       cleanupTestWorkspace(workspace);
     }
@@ -130,7 +130,7 @@ describe("task ledger tool contracts", () => {
 
     try {
       const sessionId = "task-ledger-tool-update-item";
-      runtime.task.addItem(sessionId, {
+      runtime.authority.task.addItem(sessionId, {
         id: "item-1",
         text: "Publish doc fixes",
         status: "todo",
@@ -159,7 +159,7 @@ describe("task ledger tool contracts", () => {
       );
 
       expect(extractTextContent(result)).toBe("Task item updated.");
-      expect(runtime.task.getState(sessionId).items[0]?.status).toBe("doing");
+      expect(runtime.inspect.task.getState(sessionId).items[0]?.status).toBe("doing");
     } finally {
       cleanupTestWorkspace(workspace);
     }
@@ -199,7 +199,7 @@ describe("task ledger tool contracts", () => {
       );
 
       expect(extractTextContent(result)).toBe("Acceptance state recorded (accepted).");
-      expect(runtime.task.getState(sessionId).acceptance).toEqual({
+      expect(runtime.inspect.task.getState(sessionId).acceptance).toEqual({
         status: "accepted",
         decidedBy: "operator",
         notes: "Closure accepted after inspection.",
@@ -241,7 +241,7 @@ describe("task ledger tool contracts", () => {
       expect(extractTextContent(result)).toBe(
         "Acceptance update rejected (acceptance_not_enabled).",
       );
-      expect(runtime.task.getState(sessionId).acceptance).toBeUndefined();
+      expect(runtime.inspect.task.getState(sessionId).acceptance).toBeUndefined();
     } finally {
       cleanupTestWorkspace(workspace);
     }

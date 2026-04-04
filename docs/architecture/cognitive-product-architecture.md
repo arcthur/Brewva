@@ -160,7 +160,7 @@ Current responsibilities:
   - stays explicit and advisory-only instead of turning product UX into a hidden planner
 - closure presentation
   - keeps verification and acceptance separate
-  - keeps delegated executable QA separate from `runtime.verification.*`
+  - keeps delegated executable QA separate from `runtime.authority.verification.*`
   - exposes acceptance as an operator-visible closure posture rather than a
     model self-approval path
 - optimization protocol presentation
@@ -237,7 +237,7 @@ repository diff is approved to merge or ready to release.
 
 Responsibilities:
 
-- consume already-admitted context entries from `runtime.context.buildInjection(...)`
+- consume already-admitted context entries from `runtime.maintain.context.buildInjection(...)`
 - classify them as `narrative`, `constraint`, or `diagnostic`
 - order visible blocks for the turn
 - emit composition metrics such as narrative ratio

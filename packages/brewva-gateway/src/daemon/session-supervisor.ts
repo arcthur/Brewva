@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ManagedToolMode, TurnWALRecord } from "@brewva/brewva-runtime";
-import { TurnWALRecovery, TurnWALStore } from "@brewva/brewva-runtime/channels";
+import type { ManagedToolMode, RecoveryWalRecord } from "@brewva/brewva-runtime";
+import { RecoveryWalRecovery, RecoveryWalStore } from "@brewva/brewva-runtime/internal";
 import type { WorkerToParentMessage } from "../session/worker-protocol.js";
 import {
   FileGatewayStateStore,
@@ -51,7 +51,7 @@ const DEFAULT_SESSION_IDLE_SWEEP_INTERVAL_MS = 30_000;
 const DEFAULT_MAX_WORKERS = 16;
 const DEFAULT_MAX_PENDING_SESSION_OPENS = 64;
 const DEFAULT_MAX_PENDING_TURNS_PER_SESSION = 32;
-const DEFAULT_TURN_WAL_COMPACT_INTERVAL_MS = 120_000;
+const DEFAULT_RECOVERY_WAL_COMPACT_INTERVAL_MS = 120_000;
 
 type LoggerLike = Pick<StructuredLogger, "debug" | "info" | "warn" | "error" | "log">;
 
@@ -93,8 +93,8 @@ export interface SessionSupervisorOptions {
   maxWorkers?: number;
   maxPendingSessionOpens?: number;
   stateStore?: GatewayStateStore;
-  turnWalStore?: TurnWALStore;
-  turnWalCompactIntervalMs?: number;
+  recoveryWalStore?: RecoveryWalStore;
+  recoveryWalCompactIntervalMs?: number;
   onWorkerEvent?: (event: Extract<WorkerToParentMessage, { kind: "event" }>) => void;
 }
 
@@ -149,14 +149,14 @@ export class SessionSupervisor implements SessionBackend {
   private readonly maxWorkers: number;
   private readonly maxPendingSessionOpens: number;
   private readonly stateStore: GatewayStateStore;
-  private readonly turnWalStore?: TurnWALStore;
-  private readonly turnWalCompactIntervalMs: number;
+  private readonly recoveryWalStore?: RecoveryWalStore;
+  private readonly recoveryWalCompactIntervalMs: number;
   private readonly openAdmission: SessionOpenAdmissionController;
   private readonly workerRpc: SessionWorkerRpcController;
   private readonly turnQueue: SessionTurnQueueCoordinator;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private idleSweepTimer: ReturnType<typeof setInterval> | null = null;
-  private turnWalCompactTimer: ReturnType<typeof setInterval> | null = null;
+  private recoveryWalCompactTimer: ReturnType<typeof setInterval> | null = null;
   private idleSweepInFlight = false;
 
   readonly testHooks: SessionSupervisorTestHooks = {
@@ -188,10 +188,10 @@ export class SessionSupervisor implements SessionBackend {
     this.stateDir = resolve(options.stateDir);
     this.childrenRegistryPath = resolve(this.stateDir, "children.json");
     this.stateStore = options.stateStore ?? new FileGatewayStateStore();
-    this.turnWalStore = options.turnWalStore;
-    this.turnWalCompactIntervalMs = Math.max(
+    this.recoveryWalStore = options.recoveryWalStore;
+    this.recoveryWalCompactIntervalMs = Math.max(
       30_000,
-      options.turnWalCompactIntervalMs ?? DEFAULT_TURN_WAL_COMPACT_INTERVAL_MS,
+      options.recoveryWalCompactIntervalMs ?? DEFAULT_RECOVERY_WAL_COMPACT_INTERVAL_MS,
     );
     this.sessionIdleTtlMs = Math.max(0, options.sessionIdleTtlMs ?? DEFAULT_SESSION_IDLE_TTL_MS);
     const defaultSweepIntervalMs = Math.min(
@@ -216,7 +216,7 @@ export class SessionSupervisor implements SessionBackend {
     });
     this.workerRpc = new SessionWorkerRpcController({
       logger: this.options.logger,
-      turnWalStore: this.turnWalStore,
+      recoveryWalStore: this.recoveryWalStore,
       onWorkerEvent: this.options.onWorkerEvent,
       touchActivity: (handle) => {
         this.touchActivity(handle);
@@ -236,16 +236,16 @@ export class SessionSupervisor implements SessionBackend {
         this.workerRpc.rejectPendingTurn(handle, turnId, error),
       rekeyPendingTurn: (handle, fromTurnId, toTurnId) =>
         this.workerRpc.rekeyPendingTurn(handle, fromTurnId, toTurnId),
-      trackTurnWalId: (handle, turnId, walId) =>
-        this.workerRpc.trackTurnWalId(handle, turnId, walId),
-      untrackTurnWalId: (handle, turnId) => this.workerRpc.untrackTurnWalId(handle, turnId),
-      rekeyTurnWalId: (handle, fromTurnId, toTurnId) =>
-        this.workerRpc.rekeyTurnWalId(handle, fromTurnId, toTurnId),
+      trackRecoveryWalId: (handle, turnId, walId) =>
+        this.workerRpc.trackRecoveryWalId(handle, turnId, walId),
+      untrackRecoveryWalId: (handle, turnId) => this.workerRpc.untrackRecoveryWalId(handle, turnId),
+      rekeyRecoveryWalId: (handle, fromTurnId, toTurnId) =>
+        this.workerRpc.rekeyRecoveryWalId(handle, fromTurnId, toTurnId),
       markQueuedTurnInflight: (walId) => {
-        this.turnWalStore?.markInflight(walId);
+        this.recoveryWalStore?.markInflight(walId);
       },
-      markTurnWalFailed: (handle, turnId, error) =>
-        this.workerRpc.markTurnWalFailed(handle, turnId, error),
+      markRecoveryWalFailed: (handle, turnId, error) =>
+        this.workerRpc.markRecoveryWalFailed(handle, turnId, error),
     });
 
     mkdirSync(this.stateDir, { recursive: true });
@@ -253,10 +253,10 @@ export class SessionSupervisor implements SessionBackend {
 
   async start(): Promise<void> {
     await this.sweepOrphanedChildren();
-    await this.recoverTurnWal();
+    await this.recoverRecoveryWalState();
     this.startBridgePing();
     this.startIdleSweep();
-    this.startTurnWalCompaction();
+    this.startRecoveryWalCompaction();
   }
 
   async stop(): Promise<void> {
@@ -268,9 +268,9 @@ export class SessionSupervisor implements SessionBackend {
       clearInterval(this.idleSweepTimer);
       this.idleSweepTimer = null;
     }
-    if (this.turnWalCompactTimer) {
-      clearInterval(this.turnWalCompactTimer);
-      this.turnWalCompactTimer = null;
+    if (this.recoveryWalCompactTimer) {
+      clearInterval(this.recoveryWalCompactTimer);
+      this.recoveryWalCompactTimer = null;
     }
 
     await Promise.allSettled(
@@ -347,7 +347,7 @@ export class SessionSupervisor implements SessionBackend {
         pendingTurns: new Map<string, PendingTurn>(),
         turnQueue: [],
         activeTurnId: null,
-        activeTurnWalIds: new Map<string, string>(),
+        activeRecoveryWalIds: new Map<string, string>(),
         lastHeartbeatAt: Date.now(),
       };
       this.workers.set(input.sessionId, handle);
@@ -440,8 +440,8 @@ export class SessionSupervisor implements SessionBackend {
     const replayWalId = normalizeOptionalString(options.walReplayId);
     const waitForCompletion = options.waitForCompletion === true;
     let walId = replayWalId;
-    if (!walId && this.turnWalStore?.isEnabled) {
-      const walRecord = this.turnWalStore.appendPending(
+    if (!walId && this.recoveryWalStore?.isEnabled) {
+      const walRecord = this.recoveryWalStore.appendPending(
         buildSessionTurnEnvelope({
           sessionId,
           turnId: requestedTurnId,
@@ -563,7 +563,7 @@ export class SessionSupervisor implements SessionBackend {
       pendingTurns: new Map<string, PendingTurn>(),
       turnQueue: [],
       activeTurnId: input.activeTurnId ?? null,
-      activeTurnWalIds: new Map<string, string>(),
+      activeRecoveryWalIds: new Map<string, string>(),
       readyRequestId: input.readyRequestId,
       lastHeartbeatAt: input.lastHeartbeatAt ?? now,
     });
@@ -710,14 +710,14 @@ export class SessionSupervisor implements SessionBackend {
     }
   }
 
-  private async recoverTurnWal(): Promise<void> {
-    if (!this.turnWalStore?.isEnabled) {
+  private async recoverRecoveryWalState(): Promise<void> {
+    if (!this.recoveryWalStore?.isEnabled) {
       return;
     }
-    const recovery = new TurnWALRecovery({
-      workspaceRoot: this.turnWalStore.workspaceRoot,
-      config: this.turnWalStore.config,
-      scopeFilter: (scope) => scope === this.turnWalStore?.scope,
+    const recovery = new RecoveryWalRecovery({
+      workspaceRoot: this.recoveryWalStore.workspaceRoot,
+      config: this.recoveryWalStore.config,
+      scopeFilter: (scope) => scope === this.recoveryWalStore?.scope,
       handlers: {
         gateway: async ({ record }) => {
           await this.replayRecoveredTurn(record);
@@ -733,8 +733,8 @@ export class SessionSupervisor implements SessionBackend {
 
     const summary = await recovery.recover();
     if (summary.scanned > 0 || summary.retried > 0 || summary.failed > 0 || summary.expired > 0) {
-      this.options.logger.info("turn wal recovery completed", {
-        scope: this.turnWalStore.scope,
+      this.options.logger.info("Recovery WAL recovery completed", {
+        scope: this.recoveryWalStore.scope,
         scanned: summary.scanned,
         retried: summary.retried,
         failed: summary.failed,
@@ -744,7 +744,7 @@ export class SessionSupervisor implements SessionBackend {
     }
   }
 
-  private async replayRecoveredTurn(record: TurnWALRecord): Promise<void> {
+  private async replayRecoveredTurn(record: RecoveryWalRecord): Promise<void> {
     const source =
       record.source === "heartbeat"
         ? "heartbeat"
@@ -755,7 +755,7 @@ export class SessionSupervisor implements SessionBackend {
     const prompt = extractPromptFromEnvelope(record.envelope);
     const trigger = extractTriggerFromEnvelope(record.envelope);
     if (!sessionId || !prompt) {
-      this.turnWalStore?.markFailed(record.walId, "recovery_missing_prompt_or_session");
+      this.recoveryWalStore?.markFailed(record.walId, "recovery_missing_prompt_or_session");
       return;
     }
 
@@ -769,28 +769,28 @@ export class SessionSupervisor implements SessionBackend {
     });
   }
 
-  private startTurnWalCompaction(): void {
-    if (!this.turnWalStore?.isEnabled || this.turnWalCompactTimer) {
+  private startRecoveryWalCompaction(): void {
+    if (!this.recoveryWalStore?.isEnabled || this.recoveryWalCompactTimer) {
       return;
     }
-    this.turnWalCompactTimer = setInterval(() => {
+    this.recoveryWalCompactTimer = setInterval(() => {
       try {
-        const result = this.turnWalStore?.compact();
+        const result = this.recoveryWalStore?.compact();
         if (result && result.dropped > 0) {
-          this.options.logger.debug("turn wal compacted", {
-            scope: this.turnWalStore?.scope,
+          this.options.logger.debug("Recovery WAL compacted", {
+            scope: this.recoveryWalStore?.scope,
             scanned: result.scanned,
             retained: result.retained,
             dropped: result.dropped,
           });
         }
       } catch (error) {
-        this.options.logger.warn("turn wal compact failed", {
+        this.options.logger.warn("Recovery WAL compaction failed", {
           error: toErrorMessage(error),
         });
       }
-    }, this.turnWalCompactIntervalMs);
-    this.turnWalCompactTimer.unref?.();
+    }, this.recoveryWalCompactIntervalMs);
+    this.recoveryWalCompactTimer.unref?.();
   }
 
   private readRegistry(): ChildRegistryEntry[] {

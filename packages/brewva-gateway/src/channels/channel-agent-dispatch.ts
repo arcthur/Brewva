@@ -1,5 +1,6 @@
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
 import type { TurnEnvelope, TurnPart } from "@brewva/brewva-runtime/channels";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import {
   resolveToolDisplayStatus,
@@ -347,7 +348,7 @@ export function createChannelAgentDispatch(input: {
     if (!prompt) {
       return;
     }
-    state.runtime.events.record({
+    recordRuntimeEvent(state.runtime, {
       sessionId: canonicalTurn.sessionId,
       type: "channel_turn_dispatch_start",
       payload: {
@@ -368,7 +369,7 @@ export function createChannelAgentDispatch(input: {
     });
     await input.registry.touchAgent(state.agentId, Date.now(), true);
 
-    state.runtime.events.record({
+    recordRuntimeEvent(state.runtime, {
       sessionId: canonicalTurn.sessionId,
       type: "channel_turn_dispatch_end",
       payload: {
@@ -390,7 +391,7 @@ export function createChannelAgentDispatch(input: {
       nextSequence: () => input.sessionCoordinator.nextOutboundSequence(state),
     });
 
-    state.runtime.events.record({
+    recordRuntimeEvent(state.runtime, {
       sessionId: canonicalTurn.sessionId,
       type: "channel_turn_outbound_complete",
       payload: {

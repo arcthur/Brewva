@@ -31,7 +31,7 @@ function createCleanRuntime(): BrewvaRuntime {
 describe("repository catalog contracts", () => {
   test("runtime loads the new v2 catalog names", () => {
     const runtime = createCleanRuntime();
-    const loadedSkillNames = runtime.skills.list().map((skill) => skill.name);
+    const loadedSkillNames = runtime.inspect.skills.list().map((skill) => skill.name);
 
     expect(loadedSkillNames).toEqual(
       expect.arrayContaining([
@@ -72,7 +72,7 @@ describe("repository catalog contracts", () => {
 
   test("built-in base skills declare explicit output contracts for every declared output", () => {
     const runtime = createCleanRuntime();
-    const missing = runtime.skills.list().flatMap((skill) => {
+    const missing = runtime.inspect.skills.list().flatMap((skill) => {
       const outputs = listSkillOutputs(skill.contract);
       if (outputs.length === 0) {
         return [];
@@ -89,7 +89,7 @@ describe("repository catalog contracts", () => {
 
   test("all loadable routed skills declare explicit selection policy", () => {
     const runtime = createCleanRuntime();
-    const missing = runtime.skills.list().flatMap((skill) => {
+    const missing = runtime.inspect.skills.list().flatMap((skill) => {
       if (!skill.contract.routing?.scope) {
         return [];
       }

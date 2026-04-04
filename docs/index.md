@@ -51,7 +51,7 @@ This repository uses a layered documentation system:
 - Configuration: `docs/reference/configuration.md`
 - Tools: `docs/reference/tools.md`
 - Skills: `docs/reference/skills.md`
-- Runtime API: `docs/reference/runtime.md`
+- Runtime contract and ports: `docs/reference/runtime.md`
 - Context composer: `docs/reference/context-composer.md`
 - Proactivity (removed, explicit heartbeat remains): `docs/reference/proactivity-engine.md`
 - Proposal boundary: `docs/reference/proposal-boundary.md`
@@ -86,6 +86,7 @@ This repository uses a layered documentation system:
 - Gateway experience-ring decomposition status pointer: `docs/research/rfc-gateway-experience-ring-decomposition.md`
 - Roadmap notes: `docs/research/roadmap-notes.md`
 - Effect governance RFC: `docs/research/rfc-effect-governance-and-contract-vnext.md`
+- Authority-surface narrowing RFC: `docs/research/rfc-authority-surface-narrowing-and-runtime-facade-compression.md`
 - Capability compression RFC: `docs/research/rfc-capability-compression-and-output-distillation.md`
 - Delegation protocol thinning RFC: `docs/research/rfc-delegation-protocol-thinning-and-replayable-outcomes.md`
 - Hosted turn transitions status pointer: `docs/research/rfc-hosted-turn-transitions-and-bounded-recovery.md`

@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { BrewvaRuntime, createTrustedLocalGovernancePort } from "@brewva/brewva-runtime";
+import {
+  BrewvaRuntime,
+  createTrustedLocalGovernancePort,
+  DEFAULT_BREWVA_CONFIG,
+} from "@brewva/brewva-runtime";
 import type { TurnEnvelope } from "@brewva/brewva-runtime/channels";
 import { AgentRegistry } from "../../../packages/brewva-gateway/src/channels/agent-registry.js";
 import { AgentRuntimeManager } from "../../../packages/brewva-gateway/src/channels/agent-runtime-manager.js";
@@ -55,15 +59,20 @@ async function createCoordinatorFixture(options: {
 }> {
   const workspace = createTestWorkspace("channel-session-coordinator");
   const eventRecords: { sessionId: string; type: string; payload?: unknown }[] = [];
+  const config = structuredClone(DEFAULT_BREWVA_CONFIG);
+  config.infrastructure.events.level = "debug";
   const runtime = new BrewvaRuntime({
     cwd: workspace,
+    config,
     governancePort: createTrustedLocalGovernancePort({ profile: "team" }),
   });
   if (options.captureEvents) {
-    Object.assign(runtime.events, {
-      record: (event: { sessionId: string; type: string; payload?: unknown }) => {
-        eventRecords.push(event);
-      },
+    runtime.inspect.events.subscribe((event) => {
+      eventRecords.push({
+        sessionId: event.sessionId,
+        type: event.type,
+        payload: event.payload,
+      });
     });
   }
   const registry = await AgentRegistry.create({ workspaceRoot: workspace });
@@ -86,7 +95,7 @@ async function createCoordinatorFixture(options: {
     },
     scopeStrategy: options.scopeStrategy ?? "chat",
     idleRuntimeTtlMs: 60_000,
-    turnWalScope: "test:channel-turn-wal",
+    recoveryWalScope: "test:channel-recovery-wal",
     cleanupGracefulTimeoutMs: options.cleanupGracefulTimeoutMs,
   });
   return {
@@ -119,7 +128,7 @@ describe("channel session coordinator ownership", () => {
       );
 
       const requestId = "req-accepted-1";
-      Object.assign(handle.runtime.proposals, {
+      Object.assign(handle.runtime.inspect.proposals, {
         listPendingEffectCommitments: () => [],
         listEffectCommitmentRequests: (sessionId: string, query?: { state?: string }) =>
           sessionId === handle.agentSessionId && query?.state === "accepted"

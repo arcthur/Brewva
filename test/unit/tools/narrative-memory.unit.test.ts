@@ -14,6 +14,7 @@ import {
   BrewvaRuntime,
 } from "@brewva/brewva-runtime";
 import { createNarrativeMemoryTool } from "@brewva/brewva-tools";
+import { createBundledToolRuntime } from "../../helpers/runtime.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
 function extractText(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -39,7 +40,7 @@ describe("narrative memory tool", () => {
     const workspace = createTestWorkspace("narrative-memory-tool");
     const runtime = new BrewvaRuntime({ cwd: workspace, agentId: "default" });
     const sessionId = "narrative-memory-session";
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Keep collaboration memory explicit.",
       targets: {
@@ -47,7 +48,7 @@ describe("narrative memory tool", () => {
       },
     });
 
-    const tool = createNarrativeMemoryTool({ runtime });
+    const tool = createNarrativeMemoryTool({ runtime: createBundledToolRuntime(runtime) });
     const ctx = createToolContext(sessionId);
 
     const archiveCandidate = (await tool.execute(
@@ -141,7 +142,7 @@ describe("narrative memory tool", () => {
         actor: "assistant",
         sessionId,
         agentId: runtime.agentId,
-        targetRoots: runtime.task.getTargetDescriptor(sessionId).roots,
+        targetRoots: runtime.inspect.task.getTargetDescriptor(sessionId).roots,
       },
       evidence: [
         {
@@ -185,7 +186,7 @@ describe("narrative memory tool", () => {
         actor: "assistant",
         sessionId,
         agentId: runtime.agentId,
-        targetRoots: runtime.task.getTargetDescriptor(sessionId).roots,
+        targetRoots: runtime.inspect.task.getTargetDescriptor(sessionId).roots,
       },
       evidence: [
         {
@@ -220,19 +221,20 @@ describe("narrative memory tool", () => {
     ).toContain("# Narrative Memory Stats");
 
     expect(
-      runtime.events.query(sessionId, { type: NARRATIVE_MEMORY_RECORDED_EVENT_TYPE }).length,
+      runtime.inspect.events.query(sessionId, { type: NARRATIVE_MEMORY_RECORDED_EVENT_TYPE })
+        .length,
     ).toBeGreaterThanOrEqual(2);
     expect(
-      runtime.events.query(sessionId, { type: NARRATIVE_MEMORY_ARCHIVED_EVENT_TYPE }),
+      runtime.inspect.events.query(sessionId, { type: NARRATIVE_MEMORY_ARCHIVED_EVENT_TYPE }),
     ).toHaveLength(1);
     expect(
-      runtime.events.query(sessionId, { type: NARRATIVE_MEMORY_PROMOTED_EVENT_TYPE }),
+      runtime.inspect.events.query(sessionId, { type: NARRATIVE_MEMORY_PROMOTED_EVENT_TYPE }),
     ).toHaveLength(1);
     expect(
-      runtime.events.query(sessionId, { type: NARRATIVE_MEMORY_REVIEWED_EVENT_TYPE }),
+      runtime.inspect.events.query(sessionId, { type: NARRATIVE_MEMORY_REVIEWED_EVENT_TYPE }),
     ).toHaveLength(1);
     expect(
-      runtime.events.query(sessionId, { type: NARRATIVE_MEMORY_FORGOTTEN_EVENT_TYPE }),
+      runtime.inspect.events.query(sessionId, { type: NARRATIVE_MEMORY_FORGOTTEN_EVENT_TYPE }),
     ).toHaveLength(1);
   });
 
@@ -240,7 +242,7 @@ describe("narrative memory tool", () => {
     const workspace = createTestWorkspace("narrative-memory-tool-invalid-transitions");
     const runtime = new BrewvaRuntime({ cwd: workspace, agentId: "default" });
     const sessionId = "narrative-memory-invalid-transition-session";
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Reject invalid narrative state transitions.",
       targets: {
@@ -248,7 +250,7 @@ describe("narrative memory tool", () => {
       },
     });
 
-    const tool = createNarrativeMemoryTool({ runtime });
+    const tool = createNarrativeMemoryTool({ runtime: createBundledToolRuntime(runtime) });
     const ctx = createToolContext(sessionId);
     const rememberResult = (await tool.execute(
       "tc-narrative-memory-remember-active",
@@ -286,7 +288,7 @@ describe("narrative memory tool", () => {
       undefined,
       ctx,
     );
-    const archiveEvent = runtime.events.query(sessionId, {
+    const archiveEvent = runtime.inspect.events.query(sessionId, {
       type: NARRATIVE_MEMORY_ARCHIVED_EVENT_TYPE,
       last: 1,
     })[0];
@@ -307,7 +309,7 @@ describe("narrative memory tool", () => {
         actor: "assistant",
         sessionId,
         agentId: runtime.agentId,
-        targetRoots: runtime.task.getTargetDescriptor(sessionId).roots,
+        targetRoots: runtime.inspect.task.getTargetDescriptor(sessionId).roots,
       },
       evidence: [
         {
@@ -357,7 +359,7 @@ describe("narrative memory tool", () => {
 
     const runtime = new BrewvaRuntime({ cwd: workspace, agentId: "default" });
     const sessionId = "narrative-memory-validation-session";
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Keep explicit narrative writes inside the RFC boundary.",
       targets: {
@@ -365,7 +367,7 @@ describe("narrative memory tool", () => {
       },
     });
 
-    const tool = createNarrativeMemoryTool({ runtime });
+    const tool = createNarrativeMemoryTool({ runtime: createBundledToolRuntime(runtime) });
     const ctx = createToolContext(sessionId);
 
     const contradiction = await tool.execute(

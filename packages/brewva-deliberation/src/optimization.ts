@@ -8,7 +8,7 @@ import {
   coerceMetricObservationPayload,
   parseScheduleIntentEvent,
   type BrewvaEventRecord,
-  type BrewvaRuntime,
+  type BrewvaInspectionPort,
   type ContextSourceProvider,
   type ScheduleIntentEventPayload,
 } from "@brewva/brewva-runtime";
@@ -828,8 +828,8 @@ function buildOptimizationLineages(
   const schedules: ScheduleIntentRecord[] = [];
   const completions: GoalLoopSkillCompletion[] = [];
 
-  for (const sessionId of runtime.events.listSessionIds()) {
-    const events = runtime.events.list(sessionId);
+  for (const sessionId of runtime.inspect.events.listSessionIds()) {
+    const events = runtime.inspect.events.list(sessionId);
     metrics.push(...collectMetricRecords(events));
     guards.push(...collectGuardRecords(events));
     schedules.push(...collectScheduleRecords(events));
@@ -1173,7 +1173,12 @@ function renderContextLineage(lineage: OptimizationLineageArtifact): string {
 
 const planeByRuntime = new WeakMap<object, OptimizationContinuityPlane>();
 
-export type OptimizationContinuityRuntime = Pick<BrewvaRuntime, "workspaceRoot" | "events">;
+export interface OptimizationContinuityRuntime {
+  readonly workspaceRoot: string;
+  readonly inspect: {
+    readonly events: Pick<BrewvaInspectionPort["events"], "list" | "listSessionIds" | "subscribe">;
+  };
+}
 
 export class OptimizationContinuityPlane {
   private readonly runtime: OptimizationContinuityRuntime;
@@ -1195,7 +1200,7 @@ export class OptimizationContinuityPlane {
     );
     this.minRefreshIntervalMs = Math.max(0, options.minRefreshIntervalMs ?? 0);
     this.state = this.store.read();
-    this.runtime.events.subscribe((event) => {
+    this.runtime.inspect.events.subscribe((event) => {
       if (OPTIMIZATION_RELEVANT_EVENT_TYPES.has(event.type)) {
         this.dirty = true;
       }
@@ -1288,7 +1293,7 @@ export class OptimizationContinuityPlane {
 
   private reconcile(): OptimizationContinuityState {
     const now = Date.now();
-    const sessionDigests = collectPlaneSessionDigests(this.runtime.events);
+    const sessionDigests = collectPlaneSessionDigests(this.runtime.inspect.events);
     const current = this.store.read() ?? this.state;
     const hasState = Boolean(current);
     const digestsChanged =
@@ -1346,7 +1351,7 @@ export function getOrCreateOptimizationContinuityPlane(
 }
 
 export function createOptimizationContinuityContextProvider(input: {
-  runtime: BrewvaRuntime;
+  runtime: OptimizationContinuityRuntime;
   maxLineages?: number;
   minRefreshIntervalMs?: number;
 }): ContextSourceProvider {

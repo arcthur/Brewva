@@ -3,7 +3,7 @@ import {
   createTrustedLocalGovernancePort,
   type ManagedToolMode,
 } from "@brewva/brewva-runtime";
-import { TurnWALStore } from "@brewva/brewva-runtime/channels";
+import { RecoveryWalStore, recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createHostedSession, type HostedSessionResult } from "../host/create-hosted-session.js";
 import { resolveBrewvaUpdateExecutionScope } from "../update-workflow.js";
 import { toErrorMessage } from "../utils/errors.js";
@@ -109,10 +109,10 @@ export async function runChannelMode(options: RunChannelModeOptions): Promise<vo
   options.onRuntimeReady?.(runtime);
 
   const telegramSkillPolicyState = resolveTelegramChannelSkillPolicyState({
-    availableSkillNames: runtime.skills.list().map((skill) => skill.name),
+    availableSkillNames: runtime.inspect.skills.list().map((skill) => skill.name),
   });
   if (channel === "telegram" && telegramSkillPolicyState.missingSkillNames.length > 0) {
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: "channel:system",
       type: "channel_skill_policy_degraded",
       payload: {
@@ -149,12 +149,12 @@ export async function runChannelMode(options: RunChannelModeOptions): Promise<vo
   });
   const commandRouter = new CommandRouter();
 
-  const turnWalStore = new TurnWALStore({
+  const recoveryWalStore = new RecoveryWalStore({
     workspaceRoot: runtime.workspaceRoot,
-    config: runtime.config.infrastructure.turnWal,
+    config: runtime.config.infrastructure.recoveryWal,
     scope: `channel-${channel}`,
     recordEvent: (input) => {
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId: input.sessionId,
         type: input.type,
         payload: input.payload,
@@ -162,9 +162,9 @@ export async function runChannelMode(options: RunChannelModeOptions): Promise<vo
       });
     },
   });
-  const turnWalCompactIntervalMs = Math.max(
+  const recoveryWalCompactIntervalMs = Math.max(
     30_000,
-    Math.floor(runtime.config.infrastructure.turnWal.compactAfterMs / 2),
+    Math.floor(runtime.config.infrastructure.recoveryWal.compactAfterMs / 2),
   );
   const updateExecutionScope = resolveBrewvaUpdateExecutionScope(runtime);
   let shuttingDown = false;
@@ -205,14 +205,14 @@ export async function runChannelMode(options: RunChannelModeOptions): Promise<vo
     },
     scopeStrategy,
     idleRuntimeTtlMs: orchestrationConfig.limits.idleRuntimeTtlMs,
-    turnWalScope: turnWalStore.scope,
+    recoveryWalScope: recoveryWalStore.scope,
     cleanupGracefulTimeoutMs: CHANNEL_SESSION_CLEANUP_GRACEFUL_TIMEOUT_MS,
   });
   const sessionQueries = createChannelSessionQueries({
     runtime,
     registry,
     runtimeManager,
-    turnWalScope: turnWalStore.scope,
+    recoveryWalScope: recoveryWalStore.scope,
     listLiveSessions: () => sessionCoordinator.listLiveSessions(),
     openLiveSession: (scopeKey, agentId) => sessionCoordinator.openLiveSession(scopeKey, agentId),
     loadInspectionRuntime: (agentId) => sessionCoordinator.loadInspectionRuntime(agentId),
@@ -297,7 +297,7 @@ export async function runChannelMode(options: RunChannelModeOptions): Promise<vo
 
   dispatcher = createChannelTurnDispatcher({
     runtime,
-    turnWalStore,
+    recoveryWalStore,
     orchestrationEnabled: orchestrationConfig.enabled,
     defaultAgentId: runtime.agentId,
     commandRouter,
@@ -321,7 +321,7 @@ export async function runChannelMode(options: RunChannelModeOptions): Promise<vo
       channel === "telegram"
         ? {
             initialPollingOffset: (() => {
-              const ingressHighWatermark = turnWalStore.getIngressHighWatermark({
+              const ingressHighWatermark = recoveryWalStore.getIngressHighWatermark({
                 source: "channel",
                 channel: "telegram",
               });
@@ -361,8 +361,8 @@ export async function runChannelMode(options: RunChannelModeOptions): Promise<vo
       channel,
       verbose: options.verbose,
       bundle,
-      turnWalStore,
-      turnWalCompactIntervalMs,
+      recoveryWalStore,
+      recoveryWalCompactIntervalMs,
       dispatcher,
       sessionCoordinator,
       runtimeManager,

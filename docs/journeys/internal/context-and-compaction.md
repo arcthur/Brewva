@@ -10,7 +10,7 @@
 ## Entry Points
 
 - hosted lifecycle `beforeAgentStart`
-- `runtime.context.buildInjection(...)`
+- `runtime.maintain.context.buildInjection(...)`
 - `session_compact`
 - post-compaction turn resume
 

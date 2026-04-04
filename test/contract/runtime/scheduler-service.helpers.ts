@@ -8,8 +8,8 @@ import {
   normalizeTimeZone,
   parseCronExpression,
   type BrewvaConfig,
-  type SchedulerRuntimePort,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent, type SchedulerRuntimePort } from "@brewva/brewva-runtime/internal";
 
 export function createWorkspace(name: string): string {
   const workspace = mkdtempSync(join(tmpdir(), `brewva-scheduler-${name}-`));
@@ -41,12 +41,12 @@ export function schedulerRuntimePort(runtime: BrewvaRuntime): SchedulerRuntimePo
   return {
     workspaceRoot: runtime.workspaceRoot,
     scheduleConfig: runtime.config.schedule,
-    listSessionIds: () => runtime.events.listSessionIds(),
-    listEvents: (targetSessionId, query) => runtime.events.list(targetSessionId, query),
-    recordEvent: (input) => runtime.events.record(input),
-    subscribeEvents: (listener) => runtime.events.subscribe(listener),
-    getTruthState: (targetSessionId) => runtime.truth.getState(targetSessionId),
-    getTaskState: (targetSessionId) => runtime.task.getState(targetSessionId),
+    listSessionIds: () => runtime.inspect.events.listSessionIds(),
+    listEvents: (targetSessionId, query) => runtime.inspect.events.list(targetSessionId, query),
+    recordEvent: (input) => recordRuntimeEvent(runtime, input),
+    subscribeEvents: (listener) => runtime.inspect.events.subscribe(listener),
+    getTruthState: (targetSessionId) => runtime.inspect.truth.getState(targetSessionId),
+    getTaskState: (targetSessionId) => runtime.inspect.task.getState(targetSessionId),
   };
 }
 

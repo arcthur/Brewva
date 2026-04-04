@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { TurnReplayEngine, type BrewvaEventRecord } from "@brewva/brewva-runtime";
+import type { BrewvaEventRecord } from "@brewva/brewva-runtime";
+import { TurnReplayEngine } from "@brewva/brewva-runtime/internal";
 import { anchorEvent, toolResultFailureEvent } from "./turn-replay-engine.helpers.js";
 
 describe("TurnReplayEngine cost and evidence folding", () => {

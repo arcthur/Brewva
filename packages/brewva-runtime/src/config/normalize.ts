@@ -613,7 +613,9 @@ function normalizeInfrastructureConfig(
   const costTrackingInput = isRecord(infrastructureInput.costTracking)
     ? infrastructureInput.costTracking
     : {};
-  const turnWalInput = isRecord(infrastructureInput.turnWal) ? infrastructureInput.turnWal : {};
+  const recoveryWalInput = isRecord(infrastructureInput.recoveryWal)
+    ? infrastructureInput.recoveryWal
+    : {};
   const defaultContextBudget = defaults.contextBudget;
   const defaultContextBudgetInjection = defaultContextBudget.injection;
   const defaultContextBudgetThresholds = defaultContextBudget.thresholds;
@@ -767,21 +769,24 @@ function normalizeInfrastructureConfig(
         ? (costTrackingInput.actionOnExceed as BrewvaConfig["infrastructure"]["costTracking"]["actionOnExceed"])
         : defaults.costTracking.actionOnExceed,
     },
-    turnWal: {
-      enabled: normalizeBoolean(turnWalInput.enabled, defaults.turnWal.enabled),
-      dir: normalizeNonEmptyString(turnWalInput.dir, defaults.turnWal.dir),
+    recoveryWal: {
+      enabled: normalizeBoolean(recoveryWalInput.enabled, defaults.recoveryWal.enabled),
+      dir: normalizeNonEmptyString(recoveryWalInput.dir, defaults.recoveryWal.dir),
       defaultTtlMs: normalizePositiveInteger(
-        turnWalInput.defaultTtlMs,
-        defaults.turnWal.defaultTtlMs,
+        recoveryWalInput.defaultTtlMs,
+        defaults.recoveryWal.defaultTtlMs,
       ),
-      maxRetries: normalizeNonNegativeInteger(turnWalInput.maxRetries, defaults.turnWal.maxRetries),
+      maxRetries: normalizeNonNegativeInteger(
+        recoveryWalInput.maxRetries,
+        defaults.recoveryWal.maxRetries,
+      ),
       compactAfterMs: normalizePositiveInteger(
-        turnWalInput.compactAfterMs,
-        defaults.turnWal.compactAfterMs,
+        recoveryWalInput.compactAfterMs,
+        defaults.recoveryWal.compactAfterMs,
       ),
       scheduleTurnTtlMs: normalizePositiveInteger(
-        turnWalInput.scheduleTurnTtlMs,
-        defaults.turnWal.scheduleTurnTtlMs,
+        recoveryWalInput.scheduleTurnTtlMs,
+        defaults.recoveryWal.scheduleTurnTtlMs,
       ),
     },
   };

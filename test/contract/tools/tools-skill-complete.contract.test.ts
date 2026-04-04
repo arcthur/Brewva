@@ -2,8 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { DelegationRunRecord } from "@brewva/brewva-runtime";
-import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
+import {
+  BrewvaRuntime,
+  DEFAULT_BREWVA_CONFIG,
+  type DelegationRunRecord,
+} from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createSkillCompleteTool, createSkillLoadTool } from "@brewva/brewva-tools";
 
 type ToolExecutionContext = Parameters<ReturnType<typeof createSkillLoadTool>["execute"]>[4];
@@ -81,7 +85,7 @@ function buildImpactMap(input: {
   return {
     summary: input.summary,
     affected_paths: ["packages/brewva-runtime/src/services/event-pipeline.ts"],
-    boundaries: ["runtime.events"],
+    boundaries: ["runtime.authority.events"],
     high_risk_touchpoints: ["review lane classification"],
     change_categories: input.changeCategories ?? [],
     changed_file_classes: input.changedFileClasses ?? ["runtime_coordination"],
@@ -122,7 +126,7 @@ describe("skill_complete tool", () => {
 
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completed");
-    expect(runtime.skills.getActive(sessionId)).toBeUndefined();
+    expect(runtime.inspect.skills.getActive(sessionId)).toBeUndefined();
   });
 
   test("rejects placeholder outputs for built-in design artifacts", async () => {
@@ -203,7 +207,7 @@ describe("skill_complete tool", () => {
     expect(text).toContain("Invalid required outputs:");
     expect(text).toContain("design_spec");
     expect(text).toContain("execution_plan");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("design-contract");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("design-contract");
   });
 
   test("accepts informative built-in design artifacts", async () => {
@@ -281,7 +285,7 @@ describe("skill_complete tool", () => {
             {
               step: "Tighten output validation so placeholder artifacts cannot complete the skill.",
               intent: "Make design outputs machine-checkable instead of prose-only.",
-              owner: "runtime.skills",
+              owner: "runtime.authority.skills",
               exit_criteria: "Placeholder design artifacts fail completion validation.",
               verification_intent: "Skill completion tests reject weak design outputs.",
             },
@@ -302,7 +306,7 @@ describe("skill_complete tool", () => {
             {
               target: "packages/brewva-runtime/src/services/skill-lifecycle.ts",
               kind: "module",
-              owner_boundary: "runtime.skills",
+              owner_boundary: "runtime.authority.skills",
               reason: "Skill output validation is enforced here.",
             },
           ],
@@ -315,7 +319,7 @@ describe("skill_complete tool", () => {
 
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completed");
-    expect(runtime.skills.getActive(sessionId)).toBeUndefined();
+    expect(runtime.inspect.skills.getActive(sessionId)).toBeUndefined();
   });
 
   test("rejects non-canonical planning taxonomy even when a custom skill contract is looser", async () => {
@@ -385,7 +389,7 @@ describe("skill_complete tool", () => {
             {
               step: "Complete a planning skill with loose local schema checks.",
               intent: "Exercise runtime semantic validation instead of per-skill enum contracts.",
-              owner: "runtime.skills",
+              owner: "runtime.authority.skills",
               exit_criteria: "Non-canonical planning taxonomy is rejected at completion time.",
               verification_intent: "Skill completion reports risk_register as invalid.",
             },
@@ -419,7 +423,7 @@ describe("skill_complete tool", () => {
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completion rejected.");
     expect(text).toContain("risk_register");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("planning-loose");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("planning-loose");
   });
 
   test("synthesizes canonical learning-research outputs from repository precedent search", async () => {
@@ -462,7 +466,7 @@ status: active
 problem_kind: bugfix
 module: brewva-runtime
 boundaries:
-  - runtime.turnWal
+  - runtime.maintain.recovery
 tags:
   - wal
   - recovery
@@ -514,7 +518,7 @@ The WAL boundary must keep replay ordering deterministic.
         learningResearch: {
           query: "wal recovery replay",
           module: "brewva-runtime",
-          boundary: "runtime.turnWal",
+          boundary: "runtime.maintain.recovery",
           tags: ["wal"],
         },
       },
@@ -525,16 +529,19 @@ The WAL boundary must keep replay ordering deterministic.
 
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completed");
-    expect(runtime.skills.getActive(sessionId)).toBeUndefined();
-    expect(runtime.skills.getOutputs(sessionId, "learning-research-contract")).toMatchObject({
+    expect(runtime.inspect.skills.getActive(sessionId)).toBeUndefined();
+    expect(
+      runtime.inspect.skills.getOutputs(sessionId, "learning-research-contract"),
+    ).toMatchObject({
       precedent_consult_status: "matched",
       precedent_refs: ["docs/solutions/runtime-errors/wal-recovery-race.md"],
     });
     expect(
-      runtime.skills.getOutputs(sessionId, "learning-research-contract")?.precedent_query_summary,
+      runtime.inspect.skills.getOutputs(sessionId, "learning-research-contract")
+        ?.precedent_query_summary,
     ).toContain("search_mode=solution_then_bootstrap");
     expect(
-      runtime.skills.getOutputs(sessionId, "learning-research-contract")?.preventive_checks,
+      runtime.inspect.skills.getOutputs(sessionId, "learning-research-contract")?.preventive_checks,
     ).toEqual(
       expect.arrayContaining([
         expect.stringContaining("Pin the WAL cursor before replay crosses an effectful boundary."),
@@ -610,7 +617,7 @@ The WAL boundary must keep replay ordering deterministic.
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Learning research synthesis rejected.");
     expect(text).toContain("manual learning-research outputs");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("learning-research-contract");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("learning-research-contract");
   });
 
   test("rejects placeholder outputs for built-in review artifacts", async () => {
@@ -703,7 +710,7 @@ The WAL boundary must keep replay ordering deterministic.
     expect(text).toContain("Invalid required outputs:");
     expect(text).toContain("review_report");
     expect(text).toContain("review_findings");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("review-contract");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("review-contract");
   });
 
   test("accepts structured review artifacts with disclosure metadata", async () => {
@@ -811,7 +818,7 @@ The WAL boundary must keep replay ordering deterministic.
 
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completed");
-    expect(runtime.skills.getActive(sessionId)).toBeUndefined();
+    expect(runtime.inspect.skills.getActive(sessionId)).toBeUndefined();
   });
 
   test("synthesizes canonical review outputs from delegated review lanes", async () => {
@@ -874,8 +881,8 @@ The WAL boundary must keep replay ordering deterministic.
     );
 
     const activationTimestamp =
-      runtime.events.queryStructured(sessionId, { type: "skill_activated" }).at(-1)?.timestamp ??
-      100;
+      runtime.inspect.events.queryStructured(sessionId, { type: "skill_activated" }).at(-1)
+        ?.timestamp ?? 100;
 
     const reviewRuns: DelegationRunRecord[] = [
       {
@@ -967,8 +974,8 @@ The WAL boundary must keep replay ordering deterministic.
 
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completed");
-    expect(runtime.skills.getActive(sessionId)).toBeUndefined();
-    expect(runtime.skills.getOutputs(sessionId, "review-contract")).toMatchObject({
+    expect(runtime.inspect.skills.getActive(sessionId)).toBeUndefined();
+    expect(runtime.inspect.skills.getOutputs(sessionId, "review-contract")).toMatchObject({
       merge_decision: "ready",
       review_findings: [],
       review_report: {
@@ -1029,7 +1036,7 @@ The WAL boundary must keep replay ordering deterministic.
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completion rejected.");
     expect(text).toContain("qa_verdict");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("qa");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("qa");
   });
 
   test("accepts QA pass verdicts backed by executable adversarial evidence", async () => {
@@ -1080,7 +1087,7 @@ The WAL boundary must keep replay ordering deterministic.
 
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completed");
-    expect(runtime.skills.getActive(sessionId)).toBeUndefined();
+    expect(runtime.inspect.skills.getActive(sessionId)).toBeUndefined();
   });
 
   test("rejects QA checks that omit command exitCode evidence", async () => {
@@ -1130,7 +1137,7 @@ The WAL boundary must keep replay ordering deterministic.
     expect(text).toContain("Skill completion rejected.");
     expect(text).toContain("qa_checks[0]");
     expect(text).toContain("exitCode");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("qa");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("qa");
   });
 
   test("rejects QA checks that omit both command and tool descriptors", async () => {
@@ -1179,7 +1186,7 @@ The WAL boundary must keep replay ordering deterministic.
     expect(text).toContain("Skill completion rejected.");
     expect(text).toContain("qa_checks[0]");
     expect(text).toContain("command or tool descriptor");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("qa");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("qa");
   });
 
   test("rejects QA checks that omit observed evidence", async () => {
@@ -1230,7 +1237,7 @@ The WAL boundary must keep replay ordering deterministic.
     expect(text).toContain("Skill completion rejected.");
     expect(text).toContain("qa_checks[0]");
     expect(text).toContain("observedOutput");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("qa");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("qa");
   });
 
   test("rejects QA fail verdicts without an evidence-backed failed check", async () => {
@@ -1278,7 +1285,7 @@ The WAL boundary must keep replay ordering deterministic.
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completion rejected.");
     expect(text).toContain("qa_checks[0]");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("qa");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("qa");
   });
 
   test("rejects manual review outputs when reviewEnsemble synthesis is enabled", async () => {
@@ -1345,7 +1352,7 @@ The WAL boundary must keep replay ordering deterministic.
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Review ensemble synthesis rejected.");
     expect(text).toContain("manual review outputs");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("review-contract");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("review-contract");
   });
 
   test("derives review classification from consumed impact_map and files_changed when manual classifier input is omitted", async () => {
@@ -1385,8 +1392,8 @@ The WAL boundary must keep replay ordering deterministic.
     const sessionId = "skill-complete-review-derived-1";
     const loadTool = createSkillLoadTool({ runtime });
 
-    runtime.skills.activate(sessionId, "repository-analysis");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "repository-analysis");
+    runtime.authority.skills.complete(sessionId, {
       repository_snapshot: "runtime modules and public surfaces around event pipeline coordination",
       impact_map: buildImpactMap({
         summary: "Runtime coordination changes touch persisted protocol surfaces.",
@@ -1397,8 +1404,8 @@ The WAL boundary must keep replay ordering deterministic.
       unknowns: ["No blocking repository-analysis unknowns remain for review classification."],
     });
 
-    runtime.skills.activate(sessionId, "implementation-producer");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "implementation-producer");
+    runtime.authority.skills.complete(sessionId, {
       change_set:
         "Updated runtime coordination around the event pipeline and persisted review disclosure records.",
       files_changed: [
@@ -1525,7 +1532,7 @@ The WAL boundary must keep replay ordering deterministic.
 
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completed");
-    expect(runtime.skills.getOutputs(sessionId, "review-contract")).toMatchObject({
+    expect(runtime.inspect.skills.getOutputs(sessionId, "review-contract")).toMatchObject({
       merge_decision: "ready",
       review_report: {
         activated_lanes: [
@@ -1561,8 +1568,8 @@ The WAL boundary must keep replay ordering deterministic.
       verification: { executeCommands: false },
     });
 
-    runtime.skills.activate(sessionId, "planning-context");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "planning-context");
+    runtime.authority.skills.complete(sessionId, {
       planning_posture: "high_risk",
     });
 
@@ -1603,7 +1610,7 @@ The WAL boundary must keep replay ordering deterministic.
     expect(text).toContain("Skill completion rejected.");
     expect(text).toContain("review_report");
     expect(text).toContain("merge_decision");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("review");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("review");
   });
 
   test("synthesizes blocked review output when runtime verification evidence is stale", async () => {
@@ -1698,8 +1705,8 @@ The WAL boundary must keep replay ordering deterministic.
     const sessionId = "skill-complete-review-stale-verification";
     const loadTool = createSkillLoadTool({ runtime });
 
-    runtime.skills.activate(sessionId, "planning-context");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "planning-context");
+    runtime.authority.skills.complete(sessionId, {
       impact_map: buildImpactMap({
         summary: "Review should widen when verification evidence goes stale.",
         changedFileClasses: ["runtime_coordination"],
@@ -1708,8 +1715,8 @@ The WAL boundary must keep replay ordering deterministic.
       planning_posture: "moderate",
     });
 
-    runtime.skills.activate(sessionId, "plan-artifacts");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "plan-artifacts");
+    runtime.authority.skills.complete(sessionId, {
       design_spec: "Keep review anchored to the current canonical design.",
       execution_plan: [
         {
@@ -1749,15 +1756,15 @@ The WAL boundary must keep replay ordering deterministic.
       ],
     });
 
-    runtime.skills.activate(sessionId, "implementation-producer");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "implementation-producer");
+    runtime.authority.skills.complete(sessionId, {
       change_set:
         "Updated the runtime validation path and preserved executable verification evidence.",
       files_changed: ["packages/brewva-runtime/src/services/skill-lifecycle.ts"],
       verification_evidence: ["runtime_verification_freshness passed before the next mutation"],
     });
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_outcome_recorded",
       timestamp: 100,
@@ -1778,7 +1785,7 @@ The WAL boundary must keep replay ordering deterministic.
       },
     });
     const laterWriteTimestamp = Date.now() + 1_000;
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_write_marked",
       timestamp: laterWriteTimestamp,
@@ -1853,7 +1860,7 @@ The WAL boundary must keep replay ordering deterministic.
 
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completed");
-    expect(runtime.skills.getOutputs(sessionId, "review-contract")).toMatchObject({
+    expect(runtime.inspect.skills.getOutputs(sessionId, "review-contract")).toMatchObject({
       merge_decision: "blocked",
       review_report: expect.objectContaining({
         missing_evidence: expect.arrayContaining(["verification_evidence:stale"]),
@@ -1957,8 +1964,8 @@ The WAL boundary must keep replay ordering deterministic.
       verification: { executeCommands: false },
     });
 
-    runtime.skills.activate(sessionId, "planning-context");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "planning-context");
+    runtime.authority.skills.complete(sessionId, {
       impact_map: buildImpactMap({
         summary: "Manual review outputs must not ignore stale executable evidence.",
         changedFileClasses: ["runtime_coordination"],
@@ -1967,8 +1974,8 @@ The WAL boundary must keep replay ordering deterministic.
       planning_posture: "moderate",
     });
 
-    runtime.skills.activate(sessionId, "plan-artifacts");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "plan-artifacts");
+    runtime.authority.skills.complete(sessionId, {
       design_spec: "Keep review readiness tied to current planning and executable evidence.",
       execution_plan: [
         {
@@ -2000,14 +2007,14 @@ The WAL boundary must keep replay ordering deterministic.
       ],
     });
 
-    runtime.skills.activate(sessionId, "implementation-producer");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "implementation-producer");
+    runtime.authority.skills.complete(sessionId, {
       change_set: "Updated review validation and preserved runtime verification evidence.",
       files_changed: ["packages/brewva-runtime/src/services/skill-lifecycle.ts"],
       verification_evidence: ["runtime_verification_freshness passed before the next mutation"],
     });
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_outcome_recorded",
       timestamp: 100,
@@ -2028,7 +2035,7 @@ The WAL boundary must keep replay ordering deterministic.
       },
     });
     const laterWriteTimestamp = Date.now() + 1_000;
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_write_marked",
       timestamp: laterWriteTimestamp,
@@ -2075,7 +2082,7 @@ The WAL boundary must keep replay ordering deterministic.
     expect(text).toContain("Skill completion rejected.");
     expect(text).toContain("review_report");
     expect(text).toContain("merge_decision");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("review-contract");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("review-contract");
   });
 
   test("synthesizes blocked review output when planning evidence is stale after a later write", async () => {
@@ -2149,8 +2156,8 @@ The WAL boundary must keep replay ordering deterministic.
     const sessionId = "skill-complete-review-stale-plan";
     const loadTool = createSkillLoadTool({ runtime });
 
-    runtime.skills.activate(sessionId, "planning-context");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "planning-context");
+    runtime.authority.skills.complete(sessionId, {
       impact_map: buildImpactMap({
         summary: "Review should disclose stale planning evidence after later writes.",
         changedFileClasses: ["runtime_coordination"],
@@ -2159,8 +2166,8 @@ The WAL boundary must keep replay ordering deterministic.
       planning_posture: "moderate",
     });
 
-    runtime.skills.activate(sessionId, "plan-artifacts");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "plan-artifacts");
+    runtime.authority.skills.complete(sessionId, {
       design_spec: "Tie review synthesis to the latest canonical planning handoff.",
       execution_plan: [
         {
@@ -2193,7 +2200,7 @@ The WAL boundary must keep replay ordering deterministic.
     });
 
     const laterWriteTimestamp = Date.now() + 1_000;
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_write_marked",
       timestamp: laterWriteTimestamp,
@@ -2268,7 +2275,7 @@ The WAL boundary must keep replay ordering deterministic.
 
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completed");
-    expect(runtime.skills.getOutputs(sessionId, "review-contract")).toMatchObject({
+    expect(runtime.inspect.skills.getOutputs(sessionId, "review-contract")).toMatchObject({
       merge_decision: "blocked",
       review_report: expect.objectContaining({
         missing_evidence: expect.arrayContaining([
@@ -2294,21 +2301,21 @@ The WAL boundary must keep replay ordering deterministic.
       verification: { executeCommands: false },
     });
 
-    runtime.skills.activate(sessionId, "design");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "design");
+    runtime.authority.skills.complete(sessionId, {
       design_spec: "Keep implementation scoped to the planned module boundary.",
       execution_plan: [
         {
           step: "Apply the bounded lifecycle validator change.",
           intent: "Touch only the planned runtime skill lifecycle module.",
-          owner: "runtime.skills",
+          owner: "runtime.authority.skills",
           exit_criteria: "The implementation stays within the declared implementation targets.",
           verification_intent: "Files changed remain scoped to the declared target.",
         },
         {
           step: "Confirm the scope stays inside the declared target set.",
           intent: "Make implementation scope drift explicit before completion.",
-          owner: "runtime.skills",
+          owner: "runtime.authority.skills",
           exit_criteria: "Completion rejects files_changed entries outside the target boundary.",
           verification_intent: "Implementation scope guard rejects unrelated file paths.",
         },
@@ -2328,7 +2335,7 @@ The WAL boundary must keep replay ordering deterministic.
         {
           target: "packages/brewva-runtime/src/services/skill-lifecycle.ts",
           kind: "module",
-          owner_boundary: "runtime.skills",
+          owner_boundary: "runtime.authority.skills",
           reason: "Only skill lifecycle validation should change.",
         },
       ],
@@ -2363,7 +2370,7 @@ The WAL boundary must keep replay ordering deterministic.
     expect(text).toContain("Skill completion rejected.");
     expect(text).toContain("files_changed");
     expect(text).toContain("implementation_targets");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("implementation");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("implementation");
   });
 
   test("rejects implementation outputs when implementation_targets are too abstract to enforce files_changed scope", async () => {
@@ -2375,21 +2382,21 @@ The WAL boundary must keep replay ordering deterministic.
       verification: { executeCommands: false },
     });
 
-    runtime.skills.activate(sessionId, "design");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "design");
+    runtime.authority.skills.complete(sessionId, {
       design_spec: "Keep implementation targets concrete enough for runtime scope enforcement.",
       execution_plan: [
         {
           step: "Declare the intended implementation scope.",
           intent: "Make the implementation boundary explicit before coding starts.",
-          owner: "runtime.skills",
+          owner: "runtime.authority.skills",
           exit_criteria: "Implementation targets can be mapped to concrete changed files.",
           verification_intent: "Scope enforcement can compare targets against files_changed.",
         },
         {
           step: "Reject abstract targets at completion time.",
           intent: "Do not accept targets that cannot prove concrete ownership.",
-          owner: "runtime.skills",
+          owner: "runtime.authority.skills",
           exit_criteria: "Completion rejects non-path implementation targets.",
           verification_intent: "The runtime guard reports implementation_targets as too abstract.",
         },
@@ -2408,9 +2415,9 @@ The WAL boundary must keep replay ordering deterministic.
       ],
       implementation_targets: [
         {
-          target: "runtime.skills",
+          target: "runtime.authority.skills",
           kind: "module",
-          owner_boundary: "runtime.skills",
+          owner_boundary: "runtime.authority.skills",
           reason: "This target is intentionally too abstract for the runtime scope guard.",
         },
       ],
@@ -2441,7 +2448,7 @@ The WAL boundary must keep replay ordering deterministic.
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completion rejected.");
     expect(text).toContain("implementation_targets");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("implementation");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("implementation");
   });
 
   test("rejects QA pass verdicts that do not cover plan required_evidence", async () => {
@@ -2453,8 +2460,8 @@ The WAL boundary must keep replay ordering deterministic.
       verification: { executeCommands: false },
     });
 
-    runtime.skills.activate(sessionId, "design");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "design");
+    runtime.authority.skills.complete(sessionId, {
       design_spec: "Keep QA tied to explicit planning evidence.",
       execution_plan: [
         {
@@ -2487,7 +2494,7 @@ The WAL boundary must keep replay ordering deterministic.
         {
           target: "packages/brewva-runtime/src/services/skill-lifecycle.ts",
           kind: "module",
-          owner_boundary: "runtime.skills",
+          owner_boundary: "runtime.authority.skills",
           reason: "QA completion validation is enforced here.",
         },
       ],
@@ -2532,7 +2539,7 @@ The WAL boundary must keep replay ordering deterministic.
     expect(text).toContain("Skill completion rejected.");
     expect(text).toContain("qa_verdict");
     expect(text).toContain("plan_contract_tests");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("qa");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("qa");
   });
 
   test("accepts QA pass verdicts when fresh runtime verification covers plan required_evidence", async () => {
@@ -2544,8 +2551,8 @@ The WAL boundary must keep replay ordering deterministic.
       verification: { executeCommands: false },
     });
 
-    runtime.skills.activate(sessionId, "design");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "design");
+    runtime.authority.skills.complete(sessionId, {
       design_spec: "Allow QA to rely on fresh runtime verification for required evidence closure.",
       execution_plan: [
         {
@@ -2579,13 +2586,13 @@ The WAL boundary must keep replay ordering deterministic.
         {
           target: "packages/brewva-runtime/src/services/skill-lifecycle.ts",
           kind: "module",
-          owner_boundary: "runtime.skills",
+          owner_boundary: "runtime.authority.skills",
           reason: "The required evidence closure logic lives here.",
         },
       ],
     });
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_outcome_recorded",
       timestamp: 100,
@@ -2644,7 +2651,7 @@ The WAL boundary must keep replay ordering deterministic.
 
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completed");
-    expect(runtime.skills.getActive(sessionId)).toBeUndefined();
+    expect(runtime.inspect.skills.getActive(sessionId)).toBeUndefined();
   });
 
   test("rejects placeholder outputs for built-in implementation artifacts", async () => {
@@ -2702,7 +2709,7 @@ The WAL boundary must keep replay ordering deterministic.
     expect(text).toContain("Invalid required outputs:");
     expect(text).toContain("change_set");
     expect(text).toContain("verification_evidence");
-    expect(runtime.skills.getActive(sessionId)?.name).toBe("implementation-contract");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("implementation-contract");
   });
 
   test("accepts verified implementation artifacts and clears the active skill", async () => {
@@ -2747,22 +2754,22 @@ The WAL boundary must keep replay ordering deterministic.
       fakeContext(sessionId),
     );
 
-    runtime.tools.markCall(sessionId, "edit");
-    runtime.tools.recordResult({
+    runtime.authority.tools.markCall(sessionId, "edit");
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "bun test" },
       outputText: "PASS 3 tests",
       channelSuccess: true,
     });
-    runtime.tools.recordResult({
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "lsp_diagnostics",
       args: { severity: "all" },
       outputText: "No diagnostics found",
       channelSuccess: true,
     });
-    const verificationReport = await runtime.verification.verify(sessionId, "quick", {
+    const verificationReport = await runtime.authority.verification.verify(sessionId, "quick", {
       executeCommands: true,
       timeoutMs: 5_000,
     });
@@ -2785,8 +2792,8 @@ The WAL boundary must keep replay ordering deterministic.
 
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completed");
-    expect(runtime.skills.getActive(sessionId)).toBeUndefined();
-    expect(runtime.skills.getOutputs(sessionId, "implementation-contract")).toEqual(
+    expect(runtime.inspect.skills.getActive(sessionId)).toBeUndefined();
+    expect(runtime.inspect.skills.getOutputs(sessionId, "implementation-contract")).toEqual(
       expect.objectContaining({
         change_set:
           "Implemented the contract-preserving fix and tightened the surrounding regression coverage.",

@@ -306,25 +306,34 @@ describe("ContextPressureService", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
 
     const sessionId = "pressure-runtime-wiring-1";
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
     const usage = createUsage(0.9);
-    runtime.context.observeUsage(sessionId, usage);
+    runtime.maintain.context.observeUsage(sessionId, usage);
 
-    expect(runtime.context.checkCompactionGate(sessionId, "tape_info", usage).allowed).toBe(true);
-    expect(runtime.context.checkCompactionGate(sessionId, "tape_search", usage).allowed).toBe(true);
-    expect(runtime.context.checkCompactionGate(sessionId, "cost_view", usage).allowed).toBe(true);
+    expect(runtime.inspect.context.checkCompactionGate(sessionId, "tape_info", usage).allowed).toBe(
+      true,
+    );
     expect(
-      runtime.context.checkCompactionGate(sessionId, "optimization_continuity", usage).allowed,
+      runtime.inspect.context.checkCompactionGate(sessionId, "tape_search", usage).allowed,
     ).toBe(true);
-    expect(runtime.context.checkCompactionGate(sessionId, "ledger_query", usage).allowed).toBe(
+    expect(runtime.inspect.context.checkCompactionGate(sessionId, "cost_view", usage).allowed).toBe(
       true,
     );
-    expect(runtime.context.checkCompactionGate(sessionId, "exec", usage).allowed).toBe(false);
-    expect(runtime.context.checkCompactionGate(sessionId, "skill_complete", usage).allowed).toBe(
-      true,
+    expect(
+      runtime.inspect.context.checkCompactionGate(sessionId, "optimization_continuity", usage)
+        .allowed,
+    ).toBe(true);
+    expect(
+      runtime.inspect.context.checkCompactionGate(sessionId, "ledger_query", usage).allowed,
+    ).toBe(true);
+    expect(runtime.inspect.context.checkCompactionGate(sessionId, "exec", usage).allowed).toBe(
+      false,
     );
-    expect(runtime.context.checkCompactionGate(sessionId, "session_compact", usage).allowed).toBe(
-      true,
-    );
+    expect(
+      runtime.inspect.context.checkCompactionGate(sessionId, "skill_complete", usage).allowed,
+    ).toBe(true);
+    expect(
+      runtime.inspect.context.checkCompactionGate(sessionId, "session_compact", usage).allowed,
+    ).toBe(true);
   });
 });

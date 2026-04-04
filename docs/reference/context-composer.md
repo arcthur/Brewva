@@ -30,7 +30,7 @@ It only decides how admitted context is shown to the model.
 - current compaction-gate state
 - pending compaction reason, if any
 - capability-view state for the current turn
-- admitted context entries from `runtime.context.buildInjection(...)`
+- admitted context entries from `runtime.maintain.context.buildInjection(...)`
 - optional supplemental blocks from the hosted session path
 - acceptance status for the injection pass
 

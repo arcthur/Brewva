@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { TurnWALStore } from "./channels/turn-wal.js";
+import { RecoveryWalStore } from "./channels/recovery-wal.js";
 import { ContextBudgetManager } from "./context/budget.js";
 import { registerBuiltInContextSourceProviders } from "./context/builtins.js";
 import { ContextInjectionCollector } from "./context/injection.js";
@@ -69,7 +69,7 @@ export interface RuntimeCoreDependencies {
   parallel: ParallelBudgetManager;
   parallelResults: ParallelResultStore;
   eventStore: BrewvaEventStore;
-  turnWalStore: TurnWALStore;
+  recoveryWalStore: RecoveryWalStore;
   contextBudget: ContextBudgetManager;
   contextInjection: ContextInjectionCollector;
   turnReplay: TurnReplayEngine;
@@ -214,9 +214,9 @@ export function createRuntimeCoreDependencies(
     options.config.infrastructure.events,
     options.workspaceRoot,
   );
-  const turnWalStore = new TurnWALStore({
+  const recoveryWalStore = new RecoveryWalStore({
     workspaceRoot: options.workspaceRoot,
-    config: options.config.infrastructure.turnWal,
+    config: options.config.infrastructure.recoveryWal,
     scope: "runtime",
     recordEvent: (input) => {
       options.recordEvent({
@@ -256,7 +256,7 @@ export function createRuntimeCoreDependencies(
     parallel,
     parallelResults,
     eventStore,
-    turnWalStore,
+    recoveryWalStore,
     contextBudget,
     contextInjection,
     turnReplay,
@@ -544,15 +544,15 @@ export function createRuntimeServiceDependencies(
           subscribeEvents: (listener) => eventPipeline.subscribeEvents(listener),
           getTruthState: (sessionId) => options.kernel.getTruthState(sessionId),
           getTaskState: (sessionId) => options.kernel.getTaskState(sessionId),
-          turnWal: {
+          recoveryWal: {
             appendPending: (envelope, source, walOptions) =>
-              options.coreDependencies.turnWalStore.appendPending(envelope, source, walOptions),
-            markInflight: (walId) => options.coreDependencies.turnWalStore.markInflight(walId),
-            markDone: (walId) => options.coreDependencies.turnWalStore.markDone(walId),
+              options.coreDependencies.recoveryWalStore.appendPending(envelope, source, walOptions),
+            markInflight: (walId) => options.coreDependencies.recoveryWalStore.markInflight(walId),
+            markDone: (walId) => options.coreDependencies.recoveryWalStore.markDone(walId),
             markFailed: (walId, error) =>
-              options.coreDependencies.turnWalStore.markFailed(walId, error),
-            markExpired: (walId) => options.coreDependencies.turnWalStore.markExpired(walId),
-            listPending: () => options.coreDependencies.turnWalStore.listPending(),
+              options.coreDependencies.recoveryWalStore.markFailed(walId, error),
+            markExpired: (walId) => options.coreDependencies.recoveryWalStore.markExpired(walId),
+            listPending: () => options.coreDependencies.recoveryWalStore.listPending(),
           },
         },
         enableExecution: false,
@@ -600,7 +600,7 @@ export function createRuntimeServiceDependencies(
     projectionEngine: options.coreDependencies.projectionEngine,
     turnReplay: options.coreDependencies.turnReplay,
     eventStore: options.coreDependencies.eventStore,
-    turnWalStore: options.coreDependencies.turnWalStore,
+    recoveryWalStore: options.coreDependencies.recoveryWalStore,
     evidenceLedger: options.coreDependencies.evidenceLedger,
     reversibleMutationService,
     recordEvent: (input) => options.kernel.recordEvent(input),

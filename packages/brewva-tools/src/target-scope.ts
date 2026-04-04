@@ -1,4 +1,5 @@
 import { resolve, sep } from "node:path";
+import { resolveToolRuntimeTaskPort } from "./runtime-internal.js";
 import type { BrewvaToolRuntime } from "./types.js";
 import { getToolSessionId } from "./utils/parallel-read.js";
 
@@ -19,18 +20,24 @@ export interface ToolTargetScope {
   allowedRoots: string[];
 }
 
+interface ToolTargetDescriptor {
+  primaryRoot?: string;
+  roots?: string[];
+}
+
 export function resolveToolTargetScope(
   runtime: BrewvaToolRuntime | undefined,
   ctx: unknown,
 ): ToolTargetScope {
   const sessionId = getToolSessionId(ctx);
+  const taskPort = resolveToolRuntimeTaskPort(runtime);
   const fallbackCwd =
     ctx && typeof ctx === "object" && typeof (ctx as { cwd?: unknown }).cwd === "string"
       ? resolve((ctx as { cwd: string }).cwd)
       : resolve(runtime?.cwd ?? process.cwd());
   const descriptor =
-    sessionId && runtime?.task?.getTargetDescriptor
-      ? runtime.task.getTargetDescriptor(sessionId)
+    sessionId && taskPort?.getTargetDescriptor
+      ? (taskPort.getTargetDescriptor(sessionId) as ToolTargetDescriptor)
       : undefined;
   const primaryRoot = resolve(descriptor?.primaryRoot ?? fallbackCwd);
   const allowedRoots =

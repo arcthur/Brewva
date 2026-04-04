@@ -76,7 +76,7 @@ no longer runtime-managed.
 
 Kernel admission now happens through proposal submission:
 
-- `runtime.proposals.submit(sessionId, proposal)`
+- `runtime.authority.proposals.submit(sessionId, proposal)`
 - `DecisionReceipt.decision = accept | reject | defer`
 
 `skills.routing.enabled=false` keeps skills loadable but disables default
@@ -267,12 +267,12 @@ and approval-bearing flows; runtime does not enter a silent no-audit write path.
 - `infrastructure.costTracking.alertThresholdRatio`: `0.8`
 - `infrastructure.costTracking.actionOnExceed`: `warn`
   `0` disables the session cost cap.
-- `infrastructure.turnWal.enabled`: `true`
-- `infrastructure.turnWal.dir`: `.orchestrator/turn-wal`
-- `infrastructure.turnWal.defaultTtlMs`: `300000`
-- `infrastructure.turnWal.maxRetries`: `2`
-- `infrastructure.turnWal.compactAfterMs`: `3600000`
-- `infrastructure.turnWal.scheduleTurnTtlMs`: `600000`
+- `infrastructure.recoveryWal.enabled`: `true`
+- `infrastructure.recoveryWal.dir`: `.orchestrator/recovery-wal`
+- `infrastructure.recoveryWal.defaultTtlMs`: `300000`
+- `infrastructure.recoveryWal.maxRetries`: `2`
+- `infrastructure.recoveryWal.compactAfterMs`: `3600000`
+- `infrastructure.recoveryWal.scheduleTurnTtlMs`: `600000`
 
 ### `ui`
 
@@ -492,10 +492,10 @@ With `infrastructure.costTracking.enabled=false`:
 `maxCostUsdPerSession=0` disables the session budget cap. `enabled` is still
 the explicit policy switch for whether budget enforcement/alerts run.
 
-## Turn WAL Model
+## WAL-Backed Recovery Model
 
-With `infrastructure.turnWal.enabled=true`, runtime and daemon surfaces can persist inbound/execution turns
-to append-only JSONL WAL files under `infrastructure.turnWal.dir`.
+With `infrastructure.recoveryWal.enabled=true`, runtime and daemon surfaces can persist inbound/execution turns
+to append-only JSONL WAL files under `infrastructure.recoveryWal.dir`.
 
 - `defaultTtlMs` controls stale retry cutoff for normal turns.
 - `scheduleTurnTtlMs` applies a longer default TTL for scheduled turns.

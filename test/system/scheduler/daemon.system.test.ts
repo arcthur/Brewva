@@ -186,22 +186,22 @@ describe("system: scheduler daemon", () => {
     const truthSummary = "Release notes are waiting for final reviewer approval.";
 
     const setupRuntime = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
-    setupRuntime.task.setSpec(parentSessionId, {
+    setupRuntime.authority.task.setSpec(parentSessionId, {
       schema: "brewva.task.v1",
       goal: parentTaskGoal,
     });
-    setupRuntime.truth.upsertFact(parentSessionId, {
+    setupRuntime.authority.truth.upsertFact(parentSessionId, {
       id: "fact-release-review",
       kind: "status",
       severity: "warn",
       summary: truthSummary,
     });
-    setupRuntime.events.recordTapeHandoff(parentSessionId, {
+    setupRuntime.authority.events.recordTapeHandoff(parentSessionId, {
       name: "release-checkpoint",
       summary: "Release prep is partially complete.",
       nextSteps: "Resolve the final reviewer comment.",
     });
-    const created = await setupRuntime.schedule.createIntent(parentSessionId, {
+    const created = await setupRuntime.authority.schedule.createIntent(parentSessionId, {
       intentId: "intent-scheduler-daemon",
       reason: "nightly release follow-up",
       continuityMode: "inherit",
@@ -220,7 +220,7 @@ describe("system: scheduler daemon", () => {
       const observer = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
       const started = await waitForCondition(
         () =>
-          observer.events.query(parentSessionId, {
+          observer.inspect.events.query(parentSessionId, {
             type: SCHEDULE_CHILD_SESSION_STARTED_EVENT_TYPE,
             last: 1,
           })[0],
@@ -235,7 +235,7 @@ describe("system: scheduler daemon", () => {
 
       await waitForCondition(
         () =>
-          observer.events.query(parentSessionId, {
+          observer.inspect.events.query(parentSessionId, {
             type: SCHEDULE_CHILD_SESSION_FINISHED_EVENT_TYPE,
             last: 1,
           })[0],
@@ -247,7 +247,7 @@ describe("system: scheduler daemon", () => {
 
       await waitForCondition(
         () =>
-          observer.events
+          observer.inspect.events
             .query(parentSessionId, { type: SCHEDULE_EVENT_TYPE })
             .map((event) => parseScheduleIntentEvent(event)?.kind)
             .find((kind) => kind === "intent_converged"),
@@ -258,7 +258,7 @@ describe("system: scheduler daemon", () => {
       );
 
       const persisted = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
-      const wakeup = persisted.events.query(childSessionId, {
+      const wakeup = persisted.inspect.events.query(childSessionId, {
         type: SCHEDULE_WAKEUP_EVENT_TYPE,
         last: 1,
       })[0];
@@ -269,10 +269,10 @@ describe("system: scheduler daemon", () => {
         inheritedTruthFacts: 1,
       });
 
-      const childTask = persisted.task.getState(childSessionId);
+      const childTask = persisted.inspect.task.getState(childSessionId);
       expect(childTask.spec?.goal).toBe(parentTaskGoal);
 
-      const childTruth = persisted.truth.getState(childSessionId);
+      const childTruth = persisted.inspect.truth.getState(childSessionId);
       expect(childTruth.facts).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -283,10 +283,10 @@ describe("system: scheduler daemon", () => {
         ]),
       );
 
-      const childTapeStatus = persisted.events.getTapeStatus(childSessionId);
+      const childTapeStatus = persisted.inspect.events.getTapeStatus(childSessionId);
       expect(childTapeStatus.lastAnchor?.name).toBe("schedule:inherit:release-checkpoint");
 
-      const scheduleKinds = persisted.events
+      const scheduleKinds = persisted.inspect.events
         .query(parentSessionId, { type: SCHEDULE_EVENT_TYPE })
         .map((event) => parseScheduleIntentEvent(event)?.kind)
         .filter((kind): kind is NonNullable<typeof kind> => Boolean(kind));
@@ -294,7 +294,7 @@ describe("system: scheduler daemon", () => {
       expect(scheduleKinds).toContain("intent_fired");
       expect(scheduleKinds).toContain("intent_converged");
 
-      const intents = await persisted.schedule.listIntents({ parentSessionId });
+      const intents = await persisted.inspect.schedule.listIntents({ parentSessionId });
       expect(intents).toEqual([
         expect.objectContaining({
           intentId: created.intent.intentId,

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { resolveRecoveryWorkingSetBlock } from "../../../packages/brewva-gateway/src/runtime-plugins/recovery-working-set.js";
 import { createRuntimeFixture } from "../../helpers/runtime.js";
 
@@ -7,15 +8,15 @@ describe("recovery working set", () => {
     const runtime = createRuntimeFixture();
     const sessionId = "recovery-working-set-session";
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Finish the pending answer after compaction",
     });
-    runtime.task.recordBlocker(sessionId, {
+    runtime.authority.task.recordBlocker(sessionId, {
       message: "Pending review evidence",
       source: "unit_test",
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "session_turn_transition",
       payload: {

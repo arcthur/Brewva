@@ -84,7 +84,7 @@ describe("delegation prompt and catalog composition", () => {
 
   test("injects delegated skill markdown and requires skillOutputs in the structured contract", () => {
     const runtime = createIsolatedRuntime("review");
-    const skill = runtime.skills.get("review");
+    const skill = runtime.inspect.skills.get("review");
     expect(skill).toBeDefined();
 
     const prompt = buildDelegationPrompt({
@@ -123,7 +123,7 @@ describe("delegation prompt and catalog composition", () => {
 
   test("injects QA anti-rationalization guidance into delegated prompts", () => {
     const runtime = createIsolatedRuntime("qa");
-    const skill = runtime.skills.get("qa");
+    const skill = runtime.inspect.skills.get("qa");
     expect(skill).toBeDefined();
 
     const prompt = buildDelegationPrompt({

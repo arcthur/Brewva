@@ -3,7 +3,7 @@ import {
   type DelegationRunRecord,
   type BrewvaEventRecord,
   type BrewvaEventQuery,
-  type BrewvaRuntime,
+  type BrewvaInspectionPort,
   type ContextCompactionGateStatus,
   type ContextInjectionCategory,
 } from "@brewva/brewva-runtime";
@@ -17,17 +17,19 @@ type ContextComposerEventQueryResult = Array<
 >;
 
 type ContextComposerTapeStatus = Pick<
-  ReturnType<BrewvaRuntime["events"]["getTapeStatus"]>,
+  ReturnType<BrewvaInspectionPort["events"]["getTapeStatus"]>,
   "tapePressure" | "entriesSinceAnchor"
 >;
 
 export type ContextComposerSupplementalRuntime = {
-  events: {
-    getTapeStatus(sessionId: string): ContextComposerTapeStatus;
-    query?: (
-      sessionId: string,
-      query: ContextComposerEventQuery,
-    ) => ContextComposerEventQueryResult;
+  inspect: {
+    events: {
+      getTapeStatus(sessionId: string): ContextComposerTapeStatus;
+      query?: (
+        sessionId: string,
+        query: ContextComposerEventQuery,
+      ) => ContextComposerEventQueryResult;
+    };
   };
   delegation?: {
     listRuns?: (
@@ -186,7 +188,7 @@ function buildOperationalDiagnosticsBlock(input: {
     lines.splice(1, 0, `requested_by: ${input.requested.map((name) => `$${name}`).join(", ")}`);
   }
   if (input.includeTapeTelemetry) {
-    const tapeStatus = input.runtime.events.getTapeStatus(input.sessionId);
+    const tapeStatus = input.runtime.inspect.events.getTapeStatus(input.sessionId);
     lines.push(`tape_pressure: ${tapeStatus.tapePressure}`);
     lines.push(`tape_entries_since_anchor: ${tapeStatus.entriesSinceAnchor}`);
   }

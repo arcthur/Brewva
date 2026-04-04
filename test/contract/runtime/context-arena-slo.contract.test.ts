@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ContextArena } from "@brewva/brewva-runtime";
+import { ContextArena } from "@brewva/brewva-runtime/internal";
 
 function makeEntry(source: string, id: string, content: string) {
   return {

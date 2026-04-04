@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { buildProjectInsightsReport } from "../../../packages/brewva-cli/src/insights.js";
 import { resolveInspectDirectory } from "../../../packages/brewva-cli/src/inspect-analysis.js";
 import { buildSessionInspectReport } from "../../../packages/brewva-cli/src/inspect.js";
@@ -18,7 +19,7 @@ describe("project insights aggregation", () => {
     });
 
     for (const sessionId of ["insights-ok-session", "insights-broken-session"]) {
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId,
         type: "session_bootstrap",
         payload: {
@@ -31,7 +32,7 @@ describe("project insights aggregation", () => {
           },
         },
       });
-      runtime.context.onTurnStart(sessionId, 1);
+      runtime.maintain.context.onTurnStart(sessionId, 1);
     }
 
     const directory = resolveInspectDirectory(runtime, ".", undefined);
@@ -68,7 +69,7 @@ describe("project insights aggregation", () => {
     });
 
     const sessionId = "insights-refactor-session";
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "session_bootstrap",
       payload: {
@@ -81,20 +82,20 @@ describe("project insights aggregation", () => {
         },
       },
     });
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.task.setSpec(sessionId, {
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Refactor the src module layout",
     });
-    runtime.tools.markCall(sessionId, "edit");
-    runtime.tools.trackCallStart({
+    runtime.authority.tools.markCall(sessionId, "edit");
+    runtime.authority.tools.trackCallStart({
       sessionId,
       toolCallId: "edit-1",
       toolName: "edit",
       args: { path: "src.ts" },
     });
     writeFileSync(join(workspace, "src.ts"), "export const value = 2;\n", "utf8");
-    runtime.tools.trackCallEnd({
+    runtime.authority.tools.trackCallEnd({
       sessionId,
       toolCallId: "edit-1",
       toolName: "edit",

@@ -16,7 +16,7 @@ describe("narrative memory plane", () => {
     const sessionId = "narrative-plane-session";
     const statePath = resolveNarrativeMemoryStatePath(workspace);
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Keep collaboration memory explicit and non-authoritative.",
       targets: {
@@ -39,7 +39,7 @@ describe("narrative memory plane", () => {
         actor: "operator",
         sessionId,
         agentId: runtime.agentId,
-        targetRoots: runtime.task.getTargetDescriptor(sessionId).roots,
+        targetRoots: runtime.inspect.task.getTargetDescriptor(sessionId).roots,
       },
       evidence: [
         {
@@ -64,7 +64,7 @@ describe("narrative memory plane", () => {
         actor: "operator",
         sessionId,
         agentId: runtime.agentId,
-        targetRoots: runtime.task.getTargetDescriptor(sessionId).roots,
+        targetRoots: runtime.inspect.task.getTargetDescriptor(sessionId).roots,
       },
       evidence: [
         {
@@ -81,7 +81,7 @@ describe("narrative memory plane", () => {
     expect(reloaded?.records).toHaveLength(2);
 
     const retrievals = plane.retrieve("review findings before summaries", {
-      targetRoots: runtime.task.getTargetDescriptor(sessionId).roots,
+      targetRoots: runtime.inspect.task.getTargetDescriptor(sessionId).roots,
     });
     expect(retrievals).toHaveLength(1);
     expect(retrievals[0]?.record.id).toBe(activeRecord.id);

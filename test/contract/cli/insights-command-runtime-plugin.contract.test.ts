@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createInsightsCommandRuntimePlugin } from "@brewva/brewva-cli";
 import type { RuntimePluginApi } from "@brewva/brewva-gateway/runtime-plugins";
 import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { requireDefined } from "../../helpers/assertions.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
@@ -52,7 +53,7 @@ function recordWriteSession(
     content: string;
   },
 ): void {
-  runtime.events.record({
+  recordRuntimeEvent(runtime, {
     sessionId: input.sessionId,
     type: "session_bootstrap",
     payload: {
@@ -65,16 +66,16 @@ function recordWriteSession(
       },
     },
   });
-  runtime.context.onTurnStart(input.sessionId, 1);
-  runtime.tools.markCall(input.sessionId, "edit");
-  runtime.tools.trackCallStart({
+  runtime.maintain.context.onTurnStart(input.sessionId, 1);
+  runtime.authority.tools.markCall(input.sessionId, "edit");
+  runtime.authority.tools.trackCallStart({
     sessionId: input.sessionId,
     toolCallId: `${input.sessionId}-edit-1`,
     toolName: "edit",
     args: { path: input.path },
   });
   writeFileSync(join(input.workspace, input.path), input.content, "utf8");
-  runtime.tools.trackCallEnd({
+  runtime.authority.tools.trackCallEnd({
     sessionId: input.sessionId,
     toolCallId: `${input.sessionId}-edit-1`,
     toolName: "edit",

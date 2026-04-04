@@ -20,9 +20,9 @@ describe("Task ledger", () => {
       constraints: ["Do not change public CLI flags"],
     };
 
-    runtime.task.setSpec(sessionId, spec);
+    runtime.authority.task.setSpec(sessionId, spec);
 
-    const state = runtime.task.getState(sessionId);
+    const state = runtime.inspect.task.getState(sessionId);
     expect(state.spec?.schema).toBe("brewva.task.v1");
     expect(state.spec?.goal).toBe("Fix failing tests in runtime");
     expect(state.spec?.targets?.files?.[0]).toBe("packages/brewva-runtime/src/runtime.ts");
@@ -34,13 +34,13 @@ describe("Task ledger", () => {
     const sessionId = "task-2";
 
     const runtime1 = new BrewvaRuntime({ cwd: workspace });
-    runtime1.task.setSpec(sessionId, {
+    runtime1.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Refactor context injection",
     });
 
     const runtime2 = new BrewvaRuntime({ cwd: workspace });
-    const state = runtime2.task.getState(sessionId);
+    const state = runtime2.inspect.task.getState(sessionId);
     expect(state.spec?.goal).toBe("Refactor context injection");
   });
 
@@ -125,7 +125,7 @@ describe("Task ledger", () => {
       "utf8",
     );
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Ensure Bar is wired correctly",
       targets: {
@@ -135,12 +135,12 @@ describe("Task ledger", () => {
         commands: ["bun test test/quality/docs"],
       },
     });
-    runtime.task.addItem(sessionId, {
+    runtime.authority.task.addItem(sessionId, {
       text: "Confirm the projected task state uses agent-facing labels",
       status: "todo",
     });
 
-    const injection = await runtime.context.buildInjection(
+    const injection = await runtime.maintain.context.buildInjection(
       sessionId,
       "Ensure Bar is wired correctly",
     );
@@ -160,7 +160,7 @@ describe("Task ledger", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "task-ledger-acceptance";
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Close the task with explicit operator acceptance",
       acceptance: {
@@ -168,24 +168,24 @@ describe("Task ledger", () => {
         criteria: ["Operator accepts the result as closure."],
       },
     });
-    runtime.task.addItem(sessionId, {
+    runtime.authority.task.addItem(sessionId, {
       id: "item-1",
       text: "Finish the implementation",
       status: "done",
     });
 
-    const pendingState = runtime.task.getState(sessionId);
+    const pendingState = runtime.inspect.task.getState(sessionId);
     expect(pendingState.status?.phase).toBe("ready_for_acceptance");
     expect(pendingState.status?.health).toBe("acceptance_pending");
     expect(pendingState.acceptance).toBeUndefined();
 
-    runtime.task.recordAcceptance(sessionId, {
+    runtime.authority.task.recordAcceptance(sessionId, {
       status: "accepted",
       decidedBy: "operator",
       notes: "Closure accepted.",
     });
 
-    const acceptedState = runtime.task.getState(sessionId);
+    const acceptedState = runtime.inspect.task.getState(sessionId);
     expect(acceptedState.status?.phase).toBe("done");
     expect(acceptedState.status?.reason).toBe("acceptance_accepted");
     expect(acceptedState.acceptance?.status).toBe("accepted");
@@ -196,13 +196,13 @@ describe("Task ledger", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "task-ledger-acceptance-disabled";
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Close without a separate acceptance lane",
     });
 
     expect(
-      runtime.task.recordAcceptance(sessionId, {
+      runtime.authority.task.recordAcceptance(sessionId, {
         status: "accepted",
         decidedBy: "operator",
       }),
@@ -210,6 +210,6 @@ describe("Task ledger", () => {
       ok: false,
       error: "acceptance_not_enabled",
     });
-    expect(runtime.task.getState(sessionId).acceptance).toBeUndefined();
+    expect(runtime.inspect.task.getState(sessionId).acceptance).toBeUndefined();
   });
 });

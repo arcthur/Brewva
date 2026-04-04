@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { BrewvaRuntime, ContextSourceProvider } from "@brewva/brewva-runtime";
+import type { BrewvaInspectionPort, ContextSourceProvider } from "@brewva/brewva-runtime";
 import { CONTEXT_SOURCES } from "@brewva/brewva-runtime";
 import { FileNarrativeMemoryStore } from "./narrative-store.js";
 import {
@@ -21,7 +21,13 @@ import { clamp, tokenize, uniqueStrings } from "./plane-substrate.js";
 const DEFAULT_MAX_RETRIEVAL = 4;
 const DEFAULT_CONTEXT_RECORDS = 3;
 
-type NarrativeMemoryRuntime = Pick<BrewvaRuntime, "workspaceRoot" | "agentId" | "task">;
+interface NarrativeMemoryRuntime {
+  readonly workspaceRoot: string;
+  readonly agentId: string;
+  readonly inspect: {
+    readonly task: Pick<BrewvaInspectionPort["task"], "getTargetDescriptor">;
+  };
+}
 
 const planeByRuntime = new WeakMap<object, NarrativeMemoryPlane>();
 
@@ -515,7 +521,7 @@ export function getOrCreateNarrativeMemoryPlane(
 }
 
 export function createNarrativeMemoryContextProvider(input: {
-  runtime: BrewvaRuntime;
+  runtime: NarrativeMemoryRuntime;
   maxRecords?: number;
 }): ContextSourceProvider {
   const plane = getOrCreateNarrativeMemoryPlane(input.runtime);
@@ -527,7 +533,7 @@ export function createNarrativeMemoryContextProvider(input: {
     collect(providerInput) {
       const retrievals = plane.retrieve(providerInput.promptText, {
         limit: input.maxRecords ?? DEFAULT_CONTEXT_RECORDS,
-        targetRoots: input.runtime.task.getTargetDescriptor(providerInput.sessionId).roots,
+        targetRoots: input.runtime.inspect.task.getTargetDescriptor(providerInput.sessionId).roots,
         statuses: ["active"],
         recordRetrieval: false,
       });

@@ -2,11 +2,14 @@ import { describe, expect, test } from "bun:test";
 import {
   BrewvaRuntime,
   SCHEDULE_EVENT_TYPE,
-  SchedulerService,
-  type SchedulerRuntimePort,
   buildScheduleIntentCreatedEvent,
   parseScheduleIntentEvent,
 } from "@brewva/brewva-runtime";
+import {
+  SchedulerService,
+  recordRuntimeEvent,
+  type SchedulerRuntimePort,
+} from "@brewva/brewva-runtime/internal";
 import { createWorkspace, schedulerRuntimePort } from "./scheduler-service.helpers.js";
 
 describe("scheduler service execution contract", () => {
@@ -19,12 +22,12 @@ describe("scheduler service execution contract", () => {
     const runtimePort: SchedulerRuntimePort = {
       workspaceRoot: runtime.workspaceRoot,
       scheduleConfig: runtime.config.schedule,
-      listSessionIds: () => runtime.events.listSessionIds(),
-      listEvents: (targetSessionId, query) => runtime.events.list(targetSessionId, query),
-      recordEvent: (input) => runtime.events.record(input),
-      subscribeEvents: (listener) => runtime.events.subscribe(listener),
-      getTruthState: (targetSessionId) => runtime.truth.getState(targetSessionId),
-      getTaskState: (targetSessionId) => runtime.task.getState(targetSessionId),
+      listSessionIds: () => runtime.inspect.events.listSessionIds(),
+      listEvents: (targetSessionId, query) => runtime.inspect.events.list(targetSessionId, query),
+      recordEvent: (input) => recordRuntimeEvent(runtime, input),
+      subscribeEvents: (listener) => runtime.inspect.events.subscribe(listener),
+      getTruthState: (targetSessionId) => runtime.inspect.truth.getState(targetSessionId),
+      getTaskState: (targetSessionId) => runtime.inspect.task.getState(targetSessionId),
     };
 
     const scheduler = new SchedulerService({
@@ -47,7 +50,7 @@ describe("scheduler service execution contract", () => {
     expect(intents).toHaveLength(1);
     expect(intents[0]?.parentSessionId).toBe(sessionId);
 
-    const scheduleEvents = runtime.events.query(sessionId, { type: SCHEDULE_EVENT_TYPE });
+    const scheduleEvents = runtime.inspect.events.query(sessionId, { type: SCHEDULE_EVENT_TYPE });
     expect(scheduleEvents.length).toBeGreaterThan(0);
 
     scheduler.stop();
@@ -59,7 +62,7 @@ describe("scheduler service execution contract", () => {
     const now = Date.now();
     const sessionId = "scheduler-no-executor-session";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: SCHEDULE_EVENT_TYPE,
       payload: buildScheduleIntentCreatedEvent({
@@ -80,7 +83,7 @@ describe("scheduler service execution contract", () => {
     scheduler.stop();
 
     expect(stats.executionEnabled).toBe(false);
-    const events = runtime.events.query(sessionId, { type: SCHEDULE_EVENT_TYPE });
+    const events = runtime.inspect.events.query(sessionId, { type: SCHEDULE_EVENT_TYPE });
     const kinds = events
       .map((event) => parseScheduleIntentEvent(event)?.kind)
       .filter((kind): kind is NonNullable<typeof kind> => Boolean(kind));
@@ -127,7 +130,7 @@ describe("scheduler service execution contract", () => {
     const sessionId = "scheduler-predicate-session";
     const now = Date.now();
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: SCHEDULE_EVENT_TYPE,
       payload: buildScheduleIntentCreatedEvent({
@@ -150,7 +153,7 @@ describe("scheduler service execution contract", () => {
       runtime: schedulerRuntimePort(runtime),
       executeIntent: async (intent) => {
         const evaluationSessionId = `${intent.parentSessionId}-child`;
-        runtime.truth.upsertFact(evaluationSessionId, {
+        runtime.authority.truth.upsertFact(evaluationSessionId, {
           id: "ci_green",
           kind: "ci_pipeline",
           severity: "info",
@@ -164,7 +167,7 @@ describe("scheduler service execution contract", () => {
     await scheduler.recover();
     scheduler.stop();
 
-    const events = runtime.events.query(sessionId, { type: SCHEDULE_EVENT_TYPE });
+    const events = runtime.inspect.events.query(sessionId, { type: SCHEDULE_EVENT_TYPE });
     const kinds = events
       .map((event) => parseScheduleIntentEvent(event)?.kind)
       .filter((kind): kind is NonNullable<typeof kind> => Boolean(kind));
@@ -189,7 +192,7 @@ describe("scheduler service execution contract", () => {
     const sessionId = "scheduler-pause-resume-session";
     let nowMs = Date.UTC(2026, 0, 1, 0, 0, 0, 0);
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: SCHEDULE_EVENT_TYPE,
       payload: buildScheduleIntentCreatedEvent({

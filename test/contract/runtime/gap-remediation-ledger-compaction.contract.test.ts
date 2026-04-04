@@ -24,8 +24,8 @@ describe("Gap remediation: ledger compaction and redaction", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "ledger-1";
     for (let i = 0; i < 5; i += 1) {
-      runtime.context.onTurnStart(sessionId, i + 1);
-      runtime.tools.recordResult({
+      runtime.maintain.context.onTurnStart(sessionId, i + 1);
+      runtime.authority.tools.recordResult({
         sessionId,
         toolName: "exec",
         args: { command: `echo ${i}` },
@@ -34,11 +34,11 @@ describe("Gap remediation: ledger compaction and redaction", () => {
       });
     }
 
-    const rows = runtime.ledger.listRows(sessionId);
+    const rows = runtime.inspect.ledger.listRows(sessionId);
     expect(rows.map((row) => row.tool)).toContain("ledger_checkpoint");
     expect(rows.length).toBeLessThan(6);
 
-    const integrity = runtime.ledger.verifyIntegrity(sessionId);
+    const integrity = runtime.inspect.ledger.verifyIntegrity(sessionId);
     expect(integrity.valid).toBe(true);
   });
 
@@ -48,7 +48,7 @@ describe("Gap remediation: ledger compaction and redaction", () => {
 
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "redact-1";
-    runtime.tools.recordResult({
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "read",
       args: { token: "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789" },
@@ -61,7 +61,7 @@ describe("Gap remediation: ledger compaction and redaction", () => {
       },
     });
 
-    const ledgerText = readFileSync(runtime.ledger.getPath(), "utf8");
+    const ledgerText = readFileSync(runtime.inspect.ledger.getPath(), "utf8");
     expect(ledgerText.includes("sk-proj-abcdefghijklmnopqrstuvwxyz0123456789")).toBe(false);
     expect(ledgerText.includes("ghp_abcdefghijklmnopqrstuvwxyz0123456789")).toBe(false);
     expect(ledgerText.includes("AKIA1234567890ABCDEF")).toBe(false);
@@ -73,7 +73,7 @@ describe("Gap remediation: ledger compaction and redaction", () => {
 
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "ledger-bad-lines-1";
-    runtime.tools.recordResult({
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "read",
       args: { path: "src/a.ts" },
@@ -81,13 +81,13 @@ describe("Gap remediation: ledger compaction and redaction", () => {
       channelSuccess: true,
     });
 
-    appendFileSync(runtime.ledger.getPath(), "\nnot-json", "utf8");
+    appendFileSync(runtime.inspect.ledger.getPath(), "\nnot-json", "utf8");
 
-    const rows = runtime.ledger.listRows(sessionId);
+    const rows = runtime.inspect.ledger.listRows(sessionId);
     expect(rows.length).toBe(1);
     expect(rows[0]?.tool).toBe("read");
 
-    const integrity = runtime.ledger.verifyIntegrity(sessionId);
+    const integrity = runtime.inspect.ledger.verifyIntegrity(sessionId);
     expect(integrity.valid).toBe(true);
   });
 });

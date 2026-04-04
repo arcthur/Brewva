@@ -1,6 +1,7 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { BrewvaToolOptions } from "./types.js";
+import { recordToolRuntimeEvent, resolveToolRuntimeContextPort } from "./runtime-internal.js";
+import type { BrewvaBundledToolOptions } from "./types.js";
 import { failTextResult, textResult } from "./utils/result.js";
 import { getSessionId } from "./utils/session.js";
 import { defineBrewvaTool } from "./utils/tool.js";
@@ -17,7 +18,7 @@ function normalizeErrorMessage(error: unknown): string {
   return "unknown_error";
 }
 
-export function createSessionCompactTool(options: BrewvaToolOptions): ToolDefinition {
+export function createSessionCompactTool(options: BrewvaBundledToolOptions): ToolDefinition {
   return defineBrewvaTool({
     name: "session_compact",
     label: "Session Compact",
@@ -29,16 +30,21 @@ export function createSessionCompactTool(options: BrewvaToolOptions): ToolDefini
       const sessionId = getSessionId(ctx);
       const reason = normalizeReason(params.reason);
       const usage = ctx.getContextUsage();
+      const contextPort = resolveToolRuntimeContextPort(options.runtime);
       const usagePercent =
-        options.runtime.context.getUsageRatio?.(usage) ??
-        options.runtime.context.getPressureStatus(sessionId, usage).usageRatio;
-      const customInstructions = options.runtime.context.getCompactionInstructions?.();
+        contextPort?.getUsageRatio?.(usage) ??
+        (typeof usage?.percent === "number"
+          ? usage.percent > 1
+            ? usage.percent / 100
+            : usage.percent
+          : null);
+      const customInstructions = contextPort?.getCompactionInstructions?.() ?? "";
 
       try {
         ctx.compact({
           customInstructions,
           onError: (error) => {
-            options.runtime.events.record?.({
+            recordToolRuntimeEvent(options.runtime, {
               sessionId,
               type: "session_compact_failed",
               payload: {
@@ -48,7 +54,7 @@ export function createSessionCompactTool(options: BrewvaToolOptions): ToolDefini
             });
           },
         });
-        options.runtime.events.record?.({
+        recordToolRuntimeEvent(options.runtime, {
           sessionId,
           type: "session_compact_requested",
           payload: {
@@ -59,7 +65,7 @@ export function createSessionCompactTool(options: BrewvaToolOptions): ToolDefini
         });
       } catch (error) {
         const errorMessage = normalizeErrorMessage(error);
-        options.runtime.events.record?.({
+        recordToolRuntimeEvent(options.runtime, {
           sessionId,
           type: "session_compact_request_failed",
           payload: {

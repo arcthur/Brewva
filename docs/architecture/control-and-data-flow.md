@@ -22,24 +22,28 @@ sequenceDiagram
   participant U as User
   participant CLI as brewva-cli
   participant HOST as "Hosted Session"
-  participant RT as BrewvaRuntime
+  participant RT as "Brewva runtime ports"
   participant EXT as brewva-gateway/runtime-plugins
   participant TOOLS as brewva-tools
   participant STORE as Event/Ledger/Projection Stores
 
   U->>CLI: submit turn
   CLI->>EXT: before_agent_start
-  EXT->>RT: context.observeUsage + context.buildInjection
+  EXT->>RT: maintain.context.observeUsage + maintain.context.buildInjection
   RT->>STORE: read/update working projection state (units + working)
   CLI->>HOST: provider request + assistant completion
   HOST-->>CLI: hosted completion event
   CLI->>EXT: tool_call
-  EXT->>RT: tools.start (policy + budget + compaction gate)
+  EXT->>RT: authority.tools.start (policy + budget + compaction gate)
   CLI->>TOOLS: execute
   TOOLS-->>EXT: tool_result
-  EXT->>RT: tools.finish + ledger append + event record
+  EXT->>RT: authority.tools.finish + authority.tools.recordResult
   RT->>STORE: event tape + evidence ledger + snapshots
 ```
+
+Hosted wiring narrows a root runtime into hosted, tool, and operator ports plus
+repo-owned internal hooks where required. It does not hand a raw implementation
+bag to every lifecycle adapter.
 
 ## Direct Managed Tools Flow (`--managed-tools direct`)
 
@@ -136,7 +140,7 @@ flowchart TD
   D -->|no| F["emit no_patchset or restore_failed"]
 ```
 
-### Receipt-based mutation rollback (`runtime.tools.rollbackLastMutation(...)`)
+### Receipt-based mutation rollback (`runtime.authority.tools.rollbackLastMutation(...)`)
 
 ```mermaid
 flowchart TD

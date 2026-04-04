@@ -1,7 +1,7 @@
 import {
   classifyToolFailure,
   coerceContextBudgetUsage,
-  type BrewvaRuntime,
+  type BrewvaHostedRuntimePort,
 } from "@brewva/brewva-runtime";
 import {
   collectStringEnumContractMismatches,
@@ -49,7 +49,7 @@ function truncateText(value: string, maxChars: number): string {
 }
 
 export function createQualityGateLifecycle(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   options: QualityGateLifecycleOptions = {},
 ): QualityGateLifecycle {
   const pendingToolStateBySession = new Map<string, Map<string, PendingToolState>>();
@@ -193,7 +193,7 @@ export function createQualityGateLifecycle(
           ? (ctx as { getContextUsage: () => unknown }).getContextUsage()
           : undefined,
       );
-      const started = runtime.tools.start({
+      const started = runtime.authority.tools.start({
         sessionId,
         toolCallId,
         toolName,
@@ -262,13 +262,13 @@ export function createQualityGateLifecycle(
       const rawEvent = event as { text?: unknown; images?: unknown };
       const sessionId = getSessionId(ctx);
       if (sessionId.length > 0) {
-        runtime.context.onUserInput(sessionId);
+        runtime.maintain.context.onUserInput(sessionId);
       }
       const text = typeof rawEvent.text === "string" ? rawEvent.text : "";
       const images = Array.isArray(rawEvent.images)
         ? (rawEvent.images as QualityGateTransformResult["images"])
         : undefined;
-      const sanitized = runtime.context.sanitizeInput(text);
+      const sanitized = runtime.inspect.context.sanitizeInput(text);
       if (sanitized === text) {
         return { action: "continue" };
       }
@@ -284,7 +284,7 @@ export function createQualityGateLifecycle(
 
 export function registerQualityGate(
   extensionApi: ExtensionAPI,
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   options: QualityGateLifecycleOptions = {},
 ): void {
   const hooks = extensionApi as unknown as {

@@ -109,7 +109,7 @@ flowchart TD
   - `schedule_child_session_finished`
   - `schedule_child_session_failed`
 - inspection surfaces:
-  - `runtime.schedule.getProjectionSnapshot()`
+  - `runtime.inspect.schedule.getProjectionSnapshot()`
   - `optimization_continuity`
 
 ## Code Pointers

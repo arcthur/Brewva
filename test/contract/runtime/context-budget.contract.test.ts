@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { ContextBudgetManager, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
+import { DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
+import { ContextBudgetManager } from "@brewva/brewva-runtime/internal";
 
 describe("Context budget manager", () => {
   test("uses conservative token estimate for injection decisions", () => {

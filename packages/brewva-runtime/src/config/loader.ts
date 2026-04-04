@@ -19,6 +19,10 @@ export interface LoadConfigOptions {
   configPath?: string;
 }
 
+export interface NormalizeExplicitBrewvaConfigOptions {
+  sourceLabel?: string;
+}
+
 export class BrewvaConfigLoadError extends Error {
   readonly code: BrewvaConfigLoadErrorCode;
   readonly configPath: string;
@@ -100,21 +104,7 @@ function collectRemovedFieldErrors(parsed: Record<string, unknown>): string[] {
   return errors;
 }
 
-function readConfigFile(configPath: string): Partial<BrewvaConfig> | undefined {
-  if (!existsSync(configPath)) return undefined;
-  let parsed: unknown;
-  try {
-    const raw = readFileSync(configPath, "utf8");
-    parsed = parseJsonc(raw);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new BrewvaConfigLoadError({
-      code: "config_parse_error",
-      message: `Failed to parse config JSONC: ${message}`,
-      configPath,
-    });
-  }
-
+function validateConfigObject(parsed: unknown, configPath: string): Record<string, unknown> {
   if (!isRecord(parsed)) {
     throw new BrewvaConfigLoadError({
       code: "config_not_object",
@@ -151,7 +141,37 @@ function readConfigFile(configPath: string): Partial<BrewvaConfig> | undefined {
     }
   }
 
-  const cleaned = stripMetaFields(parsed);
+  return stripMetaFields(parsed);
+}
+
+export function normalizeExplicitBrewvaConfig(
+  config: unknown,
+  options: NormalizeExplicitBrewvaConfigOptions = {},
+): BrewvaConfig {
+  const sourceLabel = options.sourceLabel ?? "<direct runtime config>";
+  // Preserve explicit migration/prohibition diagnostics already encoded in the
+  // normalizer before schema validation rejects unknown keys generically.
+  normalizeBrewvaConfig(config, DEFAULT_BREWVA_CONFIG);
+  const validated = validateConfigObject(config, sourceLabel);
+  return normalizeBrewvaConfig(validated as Partial<BrewvaConfig>, DEFAULT_BREWVA_CONFIG);
+}
+
+function readConfigFile(configPath: string): Partial<BrewvaConfig> | undefined {
+  if (!existsSync(configPath)) return undefined;
+  let parsed: unknown;
+  try {
+    const raw = readFileSync(configPath, "utf8");
+    parsed = parseJsonc(raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new BrewvaConfigLoadError({
+      code: "config_parse_error",
+      message: `Failed to parse config JSONC: ${message}`,
+      configPath,
+    });
+  }
+
+  const cleaned = validateConfigObject(parsed, configPath);
   return resolveConfigRelativeSkillRoots(cleaned as Partial<BrewvaConfig>, configPath);
 }
 

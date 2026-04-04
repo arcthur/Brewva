@@ -9,6 +9,7 @@ import {
   uniqueStrings,
 } from "@brewva/brewva-deliberation";
 import {
+  BrewvaRuntime,
   CONTEXT_SOURCES,
   SKILL_COMPLETED_EVENT_TYPE,
   SKILL_PROMOTION_DRAFT_DERIVED_EVENT_TYPE,
@@ -17,10 +18,11 @@ import {
   SKILL_PROMOTION_REVIEWED_EVENT_TYPE,
   coerceReviewReportArtifact,
   type BrewvaEventRecord,
-  type BrewvaRuntime,
+  type BrewvaInspectionPort,
   type ContextSourceProvider,
   type SkillDocument,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { FileSkillPromotionStore } from "./file-store.js";
 import {
   SKILL_PROMOTION_STATE_SCHEMA,
@@ -76,7 +78,7 @@ function slugify(text: string, fallback = "draft"): string {
 }
 
 function listSessionDigests(runtime: SkillPromotionRuntime): SkillPromotionSessionDigest[] {
-  return collectPlaneSessionDigests(runtime.events);
+  return collectPlaneSessionDigests(runtime.inspect.events);
 }
 
 function sameSessionDigests(
@@ -93,6 +95,24 @@ function buildEvidence(event: BrewvaEventRecord): SkillPromotionEvidenceRef {
     eventType: event.type,
     timestamp: event.timestamp,
   };
+}
+
+function recordSkillPromotionEvent(
+  runtime: SkillPromotionRuntime,
+  input: {
+    sessionId: string;
+    type: string;
+    turn?: number;
+    payload?: object;
+    timestamp?: number;
+    skipTapeCheckpoint?: boolean;
+  },
+): void {
+  if (runtime instanceof BrewvaRuntime) {
+    recordRuntimeEvent(runtime, input);
+    return;
+  }
+  runtime.internal?.recordEvent?.(input);
 }
 
 function normalizeDecisionStatus(
@@ -247,7 +267,7 @@ function extractPromotionCandidates(
   runtime: SkillPromotionRuntime,
   events: readonly BrewvaEventRecord[],
 ): RawPromotionCandidate[] {
-  const skills = runtime.skills.list();
+  const skills = runtime.inspect.skills.list();
   const candidates: RawPromotionCandidate[] = [];
 
   for (const event of events) {
@@ -472,7 +492,7 @@ function collectPromotionLifecycleState(input: {
   const byDraftId = new Map<string, PromotionLifecycleState>();
   let ordinal = 0;
   for (const digest of input.sessionDigests) {
-    for (const event of input.runtime.events.list(digest.sessionId)) {
+    for (const event of input.runtime.inspect.events.list(digest.sessionId)) {
       ordinal += 1;
       if (
         event.type !== SKILL_PROMOTION_REVIEWED_EVENT_TYPE &&
@@ -562,7 +582,7 @@ function collectDerivedDraftIds(input: {
 }): Set<string> {
   const derivedDraftIds = new Set<string>();
   for (const digest of input.sessionDigests) {
-    for (const event of input.runtime.events.list(digest.sessionId)) {
+    for (const event of input.runtime.inspect.events.list(digest.sessionId)) {
       if (event.type !== SKILL_PROMOTION_DRAFT_DERIVED_EVENT_TYPE) continue;
       const payload = isRecord(event.payload) ? event.payload : undefined;
       const draftId = readString(payload?.draftId);
@@ -585,7 +605,10 @@ function buildPromotionState(input: {
   });
   const rawCandidates = mergeCandidates(
     input.sessionDigests.flatMap((digest) =>
-      extractPromotionCandidates(input.runtime, input.runtime.events.list(digest.sessionId)),
+      extractPromotionCandidates(
+        input.runtime,
+        input.runtime.inspect.events.list(digest.sessionId),
+      ),
     ),
   );
   const drafts = rawCandidates
@@ -755,7 +778,7 @@ export class SkillPromotionBroker {
     this.minRefreshIntervalMs = Math.max(0, options.minRefreshIntervalMs ?? 0);
     this.state = this.store.read();
     if (options.subscribeToEvents !== false) {
-      this.runtime.events.subscribe((event) => {
+      this.runtime.inspect.events.subscribe((event) => {
         if (event.type === SKILL_COMPLETED_EVENT_TYPE) {
           this.dirty = true;
         }
@@ -827,7 +850,7 @@ export class SkillPromotionBroker {
     state.updatedAt = Date.now();
     this.store.write(state);
     this.state = state;
-    this.runtime.events.record({
+    recordSkillPromotionEvent(this.runtime, {
       sessionId: next.sessionIds[0] ?? "skill-promotion",
       type: SKILL_PROMOTION_REVIEWED_EVENT_TYPE,
       payload: {
@@ -873,7 +896,7 @@ export class SkillPromotionBroker {
     state.updatedAt = Date.now();
     this.store.write(state);
     this.state = state;
-    this.runtime.events.record({
+    recordSkillPromotionEvent(this.runtime, {
       sessionId: next.sessionIds[0] ?? "skill-promotion",
       type: SKILL_PROMOTION_PROMOTED_EVENT_TYPE,
       payload: {
@@ -883,7 +906,7 @@ export class SkillPromotionBroker {
         materializedPath: next.promotion?.primaryPath ?? null,
       },
     });
-    this.runtime.events.record({
+    recordSkillPromotionEvent(this.runtime, {
       sessionId: next.sessionIds[0] ?? "skill-promotion",
       type: SKILL_PROMOTION_MATERIALIZED_EVENT_TYPE,
       payload: {
@@ -958,7 +981,7 @@ export class SkillPromotionBroker {
     });
     for (const draft of next.drafts) {
       if (previousIds.has(draft.id) || derivedDraftIds.has(draft.id)) continue;
-      this.runtime.events.record({
+      recordSkillPromotionEvent(this.runtime, {
         sessionId: draft.sessionIds[0] ?? "skill-promotion",
         type: SKILL_PROMOTION_DRAFT_DERIVED_EVENT_TYPE,
         payload: {
@@ -1044,4 +1067,20 @@ export function createSkillPromotionContextProvider(input: {
   };
 }
 
-export type SkillPromotionRuntime = Pick<BrewvaRuntime, "workspaceRoot" | "events" | "skills">;
+export interface SkillPromotionRuntime {
+  readonly workspaceRoot: string;
+  readonly inspect: {
+    readonly events: Pick<BrewvaInspectionPort["events"], "list" | "listSessionIds" | "subscribe">;
+    readonly skills: Pick<BrewvaInspectionPort["skills"], "list">;
+  };
+  readonly internal?: {
+    recordEvent?: (input: {
+      sessionId: string;
+      type: string;
+      turn?: number;
+      payload?: object;
+      timestamp?: number;
+      skipTapeCheckpoint?: boolean;
+    }) => unknown;
+  };
+}

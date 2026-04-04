@@ -155,7 +155,7 @@ export function createFollowUpTool(options: BrewvaToolOptions): ToolDefinition {
             });
           }
 
-          const created = await options.runtime.schedule.createIntent(sessionId, {
+          const created = await options.runtime.authority.schedule.createIntent(sessionId, {
             reason,
             intentId: normalizeOptionalString(params.intentId),
             continuityMode: "inherit",
@@ -207,7 +207,7 @@ export function createFollowUpTool(options: BrewvaToolOptions): ToolDefinition {
           });
         }
 
-        const created = await options.runtime.schedule.createIntent(sessionId, {
+        const created = await options.runtime.authority.schedule.createIntent(sessionId, {
           reason,
           intentId: normalizeOptionalString(params.intentId),
           continuityMode: "inherit",
@@ -247,7 +247,7 @@ export function createFollowUpTool(options: BrewvaToolOptions): ToolDefinition {
           });
         }
 
-        const cancelled = await options.runtime.schedule.cancelIntent(sessionId, {
+        const cancelled = await options.runtime.authority.schedule.cancelIntent(sessionId, {
           intentId,
           reason: normalizeOptionalString(params.reason),
         });
@@ -263,10 +263,10 @@ export function createFollowUpTool(options: BrewvaToolOptions): ToolDefinition {
         });
       }
 
-      const intents = await options.runtime.schedule.listIntents({
+      const intents = await options.runtime.inspect.schedule.listIntents({
         parentSessionId: sessionId,
       });
-      const snapshot = await options.runtime.schedule.getProjectionSnapshot();
+      const snapshot = await options.runtime.inspect.schedule.getProjectionSnapshot();
       const header = [
         "[FollowUps]",
         `count: ${intents.length}`,

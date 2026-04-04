@@ -4,11 +4,11 @@ import { join } from "node:path";
 import {
   BrewvaRuntime,
   SCHEDULE_EVENT_TYPE,
-  SchedulerService,
   buildScheduleIntentCancelledEvent,
   buildScheduleIntentCreatedEvent,
   parseScheduleIntentEvent,
 } from "@brewva/brewva-runtime";
+import { SchedulerService, recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   computeExpectedRecurringJitteredNextRunAt,
   createSchedulerConfig,
@@ -130,7 +130,7 @@ describe("scheduler service projection contract", () => {
     if (typeof expectedNextRunAt !== "number") return;
     expect(updated.intent.nextRunAt).toBe(expectedNextRunAt);
 
-    const events = runtime.events.query("session-update", { type: SCHEDULE_EVENT_TYPE });
+    const events = runtime.inspect.events.query("session-update", { type: SCHEDULE_EVENT_TYPE });
     const kinds = events
       .map((event) => parseScheduleIntentEvent(event)?.kind)
       .filter((kind): kind is NonNullable<typeof kind> => Boolean(kind));
@@ -202,7 +202,7 @@ describe("scheduler service projection contract", () => {
     const sessionId = "session-replay-authoritative-next-run";
     const forcedNextRunAt = Date.UTC(2026, 0, 1, 12, 34, 56, 789);
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: SCHEDULE_EVENT_TYPE,
       payload: buildScheduleIntentCreatedEvent({
@@ -238,7 +238,7 @@ describe("scheduler service projection contract", () => {
     const sessionId = "session-replay-missing-next-run";
     const runAt = Date.UTC(2026, 0, 1, 0, 5, 0, 0);
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: SCHEDULE_EVENT_TYPE,
       payload: {

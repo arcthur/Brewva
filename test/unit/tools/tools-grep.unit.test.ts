@@ -153,7 +153,7 @@ describe("grep tool", () => {
     const fakeRipgrep = writeMatchingRipgrep(workspace);
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "grep-cross-root-1";
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Inspect an external repository",
       targets: {

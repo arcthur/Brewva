@@ -29,8 +29,8 @@ status: active
 problem_kind: bugfix
 module: brewva-runtime
 boundaries:
-  - runtime.turnWal
-  - runtime.tools
+  - runtime.maintain.recovery
+  - runtime.authority.tools
 tags:
   - wal
   - recovery
@@ -77,7 +77,7 @@ This note mentions replay experiments but is not the canonical precedent.
       {
         query: "wal recovery replay",
         module: "brewva-runtime",
-        boundary: "runtime.turnWal",
+        boundary: "runtime.maintain.recovery",
         tags: ["wal"],
       } as never,
       undefined,
@@ -279,7 +279,7 @@ status: active
 problem_kind: bugfix
 module: brewva-runtime
 boundaries:
-  - runtime.turnWal
+  - runtime.maintain.recovery
 tags:
   - replay
   - cursor
@@ -316,7 +316,7 @@ The runtime contract covers broader system behavior but not this specific replay
       {
         query: "replai curser pining",
         module: "brewva-runtime",
-        boundary: "runtime.turnWal",
+        boundary: "runtime.maintain.recovery",
         tags: ["cursor"],
       } as never,
       undefined,

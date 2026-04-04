@@ -3,6 +3,7 @@ import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { patchProcessEnv } from "../../helpers/global-state.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
@@ -35,7 +36,7 @@ function buildImpactMap(summary: string) {
   return {
     summary,
     affected_paths: ["packages/brewva-runtime/src/runtime.ts"],
-    boundaries: ["runtime.skills"],
+    boundaries: ["runtime.authority.skills"],
     high_risk_touchpoints: ["runtime inspection surface"],
     change_categories: ["public_api"],
     changed_file_classes: ["public_api"],
@@ -61,7 +62,7 @@ describe("inspect subcommand", () => {
         });
         const sessionId = "inspect-session-1";
 
-        runtime.events.record({
+        recordRuntimeEvent(runtime, {
           sessionId,
           type: "session_bootstrap",
           payload: {
@@ -74,22 +75,22 @@ describe("inspect subcommand", () => {
             },
           },
         });
-        runtime.context.onTurnStart(sessionId, 1);
-        runtime.task.setSpec(sessionId, {
+        runtime.maintain.context.onTurnStart(sessionId, 1);
+        runtime.authority.task.setSpec(sessionId, {
           schema: "brewva.task.v1",
           goal: "Inspect persisted runtime state",
         });
-        runtime.task.recordBlocker(sessionId, {
+        runtime.authority.task.recordBlocker(sessionId, {
           message: "verification still failing",
           source: "test",
         });
-        runtime.truth.upsertFact(sessionId, {
+        runtime.authority.truth.upsertFact(sessionId, {
           id: "truth:inspect",
           kind: "diagnostic",
           severity: "warn",
           summary: "inspect truth fact",
         });
-        runtime.events.record({
+        recordRuntimeEvent(runtime, {
           sessionId,
           type: "verification_outcome_recorded",
           payload: {
@@ -101,21 +102,21 @@ describe("inspect subcommand", () => {
             reason: "tests_failed",
           },
         });
-        runtime.tools.recordResult({
+        runtime.authority.tools.recordResult({
           sessionId,
           toolName: "exec",
           args: { command: "bun test" },
           outputText: "Error: test failure",
           channelSuccess: false,
         });
-        runtime.events.record({
+        recordRuntimeEvent(runtime, {
           sessionId,
           type: "tool_call_blocked",
           payload: {
             toolName: "exec",
           },
         });
-        runtime.events.record({
+        recordRuntimeEvent(runtime, {
           sessionId,
           type: "session_turn_transition",
           payload: {
@@ -212,21 +213,21 @@ describe("inspect subcommand", () => {
       });
       const interactiveSessionId = "inspect-default-real-1";
 
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId: interactiveSessionId,
         type: "session_bootstrap",
         payload: {
           managedToolMode: "direct",
         },
       });
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId: interactiveSessionId,
         type: "session_start",
         payload: {
           cwd: workspace,
         },
       });
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId: interactiveSessionId,
         type: "message_end",
         payload: {
@@ -238,8 +239,8 @@ describe("inspect subcommand", () => {
 
       for (let index = 0; index < 60; index += 1) {
         const syntheticSessionId = `output-reg-${index}`;
-        runtime.skills.activate(syntheticSessionId, "repository-analysis");
-        runtime.skills.complete(syntheticSessionId, {
+        runtime.authority.skills.activate(syntheticSessionId, "repository-analysis");
+        runtime.authority.skills.complete(syntheticSessionId, {
           repository_snapshot: `synthetic registry session ${index}`,
           impact_map: buildImpactMap(`synthetic impact map ${index}`),
           planning_posture: "moderate",
@@ -286,7 +287,7 @@ describe("inspect subcommand", () => {
         });
         const sessionId = "inspect-analysis-session-1";
 
-        runtime.events.record({
+        recordRuntimeEvent(runtime, {
           sessionId,
           type: "session_bootstrap",
           payload: {
@@ -299,13 +300,13 @@ describe("inspect subcommand", () => {
             },
           },
         });
-        runtime.context.onTurnStart(sessionId, 1);
-        runtime.task.setSpec(sessionId, {
+        runtime.maintain.context.onTurnStart(sessionId, 1);
+        runtime.authority.task.setSpec(sessionId, {
           schema: "brewva.task.v1",
           goal: "Inspect session behavior in src",
         });
-        runtime.tools.markCall(sessionId, "edit");
-        runtime.tools.trackCallStart({
+        runtime.authority.tools.markCall(sessionId, "edit");
+        runtime.authority.tools.trackCallStart({
           sessionId,
           toolCallId: "edit-1",
           toolName: "edit",
@@ -318,13 +319,13 @@ describe("inspect subcommand", () => {
           "export const outOfScope = 2;\n",
           "utf8",
         );
-        runtime.tools.trackCallEnd({
+        runtime.authority.tools.trackCallEnd({
           sessionId,
           toolCallId: "edit-1",
           toolName: "edit",
           channelSuccess: true,
         });
-        runtime.tools.recordResult({
+        runtime.authority.tools.recordResult({
           sessionId,
           toolName: "exec",
           args: {
@@ -333,7 +334,7 @@ describe("inspect subcommand", () => {
           outputText: "bash: -c: line 1: syntax error near unexpected token `then'",
           channelSuccess: false,
         });
-        runtime.events.record({
+        recordRuntimeEvent(runtime, {
           sessionId,
           type: "tool_contract_warning",
           payload: {

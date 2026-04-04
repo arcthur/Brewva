@@ -1,5 +1,6 @@
 import type { BrewvaRuntime } from "@brewva/brewva-runtime";
 import { CHANNEL_SESSION_BOUND_EVENT_TYPE } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { AgentRegistry } from "./agent-registry.js";
 import { AgentRuntimeManager } from "./agent-runtime-manager.js";
 import type {
@@ -35,7 +36,7 @@ export function createChannelSessionQueries(input: {
   runtime: BrewvaRuntime;
   registry: AgentRegistry;
   runtimeManager: AgentRuntimeManager;
-  turnWalScope: string;
+  recoveryWalScope: string;
   listLiveSessions(): ChannelLiveSessionView[];
   openLiveSession(scopeKey: string, agentId: string): ChannelRuntimeSessionPort | undefined;
   loadInspectionRuntime(agentId: string): Promise<BrewvaRuntime>;
@@ -48,8 +49,8 @@ export function createChannelSessionQueries(input: {
     agentId: string;
   }): string[] => {
     const matches: Array<{ sessionId: string; boundAt: number }> = [];
-    for (const sessionId of options.runtime.events.listSessionIds()) {
-      const binding = options.runtime.events.query(sessionId, {
+    for (const sessionId of options.runtime.inspect.events.listSessionIds()) {
+      const binding = options.runtime.inspect.events.query(sessionId, {
         type: CHANNEL_SESSION_BOUND_EVENT_TYPE,
         last: 1,
       })[0];
@@ -130,8 +131,8 @@ export function createChannelSessionQueries(input: {
         )} active_sessions=${input.listLiveSessions().length}`,
       );
 
-      input.runtime.events.record({
-        sessionId: input.turnWalScope,
+      recordRuntimeEvent(input.runtime, {
+        sessionId: input.recoveryWalScope,
         type: "channel_workspace_cost_summary",
         payload: {
           scopeKey,

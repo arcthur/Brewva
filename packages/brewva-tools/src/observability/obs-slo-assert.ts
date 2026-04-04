@@ -4,7 +4,8 @@ import {
 } from "@brewva/brewva-runtime";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { BrewvaToolOptions } from "../types.js";
+import { recordToolRuntimeEvent } from "../runtime-internal.js";
+import type { BrewvaBundledToolOptions } from "../types.js";
 import { buildStringEnumSchema } from "../utils/input-alias.js";
 import { inconclusiveTextResult, textResult } from "../utils/result.js";
 import { getSessionId } from "../utils/session.js";
@@ -54,7 +55,7 @@ function buildBlockedText(input: { recentSingleQueryCalls: number }): string {
   ].join("\n");
 }
 
-export function createObsSloAssertTool(options: BrewvaToolOptions): ToolDefinition {
+export function createObsSloAssertTool(options: BrewvaBundledToolOptions): ToolDefinition {
   return defineBrewvaTool({
     name: "obs_slo_assert",
     label: "Observability SLO Assert",
@@ -93,7 +94,7 @@ export function createObsSloAssertTool(options: BrewvaToolOptions): ToolDefiniti
         requestedLimit: 1,
       });
       if (throttleState.level === "blocked") {
-        options.runtime.events.record?.({
+        recordToolRuntimeEvent(options.runtime, {
           sessionId,
           type: OBSERVABILITY_QUERY_EXECUTED_EVENT_TYPE,
           payload: {
@@ -190,7 +191,7 @@ export function createObsSloAssertTool(options: BrewvaToolOptions): ToolDefiniti
       });
       assertionRecord.queryRef = artifactOverride?.artifactRef ?? null;
 
-      options.runtime.events.record?.({
+      recordToolRuntimeEvent(options.runtime, {
         sessionId,
         type: OBSERVABILITY_QUERY_EXECUTED_EVENT_TYPE,
         payload: {
@@ -207,7 +208,7 @@ export function createObsSloAssertTool(options: BrewvaToolOptions): ToolDefiniti
           blocked: false,
         },
       });
-      options.runtime.events.record?.({
+      recordToolRuntimeEvent(options.runtime, {
         sessionId,
         type: OBSERVABILITY_ASSERTION_RECORDED_EVENT_TYPE,
         payload: {

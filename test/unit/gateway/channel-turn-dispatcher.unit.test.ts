@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { TurnEnvelope, TurnWALStore } from "@brewva/brewva-runtime/channels";
+import type { TurnEnvelope } from "@brewva/brewva-runtime/channels";
+import type { RecoveryWalStore } from "@brewva/brewva-runtime/internal";
 import { createChannelTurnDispatcher } from "../../../packages/brewva-gateway/src/channels/channel-turn-dispatcher.js";
 import { CommandRouter } from "../../../packages/brewva-gateway/src/channels/command-router.js";
 import { createRuntimeFixture } from "../../helpers/runtime.js";
@@ -23,20 +24,20 @@ function createUserTurn(
   };
 }
 
-function createTurnWalStoreStub(): TurnWALStore {
+function createRecoveryWalStoreStub(): RecoveryWalStore {
   return {
     appendPending: () => ({ walId: "wal-1" }),
     markInflight: () => undefined,
     markDone: () => undefined,
     markFailed: () => undefined,
-  } as unknown as TurnWALStore;
+  } as unknown as RecoveryWalStore;
 }
 
 describe("channel turn dispatcher ingress routing", () => {
   test("given a user mention that targets an active agent, when resolveIngestedSessionId runs, then the dispatcher returns the live session for the mentioned agent", () => {
     const dispatcher = createChannelTurnDispatcher({
       runtime: createRuntimeFixture(),
-      turnWalStore: createTurnWalStoreStub(),
+      recoveryWalStore: createRecoveryWalStoreStub(),
       orchestrationEnabled: true,
       defaultAgentId: "default",
       commandRouter: new CommandRouter(),
@@ -66,7 +67,7 @@ describe("channel turn dispatcher ingress routing", () => {
   test("given an approval turn with a resolved approval target, when resolveIngestedSessionId runs, then the dispatcher prefers the approval target session", () => {
     const dispatcher = createChannelTurnDispatcher({
       runtime: createRuntimeFixture(),
-      turnWalStore: createTurnWalStoreStub(),
+      recoveryWalStore: createRecoveryWalStoreStub(),
       orchestrationEnabled: true,
       defaultAgentId: "default",
       commandRouter: new CommandRouter(),
@@ -104,7 +105,7 @@ describe("channel turn dispatcher ingress routing", () => {
   test("given many scopes, when last-turn cache exceeds capacity, then least recently used scopes are evicted", async () => {
     const dispatcher = createChannelTurnDispatcher({
       runtime: createRuntimeFixture(),
-      turnWalStore: createTurnWalStoreStub(),
+      recoveryWalStore: createRecoveryWalStoreStub(),
       orchestrationEnabled: false,
       defaultAgentId: "default",
       commandRouter: new CommandRouter(),

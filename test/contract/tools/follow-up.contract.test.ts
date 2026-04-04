@@ -25,7 +25,7 @@ describe("follow_up contract", () => {
     );
     expect(extractTextContent(createResult)).toContain("Follow-up created.");
 
-    const intents = await runtime.schedule.listIntents({ parentSessionId: sessionId });
+    const intents = await runtime.inspect.schedule.listIntents({ parentSessionId: sessionId });
     expect(intents).toHaveLength(1);
     expect(intents[0]?.cron).toBeUndefined();
     expect(typeof intents[0]?.runAt).toBe("number");
@@ -74,7 +74,7 @@ describe("follow_up contract", () => {
     );
     expect(extractTextContent(createResult)).toContain("Follow-up created.");
 
-    const intents = await runtime.schedule.listIntents({ parentSessionId: sessionId });
+    const intents = await runtime.inspect.schedule.listIntents({ parentSessionId: sessionId });
     expect(intents).toHaveLength(1);
     expect(intents[0]?.cron).toBe("*/5 * * * *");
     expect(intents[0]?.maxRuns).toBe(12);

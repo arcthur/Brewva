@@ -15,7 +15,7 @@ import {
   deriveWorkflowArtifacts,
   foldTruthLedgerEvents,
   type BrewvaEventRecord,
-  type BrewvaRuntime,
+  type BrewvaInspectionPort,
   type ContextSourceProvider,
 } from "@brewva/brewva-runtime";
 import { FileDeliberationMemoryStore } from "./file-store.js";
@@ -480,7 +480,13 @@ function buildSessionMemoryInput(
   };
 }
 
-export type DeliberationMemoryRuntime = Pick<BrewvaRuntime, "workspaceRoot" | "events" | "task">;
+export interface DeliberationMemoryRuntime {
+  readonly workspaceRoot: string;
+  readonly inspect: {
+    readonly events: Pick<BrewvaInspectionPort["events"], "list" | "listSessionIds" | "subscribe">;
+    readonly task: Pick<BrewvaInspectionPort["task"], "getTargetDescriptor">;
+  };
+}
 
 function buildRepositoryWorkingContract(
   repositoryRoot: string,
@@ -1085,7 +1091,7 @@ export class DeliberationMemoryPlane {
     this.store = new FileDeliberationMemoryStore(options.workspaceRoot ?? runtime.workspaceRoot);
     this.minRefreshIntervalMs = Math.max(0, options.minRefreshIntervalMs ?? 0);
     this.state = this.store.read();
-    this.runtime.events.subscribe((event) => {
+    this.runtime.inspect.events.subscribe((event) => {
       if (DELIBERATION_MEMORY_RELEVANT_EVENT_TYPES.has(event.type)) {
         this.dirty = true;
       }
@@ -1186,7 +1192,7 @@ export class DeliberationMemoryPlane {
 
   private reconcile(): DeliberationMemoryState {
     const now = Date.now();
-    const digests = collectPlaneSessionDigests(this.runtime.events);
+    const digests = collectPlaneSessionDigests(this.runtime.inspect.events);
     const current = this.store.read() ?? this.state;
     const hasState = Boolean(current);
     const digestsChanged =
@@ -1216,8 +1222,8 @@ export class DeliberationMemoryPlane {
     const sessions = digests.map((digest) =>
       buildSessionMemoryInput(
         digest.sessionId,
-        this.runtime.events.list(digest.sessionId),
-        this.runtime.task.getTargetDescriptor(digest.sessionId).roots,
+        this.runtime.inspect.events.list(digest.sessionId),
+        this.runtime.inspect.task.getTargetDescriptor(digest.sessionId).roots,
       ),
     );
     const nextState = buildDeliberationMemoryState({
@@ -1251,7 +1257,7 @@ export function getOrCreateDeliberationMemoryPlane(
 }
 
 export function createDeliberationMemoryContextProvider(input: {
-  runtime: BrewvaRuntime;
+  runtime: DeliberationMemoryRuntime;
   maxArtifacts?: number;
   minRefreshIntervalMs?: number;
 }): ContextSourceProvider {
@@ -1267,7 +1273,7 @@ export function createDeliberationMemoryContextProvider(input: {
       const retrievals = plane.retrieve(
         providerInput.promptText,
         input.maxArtifacts,
-        input.runtime.task.getTargetDescriptor(providerInput.sessionId).roots,
+        input.runtime.inspect.task.getTargetDescriptor(providerInput.sessionId).roots,
       );
       for (const retrieval of retrievals) {
         providerInput.register({

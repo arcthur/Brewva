@@ -182,7 +182,7 @@ export interface BrewvaConfig {
       alertThresholdRatio: number;
       actionOnExceed: "warn" | "block_tools";
     };
-    turnWal: {
+    recoveryWal: {
       enabled: boolean;
       dir: string;
       defaultTtlMs: number;
@@ -248,7 +248,7 @@ export interface BrewvaConfigFile {
       | "toolOutputDistillationInjection"
       | "interruptRecovery"
       | "costTracking"
-      | "turnWal"
+      | "recoveryWal"
     >
   > & {
     events?: Partial<BrewvaConfig["infrastructure"]["events"]>;
@@ -263,6 +263,6 @@ export interface BrewvaConfigFile {
     > & {
       maxCostUsdPerSession?: number;
     };
-    turnWal?: Partial<BrewvaConfig["infrastructure"]["turnWal"]>;
+    recoveryWal?: Partial<BrewvaConfig["infrastructure"]["recoveryWal"]>;
   };
 }

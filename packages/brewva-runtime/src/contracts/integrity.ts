@@ -1,4 +1,4 @@
-export type IntegrityDomain = "event_tape" | "turn_wal" | "artifact";
+export type IntegrityDomain = "event_tape" | "recovery_wal" | "artifact";
 
 export type IntegritySeverity = "degraded" | "unavailable";
 

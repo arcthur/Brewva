@@ -1,4 +1,5 @@
 import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type { ChannelA2AAdapter } from "./channel-a2a-runtime-plugin.js";
 import type { ChannelCoordinator } from "./coordinator.js";
 
@@ -9,7 +10,7 @@ export function createInstrumentedChannelA2AAdapter(input: {
   return {
     send: async (request) => {
       const result = await input.coordinator.a2aSend(request);
-      input.runtime.events.record({
+      recordRuntimeEvent(input.runtime, {
         sessionId: request.fromSessionId,
         type: result.ok ? "channel_a2a_invoked" : "channel_a2a_blocked",
         payload: {
@@ -25,7 +26,7 @@ export function createInstrumentedChannelA2AAdapter(input: {
     },
     broadcast: async (request) => {
       const result = await input.coordinator.a2aBroadcast(request);
-      input.runtime.events.record({
+      recordRuntimeEvent(input.runtime, {
         sessionId: request.fromSessionId,
         type: result.ok ? "channel_a2a_invoked" : "channel_a2a_blocked",
         payload: {

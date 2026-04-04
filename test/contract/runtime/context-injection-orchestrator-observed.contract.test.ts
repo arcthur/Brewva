@@ -39,24 +39,24 @@ describe("Context injection orchestrator characterization", () => {
 
     const runtime = new BrewvaRuntime({ cwd: workspace, agentId: "default", config });
     const sessionId = "ctx-orchestrator-sources-1";
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Characterize context orchestration",
       constraints: ["Keep deterministic markers"],
     });
-    runtime.task.recordBlocker(sessionId, {
+    runtime.authority.task.recordBlocker(sessionId, {
       message: "failing test blocks progress",
       source: "test",
     });
-    runtime.truth.upsertFact(sessionId, {
+    runtime.authority.truth.upsertFact(sessionId, {
       id: "truth:ctx-char",
       kind: "diagnostic",
       severity: "warn",
       summary: "test truth fact",
     });
-    runtime.tools.recordResult({
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "bun test" },
@@ -64,7 +64,7 @@ describe("Context injection orchestrator characterization", () => {
       channelSuccess: false,
     });
 
-    const injection = await runtime.context.buildInjection(
+    const injection = await runtime.maintain.context.buildInjection(
       sessionId,
       "continue context characterization",
       { tokens: 800, contextWindow: 4000, percent: 20 },
@@ -80,7 +80,7 @@ describe("Context injection orchestrator characterization", () => {
     expect(injection.text).toContain("\n\n");
 
     const injectedEvent = requireDefined(
-      runtime.events.query(sessionId, { type: "context_injected", last: 1 })[0],
+      runtime.inspect.events.query(sessionId, { type: "context_injected", last: 1 })[0],
       "expected context_injected event",
     );
     const payload = injectedEvent.payload as {
@@ -105,13 +105,13 @@ describe("Context injection orchestrator characterization", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
     const sessionId = "ctx-orchestrator-duplicate-1";
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Keep scope fingerprint stable",
     });
 
-    runtime.context.onTurnStart(sessionId, 1);
-    const first = await runtime.context.buildInjection(
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    const first = await runtime.maintain.context.buildInjection(
       sessionId,
       "duplicate fingerprint probe",
       { tokens: 600, contextWindow: 4000, percent: 0.15 },
@@ -120,8 +120,8 @@ describe("Context injection orchestrator characterization", () => {
     expect(first.accepted).toBe(true);
     expect(first.text.length).toBeGreaterThan(0);
 
-    runtime.context.onTurnStart(sessionId, 2);
-    const second = await runtime.context.buildInjection(
+    runtime.maintain.context.onTurnStart(sessionId, 2);
+    const second = await runtime.maintain.context.buildInjection(
       sessionId,
       "duplicate fingerprint probe",
       { tokens: 600, contextWindow: 4000, percent: 0.15 },
@@ -131,7 +131,7 @@ describe("Context injection orchestrator characterization", () => {
     expect(second.text).toBe("");
 
     const dropped = requireDefined(
-      runtime.events.query(sessionId, {
+      runtime.inspect.events.query(sessionId, {
         type: "context_injection_dropped",
         last: 1,
       })[0],

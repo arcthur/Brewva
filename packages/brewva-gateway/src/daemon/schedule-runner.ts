@@ -10,6 +10,7 @@ import {
   type TaskSpec,
   type TruthFact,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type {
   SchedulePromptAnchor,
   SchedulePromptTrigger,
@@ -49,9 +50,9 @@ export function collectScheduleContinuationSnapshot(
     };
   }
 
-  const parentAnchor = runtime.events.getTapeStatus(input.parentSessionId).lastAnchor;
-  const parentTask = runtime.task.getState(input.parentSessionId);
-  const parentTruth = runtime.truth.getState(input.parentSessionId);
+  const parentAnchor = runtime.inspect.events.getTapeStatus(input.parentSessionId).lastAnchor;
+  const parentTask = runtime.inspect.task.getState(input.parentSessionId);
+  const parentTruth = runtime.inspect.truth.getState(input.parentSessionId);
   return {
     taskSpec: parentTask.spec ?? null,
     truthFacts: parentTruth.facts.map((fact) => structuredClone(fact)),
@@ -139,7 +140,7 @@ export async function executeScheduleIntentRun(input: {
     snapshot,
   });
 
-  input.runtime.events.record({
+  recordRuntimeEvent(input.runtime, {
     sessionId: agentSessionId,
     type: SCHEDULE_WAKEUP_EVENT_TYPE,
     payload: {
@@ -156,7 +157,7 @@ export async function executeScheduleIntentRun(input: {
       parentAnchorId: snapshot.parentAnchor?.id ?? null,
     },
   });
-  input.runtime.events.record({
+  recordRuntimeEvent(input.runtime, {
     sessionId: input.intent.parentSessionId,
     type: SCHEDULE_CHILD_SESSION_STARTED_EVENT_TYPE,
     payload: {
@@ -173,7 +174,7 @@ export async function executeScheduleIntentRun(input: {
       trigger,
     });
     const evaluationSessionId = result.agentSessionId?.trim() || agentSessionId;
-    input.runtime.events.record({
+    recordRuntimeEvent(input.runtime, {
       sessionId: input.intent.parentSessionId,
       type: SCHEDULE_CHILD_SESSION_FINISHED_EVENT_TYPE,
       payload: {
@@ -187,7 +188,7 @@ export async function executeScheduleIntentRun(input: {
       workerSessionId,
     };
   } catch (error) {
-    input.runtime.events.record({
+    recordRuntimeEvent(input.runtime, {
       sessionId: input.intent.parentSessionId,
       type: SCHEDULE_CHILD_SESSION_FAILED_EVENT_TYPE,
       payload: {

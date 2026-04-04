@@ -36,6 +36,14 @@ These commands are intentionally thin. They inspect or route against durable
 runtime / gateway state instead of creating a second planner or hidden task
 store inside the runtime plugin layer.
 
+Port reading:
+
+- `/inspect` and `/insights` are operator products built against
+  `BrewvaOperatorRuntimePort`
+- hosted lifecycle adapters are built against `BrewvaHostedRuntimePort`
+- the managed tool bundle is built from `BrewvaToolRuntimePort` plus explicit
+  repo-owned internal hooks where needed
+
 ## Factory API
 
 - `RuntimePlugin`
@@ -68,6 +76,22 @@ inherited `BrewvaRuntimeOptions` for runtime construction:
 
 There are no longer public runtime plugin profiles such as `core`, `memory`, or
 `full`.
+
+## Port Narrowing
+
+`createHostedTurnPipeline()` may accept or construct a root `BrewvaRuntime`,
+but runtime-plugin wiring narrows that root contract immediately:
+
+- hosted lifecycle adapters consume `BrewvaHostedRuntimePort`
+- embedded operator commands consume `BrewvaOperatorRuntimePort`
+- the repo-owned managed tool bundle receives `BrewvaToolRuntimePort` plus
+  explicit injected internal hooks, producing the `BrewvaBundledToolRuntime`
+  used by `buildBrewvaTools()`
+
+Raw event append does not re-enter the public runtime surface through those
+ports. When hosted wiring genuinely needs raw tape append, it uses the
+repository-owned internal subpath instead of widening the hosted or tool
+contracts.
 
 ## Hosted Pipeline
 
@@ -104,6 +128,10 @@ There is no longer a reduced runtime-core bridge variant. Hosted sessions use
 one lifecycle shape whether tools are registered by the runtime plugin API or
 provided directly by the host.
 
+The hosted pipeline therefore preserves one execution spine while still keeping
+runtime access role-shaped: host lifecycle code, operator commands, and bundled
+tools do not all share the same runtime view.
+
 ## Turn Lifecycle Port
 
 `TurnLifecyclePort` is the public experience/control-plane contract. Stages:
@@ -128,13 +156,13 @@ plugin API instead
 of `TurnLifecyclePort` stages:
 
 - `api.on("tool_call", qualityGate.toolCall)` bridges into
-  `runtime.tools.start()` / `ToolInvocationSpine.begin()`. This is the
+  `runtime.authority.tools.start()` / `ToolInvocationSpine.begin()`. This is the
   authority-owned admission point for access checks, budget checks, compaction
   gating, and effect commitment. Making it a public lifecycle port would let
   outer ports race with or override kernel authorization.
 - `registerLedgerWriter(...)` bridges `tool_result` plus fallback
   `tool_execution_end` into durable runtime completion
-  (`runtime.tools.finish()` / `runtime.tools.recordResult()`). This is finalize
+  (`runtime.authority.tools.finish()` / `runtime.authority.tools.recordResult()`). This is finalize
   plumbing, not presentation shaping, so it remains a bridge adapter rather
   than a port stage.
 

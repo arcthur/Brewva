@@ -5,18 +5,20 @@ describe("observability shared query", () => {
   test("single-type queries prefilter at the event store boundary", () => {
     const listCalls: Array<{ sessionId: string; query?: { type?: string } }> = [];
     const runtime = {
-      events: {
-        list(sessionId: string, query?: { type?: string }) {
-          listCalls.push({ sessionId, query });
-          return [
-            {
-              id: "evt-1",
-              sessionId,
-              type: "tool_result_recorded",
-              timestamp: 10,
-              payload: { rawTokens: 5 },
-            },
-          ];
+      inspect: {
+        events: {
+          list(sessionId: string, query?: { type?: string }) {
+            listCalls.push({ sessionId, query });
+            return [
+              {
+                id: "evt-1",
+                sessionId,
+                type: "tool_result_recorded",
+                timestamp: 10,
+                payload: { rawTokens: 5 },
+              },
+            ];
+          },
         },
       },
     };

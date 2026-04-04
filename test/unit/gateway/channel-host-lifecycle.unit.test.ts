@@ -1,20 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import {
-  ChannelTurnBridge,
-  type ChannelAdapter,
-  type TurnWALStore,
-} from "@brewva/brewva-runtime/channels";
+import { ChannelTurnBridge, type ChannelAdapter } from "@brewva/brewva-runtime/channels";
+import type { RecoveryWalStore } from "@brewva/brewva-runtime/internal";
 import { runChannelHostLifecycle } from "../../../packages/brewva-gateway/src/channels/channel-host-lifecycle.js";
 import { createRuntimeFixture } from "../../helpers/runtime.js";
 
-function createTurnWalStoreStub(callOrder: string[]): TurnWALStore {
+function createRecoveryWalStoreStub(callOrder: string[]): RecoveryWalStore {
   return {
     isEnabled: false,
-    scope: "test:channel-turn-wal",
+    scope: "test:channel-recovery-wal",
     compact() {
-      callOrder.push("turnWal.compact");
+      callOrder.push("recoveryWal.compact");
     },
-  } as unknown as TurnWALStore;
+  } as unknown as RecoveryWalStore;
 }
 
 describe("channel host lifecycle", () => {
@@ -61,8 +58,8 @@ describe("channel host lifecycle", () => {
           callOrder.push("onStop");
         },
       },
-      turnWalStore: createTurnWalStoreStub(callOrder),
-      turnWalCompactIntervalMs: 30_000,
+      recoveryWalStore: createRecoveryWalStoreStub(callOrder),
+      recoveryWalCompactIntervalMs: 30_000,
       dispatcher: {
         enqueueInboundTurn: async () => {
           callOrder.push("dispatcher.enqueueInboundTurn");
@@ -100,7 +97,7 @@ describe("channel host lifecycle", () => {
       },
     });
 
-    expect(callOrder).toContain("turnWal.compact");
+    expect(callOrder).toContain("recoveryWal.compact");
     expect(callOrder).toEqual(
       expect.arrayContaining([
         "bridge.start",

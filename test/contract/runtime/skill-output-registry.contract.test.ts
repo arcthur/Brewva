@@ -25,7 +25,7 @@ function buildImpactMap(summary: string) {
   return {
     summary,
     affected_paths: ["packages/brewva-runtime/src/runtime.ts"],
-    boundaries: ["runtime.skills"],
+    boundaries: ["runtime.authority.skills"],
     high_risk_touchpoints: ["runtime output registry handoff"],
     change_categories: ["public_api"],
     changed_file_classes: ["public_api"],
@@ -37,17 +37,17 @@ describe("skill output registry", () => {
     const runtime = createCleanRuntime();
     const sessionId = "output-reg-1";
 
-    runtime.skills.activate(sessionId, "repository-analysis");
+    runtime.authority.skills.activate(sessionId, "repository-analysis");
     const outputs = {
       repository_snapshot: "monorepo with runtime, tools, cli, gateway",
       impact_map: buildImpactMap("routing, registry, docs"),
       planning_posture: "moderate",
       unknowns: ["No blocking unknowns remain after the repository inventory pass."],
     };
-    runtime.skills.complete(sessionId, outputs);
+    runtime.authority.skills.complete(sessionId, outputs);
 
     const stored = requireDefined(
-      runtime.skills.getOutputs(sessionId, "repository-analysis"),
+      runtime.inspect.skills.getOutputs(sessionId, "repository-analysis"),
       "Expected stored repository-analysis outputs.",
     );
     expect(stored.repository_snapshot).toContain("monorepo");
@@ -57,23 +57,23 @@ describe("skill output registry", () => {
     const runtime = createCleanRuntime();
     const sessionId = "output-reg-2";
 
-    runtime.skills.activate(sessionId, "repository-analysis");
-    runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "repository-analysis");
+    runtime.authority.skills.complete(sessionId, {
       repository_snapshot: "module map here",
       impact_map: buildImpactMap("routing and cascade"),
       planning_posture: "complex",
       unknowns: ["No blocking unknowns remain after validating the main code path."],
     });
 
-    const debuggingAvailable = runtime.skills.getConsumedOutputs(sessionId, "debugging");
+    const debuggingAvailable = runtime.inspect.skills.getConsumedOutputs(sessionId, "debugging");
     expect(debuggingAvailable.repository_snapshot).toBe("module map here");
     expect(debuggingAvailable.impact_map).toMatchObject({
       summary: "routing and cascade",
       changed_file_classes: ["public_api"],
     });
 
-    runtime.skills.activate(sessionId, "debugging");
-    const completion = runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "debugging");
+    const completion = runtime.authority.skills.complete(sessionId, {
       root_cause: "continuity gate was missing",
       fix_strategy: "add continuity-aware filtering",
       failure_evidence: "repro + failing route selection",
@@ -93,22 +93,25 @@ describe("skill output registry", () => {
     });
     expect(completion).toEqual({ ok: true, missing: [], invalid: [] });
 
-    const implementationAvailable = runtime.skills.getConsumedOutputs(sessionId, "implementation");
+    const implementationAvailable = runtime.inspect.skills.getConsumedOutputs(
+      sessionId,
+      "implementation",
+    );
     expect(implementationAvailable.root_cause).toBe("continuity gate was missing");
     expect(implementationAvailable.fix_strategy).toBe("add continuity-aware filtering");
   });
 
   test("getConsumedOutputs returns empty for unknown skill", async () => {
     const runtime = createCleanRuntime();
-    const result = runtime.skills.getConsumedOutputs("any-session", "nonexistent");
+    const result = runtime.inspect.skills.getConsumedOutputs("any-session", "nonexistent");
     expect(result).toEqual({});
   });
 
   test("replays skill outputs from skill_completed events after runtime restart", async () => {
     const sessionId = `skill-output-replay-${Date.now()}`;
     const runtimeA = createCleanRuntime();
-    runtimeA.skills.activate(sessionId, "repository-analysis");
-    runtimeA.skills.complete(sessionId, {
+    runtimeA.authority.skills.activate(sessionId, "repository-analysis");
+    runtimeA.authority.skills.complete(sessionId, {
       repository_snapshot: "replayed module map",
       impact_map: buildImpactMap("registry and router"),
       planning_posture: "moderate",
@@ -116,25 +119,25 @@ describe("skill output registry", () => {
     });
 
     const runtimeB = createCleanRuntime();
-    runtimeB.context.onTurnStart(sessionId, 1);
-    const replayed = runtimeB.skills.getConsumedOutputs(sessionId, "debugging");
+    runtimeB.maintain.context.onTurnStart(sessionId, 1);
+    const replayed = runtimeB.inspect.skills.getConsumedOutputs(sessionId, "debugging");
     expect(replayed.repository_snapshot).toBe("replayed module map");
   });
 
   test("emits skill_completed event with outputs and output keys", async () => {
     const runtime = createCleanRuntime();
     const sessionId = `skill-complete-event-${Date.now()}`;
-    runtime.skills.activate(sessionId, "repository-analysis");
+    runtime.authority.skills.activate(sessionId, "repository-analysis");
     const outputs = {
       repository_snapshot: "repository layout for runtime, tools, and gateway modules",
       impact_map: buildImpactMap("routing flow and registry boundaries touched by the change"),
       planning_posture: "moderate",
       unknowns: ["No blocking repository blind spots remained after the analysis pass."],
     };
-    runtime.skills.complete(sessionId, outputs);
+    runtime.authority.skills.complete(sessionId, outputs);
 
     const event = requireDefined(
-      runtime.events.query(sessionId, { type: "skill_completed", last: 1 })[0],
+      runtime.inspect.events.query(sessionId, { type: "skill_completed", last: 1 })[0],
       "Expected skill_completed event.",
     );
     const payload = (event.payload ?? {}) as {
@@ -155,10 +158,10 @@ describe("skill output registry", () => {
   test("emits skill_activated event when a skill is loaded", async () => {
     const runtime = createCleanRuntime();
     const sessionId = `skill-activated-event-${Date.now()}`;
-    runtime.skills.activate(sessionId, "repository-analysis");
+    runtime.authority.skills.activate(sessionId, "repository-analysis");
 
     const event = requireDefined(
-      runtime.events.query(sessionId, { type: "skill_activated", last: 1 })[0],
+      runtime.inspect.events.query(sessionId, { type: "skill_activated", last: 1 })[0],
       "Expected skill_activated event.",
     );
     const payload = (event.payload ?? {}) as {
@@ -171,8 +174,8 @@ describe("skill output registry", () => {
     const runtime = createCleanRuntime();
     const sessionId = `task-spec-output-${Date.now()}`;
 
-    runtime.skills.activate(sessionId, "repository-analysis");
-    const completion = runtime.skills.complete(sessionId, {
+    runtime.authority.skills.activate(sessionId, "repository-analysis");
+    const completion = runtime.authority.skills.complete(sessionId, {
       repository_snapshot: "runtime, tools, projection",
       impact_map: buildImpactMap("verification, skill lifecycle"),
       planning_posture: "moderate",
@@ -185,7 +188,7 @@ describe("skill output registry", () => {
     });
     expect(completion).toEqual({ ok: true, missing: [], invalid: [] });
 
-    const taskState = runtime.task.getState(sessionId);
+    const taskState = runtime.inspect.task.getState(sessionId);
     expect(taskState.spec?.goal).toBe("Stabilize verification outcome semantics");
     expect(taskState.spec?.constraints).toEqual(["Prefer deterministic events"]);
   });

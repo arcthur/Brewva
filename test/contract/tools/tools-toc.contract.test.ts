@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG, type BrewvaConfig } from "@brewva/brewva-runtime";
 import { createReadSpansTool, createTocTools } from "@brewva/brewva-tools";
 import { requireDefined } from "../../helpers/assertions.js";
+import { createBundledToolRuntime } from "../../helpers/runtime.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
 function createTocWorkspace(prefix: string): string {
@@ -147,7 +148,10 @@ describe("TOC tools", () => {
     const runtime = createRuntime(workspace);
     const filePath = sampleFile(workspace);
     const sessionId = "toc-cache-session";
-    const tool = requireTool(createTocTools({ runtime }), "toc_document");
+    const tool = requireTool(
+      createTocTools({ runtime: createBundledToolRuntime(runtime) }),
+      "toc_document",
+    );
 
     await tool.execute(
       "tc-toc-document-1",
@@ -164,7 +168,7 @@ describe("TOC tools", () => {
       fakeContext(sessionId, workspace),
     );
 
-    const events = runtime.events.query(sessionId, { type: "tool_toc_query" });
+    const events = runtime.inspect.events.query(sessionId, { type: "tool_toc_query" });
     expect(events).toHaveLength(2);
     expect(events[0]?.payload?.cacheHit).toBe(false);
     expect(events[1]?.payload?.cacheHit).toBe(true);
@@ -227,7 +231,10 @@ describe("TOC tools", () => {
     const runtime = createRuntime(workspace);
     const filePath = sampleFile(workspace);
     const sessionId = "toc-cache-clear-session";
-    const tool = requireTool(createTocTools({ runtime }), "toc_document");
+    const tool = requireTool(
+      createTocTools({ runtime: createBundledToolRuntime(runtime) }),
+      "toc_document",
+    );
 
     await tool.execute(
       "tc-toc-cache-clear-1",
@@ -236,7 +243,7 @@ describe("TOC tools", () => {
       undefined,
       fakeContext(sessionId, workspace),
     );
-    runtime.session.clearState(sessionId);
+    runtime.maintain.session.clearState(sessionId);
     await tool.execute(
       "tc-toc-cache-clear-2",
       { file_path: filePath },
@@ -245,7 +252,7 @@ describe("TOC tools", () => {
       fakeContext(sessionId, workspace),
     );
 
-    const events = runtime.events.query(sessionId, { type: "tool_toc_query" });
+    const events = runtime.inspect.events.query(sessionId, { type: "tool_toc_query" });
     expect(events).toHaveLength(2);
     expect(events[0]?.payload?.cacheHit).toBe(false);
     expect(events[1]?.payload?.cacheHit).toBe(false);
@@ -305,7 +312,10 @@ describe("TOC tools", () => {
     );
     const runtime = createRuntime(workspace);
     const sessionId = "toc-search-session";
-    const tool = requireTool(createTocTools({ runtime }), "toc_search");
+    const tool = requireTool(
+      createTocTools({ runtime: createBundledToolRuntime(runtime) }),
+      "toc_search",
+    );
 
     const result = await tool.execute(
       "tc-toc-search",
@@ -328,7 +338,7 @@ describe("TOC tools", () => {
     expect(details?.status).toBe("ok");
     expect(details?.candidateFiles).toBe(1);
 
-    const events = runtime.events.query(sessionId, { type: "tool_toc_query" });
+    const events = runtime.inspect.events.query(sessionId, { type: "tool_toc_query" });
     expect(events).toHaveLength(1);
     expect(events[0]?.payload?.broadQuery).toBe(false);
     expect(events[0]?.payload?.candidateFiles).toBe(1);
@@ -454,7 +464,10 @@ describe("TOC tools", () => {
 
       try {
         const runtime = createRuntime(workspace);
-        const tool = requireTool(createTocTools({ runtime }), "toc_search");
+        const tool = requireTool(
+          createTocTools({ runtime: createBundledToolRuntime(runtime) }),
+          "toc_search",
+        );
 
         const result = await tool.execute(
           "tc-toc-unreadable",
@@ -516,8 +529,9 @@ describe("TOC tools", () => {
     const runtime = createRuntime(workspace);
     const filePath = sampleFile(workspace);
     const sessionId = "read-spans-cache-session";
-    const tocTool = requireTool(createTocTools({ runtime }), "toc_document");
-    const readTool = createReadSpansTool({ runtime });
+    const toolRuntime = createBundledToolRuntime(runtime);
+    const tocTool = requireTool(createTocTools({ runtime: toolRuntime }), "toc_document");
+    const readTool = createReadSpansTool({ runtime: toolRuntime });
 
     await tocTool.execute(
       "tc-toc-before-read-spans",
@@ -547,8 +561,9 @@ describe("TOC tools", () => {
     const runtime = createRuntime(workspace);
     const filePath = sampleFile(workspace);
     const sessionId = "read-spans-cache-clear-session";
-    const tocTool = requireTool(createTocTools({ runtime }), "toc_document");
-    const readTool = createReadSpansTool({ runtime });
+    const toolRuntime = createBundledToolRuntime(runtime);
+    const tocTool = requireTool(createTocTools({ runtime: toolRuntime }), "toc_document");
+    const readTool = createReadSpansTool({ runtime: toolRuntime });
 
     await tocTool.execute(
       "tc-toc-before-read-spans-cache-clear",
@@ -557,7 +572,7 @@ describe("TOC tools", () => {
       undefined,
       fakeContext(sessionId, workspace),
     );
-    runtime.session.clearState(sessionId);
+    runtime.maintain.session.clearState(sessionId);
 
     const result = await readTool.execute(
       "tc-read-spans-cache-clear",

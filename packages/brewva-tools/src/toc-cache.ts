@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { LRUCache } from "lru-cache";
+import { registerToolRuntimeClearStateListener } from "./runtime-internal.js";
 import type { BrewvaToolRuntime } from "./types.js";
 import { getOrCreateLruValue } from "./utils/lru.js";
 
@@ -33,9 +34,8 @@ export function resolveTocSessionKey(sessionId: string | undefined): string {
 }
 
 export function registerTocSourceCacheRuntime(runtime?: BrewvaToolRuntime): void {
-  if (!runtime?.session?.onClearState) return;
-  if (attachedRuntimes.has(runtime as object)) return;
-  runtime.session.onClearState((sessionId) => {
+  if (!runtime || attachedRuntimes.has(runtime as object)) return;
+  registerToolRuntimeClearStateListener(runtime, (sessionId) => {
     sourceCacheStore.delete(resolveTocSessionKey(sessionId));
   });
   attachedRuntimes.add(runtime as object);

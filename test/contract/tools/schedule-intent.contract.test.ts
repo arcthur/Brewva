@@ -29,7 +29,9 @@ describe("schedule_intent contract", () => {
     const createText = extractTextContent(createResult);
     expect(createText).toContain("Schedule intent created.");
 
-    const createdIntents = await runtime.schedule.listIntents({ parentSessionId: sessionId });
+    const createdIntents = await runtime.inspect.schedule.listIntents({
+      parentSessionId: sessionId,
+    });
     expect(createdIntents.length).toBe(1);
     const createdIntentId = createdIntents[0]?.intentId;
     expect(typeof createdIntentId).toBe("string");
@@ -61,7 +63,7 @@ describe("schedule_intent contract", () => {
     const cancelText = extractTextContent(cancelResult);
     expect(cancelText).toContain("Schedule intent cancelled");
 
-    const events = runtime.events.query(sessionId, { type: "schedule_intent" });
+    const events = runtime.inspect.events.query(sessionId, { type: "schedule_intent" });
     const kinds = events
       .map((event) => parseScheduleIntentEvent(event)?.kind)
       .filter((kind): kind is NonNullable<typeof kind> => Boolean(kind));
@@ -93,7 +95,7 @@ describe("schedule_intent contract", () => {
     const createText = extractTextContent(createResult);
     expect(createText).toContain("Schedule intent created.");
 
-    const intents = await runtime.schedule.listIntents({ parentSessionId: sessionId });
+    const intents = await runtime.inspect.schedule.listIntents({ parentSessionId: sessionId });
     expect(intents.length).toBe(1);
     expect(intents[0]?.convergenceCondition).toEqual({
       kind: "task_phase",
@@ -125,7 +127,7 @@ describe("schedule_intent contract", () => {
     expect(createText).toContain("cron: */10 * * * *");
     expect(createText).toContain("timeZone: Asia/Shanghai");
 
-    const intents = await runtime.schedule.listIntents({ parentSessionId: sessionId });
+    const intents = await runtime.inspect.schedule.listIntents({ parentSessionId: sessionId });
     expect(intents.length).toBe(1);
     expect(intents[0]?.cron).toBe("*/10 * * * *");
     expect(intents[0]?.timeZone).toBe("Asia/Shanghai");
@@ -153,7 +155,9 @@ describe("schedule_intent contract", () => {
     const createText = extractTextContent(createResult);
     expect(createText).toContain("Schedule intent created.");
 
-    const createdIntents = await runtime.schedule.listIntents({ parentSessionId: sessionId });
+    const createdIntents = await runtime.inspect.schedule.listIntents({
+      parentSessionId: sessionId,
+    });
     expect(createdIntents.length).toBe(1);
     const intentId = createdIntents[0]?.intentId;
     if (!intentId) return;
@@ -177,14 +181,14 @@ describe("schedule_intent contract", () => {
     expect(updateText).toContain("cron: */15 * * * *");
     expect(updateText).toContain("timeZone: Asia/Shanghai");
 
-    const intents = await runtime.schedule.listIntents({ parentSessionId: sessionId });
+    const intents = await runtime.inspect.schedule.listIntents({ parentSessionId: sessionId });
     expect(intents.length).toBe(1);
     expect(intents[0]?.cron).toBe("*/15 * * * *");
     expect(intents[0]?.timeZone).toBe("Asia/Shanghai");
     expect(intents[0]?.maxRuns).toBe(8);
     expect(intents[0]?.runAt).toBeUndefined();
 
-    const events = runtime.events.query(sessionId, { type: "schedule_intent" });
+    const events = runtime.inspect.events.query(sessionId, { type: "schedule_intent" });
     const kinds = events
       .map((event) => parseScheduleIntentEvent(event)?.kind)
       .filter((kind): kind is NonNullable<typeof kind> => Boolean(kind));
@@ -209,7 +213,9 @@ describe("schedule_intent contract", () => {
     );
     expect(extractTextContent(createResult)).toContain("Schedule intent created.");
 
-    const createdIntents = await runtime.schedule.listIntents({ parentSessionId: sessionId });
+    const createdIntents = await runtime.inspect.schedule.listIntents({
+      parentSessionId: sessionId,
+    });
     const intentId = createdIntents[0]?.intentId;
     if (!intentId) return;
 
@@ -270,7 +276,9 @@ describe("schedule_intent contract", () => {
     );
     expect(extractTextContent(createResult)).toContain("Schedule intent created.");
 
-    const createdIntents = await runtime.schedule.listIntents({ parentSessionId: sessionId });
+    const createdIntents = await runtime.inspect.schedule.listIntents({
+      parentSessionId: sessionId,
+    });
     const intentId = createdIntents[0]?.intentId;
     if (!intentId) return;
 
@@ -290,7 +298,7 @@ describe("schedule_intent contract", () => {
     expect(updateText).toContain("cron: 0 9 * * *");
     expect(updateText).toContain("timeZone: America/New_York");
 
-    const intents = await runtime.schedule.listIntents({ parentSessionId: sessionId });
+    const intents = await runtime.inspect.schedule.listIntents({ parentSessionId: sessionId });
     expect(intents.length).toBe(1);
     expect(intents[0]?.cron).toBe("0 9 * * *");
     expect(intents[0]?.timeZone).toBe("America/New_York");

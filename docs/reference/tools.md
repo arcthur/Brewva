@@ -81,6 +81,37 @@ Optional channel tools:
 - `agent_broadcast`
 - `agent_list`
 
+## Bundle Runtime Contract
+
+`buildBrewvaTools()` builds the repo-owned default managed-tool bundle.
+
+Its runtime input is intentionally narrower than a raw `BrewvaRuntime`:
+
+- stable semantic base: `BrewvaToolRuntimePort` from `@brewva/brewva-runtime`
+- repo-owned bundle overlay: `BrewvaBundledToolRuntime` from
+  `@brewva/brewva-tools`
+
+`BrewvaBundledToolRuntime` is `BrewvaToolRuntimePort` plus explicit injected
+repo-owned hooks such as:
+
+- `runtime.internal.recordEvent(...)`
+- `runtime.internal.resolveCredentialBindings(...)`
+- `runtime.internal.resolveSandboxApiKey(...)`
+- `runtime.internal.appendSupplementalInjection(...)`
+
+These hooks exist for repository-owned bundle behavior such as telemetry,
+credential lookup, supplemental context delivery, and session-maintenance
+integration.
+
+Boundary rule:
+
+- external or product-level tool integrations should depend on the semantic
+  tool port, not on raw runtime internals
+- repository-owned bundled tools that need internal hooks must receive them
+  explicitly
+- tool code must not rediscover a raw `BrewvaRuntime` or reach sideways into
+  `runtime.maintain.*` as an implicit fallback path
+
 ## Tool Families
 
 ### Code Navigation
@@ -389,7 +420,7 @@ Behavior:
 - decision-like or convergence-control facts are not part of this tool's
   stable contract
 - this tool does not prescribe the next step in a loop
-- fact history is durable and replay-visible through `runtime.events.*`
+- fact history is durable and replay-visible through `runtime.inspect.events.*`
 - `session_scope` defaults to `current_session`
 - cross-session lineage aggregation is a scheduler/control-plane concern, not
   part of the runtime iteration-fact tool contract
@@ -401,7 +432,7 @@ Behavior:
 ## `rollback_last_patch`
 
 `rollback_last_patch` is the stable agent-facing tool id for rolling back the
-latest tracked `PatchSet`. It maps to `runtime.tools.rollbackLastPatchSet(...)`
+latest tracked `PatchSet`. It maps to `runtime.authority.tools.rollbackLastPatchSet(...)`
 and the CLI `--undo` flow.
 
 ## `subagent_run` And `subagent_fanout`

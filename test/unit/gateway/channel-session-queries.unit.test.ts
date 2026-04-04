@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { BrewvaRuntime, createTrustedLocalGovernancePort } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { AgentRegistry } from "../../../packages/brewva-gateway/src/channels/agent-registry.js";
 import { AgentRuntimeManager } from "../../../packages/brewva-gateway/src/channels/agent-runtime-manager.js";
 import { createChannelSessionQueries } from "../../../packages/brewva-gateway/src/channels/channel-session-queries.js";
@@ -23,16 +24,16 @@ describe("channel session queries", () => {
       runtime,
       registry,
       runtimeManager,
-      turnWalScope: "channel:test",
+      recoveryWalScope: "channel:test",
       listLiveSessions: () => [],
       openLiveSession: () => undefined,
       loadInspectionRuntime: async () => runtime,
-      getSessionCostSummary: () => runtime.cost.getSummary("agent-session:archived"),
+      getSessionCostSummary: () => runtime.inspect.cost.getSummary("agent-session:archived"),
       hasReplayableEffectCommitmentRequest: () => false,
     });
 
     try {
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId: "agent-session:archived",
         type: "channel_session_bound",
         payload: {
@@ -40,7 +41,7 @@ describe("channel session queries", () => {
           agentId: "worker",
         },
       });
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId: "agent-session:other",
         type: "channel_session_bound",
         payload: {
@@ -76,16 +77,16 @@ describe("channel session queries", () => {
       runtime,
       registry,
       runtimeManager,
-      turnWalScope: "channel:test",
+      recoveryWalScope: "channel:test",
       listLiveSessions: () => [],
       openLiveSession: () => undefined,
       loadInspectionRuntime: async () => runtime,
-      getSessionCostSummary: () => runtime.cost.getSummary("agent-session:archived"),
+      getSessionCostSummary: () => runtime.inspect.cost.getSummary("agent-session:archived"),
       hasReplayableEffectCommitmentRequest: () => false,
     });
 
     try {
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId: "agent-session:archived",
         type: "channel_session_bound",
         payload: {
@@ -120,7 +121,7 @@ describe("channel session queries", () => {
       runtime,
       registry,
       runtimeManager,
-      turnWalScope: "channel:test",
+      recoveryWalScope: "channel:test",
       listLiveSessions: () => [
         {
           scopeKey: "scope-a",
@@ -130,7 +131,7 @@ describe("channel session queries", () => {
       ],
       openLiveSession: () => undefined,
       loadInspectionRuntime: async () => runtime,
-      getSessionCostSummary: () => runtime.cost.getSummary("agent-session:worker"),
+      getSessionCostSummary: () => runtime.inspect.cost.getSummary("agent-session:worker"),
       hasReplayableEffectCommitmentRequest: (sessionId, requestId) =>
         sessionId === "agent-session:worker" && requestId === "req-accepted-1",
     });

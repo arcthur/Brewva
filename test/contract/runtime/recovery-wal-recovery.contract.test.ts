@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
-import { TurnWALRecovery, TurnWALStore, type TurnEnvelope } from "@brewva/brewva-runtime/channels";
+import type { TurnEnvelope } from "@brewva/brewva-runtime/channels";
+import { RecoveryWalRecovery, RecoveryWalStore } from "@brewva/brewva-runtime/internal";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
 function envelopeFor(input: { turnId: string; sessionId: string; channel: string }): TurnEnvelope {
@@ -16,12 +17,12 @@ function envelopeFor(input: { turnId: string; sessionId: string; channel: string
   };
 }
 
-describe("turn wal recovery", () => {
+describe("Recovery WAL recovery", () => {
   test("retries gateway/channel handlers and allows handler-owned completion transitions", async () => {
-    const workspace = createTestWorkspace("turn-wal-recovery-retry");
-    const store = new TurnWALStore({
+    const workspace = createTestWorkspace("recovery-wal-recovery-retry");
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "gateway",
     });
     const row = store.appendPending(
@@ -34,9 +35,9 @@ describe("turn wal recovery", () => {
     );
 
     const retried: string[] = [];
-    const recovery = new TurnWALRecovery({
+    const recovery = new RecoveryWalRecovery({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       handlers: {
         gateway: ({ record, store: targetStore }) => {
           retried.push(record.walId);
@@ -56,14 +57,14 @@ describe("turn wal recovery", () => {
   });
 
   test("expires stale rows and fails exhausted retries", async () => {
-    const workspace = createTestWorkspace("turn-wal-recovery-classify");
+    const workspace = createTestWorkspace("recovery-wal-recovery-classify");
     let nowMs = 1_000;
     const config = {
-      ...DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      ...DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       defaultTtlMs: 50,
       maxRetries: 1,
     };
-    const store = new TurnWALStore({
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
       config,
       scope: "channel-telegram",
@@ -91,7 +92,7 @@ describe("turn wal recovery", () => {
     store.markInflight(exhausted.walId);
 
     nowMs += 200;
-    const recovery = new TurnWALRecovery({
+    const recovery = new RecoveryWalRecovery({
       workspaceRoot: workspace,
       config,
       now: () => nowMs,
@@ -111,10 +112,10 @@ describe("turn wal recovery", () => {
   });
 
   test("repeated recover is idempotent once a handler-owned retry has already completed", async () => {
-    const workspace = createTestWorkspace("turn-wal-recovery-idempotent");
-    const store = new TurnWALStore({
+    const workspace = createTestWorkspace("recovery-wal-recovery-idempotent");
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "gateway",
     });
     const row = store.appendPending(
@@ -127,9 +128,9 @@ describe("turn wal recovery", () => {
     );
 
     const retried: string[] = [];
-    const recovery = new TurnWALRecovery({
+    const recovery = new RecoveryWalRecovery({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       handlers: {
         gateway: ({ record, store: targetStore }) => {
           retried.push(record.walId);
@@ -152,10 +153,10 @@ describe("turn wal recovery", () => {
   });
 
   test("handler exceptions mark rows failed once and later recover calls do not retry them again", async () => {
-    const workspace = createTestWorkspace("turn-wal-recovery-handler-error");
-    const store = new TurnWALStore({
+    const workspace = createTestWorkspace("recovery-wal-recovery-handler-error");
+    const store = new RecoveryWalStore({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       scope: "gateway",
     });
     const row = store.appendPending(
@@ -168,9 +169,9 @@ describe("turn wal recovery", () => {
     );
 
     let attempts = 0;
-    const recovery = new TurnWALRecovery({
+    const recovery = new RecoveryWalRecovery({
       workspaceRoot: workspace,
-      config: DEFAULT_BREWVA_CONFIG.infrastructure.turnWal,
+      config: DEFAULT_BREWVA_CONFIG.infrastructure.recoveryWal,
       handlers: {
         gateway: () => {
           attempts += 1;

@@ -61,175 +61,187 @@ function createWorkerTestEnv(overrides: {
 }
 
 describe("session supervisor watchdog bridge", () => {
-  test("worker process persists watchdog detection and blocker state after init", async () => {
-    const workspace = createTestWorkspace("supervisor-watchdog-worker-bridge");
-    writeTestConfig(workspace, createOpsRuntimeConfig(), TEST_CONFIG_PATH);
-    const supervisor = new SessionSupervisor({
-      stateDir: join(workspace, "state"),
-      defaultCwd: workspace,
-      defaultConfigPath: TEST_CONFIG_PATH,
-      defaultManagedToolMode: "direct",
-      workerEnv: createWorkerTestEnv({
-        taskGoal: "Detect stalled runtime work from the worker process",
-        pollIntervalMs: 1_000,
-        thresholdMs: 1_000,
-      }),
-      logger: {
-        debug: () => {},
-        info: () => {},
-        warn: () => {},
-        error: () => {},
-        log: () => {},
-      },
-    });
-
-    try {
-      const opened = await supervisor.openSession({
-        sessionId: "watchdog-worker-bridge",
-      });
-      const agentSessionId = opened.agentSessionId;
-      expect(agentSessionId).toEqual(expect.any(String));
-      if (!agentSessionId) {
-        throw new Error("expected worker bridge agent session id");
-      }
-      expect(agentSessionId.length).toBeGreaterThan(0);
-      const resolvedAgentSessionId = agentSessionId;
-
-      const detected = await waitForCondition(
-        () => {
-          if (!agentSessionId) return null;
-          const observer = new BrewvaRuntime({ cwd: workspace, configPath: TEST_CONFIG_PATH });
-          return observer.events.query(resolvedAgentSessionId, {
-            type: "task_stuck_detected",
-            last: 1,
-          })[0];
-        },
-        {
-          timeoutMs: 8_000,
-          intervalMs: 100,
-          message: "expected worker watchdog detection event",
-        },
-      );
-
-      expect(detected.payload).toMatchObject({
-        schema: "brewva.task-watchdog.v1",
-        thresholdMs: 1_000,
-        idleMs: expect.any(Number),
-      });
-
-      const observer = new BrewvaRuntime({ cwd: workspace, configPath: TEST_CONFIG_PATH });
-      const taskState = observer.task.getState(resolvedAgentSessionId);
-      expect(taskState.blockers).toEqual([]);
-    } finally {
-      await supervisor.stop();
-      rmSync(workspace, { recursive: true, force: true });
-    }
-  });
-
-  test("stopSession shuts down worker before watchdog can emit stuck state", async () => {
-    const workspace = createTestWorkspace("supervisor-watchdog-worker-stop");
-    writeTestConfig(workspace, createOpsRuntimeConfig(), TEST_CONFIG_PATH);
-    const supervisor = new SessionSupervisor({
-      stateDir: join(workspace, "state"),
-      defaultCwd: workspace,
-      defaultConfigPath: TEST_CONFIG_PATH,
-      defaultManagedToolMode: "direct",
-      workerEnv: createWorkerTestEnv({
-        taskGoal: "Ensure shutdown stops watchdog polling before detection",
-        pollIntervalMs: 2_000,
-        thresholdMs: 2_000,
-      }),
-      logger: {
-        debug: () => {},
-        info: () => {},
-        warn: () => {},
-        error: () => {},
-        log: () => {},
-      },
-    });
-
-    try {
-      const opened = await supervisor.openSession({
-        sessionId: "watchdog-worker-stop",
-      });
-      const agentSessionId = opened.agentSessionId;
-      expect(agentSessionId).toEqual(expect.any(String));
-      if (!agentSessionId) {
-        throw new Error("expected worker stop agent session id");
-      }
-      expect(agentSessionId.length).toBeGreaterThan(0);
-      const resolvedAgentSessionId = agentSessionId;
-
-      const stopped = await supervisor.stopSession("watchdog-worker-stop", "test_shutdown");
-      expect(stopped).toBe(true);
-
-      await sleepMs(3_000);
-
-      const observer = new BrewvaRuntime({ cwd: workspace, configPath: TEST_CONFIG_PATH });
-      expect(
-        observer.events.query(resolvedAgentSessionId, {
-          type: "task_stuck_detected",
+  test(
+    "worker process persists watchdog detection and blocker state after init",
+    async () => {
+      const workspace = createTestWorkspace("supervisor-watchdog-worker-bridge");
+      writeTestConfig(workspace, createOpsRuntimeConfig(), TEST_CONFIG_PATH);
+      const supervisor = new SessionSupervisor({
+        stateDir: join(workspace, "state"),
+        defaultCwd: workspace,
+        defaultConfigPath: TEST_CONFIG_PATH,
+        defaultManagedToolMode: "direct",
+        workerEnv: createWorkerTestEnv({
+          taskGoal: "Detect stalled runtime work from the worker process",
+          pollIntervalMs: 1_000,
+          thresholdMs: 1_000,
         }),
-      ).toHaveLength(0);
-
-      const taskState = observer.task.getState(resolvedAgentSessionId);
-      expect(taskState.blockers).toEqual([]);
-    } finally {
-      await supervisor.stop();
-      rmSync(workspace, { recursive: true, force: true });
-    }
-  });
-
-  test("ambient watchdog env is ignored without explicit worker test overrides", async () => {
-    const workspace = createTestWorkspace("supervisor-watchdog-worker-ambient-env");
-    writeTestConfig(workspace, createOpsRuntimeConfig(), TEST_CONFIG_PATH);
-    const envOverrides = buildWorkerTestHarnessEnv({
-      enabled: false,
-      watchdog: {
-        taskGoal: "This ambient env should not bootstrap worker task state",
-        pollIntervalMs: 1_000,
-        thresholdMs: 1_000,
-      },
-    });
-    const restoreEnv = patchProcessEnv(
-      Object.fromEntries(
-        WORKER_TEST_HARNESS_ENV_KEYS.map((key) => [key, envOverrides[key]]),
-      ) as Record<string, string | undefined>,
-    );
-
-    const supervisor = new SessionSupervisor({
-      stateDir: join(workspace, "state"),
-      defaultCwd: workspace,
-      defaultConfigPath: TEST_CONFIG_PATH,
-      defaultManagedToolMode: "direct",
-      logger: {
-        debug: () => {},
-        info: () => {},
-        warn: () => {},
-        error: () => {},
-        log: () => {},
-      },
-    });
-
-    try {
-      const opened = await supervisor.openSession({
-        sessionId: "watchdog-worker-ambient-env",
+        logger: {
+          debug: () => {},
+          info: () => {},
+          warn: () => {},
+          error: () => {},
+          log: () => {},
+        },
       });
-      const agentSessionId = opened.agentSessionId;
-      expect(typeof agentSessionId).toBe("string");
-      expect(agentSessionId?.length).toBeGreaterThan(0);
 
-      await sleepMs(1_500);
+      try {
+        const opened = await supervisor.openSession({
+          sessionId: "watchdog-worker-bridge",
+        });
+        const agentSessionId = opened.agentSessionId;
+        expect(agentSessionId).toEqual(expect.any(String));
+        if (!agentSessionId) {
+          throw new Error("expected worker bridge agent session id");
+        }
+        expect(agentSessionId.length).toBeGreaterThan(0);
+        const resolvedAgentSessionId = agentSessionId;
 
-      const observer = new BrewvaRuntime({ cwd: workspace, configPath: TEST_CONFIG_PATH });
-      expect(observer.events.query(agentSessionId!, { type: "task_stuck_detected" })).toHaveLength(
-        0,
+        const detected = await waitForCondition(
+          () => {
+            if (!agentSessionId) return null;
+            const observer = new BrewvaRuntime({ cwd: workspace, configPath: TEST_CONFIG_PATH });
+            return observer.inspect.events.query(resolvedAgentSessionId, {
+              type: "task_stuck_detected",
+              last: 1,
+            })[0];
+          },
+          {
+            timeoutMs: 8_000,
+            intervalMs: 100,
+            message: "expected worker watchdog detection event",
+          },
+        );
+
+        expect(detected.payload).toMatchObject({
+          schema: "brewva.task-watchdog.v1",
+          thresholdMs: 1_000,
+          idleMs: expect.any(Number),
+        });
+
+        const observer = new BrewvaRuntime({ cwd: workspace, configPath: TEST_CONFIG_PATH });
+        const taskState = observer.inspect.task.getState(resolvedAgentSessionId);
+        expect(taskState.blockers).toEqual([]);
+      } finally {
+        await supervisor.stop();
+        rmSync(workspace, { recursive: true, force: true });
+      }
+    },
+    { timeout: 10_000 },
+  );
+
+  test(
+    "stopSession shuts down worker before watchdog can emit stuck state",
+    async () => {
+      const workspace = createTestWorkspace("supervisor-watchdog-worker-stop");
+      writeTestConfig(workspace, createOpsRuntimeConfig(), TEST_CONFIG_PATH);
+      const supervisor = new SessionSupervisor({
+        stateDir: join(workspace, "state"),
+        defaultCwd: workspace,
+        defaultConfigPath: TEST_CONFIG_PATH,
+        defaultManagedToolMode: "direct",
+        workerEnv: createWorkerTestEnv({
+          taskGoal: "Ensure shutdown stops watchdog polling before detection",
+          pollIntervalMs: 2_000,
+          thresholdMs: 2_000,
+        }),
+        logger: {
+          debug: () => {},
+          info: () => {},
+          warn: () => {},
+          error: () => {},
+          log: () => {},
+        },
+      });
+
+      try {
+        const opened = await supervisor.openSession({
+          sessionId: "watchdog-worker-stop",
+        });
+        const agentSessionId = opened.agentSessionId;
+        expect(agentSessionId).toEqual(expect.any(String));
+        if (!agentSessionId) {
+          throw new Error("expected worker stop agent session id");
+        }
+        expect(agentSessionId.length).toBeGreaterThan(0);
+        const resolvedAgentSessionId = agentSessionId;
+
+        const stopped = await supervisor.stopSession("watchdog-worker-stop", "test_shutdown");
+        expect(stopped).toBe(true);
+
+        await sleepMs(3_000);
+
+        const observer = new BrewvaRuntime({ cwd: workspace, configPath: TEST_CONFIG_PATH });
+        expect(
+          observer.inspect.events.query(resolvedAgentSessionId, {
+            type: "task_stuck_detected",
+          }),
+        ).toHaveLength(0);
+
+        const taskState = observer.inspect.task.getState(resolvedAgentSessionId);
+        expect(taskState.blockers).toEqual([]);
+      } finally {
+        await supervisor.stop();
+        rmSync(workspace, { recursive: true, force: true });
+      }
+    },
+    { timeout: 10_000 },
+  );
+
+  test(
+    "ambient watchdog env is ignored without explicit worker test overrides",
+    async () => {
+      const workspace = createTestWorkspace("supervisor-watchdog-worker-ambient-env");
+      writeTestConfig(workspace, createOpsRuntimeConfig(), TEST_CONFIG_PATH);
+      const envOverrides = buildWorkerTestHarnessEnv({
+        enabled: false,
+        watchdog: {
+          taskGoal: "This ambient env should not bootstrap worker task state",
+          pollIntervalMs: 1_000,
+          thresholdMs: 1_000,
+        },
+      });
+      const restoreEnv = patchProcessEnv(
+        Object.fromEntries(
+          WORKER_TEST_HARNESS_ENV_KEYS.map((key) => [key, envOverrides[key]]),
+        ) as Record<string, string | undefined>,
       );
-      expect(observer.task.getState(agentSessionId!).spec).toBeUndefined();
-    } finally {
-      await supervisor.stop();
-      restoreEnv();
-      rmSync(workspace, { recursive: true, force: true });
-    }
-  });
+
+      const supervisor = new SessionSupervisor({
+        stateDir: join(workspace, "state"),
+        defaultCwd: workspace,
+        defaultConfigPath: TEST_CONFIG_PATH,
+        defaultManagedToolMode: "direct",
+        logger: {
+          debug: () => {},
+          info: () => {},
+          warn: () => {},
+          error: () => {},
+          log: () => {},
+        },
+      });
+
+      try {
+        const opened = await supervisor.openSession({
+          sessionId: "watchdog-worker-ambient-env",
+        });
+        const agentSessionId = opened.agentSessionId;
+        expect(typeof agentSessionId).toBe("string");
+        expect(agentSessionId?.length).toBeGreaterThan(0);
+
+        await sleepMs(1_500);
+
+        const observer = new BrewvaRuntime({ cwd: workspace, configPath: TEST_CONFIG_PATH });
+        expect(
+          observer.inspect.events.query(agentSessionId!, { type: "task_stuck_detected" }),
+        ).toHaveLength(0);
+        expect(observer.inspect.task.getState(agentSessionId!).spec).toBeUndefined();
+      } finally {
+        await supervisor.stop();
+        restoreEnv();
+        rmSync(workspace, { recursive: true, force: true });
+      }
+    },
+    { timeout: 10_000 },
+  );
 });

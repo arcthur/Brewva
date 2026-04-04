@@ -9,6 +9,7 @@ import {
   buildTapeCheckpointPayload,
   resolveSkillDefaultLease,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 
 describe("tape checkpoint automation", () => {
   test("uses session-local checkpoint counters instead of per-event tape rescans", async () => {
@@ -31,7 +32,7 @@ describe("tape checkpoint automation", () => {
     };
 
     for (let index = 0; index < 24; index += 1) {
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId,
         type: "tool_call",
         payload: {
@@ -54,20 +55,20 @@ describe("tape checkpoint automation", () => {
     config.tape.checkpointIntervalEntries = 3;
 
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "checkpoint consistency",
     });
-    runtime.truth.upsertFact(sessionId, {
+    runtime.authority.truth.upsertFact(sessionId, {
       id: "truth-1",
       kind: "test",
       severity: "warn",
       summary: "first fact",
     });
-    runtime.task.addItem(sessionId, { text: "item-1", status: "todo" });
-    runtime.task.addItem(sessionId, { text: "item-2", status: "doing" });
+    runtime.authority.task.addItem(sessionId, { text: "item-1", status: "todo" });
+    runtime.authority.task.addItem(sessionId, { text: "item-2", status: "doing" });
 
-    const checkpoints = runtime.events.query(sessionId, {
+    const checkpoints = runtime.inspect.events.query(sessionId, {
       type: TAPE_CHECKPOINT_EVENT_TYPE,
     });
     expect(checkpoints.length).toBeGreaterThanOrEqual(1);
@@ -85,17 +86,17 @@ describe("tape checkpoint automation", () => {
     expect(checkpointTaskTexts).toContain("item-1");
     expect(checkpointTruthIds).toContain("truth-1");
 
-    runtime.truth.upsertFact(sessionId, {
+    runtime.authority.truth.upsertFact(sessionId, {
       id: "truth-2",
       kind: "test",
       severity: "error",
       summary: "second fact",
     });
-    runtime.task.addItem(sessionId, { text: "item-3", status: "todo" });
+    runtime.authority.task.addItem(sessionId, { text: "item-3", status: "todo" });
 
     const reloaded = new BrewvaRuntime({ cwd: workspace, config });
-    const taskState = reloaded.task.getState(sessionId);
-    const truthState = reloaded.truth.getState(sessionId);
+    const taskState = reloaded.inspect.task.getState(sessionId);
+    const truthState = reloaded.inspect.truth.getState(sessionId);
     expect(taskState.items.map((item) => item.text)).toEqual(["item-1", "item-2", "item-3"]);
     expect(truthState.facts.map((fact) => fact.id)).toEqual(
       expect.arrayContaining(["truth-1", "truth-2"]),
@@ -142,8 +143,8 @@ requires: []
     const sessionId = "budget-rehydrate-1";
 
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
-    runtime.context.onTurnStart(sessionId, 1);
-    const activated = runtime.skills.activate(sessionId, "budgetcraft");
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    const activated = runtime.authority.skills.activate(sessionId, "budgetcraft");
     expect(activated.ok).toBe(true);
     if (!activated.ok) {
       throw new Error(activated.reason);
@@ -151,14 +152,14 @@ requires: []
     const maxToolCalls = resolveSkillDefaultLease(activated.skill.contract)?.maxToolCalls ?? 0;
     const consumed = Math.max(1, maxToolCalls);
     for (let index = 0; index < consumed; index += 1) {
-      runtime.tools.markCall(sessionId, "look_at");
+      runtime.authority.tools.markCall(sessionId, "look_at");
     }
-    const blockedBeforeRestart = runtime.tools.checkAccess(sessionId, "look_at");
+    const blockedBeforeRestart = runtime.inspect.tools.checkAccess(sessionId, "look_at");
     expect(blockedBeforeRestart.allowed).toBe(false);
 
     const reloaded = new BrewvaRuntime({ cwd: workspace, config });
-    reloaded.context.onTurnStart(sessionId, 1);
-    const blockedAfterRestart = reloaded.tools.checkAccess(sessionId, "look_at");
+    reloaded.maintain.context.onTurnStart(sessionId, 1);
+    const blockedAfterRestart = reloaded.inspect.tools.checkAccess(sessionId, "look_at");
     expect(blockedAfterRestart.allowed).toBe(false);
     expect(blockedAfterRestart.reason).toContain("maxToolCalls");
   });
@@ -171,8 +172,8 @@ requires: []
     const sessionId = "cost-rehydrate-1";
 
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.cost.recordAssistantUsage({
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.cost.recordAssistantUsage({
       sessionId,
       model: "test/model",
       inputTokens: 120,
@@ -183,12 +184,12 @@ requires: []
       costUsd: 0.002,
     });
 
-    const blockedBeforeRestart = runtime.tools.checkAccess(sessionId, "look_at");
+    const blockedBeforeRestart = runtime.inspect.tools.checkAccess(sessionId, "look_at");
     expect(blockedBeforeRestart.allowed).toBe(false);
 
     const reloaded = new BrewvaRuntime({ cwd: workspace, config });
-    reloaded.context.onTurnStart(sessionId, 1);
-    const blockedAfterRestart = reloaded.tools.checkAccess(sessionId, "look_at");
+    reloaded.maintain.context.onTurnStart(sessionId, 1);
+    const blockedAfterRestart = reloaded.inspect.tools.checkAccess(sessionId, "look_at");
     expect(blockedAfterRestart.allowed).toBe(false);
     expect(blockedAfterRestart.reason).toContain("Session cost exceeded");
   });
@@ -208,15 +209,15 @@ requires: []
     writeFileSync(sourceFile, "export const app = true;\n", "utf8");
 
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Rehydrate verification evidence from tape.",
       targets: {
         files: [sourceFile],
       },
     });
-    runtime.tools.markCall(sessionId, "edit");
-    const beforeRestart = await runtime.verification.verify(sessionId, "quick", {
+    runtime.authority.tools.markCall(sessionId, "edit");
+    const beforeRestart = await runtime.authority.verification.verify(sessionId, "quick", {
       executeCommands: true,
       timeoutMs: 5_000,
     });
@@ -224,7 +225,7 @@ requires: []
     expect(beforeRestart.skipped).toBe(false);
 
     const reloaded = new BrewvaRuntime({ cwd: workspace, config });
-    const afterRestart = await reloaded.verification.verify(sessionId, "quick", {
+    const afterRestart = await reloaded.authority.verification.verify(sessionId, "quick", {
       executeCommands: false,
     });
     expect(afterRestart.passed).toBe(true);
@@ -242,8 +243,8 @@ requires: []
     const sessionId = "verification-command-rehydrate-1";
 
     const runtime = new BrewvaRuntime({ cwd: workspace, config: baseConfig });
-    runtime.tools.markCall(sessionId, "edit");
-    const beforeRestart = await runtime.verification.verify(sessionId, "standard", {
+    runtime.authority.tools.markCall(sessionId, "edit");
+    const beforeRestart = await runtime.authority.verification.verify(sessionId, "standard", {
       executeCommands: true,
       timeoutMs: 5_000,
     });
@@ -252,7 +253,7 @@ requires: []
     const changedConfig = structuredClone(baseConfig);
     changedConfig.verification.commands.tests = "false";
     const reloaded = new BrewvaRuntime({ cwd: workspace, config: changedConfig });
-    const afterRestart = await reloaded.verification.verify(sessionId, "standard", {
+    const afterRestart = await reloaded.authority.verification.verify(sessionId, "standard", {
       executeCommands: true,
       timeoutMs: 5_000,
     });
@@ -265,12 +266,12 @@ requires: []
     const sessionId = "workflow-rehydrate-1";
 
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.task.setSpec(sessionId, {
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Promote workflow artifacts and posture",
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 100,
@@ -325,7 +326,7 @@ requires: []
         },
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_write_marked",
       timestamp: 110,
@@ -333,7 +334,7 @@ requires: []
         toolName: "edit",
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 120,
@@ -347,7 +348,7 @@ requires: []
         },
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_outcome_recorded",
       timestamp: 130,
@@ -359,7 +360,7 @@ requires: []
       },
     });
 
-    const beforeRestart = await runtime.context.buildInjection(
+    const beforeRestart = await runtime.maintain.context.buildInjection(
       sessionId,
       "continue",
       { tokens: 320, contextWindow: 16_000, percent: 0.02 },
@@ -368,8 +369,8 @@ requires: []
     expect(beforeRestart.text).toContain("[WorkingProjection]");
 
     const reloaded = new BrewvaRuntime({ cwd: workspace, config });
-    reloaded.context.onTurnStart(sessionId, 1);
-    const afterRestart = await reloaded.context.buildInjection(
+    reloaded.maintain.context.onTurnStart(sessionId, 1);
+    const afterRestart = await reloaded.maintain.context.buildInjection(
       sessionId,
       "continue",
       { tokens: 320, contextWindow: 16_000, percent: 0.02 },
@@ -389,8 +390,8 @@ requires: []
     const sessionId = "workflow-pending-worker-rehydrate-1";
 
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.events.record({
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "skill_completed",
       timestamp: 100,
@@ -404,7 +405,7 @@ requires: []
         },
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_outcome_recorded",
       timestamp: 110,
@@ -415,7 +416,7 @@ requires: []
         evidenceFreshness: "fresh",
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "subagent_completed",
       timestamp: 120,
@@ -428,8 +429,8 @@ requires: []
     });
 
     const reloaded = new BrewvaRuntime({ cwd: workspace, config });
-    reloaded.context.onTurnStart(sessionId, 1);
-    const injected = await reloaded.context.buildInjection(
+    reloaded.maintain.context.onTurnStart(sessionId, 1);
+    const injected = await reloaded.maintain.context.buildInjection(
       sessionId,
       "continue",
       { tokens: 320, contextWindow: 16_000, percent: 0.02 },
@@ -451,7 +452,7 @@ requires: []
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
 
     const recordSyntheticEvent = (index: number): void => {
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId,
         type: "tool_call",
         payload: {
@@ -463,7 +464,9 @@ requires: []
 
     recordSyntheticEvent(1);
     recordSyntheticEvent(2);
-    expect(runtime.events.query(sessionId, { type: TAPE_CHECKPOINT_EVENT_TYPE })).toHaveLength(0);
+    expect(
+      runtime.inspect.events.query(sessionId, { type: TAPE_CHECKPOINT_EVENT_TYPE }),
+    ).toHaveLength(0);
 
     const replay = (
       runtime as unknown as {
@@ -475,9 +478,9 @@ requires: []
     ).turnReplay;
 
     const payload = buildTapeCheckpointPayload({
-      taskState: runtime.task.getState(sessionId),
-      truthState: runtime.truth.getState(sessionId),
-      costSummary: runtime.cost.getSummary(sessionId),
+      taskState: runtime.inspect.task.getState(sessionId),
+      truthState: runtime.inspect.truth.getState(sessionId),
+      costSummary: runtime.inspect.cost.getSummary(sessionId),
       evidenceState: replay.getCheckpointEvidenceState(sessionId) as Parameters<
         typeof buildTapeCheckpointPayload
       >[0]["evidenceState"],
@@ -486,19 +489,25 @@ requires: []
       >[0]["projectionState"],
       reason: "manual_test",
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: TAPE_CHECKPOINT_EVENT_TYPE,
       payload: payload as unknown as Record<string, unknown>,
     });
-    expect(runtime.events.query(sessionId, { type: TAPE_CHECKPOINT_EVENT_TYPE })).toHaveLength(1);
+    expect(
+      runtime.inspect.events.query(sessionId, { type: TAPE_CHECKPOINT_EVENT_TYPE }),
+    ).toHaveLength(1);
 
     recordSyntheticEvent(3);
     recordSyntheticEvent(4);
-    expect(runtime.events.query(sessionId, { type: TAPE_CHECKPOINT_EVENT_TYPE })).toHaveLength(1);
+    expect(
+      runtime.inspect.events.query(sessionId, { type: TAPE_CHECKPOINT_EVENT_TYPE }),
+    ).toHaveLength(1);
 
     recordSyntheticEvent(5);
-    expect(runtime.events.query(sessionId, { type: TAPE_CHECKPOINT_EVENT_TYPE })).toHaveLength(2);
+    expect(
+      runtime.inspect.events.query(sessionId, { type: TAPE_CHECKPOINT_EVENT_TYPE }),
+    ).toHaveLength(2);
   });
 
   test("preserves same-turn tool cost allocation across checkpoint-based restart", async () => {
@@ -508,9 +517,9 @@ requires: []
     const sessionId = "cost-allocation-rehydrate-1";
 
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.tools.markCall(sessionId, "look_at");
-    runtime.cost.recordAssistantUsage({
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.tools.markCall(sessionId, "look_at");
+    runtime.authority.cost.recordAssistantUsage({
       sessionId,
       model: "test/model",
       inputTokens: 80,
@@ -521,17 +530,17 @@ requires: []
       costUsd: 0.001,
     });
 
-    const checkpoints = runtime.events.query(sessionId, {
+    const checkpoints = runtime.inspect.events.query(sessionId, {
       type: TAPE_CHECKPOINT_EVENT_TYPE,
     });
     expect(checkpoints.length).toBeGreaterThanOrEqual(1);
-    const beforeRestart = runtime.cost.getSummary(sessionId);
+    const beforeRestart = runtime.inspect.cost.getSummary(sessionId);
     expect(beforeRestart.tools.look_at?.allocatedTokens).toBe(100);
     expect(beforeRestart.skills["(none)"]?.turns).toBe(1);
 
     const reloaded = new BrewvaRuntime({ cwd: workspace, config });
-    reloaded.context.onTurnStart(sessionId, 1);
-    reloaded.cost.recordAssistantUsage({
+    reloaded.maintain.context.onTurnStart(sessionId, 1);
+    reloaded.authority.cost.recordAssistantUsage({
       sessionId,
       model: "test/model",
       inputTokens: 40,
@@ -541,7 +550,7 @@ requires: []
       totalTokens: 50,
       costUsd: 0.0005,
     });
-    const afterRestart = reloaded.cost.getSummary(sessionId);
+    const afterRestart = reloaded.inspect.cost.getSummary(sessionId);
 
     expect(afterRestart.tools.look_at?.callCount).toBe(1);
     expect(afterRestart.tools.look_at?.allocatedTokens).toBe(150);
@@ -558,40 +567,40 @@ requires: []
     const sessionId = "ledger-cooldown-rehydrate-1";
 
     const runtime = new BrewvaRuntime({ cwd: workspace, config });
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.tools.recordResult({
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "echo first-a" },
       outputText: "ok",
       channelSuccess: true,
     });
-    runtime.tools.recordResult({
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "echo first-b" },
       outputText: "ok",
       channelSuccess: true,
     });
-    runtime.tools.recordResult({
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "echo first-c" },
       outputText: "ok",
       channelSuccess: true,
     });
-    expect(runtime.events.query(sessionId, { type: "ledger_compacted" })).toHaveLength(1);
+    expect(runtime.inspect.events.query(sessionId, { type: "ledger_compacted" })).toHaveLength(1);
 
     const reloaded = new BrewvaRuntime({ cwd: workspace, config });
-    reloaded.context.onTurnStart(sessionId, 1);
-    reloaded.tools.recordResult({
+    reloaded.maintain.context.onTurnStart(sessionId, 1);
+    reloaded.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "echo second" },
       outputText: "ok",
       channelSuccess: true,
     });
-    expect(reloaded.events.query(sessionId, { type: "ledger_compacted" })).toHaveLength(1);
+    expect(reloaded.inspect.events.query(sessionId, { type: "ledger_compacted" })).toHaveLength(1);
   });
 
   test("rebuilds working projection from tape after projection files are removed", async () => {
@@ -599,17 +608,17 @@ requires: []
     const sessionId = "projection-rebuild-1";
 
     const runtime = new BrewvaRuntime({ cwd: workspace });
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.task.setSpec(sessionId, {
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Recover working projection from tape",
       constraints: ["rebuild projection when files are missing"],
     });
-    runtime.task.recordBlocker(sessionId, {
+    runtime.authority.task.recordBlocker(sessionId, {
       message: "projection rebuild validation",
       source: "test",
     });
-    const before = await runtime.context.buildInjection(sessionId, "continue");
+    const before = await runtime.maintain.context.buildInjection(sessionId, "continue");
     expect(before.text).toContain("[WorkingProjection]");
 
     const projectionDir = join(workspace, ".orchestrator/projection");
@@ -618,8 +627,8 @@ requires: []
     rmSync(join(projectionDir, "sessions"), { recursive: true, force: true });
 
     const reloaded = new BrewvaRuntime({ cwd: workspace });
-    reloaded.context.onTurnStart(sessionId, 2);
-    const after = await reloaded.context.buildInjection(sessionId, "continue");
+    reloaded.maintain.context.onTurnStart(sessionId, 2);
+    const after = await reloaded.maintain.context.buildInjection(sessionId, "continue");
     expect(after.text).toContain("[WorkingProjection]");
     expect(after.text).toContain("Recover working projection from tape");
 

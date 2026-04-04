@@ -8,24 +8,24 @@ describe("Task status alignment", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "task-status-1";
 
-    const injection1 = await runtime.context.buildInjection(sessionId, "hello");
+    const injection1 = await runtime.maintain.context.buildInjection(sessionId, "hello");
     expect(injection1.text).toContain("[TaskLedger]");
     expect(injection1.text).toContain("status.phase=investigate");
     expect(injection1.text).toContain("status.health=exploring");
     expect(injection1.text).toContain("status.reason=exploring_without_spec");
 
-    runtime.task.setSpec(sessionId, { schema: "brewva.task.v1", goal: "Do a thing" });
-    const stateAfterSpec = runtime.task.getState(sessionId);
+    runtime.authority.task.setSpec(sessionId, { schema: "brewva.task.v1", goal: "Do a thing" });
+    const stateAfterSpec = runtime.inspect.task.getState(sessionId);
     expect(stateAfterSpec.status?.phase).toBe("investigate");
     expect(stateAfterSpec.status?.health).toBe("ok");
-    const injection2 = await runtime.context.buildInjection(sessionId, "next");
+    const injection2 = await runtime.maintain.context.buildInjection(sessionId, "next");
     expect(injection2.text).toContain("status.phase=investigate");
 
-    runtime.task.addItem(sessionId, { text: "Implement the fix" });
-    const stateAfterItem = runtime.task.getState(sessionId);
+    runtime.authority.task.addItem(sessionId, { text: "Implement the fix" });
+    const stateAfterItem = runtime.inspect.task.getState(sessionId);
     expect(stateAfterItem.status?.phase).toBe("execute");
     expect(stateAfterItem.status?.health).toBe("ok");
-    const injection3 = await runtime.context.buildInjection(sessionId, "next");
+    const injection3 = await runtime.maintain.context.buildInjection(sessionId, "next");
     expect(injection3.text).toContain("status.phase=execute");
   });
 
@@ -34,10 +34,10 @@ describe("Task status alignment", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "task-status-2";
 
-    runtime.task.setSpec(sessionId, { schema: "brewva.task.v1", goal: "Do a thing" });
-    runtime.task.addItem(sessionId, { text: "Implement the fix" });
+    runtime.authority.task.setSpec(sessionId, { schema: "brewva.task.v1", goal: "Do a thing" });
+    runtime.authority.task.addItem(sessionId, { text: "Implement the fix" });
 
-    const injection = await runtime.context.buildInjection(sessionId, "next", {
+    const injection = await runtime.maintain.context.buildInjection(sessionId, "next", {
       tokens: 2688,
       contextWindow: 272000,
       percent: 0.9886,
@@ -52,10 +52,10 @@ describe("Task status alignment", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "task-status-null-percent-1";
 
-    runtime.task.setSpec(sessionId, { schema: "brewva.task.v1", goal: "Do a thing" });
-    runtime.task.addItem(sessionId, { text: "Implement the fix" });
+    runtime.authority.task.setSpec(sessionId, { schema: "brewva.task.v1", goal: "Do a thing" });
+    runtime.authority.task.addItem(sessionId, { text: "Implement the fix" });
 
-    const injection = await runtime.context.buildInjection(sessionId, "next", {
+    const injection = await runtime.maintain.context.buildInjection(sessionId, "next", {
       tokens: 183000,
       contextWindow: 200000,
       percent: null,
@@ -70,18 +70,18 @@ describe("Task status alignment", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "task-status-3";
 
-    runtime.task.recordBlocker(sessionId, {
+    runtime.authority.task.recordBlocker(sessionId, {
       id: "blocker:no-spec",
       message: "Command failed before spec setup",
       source: "truth_extractor",
     });
 
-    const state = runtime.task.getState(sessionId);
+    const state = runtime.inspect.task.getState(sessionId);
     expect(state.status?.phase).toBe("blocked");
     expect(state.status?.health).toBe("blocked");
     expect(state.status?.reason).toBe("blockers_present_without_spec");
 
-    const injection = await runtime.context.buildInjection(sessionId, "next");
+    const injection = await runtime.maintain.context.buildInjection(sessionId, "next");
     expect(injection.text).toContain("status.phase=blocked");
     expect(injection.text).toContain("status.health=blocked");
   });
@@ -91,14 +91,14 @@ describe("Task status alignment", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "task-status-4";
 
-    runtime.task.addItem(sessionId, { text: "Capture the current investigation plan" });
+    runtime.authority.task.addItem(sessionId, { text: "Capture the current investigation plan" });
 
-    const state = runtime.task.getState(sessionId);
+    const state = runtime.inspect.task.getState(sessionId);
     expect(state.status?.phase).toBe("execute");
     expect(state.status?.health).toBe("exploring");
     expect(state.status?.reason).toBe("spec_missing_open_items=1");
 
-    const injection = await runtime.context.buildInjection(sessionId, "next");
+    const injection = await runtime.maintain.context.buildInjection(sessionId, "next");
     expect(injection.text).toContain("status.phase=execute");
     expect(injection.text).toContain("status.health=exploring");
   });
@@ -108,15 +108,15 @@ describe("Task status alignment", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "task-status-hard-blocker-1";
 
-    runtime.task.setSpec(sessionId, { schema: "brewva.task.v1", goal: "Do a thing" });
-    runtime.task.addItem(sessionId, { text: "Implement the fix" });
-    runtime.task.recordBlocker(sessionId, {
+    runtime.authority.task.setSpec(sessionId, { schema: "brewva.task.v1", goal: "Do a thing" });
+    runtime.authority.task.addItem(sessionId, { text: "Implement the fix" });
+    runtime.authority.task.recordBlocker(sessionId, {
       id: "blocker:environment",
       message: "Missing runtime dependency",
       source: "environment",
     });
 
-    const state = runtime.task.getState(sessionId);
+    const state = runtime.inspect.task.getState(sessionId);
     expect(state.status?.phase).toBe("blocked");
     expect(state.status?.health).toBe("blocked");
     expect(state.status?.reason).toBe("blockers_present");
@@ -127,15 +127,15 @@ describe("Task status alignment", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = "task-status-governance-blocker-1";
 
-    runtime.task.setSpec(sessionId, { schema: "brewva.task.v1", goal: "Do a thing" });
-    runtime.task.addItem(sessionId, { text: "Implement the fix" });
-    runtime.task.recordBlocker(sessionId, {
+    runtime.authority.task.setSpec(sessionId, { schema: "brewva.task.v1", goal: "Do a thing" });
+    runtime.authority.task.addItem(sessionId, { text: "Implement the fix" });
+    runtime.authority.task.recordBlocker(sessionId, {
       id: "verifier:governance:verify-spec",
       message: "Spec rejected by governance",
       source: "governance",
     });
 
-    const state = runtime.task.getState(sessionId);
+    const state = runtime.inspect.task.getState(sessionId);
     expect(state.status?.phase).toBe("blocked");
     expect(state.status?.health).toBe("blocked");
     expect(state.status?.reason).toBe("blockers_present");

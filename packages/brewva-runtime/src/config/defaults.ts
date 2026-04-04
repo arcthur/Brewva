@@ -177,9 +177,9 @@ export const DEFAULT_BREWVA_CONFIG: BrewvaConfig = {
       alertThresholdRatio: 0.8,
       actionOnExceed: "warn",
     },
-    turnWal: {
+    recoveryWal: {
       enabled: true,
-      dir: ".orchestrator/turn-wal",
+      dir: ".orchestrator/recovery-wal",
       defaultTtlMs: 300_000,
       maxRetries: 2,
       compactAfterMs: 3_600_000,

@@ -16,7 +16,7 @@ Every runtime event follows the same shape:
 
 ## Query Contract
 
-`runtime.events.query(...)`, `queryStructured(...)`, and `list(...)` share the
+`runtime.inspect.events.query(...)`, `queryStructured(...)`, and `list(...)` share the
 same query fields:
 
 - `type`
@@ -42,7 +42,7 @@ The central registry contains more than one durability class.
   - live-stream or UX-only surfaces that are not retained on durable tape
 
 `durable transient` does not primarily appear as a runtime event family here.
-That class is represented by turn WAL and rollback material outside the event
+That class is represented by Recovery WAL and rollback material outside the event
 registry.
 
 ## Registry Surface
@@ -207,7 +207,7 @@ effect-authoritative source of truth.
 - `skill_promotion_materialized`
 
 `skill_refresh_recorded` is an ops-level control receipt emitted only when a
-host calls `runtime.skills.refresh({ sessionId, ... })`. It records explicit
+host calls `runtime.maintain.skills.refresh({ sessionId, ... })`. It records explicit
 skill-registry rebuild activity for inspection, including the refresh reason,
 the rewritten index path, and bundled system-install summary. It is not replay
 truth.
@@ -295,7 +295,7 @@ candidate set with categories, scores, and matched reasons.
 Current schedule-recovery notes:
 
 - `schedule_recovery_deferred.reason` may be
-  `max_recovery_catchups_exceeded`, `turn_wal_inflight`, or
+  `max_recovery_catchups_exceeded`, `recovery_wal_inflight`, or
   `stale_one_shot_recovery`
 - `schedule_recovery_summary` remains per-parent-session telemetry for the
   same recovery pass

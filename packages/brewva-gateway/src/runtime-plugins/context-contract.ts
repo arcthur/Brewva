@@ -1,19 +1,25 @@
-import type { BrewvaRuntime, ContextBudgetUsage } from "@brewva/brewva-runtime";
+import type { BrewvaHostedRuntimePort, ContextBudgetUsage } from "@brewva/brewva-runtime";
 import { formatPercent } from "./context-shared.js";
 
 const CONTEXT_CONTRACT_MARKER = "[Brewva Context Contract]";
 
+function resolveContextInspectPort(runtime: BrewvaHostedRuntimePort): {
+  getCompactionThresholdRatio: (sessionId: string, usage?: ContextBudgetUsage) => number;
+  getHardLimitRatio: (sessionId: string, usage?: ContextBudgetUsage) => number;
+} {
+  return runtime.inspect.context;
+}
+
 export function buildContextContractBlock(input: {
-  runtime: BrewvaRuntime;
+  runtime: BrewvaHostedRuntimePort;
   sessionId: string;
   usage?: ContextBudgetUsage;
 }): string {
+  const context = resolveContextInspectPort(input.runtime);
   const highThresholdPercent = formatPercent(
-    input.runtime.context.getCompactionThresholdRatio(input.sessionId, input.usage),
+    context.getCompactionThresholdRatio(input.sessionId, input.usage),
   );
-  const hardLimitPercent = formatPercent(
-    input.runtime.context.getHardLimitRatio(input.sessionId, input.usage),
-  );
+  const hardLimitPercent = formatPercent(context.getHardLimitRatio(input.sessionId, input.usage));
 
   return [
     CONTEXT_CONTRACT_MARKER,
@@ -31,7 +37,7 @@ export function buildContextContractBlock(input: {
 
 export function applyContextContract(
   systemPrompt: unknown,
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   sessionId: string,
   usage?: ContextBudgetUsage,
 ): string {

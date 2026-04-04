@@ -19,7 +19,7 @@ function createScopedLookAtTool(sessionId: string, filePath: string) {
     cwd,
     config: createRuntimeConfig(),
   });
-  runtime.task.setSpec(sessionId, {
+  runtime.authority.task.setSpec(sessionId, {
     schema: "brewva.task.v1",
     goal: "Inspect an explicitly targeted file.",
     targets: {

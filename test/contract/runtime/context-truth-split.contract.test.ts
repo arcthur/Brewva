@@ -36,14 +36,14 @@ describe("truth split channels", () => {
     });
     const sessionId = "truth-split-latest";
 
-    runtime.truth.upsertFact(sessionId, {
+    runtime.authority.truth.upsertFact(sessionId, {
       id: "truth:1",
       kind: "diagnostic",
       severity: "warn",
       summary: "first dynamic fact",
     });
 
-    const first = await runtime.context.buildInjection(
+    const first = await runtime.maintain.context.buildInjection(
       sessionId,
       "first turn",
       undefined,
@@ -56,7 +56,7 @@ describe("truth split channels", () => {
     expect(first.text).toContain("truth:1");
     expect(first.text).not.toContain("first dynamic fact");
 
-    const second = await runtime.context.buildInjection(
+    const second = await runtime.maintain.context.buildInjection(
       sessionId,
       "second turn",
       undefined,
@@ -68,14 +68,14 @@ describe("truth split channels", () => {
     expect(second.text).toContain("truth:1");
     expect(second.text).not.toContain("first dynamic fact");
 
-    runtime.truth.upsertFact(sessionId, {
+    runtime.authority.truth.upsertFact(sessionId, {
       id: "truth:2",
       kind: "diagnostic",
       severity: "warn",
       summary: "second dynamic fact",
     });
 
-    const third = await runtime.context.buildInjection(
+    const third = await runtime.maintain.context.buildInjection(
       sessionId,
       "third turn",
       undefined,
@@ -88,7 +88,7 @@ describe("truth split channels", () => {
     expect(third.text).toContain("truth:2");
     expect(third.text).not.toContain("second dynamic fact");
 
-    const activeFacts = runtime.truth
+    const activeFacts = runtime.inspect.truth
       .getState(sessionId)
       .facts.filter((fact) => fact.status === "active")
       .map((fact) => fact.id)

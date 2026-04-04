@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ContextBudgetUsage } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   HOSTED_COMPACTION_LADDER_TEST_ONLY,
   createHostedCompactionController,
@@ -145,7 +146,7 @@ describe("hosted compaction controller", () => {
       context: {
         onTurnStart: () => undefined,
         observeUsage: () => undefined,
-        markCompacted: (_sessionId, payload) => {
+        markCompacted: (_sessionId: string, payload: unknown) => {
           markCompactedCalls.push(payload as Record<string, unknown>);
         },
       },
@@ -238,7 +239,7 @@ describe("hosted compaction controller", () => {
       },
     });
 
-    const skippedBeforeReset = runtime.events
+    const skippedBeforeReset = runtime.inspect.events
       .queryStructured(sessionId, { type: "context_compaction_skipped" })
       .map((event) => event.payload?.reason);
     expect(compactCalls).toBe(3);
@@ -278,7 +279,7 @@ describe("hosted compaction controller", () => {
     });
     const sessionId = "s-auto-breaker-hydrated";
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId,
         type: "context_compaction_auto_failed",
         payload: {
@@ -308,7 +309,7 @@ describe("hosted compaction controller", () => {
 
     expect(compactCalls).toBe(0);
     expect(
-      runtime.events
+      runtime.inspect.events
         .queryStructured(sessionId, { type: "context_compaction_skipped" })
         .some((event) => event.payload?.reason === "auto_compaction_breaker_open"),
     ).toBe(true);

@@ -3,7 +3,7 @@ import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { resolveScopedPath, resolveToolTargetScope } from "./target-scope.js";
 import { readSourceTextWithCache, registerTocSourceCacheRuntime } from "./toc-cache.js";
-import type { BrewvaToolRuntime } from "./types.js";
+import type { BrewvaBundledToolRuntime } from "./types.js";
 import { getToolSessionId } from "./utils/parallel-read.js";
 import { failTextResult, inconclusiveTextResult, textResult } from "./utils/result.js";
 import { defineBrewvaTool } from "./utils/tool.js";
@@ -46,7 +46,9 @@ function formatSpan(startLine: number, endLine: number): string {
   return startLine === endLine ? `L${startLine}` : `L${startLine}-L${endLine}`;
 }
 
-export function createReadSpansTool(options?: { runtime?: BrewvaToolRuntime }): ToolDefinition {
+export function createReadSpansTool(options?: {
+  runtime?: BrewvaBundledToolRuntime;
+}): ToolDefinition {
   registerTocSourceCacheRuntime(options?.runtime);
   return defineBrewvaTool({
     name: "read_spans",

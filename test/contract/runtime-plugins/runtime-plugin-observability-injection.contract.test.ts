@@ -180,7 +180,10 @@ describe("Runtime plugin integration: observability injection", () => {
       ctx,
     );
 
-    const observed = runtime.events.query(sessionId, { type: "tool_output_observed", last: 1 })[0];
+    const observed = runtime.inspect.events.query(sessionId, {
+      type: "tool_output_observed",
+      last: 1,
+    })[0];
     const observedPayload = observed?.payload as
       | {
           toolCallId?: string;
@@ -200,7 +203,7 @@ describe("Runtime plugin integration: observability injection", () => {
     requireNonEmptyString(observedPayload?.contextPressure, "Expected contextPressure.");
     requireNonEmptyString(observedPayload?.artifactRef, "Expected observed artifactRef.");
 
-    const artifactPersisted = runtime.events.query(sessionId, {
+    const artifactPersisted = runtime.inspect.events.query(sessionId, {
       type: "tool_output_artifact_persisted",
       last: 1,
     })[0];
@@ -210,11 +213,14 @@ describe("Runtime plugin integration: observability injection", () => {
     expect(existsSync(artifactPath)).toBe(true);
     expect(readFileSync(artifactPath, "utf8")).toContain("edited");
 
-    const ledgerRows = runtime.ledger.listRows(sessionId);
+    const ledgerRows = runtime.inspect.ledger.listRows(sessionId);
     expect(ledgerRows).toHaveLength(1);
     expect(ledgerRows[0]?.tool).toBe("edit");
 
-    const recorded = runtime.events.query(sessionId, { type: "tool_result_recorded", last: 1 })[0];
+    const recorded = runtime.inspect.events.query(sessionId, {
+      type: "tool_result_recorded",
+      last: 1,
+    })[0];
     const payload = recorded?.payload as
       | {
           ledgerId?: string;
@@ -249,23 +255,28 @@ describe("Runtime plugin integration: observability injection", () => {
       "Expected outputArtifact artifactRef.",
     );
     expect(payload?.outputDistillation).toBeNull();
-    expect(runtime.events.query(sessionId, { type: "tool_result", last: 1 })).toHaveLength(0);
+    expect(runtime.inspect.events.query(sessionId, { type: "tool_result", last: 1 })).toHaveLength(
+      0,
+    );
 
-    const snapshot = runtime.events.query(sessionId, {
+    const snapshot = runtime.inspect.events.query(sessionId, {
       type: "file_snapshot_captured",
       last: 1,
     })[0];
     expect((snapshot?.payload as { files?: string[] } | undefined)?.files).toContain("src/a.ts");
 
-    const patchRecorded = runtime.events.query(sessionId, { type: "patch_recorded", last: 1 })[0];
+    const patchRecorded = runtime.inspect.events.query(sessionId, {
+      type: "patch_recorded",
+      last: 1,
+    })[0];
     expect(
       (patchRecorded?.payload as { changes?: Array<{ path: string; action: string }> } | undefined)
         ?.changes,
     ).toEqual([{ path: "src/a.ts", action: "modify" }]);
 
     const reloaded = new BrewvaRuntime({ cwd: workspace, config: createOpsRuntimeConfig() });
-    expect(reloaded.events.query(sessionId).length).toBeGreaterThan(0);
-    expect(reloaded.ledger.listRows(sessionId)).toHaveLength(1);
+    expect(reloaded.inspect.events.query(sessionId).length).toBeGreaterThan(0);
+    expect(reloaded.inspect.ledger.listRows(sessionId)).toHaveLength(1);
   });
 
   test("given session_shutdown event, when observability handler runs, then runtime cleanup is dispatched through the public session API", () => {
@@ -273,14 +284,14 @@ describe("Runtime plugin integration: observability injection", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace, config: createOpsRuntimeConfig() });
     const sessionId = "ext-shutdown-clean-1";
 
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.tools.markCall(sessionId, "edit");
-    runtime.context.observeUsage(sessionId, {
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.tools.markCall(sessionId, "edit");
+    runtime.maintain.context.observeUsage(sessionId, {
       tokens: 128,
       contextWindow: 4096,
       percent: 0.03125,
     });
-    runtime.tools.recordResult({
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "echo ok" },
@@ -291,8 +302,8 @@ describe("Runtime plugin integration: observability injection", () => {
     const { api, handlers } = createMockRuntimePluginApi();
     registerEventStream(api, runtime);
     const clearStateCalls: string[] = [];
-    const originalClearState = runtime.session.clearState.bind(runtime.session);
-    runtime.session.clearState = (nextSessionId) => {
+    const originalClearState = runtime.maintain.session.clearState.bind(runtime.maintain.session);
+    runtime.maintain.session.clearState = (nextSessionId: string) => {
       clearStateCalls.push(nextSessionId);
       originalClearState(nextSessionId);
     };
@@ -309,10 +320,12 @@ describe("Runtime plugin integration: observability injection", () => {
         },
       );
     } finally {
-      runtime.session.clearState = originalClearState;
+      runtime.maintain.session.clearState = originalClearState;
     }
 
     expect(clearStateCalls).toEqual([sessionId]);
-    expect(runtime.events.query(sessionId, { type: "session_shutdown", last: 1 })).toHaveLength(1);
+    expect(
+      runtime.inspect.events.query(sessionId, { type: "session_shutdown", last: 1 }),
+    ).toHaveLength(1);
   });
 });

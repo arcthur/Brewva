@@ -153,7 +153,7 @@ const FILE_CLASS_RULES: ReadonlyArray<{
       /worker/,
       /governance/,
       /event-pipeline/,
-      /turn-wal/,
+      /recovery-wal/,
       /effect-commitment/,
     ],
   },

@@ -28,7 +28,9 @@ const { Type } = requireFromBrewvaTools("@sinclair/typebox") as {
 
 describe("managed Brewva tool definition metadata", () => {
   test("default Brewva tool bundle attaches surface and governance metadata", () => {
-    const runtime = {} as Parameters<typeof buildBrewvaTools>[0]["runtime"];
+    const runtime = {
+      internal: {},
+    } as Parameters<typeof buildBrewvaTools>[0]["runtime"];
     const tools = buildBrewvaTools({ runtime });
 
     for (const tool of tools) {

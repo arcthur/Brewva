@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 import {
   BrewvaRuntime,
   SCHEDULE_EVENT_TYPE,
-  SchedulerService,
   buildScheduleIntentCreatedEvent,
   getNextCronRunAt,
   parseCronExpression,
 } from "@brewva/brewva-runtime";
+import { SchedulerService, recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   createSchedulerConfig,
   computeExpectedRecurringJitteredNextRunAt,
@@ -337,7 +337,7 @@ describe("scheduler service limit contract", () => {
     const sessionId = "session-revive";
     const dueRunAt = nowMs - 1_000;
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: SCHEDULE_EVENT_TYPE,
       payload: buildScheduleIntentCreatedEvent({

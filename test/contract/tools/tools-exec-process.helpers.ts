@@ -1,6 +1,17 @@
 import { resolve } from "node:path";
-import type { BrewvaToolRuntime } from "@brewva/brewva-tools";
+import { createToolRuntimePort } from "@brewva/brewva-runtime";
+import type { BrewvaBundledToolRuntime } from "@brewva/brewva-tools";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { createRuntimeConfig, createRuntimeFixture } from "../../helpers/runtime.js";
+
+type RecordedExecTestEvent = {
+  sessionId?: string;
+  type?: string;
+  turn?: number;
+  payload?: Record<string, unknown>;
+  timestamp?: number;
+  skipTapeCheckpoint?: boolean;
+};
 
 export function extractTextContent(result: {
   content: Array<{ type: string; text?: string }>;
@@ -37,79 +48,87 @@ export function createRuntimeForExecTests(input?: {
 }) {
   const mode = input?.mode ?? "standard";
   const enforceIsolation = input?.enforceIsolation ?? false;
-  const events: Array<{ type?: string; payload?: Record<string, unknown> }> = [];
+  const events: RecordedExecTestEvent[] = [];
   const cwd = resolve(input?.cwd ?? process.cwd());
   const targetRoots =
     input?.targetRoots && input.targetRoots.length > 0
       ? input.targetRoots.map((root) => resolve(root))
       : [cwd];
-  const runtime = {
-    cwd,
-    workspaceRoot: cwd,
-    config: {
-      security: {
-        mode,
-        sanitizeContext: true,
-        boundaryPolicy: {
-          commandDenyList: input?.boundaryCommandDenyList ?? input?.commandDenyList ?? [],
-          filesystem: {
-            readAllow: [],
-            writeAllow: [],
-            writeDeny: [],
-          },
-          network: {
-            mode: "inherit",
-            allowLoopback: true,
-            outbound: [],
-          },
-        },
-        loopDetection: {
-          exactCall: {
-            enabled: true,
-            threshold: 3,
-            mode: "warn",
-            exemptTools: [],
-          },
-        },
-        credentials: {
-          path: ".brewva/credentials.vault",
-          masterKeyEnv: "BREWVA_VAULT_KEY",
-          allowDerivedKeyFallback: true,
-          sandboxApiKeyRef: "vault://sandbox/apiKey",
-          gatewayTokenRef: "vault://gateway/token",
-          bindings: [],
-        },
-        execution: {
-          backend: input?.backend ?? "best_available",
-          enforceIsolation,
-          fallbackToHost: input?.fallbackToHost ?? false,
-          commandDenyList: [],
-          sandbox: {
-            serverUrl: input?.serverUrl ?? "http://127.0.0.1:5555",
-            defaultImage: "microsandbox/node",
-            memory: 64,
-            cpus: 1,
-            timeout: 1,
-          },
-        },
+  const config = createRuntimeConfig((runtimeConfig) => {
+    runtimeConfig.security.mode = mode;
+    runtimeConfig.security.sanitizeContext = true;
+    runtimeConfig.security.boundaryPolicy.commandDenyList =
+      input?.boundaryCommandDenyList ?? input?.commandDenyList ?? [];
+    runtimeConfig.security.boundaryPolicy.filesystem = {
+      readAllow: [],
+      writeAllow: [],
+      writeDeny: [],
+    };
+    runtimeConfig.security.boundaryPolicy.network = {
+      mode: "inherit",
+      allowLoopback: true,
+      outbound: [],
+    };
+    runtimeConfig.security.loopDetection = {
+      exactCall: {
+        enabled: true,
+        threshold: 3,
+        mode: "warn",
+        exemptTools: [],
+      },
+    };
+    runtimeConfig.security.credentials = {
+      path: ".brewva/credentials.vault",
+      masterKeyEnv: "BREWVA_VAULT_KEY",
+      allowDerivedKeyFallback: true,
+      sandboxApiKeyRef: "vault://sandbox/apiKey",
+      gatewayTokenRef: "vault://gateway/token",
+      bindings: [],
+    };
+    runtimeConfig.security.execution = {
+      backend: input?.backend ?? "best_available",
+      enforceIsolation,
+      fallbackToHost: input?.fallbackToHost ?? false,
+      sandbox: {
+        serverUrl: input?.serverUrl ?? "http://127.0.0.1:5555",
+        defaultImage: "microsandbox/node",
+        memory: 64,
+        cpus: 1,
+        timeout: 1,
+      },
+    };
+  });
+
+  const runtimeFixture = createRuntimeFixture({
+    config,
+    inspect: {
+      task: {
+        getTargetDescriptor: () => ({
+          primaryRoot: targetRoots[0] ?? cwd,
+          roots: targetRoots,
+        }),
       },
     },
-    events: {
-      record: (event: { type?: string; payload?: Record<string, unknown> }) => {
-        events.push(event);
+  });
+
+  const runtime: BrewvaBundledToolRuntime = {
+    ...createToolRuntimePort(runtimeFixture),
+    internal: {
+      recordEvent: (event) => {
+        events.push({
+          sessionId: event.sessionId,
+          type: event.type,
+          turn: event.turn,
+          payload: event.payload as Record<string, unknown> | undefined,
+          timestamp: event.timestamp,
+          skipTapeCheckpoint: event.skipTapeCheckpoint,
+        });
         return undefined;
       },
-    },
-    session: {
       resolveCredentialBindings: () => ({ ...input?.boundEnv }),
       resolveSandboxApiKey: () => input?.sandboxApiKey,
     },
-    task: {
-      getTargetDescriptor: () => ({
-        primaryRoot: targetRoots[0] ?? cwd,
-        roots: targetRoots,
-      }),
-    },
   };
-  return { runtime: runtime as unknown as BrewvaToolRuntime, events };
+
+  return { runtime, events };
 }

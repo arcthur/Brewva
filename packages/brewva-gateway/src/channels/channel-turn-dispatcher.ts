@@ -1,9 +1,6 @@
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
-import {
-  type TurnEnvelope,
-  type TurnPart,
-  type TurnWALStore,
-} from "@brewva/brewva-runtime/channels";
+import { type TurnEnvelope, type TurnPart } from "@brewva/brewva-runtime/channels";
+import { type RecoveryWalStore, recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { LRUCache } from "lru-cache";
 import { toErrorMessage } from "../utils/errors.js";
 import type {
@@ -52,7 +49,7 @@ export interface ChannelTurnDispatcher {
 
 export function createChannelTurnDispatcher(input: {
   runtime: BrewvaRuntime;
-  turnWalStore: TurnWALStore;
+  recoveryWalStore: RecoveryWalStore;
   orchestrationEnabled: boolean;
   defaultAgentId: string;
   commandRouter: Pick<CommandRouter, "match">;
@@ -139,7 +136,7 @@ export function createChannelTurnDispatcher(input: {
     scopeKey: string,
     preparedCommand?: ChannelPreparedCommand,
   ): Promise<void> => {
-    input.turnWalStore.markInflight(walId);
+    input.recoveryWalStore.markInflight(walId);
     rememberLastTurn(scopeKey, turn);
 
     try {
@@ -161,7 +158,7 @@ export function createChannelTurnDispatcher(input: {
           );
         } catch (error) {
           preparedCommand?.release?.();
-          input.runtime.events.record({
+          recordRuntimeEvent(input.runtime, {
             sessionId: turn.sessionId,
             type: "channel_command_rejected",
             payload: {
@@ -180,12 +177,12 @@ export function createChannelTurnDispatcher(input: {
               command: commandResult.kind,
             },
           );
-          input.turnWalStore.markDone(walId);
+          input.recoveryWalStore.markDone(walId);
           return;
         }
         if (commandOutcome.handled) {
           preparedCommand?.release?.();
-          input.turnWalStore.markDone(walId);
+          input.recoveryWalStore.markDone(walId);
           return;
         }
 
@@ -194,7 +191,7 @@ export function createChannelTurnDispatcher(input: {
           const rewrittenTurn = rewriteTurnText(turn, commandOutcome.routeTask);
           try {
             await input.processUserTurnOnAgent(rewrittenTurn, walId, scopeKey, routeAgentId);
-            input.turnWalStore.markDone(walId);
+            input.recoveryWalStore.markDone(walId);
           } finally {
             preparedCommand?.release?.();
           }
@@ -209,9 +206,9 @@ export function createChannelTurnDispatcher(input: {
           input.resolveFocusedAgentId(scopeKey))
         : input.defaultAgentId;
       await input.processUserTurnOnAgent(turn, walId, scopeKey, fallbackAgentId);
-      input.turnWalStore.markDone(walId);
+      input.recoveryWalStore.markDone(walId);
     } catch (error) {
-      input.turnWalStore.markFailed(walId, toErrorMessage(error));
+      input.recoveryWalStore.markFailed(walId, toErrorMessage(error));
       throw error;
     }
   };
@@ -228,7 +225,7 @@ export function createChannelTurnDispatcher(input: {
 
       const walId =
         enqueueOptions.walId ??
-        input.turnWalStore.appendPending(turn, "channel", {
+        input.recoveryWalStore.appendPending(turn, "channel", {
           dedupeKey: `${turn.channel}:${turn.turnId}`,
         }).walId;
 
@@ -244,7 +241,7 @@ export function createChannelTurnDispatcher(input: {
         try {
           preparedCommand = await input.prepareCommand(commandMatch, turn, scopeKey);
         } catch (error) {
-          input.runtime.events.record({
+          recordRuntimeEvent(input.runtime, {
             sessionId: turn.sessionId,
             type: "channel_command_rejected",
             payload: {
@@ -263,11 +260,11 @@ export function createChannelTurnDispatcher(input: {
               command: commandMatch.kind,
             },
           );
-          input.turnWalStore.markDone(walId);
+          input.recoveryWalStore.markDone(walId);
           return;
         }
         if (preparedCommand.handled) {
-          input.turnWalStore.markDone(walId);
+          input.recoveryWalStore.markDone(walId);
           return;
         }
       }

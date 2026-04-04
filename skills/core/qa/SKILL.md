@@ -195,8 +195,8 @@ Use these questions to pick the right test path:
   otherwise aimed at breaking the claimed happy path.
 - `qa_verdict = pass` requires covering the plan-declared `required_evidence`.
   Coverage may come from the current `qa_checks` or from fresh authoritative
-  `runtime.verification.*` evidence. If the required evidence was not covered,
-  stay `inconclusive`.
+  `runtime.authority.verification.*` evidence. If the required evidence was not
+  covered, stay `inconclusive`.
 
 ## QA Decision Protocol
 

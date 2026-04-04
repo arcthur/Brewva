@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   getHostedTurnTransitionCoordinator,
   projectHostedTransitionSnapshot,
@@ -12,7 +13,7 @@ describe("hosted turn transition coordinator", () => {
     const sessionId = "turn-transition-mapping";
     getHostedTurnTransitionCoordinator(runtime);
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       turn: 4,
       type: "context_compaction_gate_blocked_tool",
@@ -20,7 +21,7 @@ describe("hosted turn transition coordinator", () => {
         toolName: "exec",
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       turn: 4,
       type: "effect_commitment_approval_requested",
@@ -29,7 +30,7 @@ describe("hosted turn transition coordinator", () => {
       },
     });
 
-    const transitions = runtime.events.queryStructured(sessionId, {
+    const transitions = runtime.inspect.events.queryStructured(sessionId, {
       type: "session_turn_transition",
     });
     expect(transitions).toHaveLength(2);
@@ -54,7 +55,7 @@ describe("hosted turn transition coordinator", () => {
     const sessionId = "turn-transition-dedup";
     getHostedTurnTransitionCoordinator(runtime);
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       turn: 2,
       type: "context_compaction_gate_blocked_tool",
@@ -62,7 +63,7 @@ describe("hosted turn transition coordinator", () => {
         toolName: "exec",
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       turn: 2,
       type: "context_compaction_gate_blocked_tool",
@@ -70,7 +71,7 @@ describe("hosted turn transition coordinator", () => {
         toolName: "grep",
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       turn: 2,
       type: "context_compaction_gate_cleared",
@@ -78,7 +79,7 @@ describe("hosted turn transition coordinator", () => {
         reason: "session_compact_performed",
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       turn: 2,
       type: "context_compaction_gate_cleared",
@@ -87,7 +88,7 @@ describe("hosted turn transition coordinator", () => {
       },
     });
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       turn: 3,
       type: "effect_commitment_approval_requested",
@@ -95,7 +96,7 @@ describe("hosted turn transition coordinator", () => {
         requestId: "approval-1",
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       turn: 3,
       type: "effect_commitment_approval_decided",
@@ -104,7 +105,7 @@ describe("hosted turn transition coordinator", () => {
         decision: "accept",
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       turn: 3,
       type: "effect_commitment_approval_consumed",
@@ -113,7 +114,7 @@ describe("hosted turn transition coordinator", () => {
       },
     });
 
-    const transitions = runtime.events.queryStructured(sessionId, {
+    const transitions = runtime.inspect.events.queryStructured(sessionId, {
       type: "session_turn_transition",
     });
     expect(transitions).toHaveLength(4);
@@ -200,7 +201,7 @@ describe("hosted turn transition coordinator", () => {
     const checkpoint = coordinator.captureOperatorVisibleCheckpoint(sessionId);
     expect(coordinator.hasOperatorVisibleFactSince(sessionId, checkpoint)).toBe(false);
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "tool_call_blocked",
       payload: {
@@ -216,14 +217,14 @@ describe("hosted turn transition coordinator", () => {
     const runtime = createRuntimeFixture();
     const sessionId = "turn-transition-projection";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "tool_call_blocked",
       payload: {
         toolName: "exec",
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "session_turn_transition",
       payload: {
@@ -240,7 +241,9 @@ describe("hosted turn transition coordinator", () => {
       },
     });
 
-    const snapshot = projectHostedTransitionSnapshot(runtime.events.queryStructured(sessionId));
+    const snapshot = projectHostedTransitionSnapshot(
+      runtime.inspect.events.queryStructured(sessionId),
+    );
     expect(snapshot.operatorVisibleFactGeneration).toBe(1);
     expect(snapshot.sequence).toBe(1);
     expect(snapshot.latest).toMatchObject({

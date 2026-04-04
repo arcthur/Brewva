@@ -6,6 +6,7 @@ import {
   type DelegationRunRecord,
   type SkillRoutingScope,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type {
   SubagentOutcome,
   SubagentOutcomeArtifactRef,
@@ -166,7 +167,7 @@ async function main(): Promise<void> {
       error: `missing_delegate_target:${spec.delegate}`,
       summary: `missing_delegate_target:${spec.delegate}`,
     };
-    parentRuntime.events.record({
+    recordRuntimeEvent(parentRuntime, {
       sessionId: spec.parentSessionId,
       type: "subagent_failed",
       payload: buildDelegationLifecyclePayload(failed),
@@ -193,7 +194,7 @@ async function main(): Promise<void> {
       error: "missing_delegation_packet",
       summary: "missing_delegation_packet",
     };
-    parentRuntime.events.record({
+    recordRuntimeEvent(parentRuntime, {
       sessionId: spec.parentSessionId,
       type: "subagent_failed",
       payload: buildDelegationLifecyclePayload(failed),
@@ -267,7 +268,7 @@ async function main(): Promise<void> {
         parentSessionId: spec.parentSessionId,
         createdAt: spec.createdAt,
         label: spec.label,
-        parentSkill: parentRuntime.skills.getActive(spec.parentSessionId)?.name,
+        parentSkill: parentRuntime.inspect.skills.getActive(spec.parentSessionId)?.name,
         kind: targetRecord.resultMode,
         boundary: executionPlan.boundary,
         modelRoute: executionPlan.modelRoute,
@@ -280,7 +281,7 @@ async function main(): Promise<void> {
       boundary: executionPlan.boundary,
       modelRoute: executionPlan.modelRoute,
     };
-    parentRuntime.events.record({
+    recordRuntimeEvent(parentRuntime, {
       sessionId: spec.parentSessionId,
       type: SUBAGENT_RUNNING_EVENT_TYPE,
       payload: buildDelegationLifecyclePayload(runningRecord),
@@ -310,12 +311,17 @@ async function main(): Promise<void> {
     }
 
     const delegatedSkill = targetRecord.skillName;
-    const skillDocument = delegatedSkill ? parentRuntime.skills.get(delegatedSkill) : undefined;
+    const skillDocument = delegatedSkill
+      ? parentRuntime.inspect.skills.get(delegatedSkill)
+      : undefined;
     if (delegatedSkill && !skillDocument) {
       throw new Error(`unknown_skill:${delegatedSkill}`);
     }
     if (delegatedSkill) {
-      const activation = childSession.runtime.skills.activate(childSessionId, delegatedSkill);
+      const activation = childSession.runtime.authority.skills.activate(
+        childSessionId,
+        delegatedSkill,
+      );
       if (!activation.ok) {
         throw new Error(`subagent_entry_skill_failed:${activation.reason}`);
       }
@@ -332,7 +338,7 @@ async function main(): Promise<void> {
       runtime: childSession.runtime,
       sessionId: childSessionId,
     });
-    const childCostSummary = childSession.runtime.cost.getSummary(childSessionId);
+    const childCostSummary = childSession.runtime.inspect.cost.getSummary(childSessionId);
     aggregateChildCost(parentRuntime, spec.parentSessionId, childCostSummary);
     const structuredOutcome = extractStructuredOutcomeData({
       resultMode: targetRecord.resultMode,
@@ -340,7 +346,7 @@ async function main(): Promise<void> {
       skillName: delegatedSkill,
     });
     if (structuredOutcome.parseError) {
-      parentRuntime.events.record({
+      recordRuntimeEvent(parentRuntime, {
         sessionId: spec.parentSessionId,
         type: "subagent_outcome_parse_failed",
         payload: {
@@ -355,13 +361,13 @@ async function main(): Promise<void> {
     }
     const skillValidation =
       delegatedSkill && childSessionId
-        ? childSession.runtime.skills.validateOutputs(
+        ? childSession.runtime.inspect.skills.validateOutputs(
             childSessionId,
             structuredOutcome.skillOutputs ?? {},
           )
         : undefined;
     if (delegatedSkill && skillValidation && !skillValidation.ok) {
-      parentRuntime.events.record({
+      recordRuntimeEvent(parentRuntime, {
         sessionId: spec.parentSessionId,
         type: "subagent_skill_output_validation_failed",
         payload: {
@@ -408,7 +414,7 @@ async function main(): Promise<void> {
       : undefined;
 
     if (executionPlan.producesPatches) {
-      parentRuntime.session.recordWorkerResult(
+      parentRuntime.maintain.session.recordWorkerResult(
         spec.parentSessionId,
         buildWorkerResult({
           workerId: spec.runId,
@@ -480,7 +486,7 @@ async function main(): Promise<void> {
       updatedAt: Date.now(),
       workerSessionId: childSessionId,
       label: spec.label,
-      parentSkill: parentRuntime.skills.getActive(spec.parentSessionId)?.name,
+      parentSkill: parentRuntime.inspect.skills.getActive(spec.parentSessionId)?.name,
       kind: targetRecord.resultMode,
       boundary: executionPlan.boundary,
       modelRoute: executionPlan.modelRoute,
@@ -493,7 +499,7 @@ async function main(): Promise<void> {
       costUsd: childCostSummary.totalCostUsd,
       delivery,
     };
-    parentRuntime.events.record({
+    recordRuntimeEvent(parentRuntime, {
       sessionId: spec.parentSessionId,
       type: "subagent_completed",
       payload: buildDelegationLifecyclePayload(completedRecord),
@@ -525,7 +531,7 @@ async function main(): Promise<void> {
         ? "cancelled"
         : "failed";
     if (executionPlan.producesPatches) {
-      parentRuntime.session.recordWorkerResult(
+      parentRuntime.maintain.session.recordWorkerResult(
         spec.parentSessionId,
         buildWorkerResult({
           workerId: spec.runId,
@@ -570,7 +576,7 @@ async function main(): Promise<void> {
       updatedAt: Date.now(),
       workerSessionId: childSessionId,
       label: spec.label,
-      parentSkill: parentRuntime.skills.getActive(spec.parentSessionId)?.name,
+      parentSkill: parentRuntime.inspect.skills.getActive(spec.parentSessionId)?.name,
       kind: targetRecord.resultMode,
       boundary: executionPlan.boundary,
       modelRoute: executionPlan.modelRoute,
@@ -579,7 +585,7 @@ async function main(): Promise<void> {
       artifactRefs,
       delivery,
     };
-    parentRuntime.events.record({
+    recordRuntimeEvent(parentRuntime, {
       sessionId: spec.parentSessionId,
       type: terminalStatus === "cancelled" ? "subagent_cancelled" : "subagent_failed",
       payload: {

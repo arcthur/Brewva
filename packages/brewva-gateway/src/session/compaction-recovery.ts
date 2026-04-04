@@ -679,7 +679,7 @@ function createCompactionRecoveryController(
     },
   };
 
-  const unsubscribe = options.runtime.events.subscribe((event) => {
+  const unsubscribe = options.runtime.inspect.events.subscribe((event) => {
     if (disposed || event.sessionId !== sessionId) {
       return;
     }

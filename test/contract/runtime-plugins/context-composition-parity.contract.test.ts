@@ -110,8 +110,12 @@ describe("context composition parity", () => {
         typeof (value as { message?: { content?: unknown } }).message?.content === "string",
     );
 
-    expect(fullRuntime.context.getCompactionGateStatus("parity-clear").required).toBe(false);
-    expect(hostedRuntime.context.getCompactionGateStatus("parity-clear").required).toBe(false);
+    expect(fullRuntime.inspect.context.getCompactionGateStatus("parity-clear").required).toBe(
+      false,
+    );
+    expect(hostedRuntime.inspect.context.getCompactionGateStatus("parity-clear").required).toBe(
+      false,
+    );
     expect(fullAfter.message?.content?.includes("[ContextCompactionGate]")).toBe(false);
     expect(hostedAfter?.message.content.includes("[ContextCompactionGate]")).toBe(false);
     expect(hostedAfter?.message.content.includes("[OperationalDiagnostics]")).toBe(false);

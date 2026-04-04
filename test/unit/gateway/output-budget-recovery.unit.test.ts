@@ -165,7 +165,7 @@ describe("output budget recovery chain", () => {
       ]),
     );
 
-    const transitions = runtime.events.queryStructured(sessionId, {
+    const transitions = runtime.inspect.events.queryStructured(sessionId, {
       type: "session_turn_transition",
     });
     expect(transitions.map((event) => event.payload)).toEqual(

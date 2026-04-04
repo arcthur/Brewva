@@ -18,6 +18,12 @@
       "import": "./dist/channels.js",
       "default": "./dist/channels.js"
     },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "bun": "./src/internal.ts",
+      "import": "./dist/internal.js",
+      "default": "./dist/internal.js"
+    },
     "./schema/brewva.schema.json": "./schema/brewva.schema.json"
   },
   "dependencies": {

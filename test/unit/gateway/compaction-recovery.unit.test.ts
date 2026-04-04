@@ -1,4 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   COMPACTION_RECOVERY_TEST_ONLY,
   installSessionCompactionRecovery,
@@ -6,16 +11,9 @@ import {
 } from "../../../packages/brewva-gateway/src/session/compaction-recovery.js";
 
 function createRuntimeEventBridge() {
-  const listeners = new Set<
-    (event: {
-      id: string;
-      sessionId: string;
-      type: string;
-      timestamp: number;
-      turn?: number;
-      payload?: Record<string, unknown>;
-    }) => void
-  >();
+  const runtime = new BrewvaRuntime({
+    cwd: mkdtempSync(join(tmpdir(), "brewva-compaction-recovery-")),
+  });
   const events: Array<{
     id: string;
     sessionId: string;
@@ -24,60 +22,18 @@ function createRuntimeEventBridge() {
     turn?: number;
     payload?: Record<string, unknown>;
   }> = [];
+  runtime.inspect.events.subscribe((event) => {
+    events.push({
+      id: event.id,
+      sessionId: event.sessionId,
+      type: event.type,
+      timestamp: event.timestamp,
+      turn: event.turn,
+      payload: event.payload,
+    });
+  });
 
-  return {
-    runtime: {
-      events: {
-        subscribe(listener: (event: (typeof events)[number]) => void) {
-          listeners.add(listener);
-          return () => {
-            listeners.delete(listener);
-          };
-        },
-        queryStructured(sessionId: string, query?: { type?: string }) {
-          return events
-            .filter(
-              (event) =>
-                event.sessionId === sessionId && (!query?.type || event.type === query.type),
-            )
-            .map((event) => {
-              return {
-                id: event.id,
-                sessionId: event.sessionId,
-                type: event.type,
-                timestamp: event.timestamp,
-                turn: event.turn,
-                payload: event.payload,
-                schema: "brewva.event.v1" as const,
-                isoTime: new Date(event.timestamp).toISOString(),
-                category: event.type.startsWith("session_") ? "session" : "other",
-              };
-            });
-        },
-        record(input: {
-          sessionId: string;
-          type: string;
-          turn?: number;
-          payload?: Record<string, unknown>;
-        }) {
-          const event = {
-            id: `evt-${events.length + 1}`,
-            sessionId: input.sessionId,
-            type: input.type,
-            timestamp: Date.now(),
-            turn: input.turn,
-            payload: input.payload,
-          };
-          events.push(event);
-          for (const listener of listeners) {
-            listener(event);
-          }
-          return undefined;
-        },
-      },
-    },
-    events,
-  };
+  return { runtime, events };
 }
 
 function readTransitionPayloads(eventBridge: ReturnType<typeof createRuntimeEventBridge>) {
@@ -102,7 +58,7 @@ describe("compaction recovery controller", () => {
       async prompt(content: string): Promise<void> {
         promptedMessages.push(content);
         if (promptedMessages.length === 1) {
-          eventBridge.runtime.events.record({
+          recordRuntimeEvent(eventBridge.runtime, {
             sessionId: "agent-session-1",
             type: "session_compact",
             turn: 7,
@@ -175,7 +131,7 @@ describe("compaction recovery controller", () => {
       async prompt(content: string): Promise<void> {
         promptedMessages.push(content);
         if (promptedMessages.length === 1) {
-          eventBridge.runtime.events.record({
+          recordRuntimeEvent(eventBridge.runtime, {
             sessionId: "agent-session-2",
             type: "session_compact",
             turn: 3,
@@ -188,7 +144,7 @@ describe("compaction recovery controller", () => {
         maxInFlightResumePrompts = Math.max(maxInFlightResumePrompts, inFlightResumePrompts);
         try {
           if (promptedMessages.length === 2) {
-            eventBridge.runtime.events.record({
+            recordRuntimeEvent(eventBridge.runtime, {
               sessionId: "agent-session-2",
               type: "session_compact",
               turn: 3,
@@ -251,7 +207,7 @@ describe("compaction recovery controller", () => {
       async prompt(content: string): Promise<void> {
         promptedMessages.push(content);
         if (promptedMessages.length === 1) {
-          eventBridge.runtime.events.record({
+          recordRuntimeEvent(eventBridge.runtime, {
             sessionId: "agent-session-deterministic-recovery",
             type: "session_compact",
             turn: 5,
@@ -462,7 +418,7 @@ describe("compaction recovery controller", () => {
       async prompt(content: string): Promise<void> {
         promptedMessages.push(content);
         if (promptedMessages.length === 1) {
-          eventBridge.runtime.events.record({
+          recordRuntimeEvent(eventBridge.runtime, {
             sessionId: "agent-session-3",
             type: "session_compact",
             payload: { entryId: "comp-1" },
@@ -528,7 +484,7 @@ describe("compaction recovery controller", () => {
     expect(session.prompt).not.toBe(prompt);
 
     wrapped.dispose?.();
-    eventBridge.runtime.events.record({
+    recordRuntimeEvent(eventBridge.runtime, {
       sessionId: "agent-session-4",
       type: "session_compact",
       turn: 1,
@@ -602,7 +558,7 @@ describe("compaction recovery controller", () => {
     });
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      eventBridge.runtime.events.record({
+      recordRuntimeEvent(eventBridge.runtime, {
         sessionId: "agent-session-breaker",
         type: "session_compact",
         turn: attempt + 1,
@@ -611,7 +567,7 @@ describe("compaction recovery controller", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
-    eventBridge.runtime.events.record({
+    recordRuntimeEvent(eventBridge.runtime, {
       sessionId: "agent-session-breaker",
       type: "session_compact",
       turn: 4,
@@ -644,7 +600,7 @@ describe("compaction recovery controller", () => {
         getSessionId: () => "agent-session-withheld",
       },
       async prompt(_content: string): Promise<void> {
-        eventBridge.runtime.events.record({
+        recordRuntimeEvent(eventBridge.runtime, {
           sessionId: "agent-session-withheld",
           type: "tool_call_blocked",
           payload: {

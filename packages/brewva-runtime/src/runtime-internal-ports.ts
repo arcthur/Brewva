@@ -1,0 +1,153 @@
+import type { BrewvaEventRecord, RecoveryWalRecord, RecoveryWalSource } from "./contracts/index.js";
+import { BREWVA_RUNTIME_METHOD_GROUPS } from "./runtime-symbols.js";
+import type { BrewvaHostedRuntimePort, BrewvaRuntime } from "./runtime.js";
+
+type RuntimeRecordEventInput<TPayload extends object> = {
+  sessionId: string;
+  type: string;
+  turn?: number;
+  timestamp?: number;
+  payload?: TPayload;
+  skipTapeCheckpoint?: boolean;
+};
+
+type RuntimeRecordEvent = <TPayload extends object>(
+  input: RuntimeRecordEventInput<TPayload>,
+) => BrewvaEventRecord | undefined;
+
+type InternalRecoveryWalPort = {
+  appendPending(
+    envelope: unknown,
+    source: RecoveryWalSource,
+    options?: { ttlMs?: number; dedupeKey?: string },
+  ): RecoveryWalRecord;
+  markInflight(walId: string): RecoveryWalRecord | undefined;
+  markDone(walId: string): RecoveryWalRecord | undefined;
+  markFailed(walId: string, error?: string): RecoveryWalRecord | undefined;
+  markExpired(walId: string): RecoveryWalRecord | undefined;
+  listPending(): RecoveryWalRecord[];
+};
+
+type InternalRuntimeMethodGroups = {
+  recoveryWal: InternalRecoveryWalPort;
+  events: {
+    record: RuntimeRecordEvent;
+  };
+};
+
+type RuntimeMethodGroupsCarrier = {
+  [BREWVA_RUNTIME_METHOD_GROUPS]?: InternalRuntimeMethodGroups;
+};
+
+function bindMethods<TObject extends object, const TKeys extends readonly (keyof TObject)[]>(
+  owner: TObject,
+  keys: TKeys,
+): Pick<TObject, TKeys[number]> {
+  const result = {} as Pick<TObject, TKeys[number]>;
+  for (const key of keys) {
+    const value = owner[key];
+    if (typeof value !== "function") {
+      throw new Error(`Expected method at key ${String(key)}`);
+    }
+    (result as Record<string, unknown>)[String(key)] = value.bind(owner);
+  }
+  return result;
+}
+
+function requireRuntimeMethodGroups(
+  runtime: RuntimeMethodGroupsCarrier,
+): InternalRuntimeMethodGroups {
+  const methodGroups = runtime[BREWVA_RUNTIME_METHOD_GROUPS];
+  if (!methodGroups) {
+    throw new Error("Brewva runtime internal method groups are unavailable");
+  }
+  return methodGroups;
+}
+
+export interface BrewvaSchedulerIngressPort {
+  appendPending(
+    envelope: unknown,
+    source: RecoveryWalSource,
+    options?: { ttlMs?: number; dedupeKey?: string },
+  ): RecoveryWalRecord;
+  markInflight(walId: string): RecoveryWalRecord | undefined;
+  markDone(walId: string): RecoveryWalRecord | undefined;
+  markFailed(walId: string, error?: string): RecoveryWalRecord | undefined;
+  markExpired(walId: string): RecoveryWalRecord | undefined;
+  listPending(): RecoveryWalRecord[];
+}
+
+export interface BrewvaRuntimeInternalEventAppendPort {
+  record: RuntimeRecordEvent;
+}
+
+export interface BrewvaToolRuntimeInternalPort {
+  recordEvent: RuntimeRecordEvent;
+  onClearState(listener: (sessionId: string) => void): void;
+  resolveCredentialBindings(sessionId: string, toolName: string): Record<string, string>;
+  resolveSandboxApiKey(sessionId: string): string | undefined;
+  appendSupplementalInjection(
+    sessionId: string,
+    content: string,
+    sourceLabel?: string,
+    scopeId?: string,
+  ): {
+    accepted: boolean;
+    truncated?: boolean;
+    finalTokens?: number;
+    droppedReason?: "hard_limit" | "budget_exhausted";
+  };
+}
+
+export function createSchedulerIngressPort(runtime: BrewvaRuntime): BrewvaSchedulerIngressPort {
+  const methodGroups = requireRuntimeMethodGroups(runtime as RuntimeMethodGroupsCarrier);
+  return bindMethods(methodGroups.recoveryWal, [
+    "appendPending",
+    "markInflight",
+    "markDone",
+    "markFailed",
+    "markExpired",
+    "listPending",
+  ] as const);
+}
+
+export function createRuntimeInternalEventAppendPort(
+  runtime: BrewvaRuntime | BrewvaHostedRuntimePort,
+): BrewvaRuntimeInternalEventAppendPort {
+  const methodGroups = requireRuntimeMethodGroups(runtime as RuntimeMethodGroupsCarrier);
+  return {
+    record: methodGroups.events.record,
+  };
+}
+
+export function createToolRuntimeInternalPort(
+  runtime: BrewvaRuntime,
+): BrewvaToolRuntimeInternalPort {
+  return {
+    recordEvent: createRuntimeInternalEventAppendPort(runtime).record,
+    onClearState: runtime.maintain.session.onClearState,
+    resolveCredentialBindings: runtime.maintain.session.resolveCredentialBindings,
+    resolveSandboxApiKey: runtime.maintain.session.resolveSandboxApiKey,
+    appendSupplementalInjection: (sessionId, content, _sourceLabel, scopeId) => {
+      const result = runtime.maintain.context.appendSupplementalInjection(
+        sessionId,
+        content,
+        undefined,
+        scopeId,
+      );
+      return {
+        accepted: result.accepted,
+        truncated: result.truncated,
+        finalTokens: result.finalTokens,
+        droppedReason: result.droppedReason,
+      };
+    },
+  };
+}
+
+export function recordRuntimeEvent<TPayload extends object>(
+  runtime: BrewvaRuntime | BrewvaHostedRuntimePort,
+  input: RuntimeRecordEventInput<TPayload>,
+): BrewvaEventRecord | undefined {
+  return createRuntimeInternalEventAppendPort(runtime).record(input);
+}

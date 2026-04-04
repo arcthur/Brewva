@@ -83,12 +83,12 @@ describe("context transform budgeting contract", () => {
     registerContextTransform(api, runtime);
 
     const sessionId = "s-pending-compaction-advisory";
-    runtime.context.observeUsage(sessionId, {
+    runtime.maintain.context.observeUsage(sessionId, {
       tokens: 850,
       contextWindow: 1000,
       percent: 0.85,
     });
-    runtime.context.requestCompaction(sessionId, "usage_threshold");
+    runtime.maintain.context.requestCompaction(sessionId, "usage_threshold");
 
     const result = await invokeHandlerAsync<{
       systemPrompt?: string;
@@ -148,12 +148,12 @@ describe("context transform budgeting contract", () => {
     registerContextTransform(api, runtime);
 
     const sessionId = "s-supplemental-drop";
-    runtime.context.observeUsage(sessionId, {
+    runtime.maintain.context.observeUsage(sessionId, {
       tokens: 850,
       contextWindow: 1000,
       percent: 0.85,
     });
-    runtime.context.requestCompaction(sessionId, "usage_threshold");
+    runtime.maintain.context.requestCompaction(sessionId, "usage_threshold");
 
     const result = await invokeHandlerAsync<{
       systemPrompt?: string;

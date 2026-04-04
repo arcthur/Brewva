@@ -1,4 +1,4 @@
-import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import type { BrewvaHostedRuntimePort } from "@brewva/brewva-runtime";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { distillToolOutput } from "./tool-output-distiller.js";
 
@@ -23,7 +23,7 @@ function extractTextOnlyContent(content: unknown): string | undefined {
 
 export function registerToolResultDistiller(
   extensionApi: ExtensionAPI,
-  _runtime: BrewvaRuntime,
+  _runtime: BrewvaHostedRuntimePort,
 ): void {
   extensionApi.on("tool_result", (event) => {
     const outputText = extractTextOnlyContent(event.content);

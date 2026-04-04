@@ -342,7 +342,7 @@ export async function collectSessionPromptOutput(
   const sessionId = options?.sessionId?.trim();
   const unsubscribeTransitions =
     options?.runtime && sessionId
-      ? options.runtime.events.subscribe((event) => {
+      ? options.runtime.inspect.events.subscribe((event) => {
           if (
             event.sessionId !== sessionId ||
             event.type !== "session_turn_transition" ||

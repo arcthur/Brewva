@@ -41,17 +41,17 @@ describe("gateway contract: schedule runner", () => {
     const workspace = createTestWorkspace("schedule-runner-success");
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const parentSessionId = "parent-session";
-    runtime.task.setSpec(parentSessionId, {
+    runtime.authority.task.setSpec(parentSessionId, {
       schema: "brewva.task.v1",
       goal: "Finish the release checklist",
     });
-    runtime.truth.upsertFact(parentSessionId, {
+    runtime.authority.truth.upsertFact(parentSessionId, {
       id: "fact-1",
       kind: "status",
       severity: "warn",
       summary: "Release notes are still missing reviewer approval.",
     });
-    runtime.events.recordTapeHandoff(parentSessionId, {
+    runtime.authority.events.recordTapeHandoff(parentSessionId, {
       name: "release-checkpoint",
       summary: "The release prep is partially complete.",
       nextSteps: "Resolve the last reviewer comment.",
@@ -158,17 +158,17 @@ describe("gateway contract: schedule runner", () => {
       expect(sentPrompt?.prompt).not.toContain("parent_anchor_id:");
       expect(sentPrompt?.prompt).not.toContain("parent_anchor_name:");
 
-      const wakeups = runtime.events.query("agent-schedule-1", {
+      const wakeups = runtime.inspect.events.query("agent-schedule-1", {
         type: SCHEDULE_WAKEUP_EVENT_TYPE,
       });
       expect(wakeups).toHaveLength(1);
       expect(wakeups[0]?.payload?.intentId).toBe("intent-1");
       expect(wakeups[0]?.payload?.inheritedTruthFacts).toBe(1);
 
-      const started = runtime.events.query(parentSessionId, {
+      const started = runtime.inspect.events.query(parentSessionId, {
         type: SCHEDULE_CHILD_SESSION_STARTED_EVENT_TYPE,
       });
-      const finished = runtime.events.query(parentSessionId, {
+      const finished = runtime.inspect.events.query(parentSessionId, {
         type: SCHEDULE_CHILD_SESSION_FINISHED_EVENT_TYPE,
       });
       expect(started).toHaveLength(1);
@@ -214,17 +214,17 @@ describe("gateway contract: schedule runner", () => {
     const workspace = createTestWorkspace("schedule-runner-fresh");
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const parentSessionId = "parent-session";
-    runtime.task.setSpec(parentSessionId, {
+    runtime.authority.task.setSpec(parentSessionId, {
       schema: "brewva.task.v1",
       goal: "Finish the release checklist",
     });
-    runtime.truth.upsertFact(parentSessionId, {
+    runtime.authority.truth.upsertFact(parentSessionId, {
       id: "fact-1",
       kind: "status",
       severity: "warn",
       summary: "Release notes are still missing reviewer approval.",
     });
-    runtime.events.recordTapeHandoff(parentSessionId, {
+    runtime.authority.events.recordTapeHandoff(parentSessionId, {
       name: "release-checkpoint",
       summary: "The release prep is partially complete.",
       nextSteps: "Resolve the last reviewer comment.",
@@ -289,7 +289,7 @@ describe("gateway contract: schedule runner", () => {
       expect(sentPrompt?.prompt).not.toContain("parent_anchor_summary:");
       expect(sentPrompt?.prompt).not.toContain("parent_anchor_next_steps:");
 
-      const wakeups = runtime.events.query("agent-schedule-fresh", {
+      const wakeups = runtime.inspect.events.query("agent-schedule-fresh", {
         type: SCHEDULE_WAKEUP_EVENT_TYPE,
       });
       expect(wakeups).toHaveLength(1);
@@ -344,7 +344,7 @@ describe("gateway contract: schedule runner", () => {
       expect(thrown).toBeInstanceOf(Error);
       expect((thrown as Error).message).toBe("worker failed");
 
-      const failed = runtime.events.query(parentSessionId, {
+      const failed = runtime.inspect.events.query(parentSessionId, {
         type: SCHEDULE_CHILD_SESSION_FAILED_EVENT_TYPE,
       });
       expect(failed).toHaveLength(1);

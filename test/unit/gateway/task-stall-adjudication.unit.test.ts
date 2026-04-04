@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { BrewvaRuntime, buildTaskStuckDetectedPayload } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   adjudicateTaskStallPacket,
   buildTaskStallInspectionPacket,
@@ -16,20 +17,20 @@ describe("task stall adjudication", () => {
     });
     const sessionId = "stall-inspection-packet-1";
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Repair the failing verification path",
     });
-    runtime.task.recordBlocker(sessionId, {
+    runtime.authority.task.recordBlocker(sessionId, {
       message: "Awaiting targeted retry strategy",
       source: "unit_test",
     });
-    runtime.session.recordWorkerResult(sessionId, {
+    runtime.maintain.session.recordWorkerResult(sessionId, {
       workerId: "patch-worker-1",
       status: "ok",
       summary: "Patch result is ready for parent review.",
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "tool_result_recorded",
       timestamp: 150,
@@ -40,7 +41,7 @@ describe("task stall adjudication", () => {
         failureClass: "execution",
       },
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "verification_outcome_recorded",
       timestamp: 160,
@@ -85,14 +86,14 @@ describe("task stall adjudication", () => {
       config: createOpsRuntimeConfig(),
     });
     const sessionId = "stall-compact-recommended-1";
-    const highThreshold = runtime.events.getTapePressureThresholds().high;
+    const highThreshold = runtime.inspect.events.getTapePressureThresholds().high;
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Exercise high-pressure stall adjudication",
     });
     for (let index = 0; index <= highThreshold; index += 1) {
-      runtime.events.record({
+      recordRuntimeEvent(runtime, {
         sessionId,
         type: "custom_probe_event",
         payload: { index },
@@ -125,15 +126,15 @@ describe("task stall adjudication", () => {
     });
     const sessionId = "stall-adjudication-record-1";
 
-    runtime.task.setSpec(sessionId, {
+    runtime.authority.task.setSpec(sessionId, {
       schema: "brewva.task.v1",
       goal: "Exercise durable stall adjudication",
     });
-    runtime.task.recordBlocker(sessionId, {
+    runtime.authority.task.recordBlocker(sessionId, {
       message: "Need user confirmation before retrying the fix",
       source: "unit_test",
     });
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "task_stuck_detected",
       timestamp: 400_100,
@@ -163,6 +164,8 @@ describe("task stall adjudication", () => {
       source: "heuristic",
     });
     expect(second).toBeNull();
-    expect(runtime.events.query(sessionId, { type: "task_stall_adjudicated" })).toHaveLength(1);
+    expect(
+      runtime.inspect.events.query(sessionId, { type: "task_stall_adjudicated" }),
+    ).toHaveLength(1);
   });
 });

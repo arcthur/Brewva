@@ -1,4 +1,4 @@
-import type { BrewvaRuntime, ContextBudgetUsage } from "@brewva/brewva-runtime";
+import type { BrewvaHostedRuntimePort, ContextBudgetUsage } from "@brewva/brewva-runtime";
 import { extractCompactionEntryId, extractCompactionSummary } from "./context-shared.js";
 import {
   AUTO_COMPACTION_WATCHDOG_ERROR,
@@ -130,14 +130,14 @@ function recordAutoCompactionFailure(state: CompactionGateState): void {
 }
 
 function resolveCompactionLadderDecision(input: {
-  runtime: BrewvaRuntime;
+  runtime: BrewvaHostedRuntimePort;
   sessionId: string;
   usage?: ContextBudgetUsage;
   hasUI: boolean;
   idle: boolean;
   state: CompactionGateState;
 }): CompactionLadderDecision {
-  if (!input.runtime.context.checkAndRequestCompaction(input.sessionId, input.usage)) {
+  if (!input.runtime.maintain.context.checkAndRequestCompaction(input.sessionId, input.usage)) {
     return {
       step: "no_request",
       compactionReason: null,
@@ -145,7 +145,7 @@ function resolveCompactionLadderDecision(input: {
   }
 
   const compactionReason =
-    input.runtime.context.getPendingCompactionReason(input.sessionId) ?? "usage_threshold";
+    input.runtime.inspect.context.getPendingCompactionReason(input.sessionId) ?? "usage_threshold";
 
   if (!input.hasUI) {
     return {
@@ -182,7 +182,7 @@ function resolveCompactionLadderDecision(input: {
 }
 
 export function createHostedCompactionController(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   telemetry: HostedContextTelemetry,
   turnClock: RuntimeTurnClockStore = createRuntimeTurnClockStore(),
   options: HostedCompactionControllerOptions = {},
@@ -192,19 +192,13 @@ export function createHostedCompactionController(
     1,
     Math.trunc(options.autoCompactionWatchdogMs ?? DEFAULT_AUTO_COMPACTION_WATCHDOG_MS),
   );
-  const queryStructured =
-    typeof runtime.events.queryStructured === "function"
-      ? runtime.events.queryStructured.bind(runtime.events)
-      : null;
+  const queryStructured = runtime.inspect.events.queryStructured.bind(runtime.inspect.events);
 
   const ensureHydrated = (sessionId: string, state: CompactionGateState): void => {
     if (state.hydrated) {
       return;
     }
     state.hydrated = true;
-    if (!queryStructured) {
-      return;
-    }
     const events = queryStructured(sessionId);
     for (const event of events) {
       if (event.type === AUTO_COMPACTION_FAILED_EVENT_TYPE) {
@@ -241,11 +235,11 @@ export function createHostedCompactionController(
         input.timestamp,
       );
       state.turnIndex = runtimeTurn;
-      runtime.context.onTurnStart(input.sessionId, runtimeTurn);
+      runtime.maintain.context.onTurnStart(input.sessionId, runtimeTurn);
     },
     context(input) {
       const state = getSessionState(input.sessionId);
-      runtime.context.observeUsage(input.sessionId, input.usage);
+      runtime.maintain.context.observeUsage(input.sessionId, input.usage);
       const decision = resolveCompactionLadderDecision({
         runtime,
         sessionId: input.sessionId,
@@ -332,7 +326,7 @@ export function createHostedCompactionController(
         sessionId: input.sessionId,
         turn: state.turnIndex,
         reason: compactionReason,
-        usagePercent: runtime.context.getUsageRatio(input.usage),
+        usagePercent: runtime.inspect.context.getUsageRatio(input.usage),
         tokens: input.usage?.tokens ?? null,
       });
 
@@ -356,7 +350,7 @@ export function createHostedCompactionController(
       try {
         const compact = input.compact as NonNullable<HostedManualCompact>;
         compact({
-          customInstructions: runtime.context.getCompactionInstructions(),
+          customInstructions: runtime.inspect.context.getCompactionInstructions(),
           onComplete: () => {
             if (state.activeAutoCompactionAttemptId !== attemptId) {
               return;
@@ -384,7 +378,7 @@ export function createHostedCompactionController(
       clearAutoCompactionExecutionState(state);
       resetAutoCompactionBreaker(state);
 
-      runtime.context.markCompacted(input.sessionId, {
+      runtime.maintain.context.markCompacted(input.sessionId, {
         fromTokens: null,
         toTokens: input.usage?.tokens ?? null,
         summary: extractCompactionSummary({

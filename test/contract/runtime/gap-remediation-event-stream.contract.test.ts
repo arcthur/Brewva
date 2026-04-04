@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { appendFileSync, readFileSync } from "node:fs";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { requireArray, requireRecord } from "../../helpers/assertions.js";
 import {
   GAP_REMEDIATION_CONFIG_PATH,
@@ -27,7 +28,7 @@ describe("Gap remediation: event stream safety", () => {
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "events-payload-1";
 
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "payload_test",
       payload: {
@@ -43,7 +44,7 @@ describe("Gap remediation: event stream safety", () => {
       },
     });
 
-    const events = runtime.events.query(sessionId);
+    const events = runtime.inspect.events.query(sessionId);
     expect(events).toHaveLength(1);
     const payload = (events[0]?.payload ?? {}) as {
       ok?: boolean;
@@ -88,7 +89,7 @@ describe("Gap remediation: event stream safety", () => {
 
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "events-bad-lines-1";
-    runtime.events.record({ sessionId, type: "session_start", payload: { cwd: workspace } });
+    recordRuntimeEvent(runtime, { sessionId, type: "session_start", payload: { cwd: workspace } });
 
     const eventsPath = findGapRemediationEventFilePath(
       workspace,
@@ -97,7 +98,7 @@ describe("Gap remediation: event stream safety", () => {
     );
     appendFileSync(eventsPath, "\n{ this is not json", "utf8");
 
-    const events = runtime.events.query(sessionId);
+    const events = runtime.inspect.events.query(sessionId);
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe("session_start");
   });
@@ -117,7 +118,7 @@ describe("Gap remediation: event stream safety", () => {
 
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "events-redact-1";
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "custom_event",
       payload: {

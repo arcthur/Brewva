@@ -175,7 +175,7 @@ export function createDeliberationMemoryTool(options: BrewvaToolOptions): ToolDe
       const query = readTrimmedString(params.query);
       const limit = Math.max(1, Math.min(20, params.limit ?? 10));
       const sessionId = getSessionId(ctx);
-      const targetRoots = options.runtime.task.getTargetDescriptor(sessionId).roots;
+      const targetRoots = options.runtime.inspect.task.getTargetDescriptor(sessionId).roots;
 
       if (params.action === "stats") {
         const state = plane.getState();

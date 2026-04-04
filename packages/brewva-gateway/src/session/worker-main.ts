@@ -1,3 +1,4 @@
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createRuntimeTurnClockStore } from "../runtime-plugins/runtime-turn-clock.js";
 import { collectSessionPromptOutput } from "./collect-output.js";
 import { createGatewaySession, type GatewaySessionResult } from "./create-session.js";
@@ -62,11 +63,11 @@ function recordFakeTurnLifecycle(
   }
 
   const runtime = sessionResult.runtime;
-  const existingSessionStart = runtime.events.query(agentSessionId, {
+  const existingSessionStart = runtime.inspect.events.query(agentSessionId, {
     type: "session_start",
   });
   if (existingSessionStart.length === 0) {
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: agentSessionId,
       type: "session_start",
       payload: {
@@ -75,25 +76,25 @@ function recordFakeTurnLifecycle(
     });
   }
 
-  const existingAgentStart = runtime.events.query(agentSessionId, {
+  const existingAgentStart = runtime.inspect.events.query(agentSessionId, {
     type: "agent_start",
   });
   if (existingAgentStart.length === 0) {
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId: agentSessionId,
       type: "agent_start",
     });
   }
 
   const timestamp = Date.now();
-  const localTurn = runtime.events.query(agentSessionId, {
+  const localTurn = runtime.inspect.events.query(agentSessionId, {
     type: "turn_start",
   }).length;
   const runtimeTurn = workerTurnClock.observeTurnStart(agentSessionId, localTurn, timestamp);
   const message = summarizeFakeAssistantMessage(assistantText, timestamp);
 
-  runtime.context.onTurnStart(agentSessionId, runtimeTurn);
-  runtime.events.record({
+  runtime.maintain.context.onTurnStart(agentSessionId, runtimeTurn);
+  recordRuntimeEvent(runtime, {
     sessionId: agentSessionId,
     type: "turn_start",
     turn: runtimeTurn,
@@ -102,18 +103,18 @@ function recordFakeTurnLifecycle(
       timestamp,
     },
   });
-  runtime.events.record({
+  recordRuntimeEvent(runtime, {
     sessionId: agentSessionId,
     type: "message_start",
     payload: message,
   });
-  runtime.events.record({
+  recordRuntimeEvent(runtime, {
     sessionId: agentSessionId,
     type: "message_end",
     payload: message,
   });
-  runtime.context.onTurnEnd(agentSessionId);
-  runtime.events.record({
+  runtime.maintain.context.onTurnEnd(agentSessionId);
+  recordRuntimeEvent(runtime, {
     sessionId: agentSessionId,
     type: "turn_end",
     turn: runtimeTurn,
@@ -123,12 +124,12 @@ function recordFakeTurnLifecycle(
       toolResults: 0,
     },
   });
-  runtime.events.record({
+  recordRuntimeEvent(runtime, {
     sessionId: agentSessionId,
     type: "agent_end",
     payload: {
       messageCount: 1,
-      costSummary: runtime.cost.getSummary(agentSessionId),
+      costSummary: runtime.inspect.cost.getSummary(agentSessionId),
     },
   });
 }
@@ -273,7 +274,7 @@ async function handleInit(
     const agentSessionId = sessionResult.session.sessionManager.getSessionId();
     const watchdogOverrides = workerTestHarness.watchdog;
     if (watchdogOverrides.taskGoal) {
-      sessionResult.runtime.task.setSpec(agentSessionId, {
+      sessionResult.runtime.authority.task.setSpec(agentSessionId, {
         schema: "brewva.task.v1",
         goal: watchdogOverrides.taskGoal,
       });
@@ -398,7 +399,7 @@ async function runTurn(input: {
         status: "entered",
         family: "recovery",
         sourceEventId: input.walReplayId,
-        sourceEventType: "turn_wal_recovery_completed",
+        sourceEventType: "recovery_wal_recovery_completed",
       });
     }
     const fakeAssistantText = workerTestHarness.fakeAssistantText;
@@ -411,7 +412,7 @@ async function runTurn(input: {
           status: "completed",
           family: "recovery",
           sourceEventId: input.walReplayId,
-          sourceEventType: "turn_wal_recovery_completed",
+          sourceEventType: "recovery_wal_recovery_completed",
         });
       }
       send({
@@ -453,7 +454,7 @@ async function runTurn(input: {
         status: "completed",
         family: "recovery",
         sourceEventId: input.walReplayId,
-        sourceEventType: "turn_wal_recovery_completed",
+        sourceEventType: "recovery_wal_recovery_completed",
       });
     }
 
@@ -478,7 +479,7 @@ async function runTurn(input: {
         status: "failed",
         family: "recovery",
         sourceEventId: input.walReplayId,
-        sourceEventType: "turn_wal_recovery_completed",
+        sourceEventType: "recovery_wal_recovery_completed",
         error: error instanceof Error ? error.message : String(error),
       });
     }

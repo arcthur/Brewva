@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ContextInjectionCollector } from "@brewva/brewva-runtime";
+import { ContextInjectionCollector } from "@brewva/brewva-runtime/internal";
 
 function makeRegistration(content: string) {
   return {

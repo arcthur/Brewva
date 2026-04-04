@@ -74,7 +74,7 @@ Ensure restart/recovery remains deterministic when turns are interrupted.
 
 Source anchors:
 
-- Turn WAL append/recover: `packages/brewva-runtime/src/channels/turn-wal.ts`
+- Recovery WAL append/recover: `packages/brewva-runtime/src/channels/recovery-wal.ts`
 - Tape replay engine: `packages/brewva-runtime/src/tape/replay-engine.ts`
 - CLI replay/undo entrypoint: `packages/brewva-cli/src/index.ts`
 

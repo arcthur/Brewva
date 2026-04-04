@@ -1,5 +1,5 @@
 import type { RuntimePlugin, RuntimePluginApi } from "@brewva/brewva-gateway/runtime-plugins";
-import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import type { BrewvaOperatorRuntimePort } from "@brewva/brewva-runtime";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { clampText, resolveInspectDirectory } from "./inspect-analysis.js";
 import { buildSessionInspectReport, formatInspectText } from "./inspect.js";
@@ -38,7 +38,7 @@ function normalizeCommandArgs(args: string): string | undefined {
 }
 
 export function createInspectCommandRuntimePlugin(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaOperatorRuntimePort,
   options: {
     widgetId?: string;
     maxWidgetLines?: number;

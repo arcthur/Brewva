@@ -17,13 +17,13 @@ describe("Gap remediation: cost view and budget linkage", () => {
 
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "cost-allocation-1";
-    runtime.context.onTurnStart(sessionId, 1);
+    runtime.maintain.context.onTurnStart(sessionId, 1);
 
-    runtime.tools.markCall(sessionId, "read");
-    runtime.tools.markCall(sessionId, "read");
-    runtime.tools.markCall(sessionId, "grep");
+    runtime.authority.tools.markCall(sessionId, "read");
+    runtime.authority.tools.markCall(sessionId, "read");
+    runtime.authority.tools.markCall(sessionId, "grep");
 
-    runtime.cost.recordAssistantUsage({
+    runtime.authority.cost.recordAssistantUsage({
       sessionId,
       model: "test/model",
       inputTokens: 100,
@@ -34,7 +34,7 @@ describe("Gap remediation: cost view and budget linkage", () => {
       costUsd: 0.03,
     });
 
-    const summary = runtime.cost.getSummary(sessionId);
+    const summary = runtime.inspect.cost.getSummary(sessionId);
     expect(summary.tools.read?.callCount).toBe(2);
     expect(summary.tools.grep?.callCount).toBe(1);
     expect(summary.tools.read?.allocatedTokens).toBeCloseTo(200, 3);
@@ -60,9 +60,9 @@ describe("Gap remediation: cost view and budget linkage", () => {
 
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "cost-1";
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.tools.markCall(sessionId, "edit");
-    runtime.cost.recordAssistantUsage({
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.tools.markCall(sessionId, "edit");
+    runtime.authority.cost.recordAssistantUsage({
       sessionId,
       model: "test/model",
       inputTokens: 100,
@@ -73,16 +73,16 @@ describe("Gap remediation: cost view and budget linkage", () => {
       costUsd: 0.02,
     });
 
-    const summary = runtime.cost.getSummary(sessionId);
+    const summary = runtime.inspect.cost.getSummary(sessionId);
     expect(summary.totalCostUsd).toBeGreaterThan(0.01);
     expect(summary.budget.blocked).toBe(true);
     requireDefined(summary.skills["(none)"], "expected default skill bucket in cost summary");
     expect(summary.tools.edit?.callCount).toBe(1);
 
-    const access = runtime.tools.checkAccess(sessionId, "read");
+    const access = runtime.inspect.tools.checkAccess(sessionId, "read");
     expect(access.allowed).toBe(false);
-    expect(runtime.tools.checkAccess(sessionId, "skill_complete").allowed).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "session_compact").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "skill_complete").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "session_compact").allowed).toBe(true);
   });
 
   test("enforces session cost budget status consistently with tool access checks", async () => {
@@ -138,9 +138,9 @@ implementation`,
 
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "cost-budget-consistency-1";
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.tools.markCall(sessionId, "read");
-    runtime.cost.recordAssistantUsage({
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.tools.markCall(sessionId, "read");
+    runtime.authority.cost.recordAssistantUsage({
       sessionId,
       model: "test/model",
       inputTokens: 40,
@@ -150,15 +150,15 @@ implementation`,
       totalTokens: 60,
       costUsd: 0.002,
     });
-    expect(runtime.skills.activate(sessionId, "implementation").ok).toBe(true);
+    expect(runtime.authority.skills.activate(sessionId, "implementation").ok).toBe(true);
 
-    const summary = runtime.cost.getSummary(sessionId);
+    const summary = runtime.inspect.cost.getSummary(sessionId);
     expect(summary.budget.blocked).toBe(true);
 
-    const access = runtime.tools.checkAccess(sessionId, "read");
+    const access = runtime.inspect.tools.checkAccess(sessionId, "read");
     expect(access.allowed).toBe(false);
-    expect(runtime.tools.checkAccess(sessionId, "skill_complete").allowed).toBe(true);
-    expect(runtime.tools.checkAccess(sessionId, "session_compact").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "skill_complete").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "session_compact").allowed).toBe(true);
   });
 
   test("does not block tools when costTracking.enabled is false", () => {
@@ -178,9 +178,9 @@ implementation`,
 
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "cost-disabled-1";
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.tools.markCall(sessionId, "edit");
-    runtime.cost.recordAssistantUsage({
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.tools.markCall(sessionId, "edit");
+    runtime.authority.cost.recordAssistantUsage({
       sessionId,
       model: "test/model",
       inputTokens: 100,
@@ -191,13 +191,13 @@ implementation`,
       costUsd: 0.01,
     });
 
-    const summary = runtime.cost.getSummary(sessionId);
+    const summary = runtime.inspect.cost.getSummary(sessionId);
     expect(summary.totalCostUsd).toBeGreaterThan(0);
     expect(summary.totalTokens).toBeGreaterThan(0);
     expect(summary.budget.blocked).toBe(false);
     expect(summary.budget.sessionExceeded).toBe(false);
 
-    const access = runtime.tools.checkAccess(sessionId, "read");
+    const access = runtime.inspect.tools.checkAccess(sessionId, "read");
     expect(access.allowed).toBe(true);
   });
 
@@ -219,8 +219,8 @@ implementation`,
 
     const runtime = new BrewvaRuntime({ cwd: workspace, configPath: GAP_REMEDIATION_CONFIG_PATH });
     const sessionId = "cost-no-alerts-1";
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.cost.recordAssistantUsage({
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.cost.recordAssistantUsage({
       sessionId,
       model: "test/model",
       inputTokens: 100,
@@ -231,7 +231,7 @@ implementation`,
       costUsd: 0.01,
     });
 
-    const summary = runtime.cost.getSummary(sessionId);
+    const summary = runtime.inspect.cost.getSummary(sessionId);
     expect(summary.totalCostUsd).toBeGreaterThan(0);
     expect(summary.alerts).toHaveLength(0);
   });

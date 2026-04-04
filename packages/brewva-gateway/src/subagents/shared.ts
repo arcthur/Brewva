@@ -139,7 +139,7 @@ function resolveSkillToolHints(runtime: BrewvaRuntime, skillName: string | undef
   if (!skillName) {
     return [];
   }
-  const skill = runtime.skills.get(skillName);
+  const skill = runtime.inspect.skills.get(skillName);
   if (!skill) {
     return [];
   }
@@ -251,7 +251,10 @@ export function resolveBuiltinToolNamesForRun(
     resolveSkillToolHints(runtime, target.skillName),
   );
   return requested.filter((toolName) =>
-    boundaryWithinCeiling(runtime.tools.getGovernanceDescriptor(toolName)?.boundary, boundary),
+    boundaryWithinCeiling(
+      runtime.inspect.tools.getGovernanceDescriptor(toolName)?.boundary,
+      boundary,
+    ),
   );
 }
 
@@ -276,7 +279,7 @@ export function resolveManagedToolNamesForRun(
       return false;
     }
     return boundaryWithinCeiling(
-      runtime.tools.getGovernanceDescriptor(toolName)?.boundary,
+      runtime.inspect.tools.getGovernanceDescriptor(toolName)?.boundary,
       boundary,
     );
   });
@@ -396,7 +399,9 @@ export function resolveDelegationExecutionPlan(input: {
   preselectedModelRoute?: DelegationModelRouteRecord;
 }): ResolvedDelegationExecutionPlan {
   const delegatedSkillName = input.target.skillName;
-  const skill = delegatedSkillName ? input.runtime.skills.get(delegatedSkillName) : undefined;
+  const skill = delegatedSkillName
+    ? input.runtime.inspect.skills.get(delegatedSkillName)
+    : undefined;
   const skillBoundaryCeiling =
     skill && resolveSkillEffectLevel(skill.contract) === "read_only" ? "safe" : undefined;
   const boundary = resolveRequestedBoundary({
@@ -455,7 +460,7 @@ export function aggregateChildCost(
     if (totals.totalTokens <= 0 && totals.totalCostUsd <= 0) {
       continue;
     }
-    runtime.cost.recordAssistantUsage({
+    runtime.authority.cost.recordAssistantUsage({
       sessionId: parentSessionId,
       model,
       inputTokens: totals.inputTokens,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ContextArena } from "@brewva/brewva-runtime";
+import { ContextArena } from "@brewva/brewva-runtime/internal";
 
 function budgetClassForSource(source: string): "core" | "working" | "recall" {
   switch (source) {

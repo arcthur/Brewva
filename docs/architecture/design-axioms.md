@@ -47,6 +47,11 @@ can be judged against a stable standard instead of local convenience.
     Documents that describe product shape, orchestration flow, or operator UX
     must not silently widen kernel authority. When wording conflicts, the
     narrowest authority-defining document wins.
+12. `Public width should compress toward authority width.`
+    Runtime may expose explicit inspection, recovery, or maintenance helpers,
+    but the default host and extension contract should stay anchored to the
+    smallest authority-facing layer that preserves effect governance, replay,
+    verification, and rollback semantics.
 
 Implementation note:
 
@@ -65,6 +70,9 @@ Implementation note:
   authority
 - visible tool surface and execution hints still shape exploration, but they do
   not define authority on their own
+- public runtime breadth does not by itself make every domain equally
+  kernel-central; rich inspection and recovery surfaces may stay explicit
+  without becoming the default coupling layer for hosts, skills, or plugins
 - explicit control-plane exemptions may exist, but they must stay narrow and
   auditable
 - architecture prose about planes, lanes, prompts, or flow should be read as

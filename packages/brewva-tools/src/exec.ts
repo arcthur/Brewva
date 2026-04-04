@@ -22,8 +22,13 @@ import {
   type ManagedExecFinishedSession,
   type ManagedExecRunningSession,
 } from "./exec-process-registry.js";
+import {
+  recordToolRuntimeEvent,
+  resolveToolRuntimeCredentialBindings,
+  resolveToolRuntimeSandboxApiKey,
+} from "./runtime-internal.js";
 import { isPathInsideRoots, resolveToolTargetScope } from "./target-scope.js";
-import type { BrewvaToolRuntime } from "./types.js";
+import type { BrewvaBundledToolRuntime } from "./types.js";
 import { textResult, withVerdict } from "./utils/result.js";
 import { getSessionId } from "./utils/session.js";
 import { defineBrewvaTool } from "./utils/tool.js";
@@ -78,7 +83,7 @@ interface ResolvedExecutionPolicy {
 }
 
 interface ExecToolOptions {
-  runtime?: BrewvaToolRuntime;
+  runtime?: BrewvaBundledToolRuntime;
 }
 
 interface SandboxCommandBuildResult {
@@ -222,7 +227,7 @@ async function waitForCompletionOrYield(
 }
 
 function resolveExecutionPolicy(
-  runtime?: BrewvaToolRuntime,
+  runtime?: BrewvaBundledToolRuntime,
   sandboxApiKeyOverride?: string,
 ): ResolvedExecutionPolicy {
   const security = runtime?.config?.security ?? DEFAULT_BREWVA_CONFIG.security;
@@ -456,12 +461,12 @@ function buildSandboxCommand(input: {
 }
 
 function recordExecEvent(
-  runtime: BrewvaToolRuntime | undefined,
+  runtime: BrewvaBundledToolRuntime | undefined,
   sessionId: string,
   type: RecordedExecEvent,
   payload: Record<string, unknown>,
 ): void {
-  runtime?.events.record?.({
+  recordToolRuntimeEvent(runtime, {
     sessionId,
     type,
     payload,
@@ -770,8 +775,11 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
         );
       }
       const sandboxRequestedCwd = requestedWorkdir ? hostCwd : undefined;
-      const boundEnv =
-        options?.runtime?.session?.resolveCredentialBindings?.(ownerSessionId, "exec") ?? {};
+      const boundEnv = resolveToolRuntimeCredentialBindings(
+        options?.runtime,
+        ownerSessionId,
+        "exec",
+      );
       const requestedEnv =
         params.env || Object.keys(boundEnv).length > 0
           ? {
@@ -787,7 +795,7 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
 
       const policy = resolveExecutionPolicy(
         options?.runtime,
-        options?.runtime?.session?.resolveSandboxApiKey?.(ownerSessionId),
+        resolveToolRuntimeSandboxApiKey(options?.runtime, ownerSessionId),
       );
       const boundaryClassification = classifyToolBoundaryRequest({
         toolName: "exec",

@@ -1,17 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { createRuntimeChannelTurnBridge } from "@brewva/brewva-gateway/runtime-plugins";
-import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { createHostedRuntimePort } from "@brewva/brewva-runtime";
 import {
   DEFAULT_CHANNEL_CAPABILITIES,
   type ChannelAdapter,
   type TurnEnvelope,
 } from "@brewva/brewva-runtime/channels";
 import { assertRejectsWithMessage } from "../../helpers.js";
+import { createRuntimeFixture } from "../../helpers/runtime.js";
 
-type RuntimeLike = {
-  events: {
-    record: (input: Record<string, unknown>) => void;
-  };
+type CapturedRuntimeEvent = {
+  type?: string;
+  payload?: Record<string, unknown>;
+  sessionId?: string;
+  turn?: number;
+  timestamp?: number;
 };
 
 const BASE_TURN: TurnEnvelope = {
@@ -58,17 +61,17 @@ function createAdapter(options?: { sendError?: Error }): {
 
 describe("channel turn bridge runtime plugin helper", () => {
   test("given bridge activity, when runtime plugin helper runs, then ingested and emitted events are recorded with channel metadata", async () => {
-    const events: Record<string, unknown>[] = [];
-    const runtime: RuntimeLike = {
+    const events: CapturedRuntimeEvent[] = [];
+    const runtime = createRuntimeFixture({
       events: {
-        record: (input) => {
+        record: (input: CapturedRuntimeEvent) => {
           events.push(input);
         },
       },
-    };
+    });
     const { adapter, emitInbound } = createAdapter();
     const bridge = createRuntimeChannelTurnBridge({
-      runtime: runtime as unknown as BrewvaRuntime,
+      runtime: createHostedRuntimePort(runtime),
       adapter,
       onInboundTurn: async () => undefined,
     });
@@ -94,17 +97,17 @@ describe("channel turn bridge runtime plugin helper", () => {
   });
 
   test("given adapter send failure, when bridge sends turn, then bridge error event is recorded", async () => {
-    const events: Record<string, unknown>[] = [];
-    const runtime: RuntimeLike = {
+    const events: CapturedRuntimeEvent[] = [];
+    const runtime = createRuntimeFixture({
       events: {
-        record: (input) => {
+        record: (input: CapturedRuntimeEvent) => {
           events.push(input);
         },
       },
-    };
+    });
     const { adapter } = createAdapter({ sendError: new Error("send failed") });
     const bridge = createRuntimeChannelTurnBridge({
-      runtime: runtime as unknown as BrewvaRuntime,
+      runtime: createHostedRuntimePort(runtime),
       adapter,
       onInboundTurn: async () => undefined,
     });
@@ -117,18 +120,18 @@ describe("channel turn bridge runtime plugin helper", () => {
   });
 
   test("given ingested session resolver, when inbound turn is handled, then recorded session id is normalized", async () => {
-    const events: Record<string, unknown>[] = [];
-    const runtime: RuntimeLike = {
+    const events: CapturedRuntimeEvent[] = [];
+    const runtime = createRuntimeFixture({
       events: {
-        record: (input) => {
+        record: (input: CapturedRuntimeEvent) => {
           events.push(input);
         },
       },
-    };
+    });
     const inboundTurns: TurnEnvelope[] = [];
     const { adapter, emitInbound } = createAdapter();
     const bridge = createRuntimeChannelTurnBridge({
-      runtime: runtime as unknown as BrewvaRuntime,
+      runtime: createHostedRuntimePort(runtime),
       adapter,
       resolveIngestedSessionId: (turn) =>
         turn.sessionId === "channel:session" ? "agent-session-1" : undefined,

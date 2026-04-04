@@ -20,7 +20,7 @@ describe("task progress watchdog", () => {
       const sessionId = "watchdog-detect-1";
 
       now = 1_710_000_000_100;
-      runtime.task.setSpec(sessionId, {
+      runtime.authority.task.setSpec(sessionId, {
         schema: "brewva.task.v1",
         goal: "Detect long-running idle periods",
       });
@@ -34,11 +34,11 @@ describe("task progress watchdog", () => {
       now += TASK_PROGRESS_WATCHDOG_TEST_ONLY.DEFAULT_THRESHOLD_MS + 1;
       watchdog.poll();
 
-      const state = runtime.task.getState(sessionId);
+      const state = runtime.inspect.task.getState(sessionId);
       expect(state.blockers).toEqual([]);
       expect(state.status?.phase).not.toBe("blocked");
 
-      const detected = runtime.events.query(sessionId, { type: "task_stuck_detected" });
+      const detected = runtime.inspect.events.query(sessionId, { type: "task_stuck_detected" });
       expect(detected).toHaveLength(1);
       expect(detected[0]?.payload).toMatchObject({
         schema: "brewva.task-watchdog.v1",
@@ -48,7 +48,9 @@ describe("task progress watchdog", () => {
         idleMs: TASK_PROGRESS_WATCHDOG_TEST_ONLY.DEFAULT_THRESHOLD_MS + 1,
         openItemCount: 0,
       });
-      const adjudicated = runtime.events.query(sessionId, { type: "task_stall_adjudicated" });
+      const adjudicated = runtime.inspect.events.query(sessionId, {
+        type: "task_stall_adjudicated",
+      });
       expect(adjudicated).toHaveLength(1);
       expect(adjudicated[0]?.payload).toMatchObject({
         schema: "brewva.task-stall-adjudication.v1",
@@ -58,8 +60,12 @@ describe("task progress watchdog", () => {
 
       now += 60_000;
       watchdog.poll();
-      expect(runtime.events.query(sessionId, { type: "task_stuck_detected" })).toHaveLength(1);
-      expect(runtime.events.query(sessionId, { type: "task_stall_adjudicated" })).toHaveLength(1);
+      expect(runtime.inspect.events.query(sessionId, { type: "task_stuck_detected" })).toHaveLength(
+        1,
+      );
+      expect(
+        runtime.inspect.events.query(sessionId, { type: "task_stall_adjudicated" }),
+      ).toHaveLength(1);
     } finally {
       restoreNow();
     }
@@ -74,7 +80,7 @@ describe("task progress watchdog", () => {
         config: createOpsRuntimeConfig(),
       });
       const sessionId = "watchdog-no-task-state-1";
-      await runtime.context.buildInjection(sessionId, "Inspect the repository");
+      await runtime.maintain.context.buildInjection(sessionId, "Inspect the repository");
 
       const watchdog = new TaskProgressWatchdog({
         runtime,
@@ -85,7 +91,7 @@ describe("task progress watchdog", () => {
       now += TASK_PROGRESS_WATCHDOG_TEST_ONLY.DEFAULT_THRESHOLD_MS + 1;
       watchdog.poll();
 
-      expect(runtime.events.query(sessionId, { type: "task_stuck_detected" })).toEqual([]);
+      expect(runtime.inspect.events.query(sessionId, { type: "task_stuck_detected" })).toEqual([]);
     } finally {
       restoreNow();
     }
@@ -109,7 +115,7 @@ describe("task progress watchdog", () => {
       const sessionId = "watchdog-lifecycle-1";
 
       now = 1_725_000_000_100;
-      runtime.task.setSpec(sessionId, {
+      runtime.authority.task.setSpec(sessionId, {
         schema: "brewva.task.v1",
         goal: "Exercise worker-local watchdog lifecycle wiring",
       });
@@ -148,7 +154,7 @@ describe("task progress watchdog", () => {
         });
       triggerPoll();
 
-      const detected = runtime.events.query(sessionId, {
+      const detected = runtime.inspect.events.query(sessionId, {
         type: "task_stuck_detected",
         last: 1,
       })[0];
@@ -157,7 +163,7 @@ describe("task progress watchdog", () => {
         thresholdMs: 1_000,
         idleMs: 1_001,
       });
-      const adjudicated = runtime.events.query(sessionId, {
+      const adjudicated = runtime.inspect.events.query(sessionId, {
         type: "task_stall_adjudicated",
         last: 1,
       })[0];
@@ -185,11 +191,11 @@ describe("task progress watchdog", () => {
       const sessionId = "watchdog-hook-adjudication-1";
 
       now = 1_726_000_000_100;
-      runtime.task.setSpec(sessionId, {
+      runtime.authority.task.setSpec(sessionId, {
         schema: "brewva.task.v1",
         goal: "Exercise hook-backed stall adjudication",
       });
-      runtime.task.recordBlocker(sessionId, {
+      runtime.authority.task.recordBlocker(sessionId, {
         message: "Awaiting operator decision on retry scope",
         source: "unit_test",
       });
@@ -209,7 +215,7 @@ describe("task progress watchdog", () => {
       now += TASK_PROGRESS_WATCHDOG_TEST_ONLY.DEFAULT_THRESHOLD_MS + 1;
       watchdog.poll();
 
-      const adjudicated = runtime.events.query(sessionId, {
+      const adjudicated = runtime.inspect.events.query(sessionId, {
         type: "task_stall_adjudicated",
         last: 1,
       })[0];

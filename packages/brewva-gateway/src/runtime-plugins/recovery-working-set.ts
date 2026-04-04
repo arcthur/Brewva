@@ -1,4 +1,4 @@
-import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import type { BrewvaHostedRuntimePort } from "@brewva/brewva-runtime";
 import {
   getHostedTurnTransitionCoordinator,
   type HostedTransitionSnapshot,
@@ -30,7 +30,7 @@ function shouldIncludeRecoveryWorkingSet(snapshot: HostedTransitionSnapshot): bo
 
 function buildRecoveryWorkingSetContent(input: {
   snapshot: HostedTransitionSnapshot;
-  runtime: BrewvaRuntime;
+  runtime: BrewvaHostedRuntimePort;
   sessionId: string;
   delegationStore?: HostedDelegationStore;
 }): string | null {
@@ -38,7 +38,7 @@ function buildRecoveryWorkingSetContent(input: {
     return null;
   }
 
-  const taskState = input.runtime.task.getState(input.sessionId);
+  const taskState = input.runtime.inspect.task.getState(input.sessionId);
   const pendingDelegationOutcomes =
     input.delegationStore?.listPendingOutcomes(input.sessionId, {
       limit: 6,
@@ -83,7 +83,7 @@ function buildRecoveryWorkingSetContent(input: {
 }
 
 export function resolveRecoveryWorkingSetBlock(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   input: {
     sessionId: string;
     delegationStore?: HostedDelegationStore;

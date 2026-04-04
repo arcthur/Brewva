@@ -3,10 +3,10 @@ import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   DEFAULT_BREWVA_CONFIG,
-  BrewvaEventStore,
   buildTapeAnchorPayload,
   buildTapeCheckpointPayload,
 } from "@brewva/brewva-runtime";
+import { BrewvaEventStore } from "@brewva/brewva-runtime/internal";
 import { requireDefined } from "../../helpers/assertions.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 

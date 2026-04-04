@@ -13,28 +13,28 @@ import { resolve } from "node:path";
 import type {
   BrewvaConfig,
   IntegrityIssue,
-  TurnWALIngressWatermarkRecord,
-  TurnWALRecord,
-  TurnWALSource,
-  TurnWALStatus,
+  RecoveryWalIngressWatermarkRecord,
+  RecoveryWalRecord,
+  RecoveryWalSource,
+  RecoveryWalStatus,
 } from "../contracts/index.js";
 import { ensureDir, writeFileAtomic } from "../utils/fs.js";
 import { assertTurnEnvelope, type TurnEnvelope } from "./turn.js";
 
-export interface TurnWALStoreOptions {
+export interface RecoveryWalStoreOptions {
   workspaceRoot: string;
-  config: BrewvaConfig["infrastructure"]["turnWal"];
+  config: BrewvaConfig["infrastructure"]["recoveryWal"];
   scope: string;
   now?: () => number;
   recordEvent?: (input: { sessionId: string; type: string; payload?: object }) => void;
 }
 
-export interface TurnWALAppendPendingOptions {
+export interface RecoveryWalAppendPendingOptions {
   ttlMs?: number;
   dedupeKey?: string;
 }
 
-export interface TurnWALCompactResult {
+export interface RecoveryWalCompactResult {
   scope: string;
   filePath: string;
   scanned: number;
@@ -42,21 +42,21 @@ export interface TurnWALCompactResult {
   dropped: number;
 }
 
-interface TurnWALFileCache {
-  readonly rowsByWalId: Map<string, TurnWALRecord>;
-  readonly ingressWatermarksByKey: Map<string, TurnWALIngressWatermarkRecord>;
+interface RecoveryWalFileCache {
+  readonly rowsByWalId: Map<string, RecoveryWalRecord>;
+  readonly ingressWatermarksByKey: Map<string, RecoveryWalIngressWatermarkRecord>;
   byteOffset: number;
   trailingFragment: string;
 }
 
-const TERMINAL_STATUSES = new Set<TurnWALStatus>(["done", "failed", "expired"]);
-const RECOVERABLE_STATUSES = new Set<TurnWALStatus>(["pending", "inflight"]);
+const TERMINAL_STATUSES = new Set<RecoveryWalStatus>(["done", "failed", "expired"]);
+const RECOVERABLE_STATUSES = new Set<RecoveryWalStatus>(["pending", "inflight"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function isTurnWALStatus(value: unknown): value is TurnWALStatus {
+function isRecoveryWalStatus(value: unknown): value is RecoveryWalStatus {
   return (
     value === "pending" ||
     value === "inflight" ||
@@ -66,13 +66,13 @@ function isTurnWALStatus(value: unknown): value is TurnWALStatus {
   );
 }
 
-function isTurnWALSource(value: unknown): value is TurnWALSource {
+function isRecoveryWalSource(value: unknown): value is RecoveryWalSource {
   return (
     value === "channel" || value === "schedule" || value === "gateway" || value === "heartbeat"
   );
 }
 
-function parseTurnWALRecord(line: string): TurnWALRecord | null {
+function parseRecoveryWalRecord(line: string): RecoveryWalRecord | null {
   let value: unknown;
   let envelope: TurnEnvelope;
   try {
@@ -82,13 +82,13 @@ function parseTurnWALRecord(line: string): TurnWALRecord | null {
   } catch {
     return null;
   }
-  if (value.schema !== "brewva.turn-wal.v1") return null;
+  if (value.schema !== "brewva.recovery-wal.v1") return null;
   if (typeof value.walId !== "string" || !value.walId.trim()) return null;
   if (typeof value.turnId !== "string" || !value.turnId.trim()) return null;
   if (typeof value.sessionId !== "string" || !value.sessionId.trim()) return null;
   if (typeof value.channel !== "string" || !value.channel.trim()) return null;
   if (typeof value.conversationId !== "string" || !value.conversationId.trim()) return null;
-  if (!isTurnWALStatus(value.status)) return null;
+  if (!isRecoveryWalStatus(value.status)) return null;
   if (
     typeof value.createdAt !== "number" ||
     !Number.isFinite(value.createdAt) ||
@@ -103,7 +103,7 @@ function parseTurnWALRecord(line: string): TurnWALRecord | null {
     return null;
   if (typeof value.attempts !== "number" || !Number.isFinite(value.attempts) || value.attempts < 0)
     return null;
-  if (!isTurnWALSource(value.source)) return null;
+  if (!isRecoveryWalSource(value.source)) return null;
   if (value.error !== undefined && typeof value.error !== "string") return null;
   if (
     value.ttlMs !== undefined &&
@@ -113,8 +113,8 @@ function parseTurnWALRecord(line: string): TurnWALRecord | null {
   }
   if (value.dedupeKey !== undefined && typeof value.dedupeKey !== "string") return null;
 
-  const row: TurnWALRecord = {
-    schema: "brewva.turn-wal.v1",
+  const row: RecoveryWalRecord = {
+    schema: "brewva.recovery-wal.v1",
     walId: value.walId,
     turnId: value.turnId,
     sessionId: value.sessionId,
@@ -139,7 +139,9 @@ function parseTurnWALRecord(line: string): TurnWALRecord | null {
   return row;
 }
 
-function parseTurnWALIngressWatermarkRecord(line: string): TurnWALIngressWatermarkRecord | null {
+function parseRecoveryWalIngressWatermarkRecord(
+  line: string,
+): RecoveryWalIngressWatermarkRecord | null {
   let value: unknown;
   try {
     value = JSON.parse(line);
@@ -147,8 +149,8 @@ function parseTurnWALIngressWatermarkRecord(line: string): TurnWALIngressWaterma
     return null;
   }
   if (!isRecord(value)) return null;
-  if (value.schema !== "brewva.turn-wal.ingress-watermark.v1") return null;
-  if (!isTurnWALSource(value.source)) return null;
+  if (value.schema !== "brewva.recovery-wal.ingress-watermark.v1") return null;
+  if (!isRecoveryWalSource(value.source)) return null;
   if (typeof value.channel !== "string" || !value.channel.trim()) return null;
   if (
     typeof value.ingressSequence !== "number" ||
@@ -166,7 +168,7 @@ function parseTurnWALIngressWatermarkRecord(line: string): TurnWALIngressWaterma
     return null;
   }
   return {
-    schema: "brewva.turn-wal.ingress-watermark.v1",
+    schema: "brewva.recovery-wal.ingress-watermark.v1",
     source: value.source,
     channel: value.channel.trim().toLowerCase(),
     ingressSequence: value.ingressSequence,
@@ -185,11 +187,11 @@ function normalizeOptionalString(value: string | undefined): string | undefined 
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function cloneTurnWALRecord(row: TurnWALRecord): TurnWALRecord {
+function cloneRecoveryWalRecord(row: RecoveryWalRecord): RecoveryWalRecord {
   return structuredClone(row);
 }
 
-function readIngressSequence(row: TurnWALRecord): number | undefined {
+function readIngressSequence(row: RecoveryWalRecord): number | undefined {
   const meta = isRecord(row.envelope.meta) ? row.envelope.meta : null;
   const ingressSequence = meta?.ingressSequence;
   if (
@@ -208,13 +210,13 @@ function normalizeIngressChannel(channel: string): string | undefined {
   return normalized;
 }
 
-function buildIngressWatermarkKey(input: { source: TurnWALSource; channel: string }): string {
+function buildIngressWatermarkKey(input: { source: RecoveryWalSource; channel: string }): string {
   return `${input.source}:${input.channel}`;
 }
 
 function createIngressWatermarkFromRecord(
-  row: TurnWALRecord,
-): TurnWALIngressWatermarkRecord | undefined {
+  row: RecoveryWalRecord,
+): RecoveryWalIngressWatermarkRecord | undefined {
   const ingressSequence = readIngressSequence(row);
   if (ingressSequence === undefined) {
     return undefined;
@@ -224,7 +226,7 @@ function createIngressWatermarkFromRecord(
     return undefined;
   }
   return {
-    schema: "brewva.turn-wal.ingress-watermark.v1",
+    schema: "brewva.recovery-wal.ingress-watermark.v1",
     source: row.source,
     channel,
     ingressSequence,
@@ -233,8 +235,8 @@ function createIngressWatermarkFromRecord(
 }
 
 function compareIngressWatermarks(
-  left: TurnWALIngressWatermarkRecord,
-  right: TurnWALIngressWatermarkRecord,
+  left: RecoveryWalIngressWatermarkRecord,
+  right: RecoveryWalIngressWatermarkRecord,
 ): number {
   if (left.source !== right.source) {
     return left.source.localeCompare(right.source);
@@ -249,8 +251,8 @@ function compareIngressWatermarks(
 }
 
 function mergeIngressWatermarkCandidate(
-  target: Map<string, TurnWALIngressWatermarkRecord>,
-  candidate: TurnWALIngressWatermarkRecord,
+  target: Map<string, RecoveryWalIngressWatermarkRecord>,
+  candidate: RecoveryWalIngressWatermarkRecord,
 ): void {
   const key = buildIngressWatermarkKey({
     source: candidate.source,
@@ -273,16 +275,16 @@ function mergeIngressWatermarkCandidate(
   }
 }
 
-function compareByCreatedAt(left: TurnWALRecord, right: TurnWALRecord): number {
+function compareByCreatedAt(left: RecoveryWalRecord, right: RecoveryWalRecord): number {
   if (left.createdAt !== right.createdAt) return left.createdAt - right.createdAt;
   return left.updatedAt - right.updatedAt;
 }
 
-export class TurnWALStore {
+export class RecoveryWalStore {
   readonly workspaceRoot: string;
   readonly scope: string;
   readonly filePath: string;
-  readonly config: BrewvaConfig["infrastructure"]["turnWal"];
+  readonly config: BrewvaConfig["infrastructure"]["recoveryWal"];
 
   private readonly enabled: boolean;
   private readonly now: () => number;
@@ -292,11 +294,11 @@ export class TurnWALStore {
   private readonly recordEvent?:
     | ((input: { sessionId: string; type: string; payload?: object }) => void)
     | undefined;
-  private readonly cacheByFilePath = new Map<string, TurnWALFileCache>();
+  private readonly cacheByFilePath = new Map<string, RecoveryWalFileCache>();
   private integrityIssues: IntegrityIssue[] = [];
   private fileHasContent: boolean | null = null;
 
-  constructor(options: TurnWALStoreOptions) {
+  constructor(options: RecoveryWalStoreOptions) {
     this.workspaceRoot = resolve(options.workspaceRoot);
     this.config = { ...options.config };
     this.scope = sanitizeScopeId(options.scope);
@@ -314,7 +316,7 @@ export class TurnWALStore {
   }
 
   private buildIntegrityError(reason: string): Error {
-    return new Error(`turn_wal_integrity_error:${this.scope}:${reason}`);
+    return new Error(`recovery_wal_integrity_error:${this.scope}:${reason}`);
   }
 
   getIntegrityIssues(): IntegrityIssue[] {
@@ -334,9 +336,9 @@ export class TurnWALStore {
 
   appendPending(
     envelope: TurnEnvelope,
-    source: TurnWALSource,
-    options: TurnWALAppendPendingOptions = {},
-  ): TurnWALRecord {
+    source: RecoveryWalSource,
+    options: RecoveryWalAppendPendingOptions = {},
+  ): RecoveryWalRecord {
     const timestamp = this.now();
     const turnId = normalizeOptionalString(envelope.turnId) ?? `turn_${timestamp}_${randomUUID()}`;
     const sessionId = normalizeOptionalString(envelope.sessionId) ?? "unknown";
@@ -349,15 +351,15 @@ export class TurnWALStore {
       const existing = this.findRecoverableByDedupeKey(dedupeKey);
       if (existing) {
         if (!this.isExpired(existing, timestamp)) {
-          return cloneTurnWALRecord(existing);
+          return cloneRecoveryWalRecord(existing);
         }
 
         this.markExpired(existing.walId);
       }
     }
 
-    const row: TurnWALRecord = {
-      schema: "brewva.turn-wal.v1",
+    const row: RecoveryWalRecord = {
+      schema: "brewva.recovery-wal.v1",
       walId: `wal_${timestamp}_${randomUUID()}`,
       turnId,
       sessionId,
@@ -377,45 +379,48 @@ export class TurnWALStore {
       this.appendRecord(row);
     }
     this.emitAppended(row);
-    return cloneTurnWALRecord(row);
+    return cloneRecoveryWalRecord(row);
   }
 
-  markInflight(walId: string): TurnWALRecord | undefined {
+  markInflight(walId: string): RecoveryWalRecord | undefined {
     return this.transitionStatus(walId, "inflight", {
       attemptsDelta: 1,
     });
   }
 
-  markDone(walId: string): TurnWALRecord | undefined {
+  markDone(walId: string): RecoveryWalRecord | undefined {
     return this.transitionStatus(walId, "done");
   }
 
-  markFailed(walId: string, error?: string): TurnWALRecord | undefined {
+  markFailed(walId: string, error?: string): RecoveryWalRecord | undefined {
     return this.transitionStatus(walId, "failed", {
       error: normalizeOptionalString(error),
     });
   }
 
-  markExpired(walId: string): TurnWALRecord | undefined {
+  markExpired(walId: string): RecoveryWalRecord | undefined {
     return this.transitionStatus(walId, "expired");
   }
 
-  listPending(): TurnWALRecord[] {
+  listPending(): RecoveryWalRecord[] {
     if (!this.enabled) return [];
     const rows = [...this.syncCache().rowsByWalId.values()]
       .filter((row) => RECOVERABLE_STATUSES.has(row.status))
       .toSorted(compareByCreatedAt);
-    return rows.map((row) => cloneTurnWALRecord(row));
+    return rows.map((row) => cloneRecoveryWalRecord(row));
   }
 
-  listCurrent(): TurnWALRecord[] {
+  listCurrent(): RecoveryWalRecord[] {
     if (!this.enabled) return [];
     return [...this.syncCache().rowsByWalId.values()]
       .toSorted(compareByCreatedAt)
-      .map((row) => cloneTurnWALRecord(row));
+      .map((row) => cloneRecoveryWalRecord(row));
   }
 
-  getIngressHighWatermark(input: { source: TurnWALSource; channel: string }): number | undefined {
+  getIngressHighWatermark(input: {
+    source: RecoveryWalSource;
+    channel: string;
+  }): number | undefined {
     if (!this.enabled) return undefined;
     const channel = normalizeIngressChannel(input.channel);
     if (!channel) return undefined;
@@ -437,7 +442,7 @@ export class TurnWALStore {
     return watermark;
   }
 
-  compact(): TurnWALCompactResult {
+  compact(): RecoveryWalCompactResult {
     if (!this.enabled) {
       return {
         scope: this.scope,
@@ -455,7 +460,7 @@ export class TurnWALStore {
       if (!TERMINAL_STATUSES.has(row.status)) return true;
       return row.updatedAt + this.compactAfterMs > now;
     });
-    const watermarkCandidates = new Map<string, TurnWALIngressWatermarkRecord>();
+    const watermarkCandidates = new Map<string, RecoveryWalIngressWatermarkRecord>();
     for (const watermark of cache.ingressWatermarksByKey.values()) {
       mergeIngressWatermarkCandidate(watermarkCandidates, watermark);
     }
@@ -485,7 +490,7 @@ export class TurnWALStore {
         : "";
     writeFileAtomic(this.filePath, content);
 
-    const nextCache: TurnWALFileCache = {
+    const nextCache: RecoveryWalFileCache = {
       rowsByWalId: new Map(retainedRows.map((row) => [row.walId, row])),
       ingressWatermarksByKey: new Map(
         persistedWatermarks.map((watermark) => [
@@ -502,7 +507,7 @@ export class TurnWALStore {
     this.cacheByFilePath.set(this.filePath, nextCache);
     this.fileHasContent = persistedEntries.length > 0;
 
-    const result: TurnWALCompactResult = {
+    const result: RecoveryWalCompactResult = {
       scope: this.scope,
       filePath: this.filePath,
       scanned: current.length,
@@ -526,7 +531,7 @@ export class TurnWALStore {
     return scopes.toSorted((left, right) => left.localeCompare(right));
   }
 
-  private resolveTtlMs(source: TurnWALSource, overrideTtlMs: number | undefined): number {
+  private resolveTtlMs(source: RecoveryWalSource, overrideTtlMs: number | undefined): number {
     if (typeof overrideTtlMs === "number" && Number.isFinite(overrideTtlMs) && overrideTtlMs > 0) {
       return Math.floor(overrideTtlMs);
     }
@@ -534,7 +539,7 @@ export class TurnWALStore {
     return this.defaultTtlMs;
   }
 
-  private isExpired(record: TurnWALRecord, nowMs: number): boolean {
+  private isExpired(record: RecoveryWalRecord, nowMs: number): boolean {
     const ttlMs =
       typeof record.ttlMs === "number" && Number.isFinite(record.ttlMs) && record.ttlMs > 0
         ? Math.floor(record.ttlMs)
@@ -545,8 +550,8 @@ export class TurnWALStore {
     return lastActivity + ttlMs < nowMs;
   }
 
-  private findRecoverableByDedupeKey(dedupeKey: string): TurnWALRecord | undefined {
-    let candidate: TurnWALRecord | undefined;
+  private findRecoverableByDedupeKey(dedupeKey: string): RecoveryWalRecord | undefined {
+    let candidate: RecoveryWalRecord | undefined;
     for (const row of this.syncCache().rowsByWalId.values()) {
       if (!row || row.dedupeKey !== dedupeKey) continue;
       if (!RECOVERABLE_STATUSES.has(row.status)) continue;
@@ -563,12 +568,12 @@ export class TurnWALStore {
 
   private transitionStatus(
     walId: string,
-    status: TurnWALStatus,
+    status: RecoveryWalStatus,
     options: {
       attemptsDelta?: number;
       error?: string;
     } = {},
-  ): TurnWALRecord | undefined {
+  ): RecoveryWalRecord | undefined {
     if (!this.enabled) return undefined;
     const current = this.syncCache().rowsByWalId.get(walId);
     if (!current) return undefined;
@@ -580,7 +585,7 @@ export class TurnWALStore {
       typeof options.attemptsDelta === "number" && Number.isFinite(options.attemptsDelta)
         ? Math.floor(options.attemptsDelta)
         : 0;
-    const next: TurnWALRecord = {
+    const next: RecoveryWalRecord = {
       ...current,
       status,
       updatedAt: timestamp,
@@ -588,7 +593,7 @@ export class TurnWALStore {
     };
 
     if (status === "failed") {
-      next.error = options.error ?? current.error ?? "turn_wal_failed";
+      next.error = options.error ?? current.error ?? "recovery_wal_failed";
     } else {
       delete next.error;
     }
@@ -598,10 +603,10 @@ export class TurnWALStore {
       previous: current,
       next,
     });
-    return cloneTurnWALRecord(next);
+    return cloneRecoveryWalRecord(next);
   }
 
-  private appendRecord(row: TurnWALRecord): void {
+  private appendRecord(row: RecoveryWalRecord): void {
     const prefix = this.hasContent() ? "\n" : "";
     const serialized = JSON.stringify(row);
     const appended = `${prefix}${serialized}`;
@@ -627,10 +632,10 @@ export class TurnWALStore {
     return this.fileHasContent;
   }
 
-  private syncCache(): TurnWALFileCache {
+  private syncCache(): RecoveryWalFileCache {
     if (!existsSync(this.filePath)) {
       this.clearIntegrityIssues();
-      const empty: TurnWALFileCache = {
+      const empty: RecoveryWalFileCache = {
         rowsByWalId: new Map(),
         ingressWatermarksByKey: new Map(),
         byteOffset: 0,
@@ -646,7 +651,7 @@ export class TurnWALStore {
       size = statSync(this.filePath).size;
     } catch {
       this.setIntegrityIssue({
-        reason: "turn_wal_stat_failed",
+        reason: "recovery_wal_stat_failed",
       });
       throw this.buildIntegrityError("stat_failed");
     }
@@ -666,8 +671,8 @@ export class TurnWALStore {
     return cached;
   }
 
-  private rebuildCache(size: number): TurnWALFileCache {
-    const cache: TurnWALFileCache = {
+  private rebuildCache(size: number): RecoveryWalFileCache {
+    const cache: RecoveryWalFileCache = {
       rowsByWalId: new Map(),
       ingressWatermarksByKey: new Map(),
       byteOffset: size,
@@ -679,7 +684,7 @@ export class TurnWALStore {
         text = readFileSync(this.filePath, "utf8");
       } catch {
         this.setIntegrityIssue({
-          reason: "turn_wal_read_failed",
+          reason: "recovery_wal_read_failed",
         });
         throw this.buildIntegrityError("read_failed");
       }
@@ -708,7 +713,7 @@ export class TurnWALStore {
     }
   }
 
-  private consumeChunk(cache: TurnWALFileCache, text: string): void {
+  private consumeChunk(cache: RecoveryWalFileCache, text: string): void {
     if (!text && !cache.trailingFragment) {
       return;
     }
@@ -725,12 +730,12 @@ export class TurnWALStore {
       const raw = lines[index] ?? "";
       const trimmed = raw.trim();
       if (!trimmed) continue;
-      const parsed = parseTurnWALRecord(trimmed);
+      const parsed = parseRecoveryWalRecord(trimmed);
       if (parsed) {
         cache.rowsByWalId.set(parsed.walId, parsed);
         continue;
       }
-      const watermark = parseTurnWALIngressWatermarkRecord(trimmed);
+      const watermark = parseRecoveryWalIngressWatermarkRecord(trimmed);
       if (watermark) {
         cache.ingressWatermarksByKey.set(
           buildIngressWatermarkKey({
@@ -747,14 +752,14 @@ export class TurnWALStore {
         continue;
       }
       this.setIntegrityIssue({
-        reason: "turn_wal_malformed_row",
+        reason: "recovery_wal_malformed_row",
         index,
       });
       throw this.buildIntegrityError(`malformed_row:${index}`);
     }
   }
 
-  private trackAppendedRow(row: TurnWALRecord, appended: string): void {
+  private trackAppendedRow(row: RecoveryWalRecord, appended: string): void {
     const cached = this.cacheByFilePath.get(this.filePath);
     if (!cached) return;
     if (cached.trailingFragment) {
@@ -765,10 +770,10 @@ export class TurnWALStore {
     cached.byteOffset += Buffer.byteLength(appended, "utf8");
   }
 
-  private emitAppended(record: TurnWALRecord): void {
+  private emitAppended(record: RecoveryWalRecord): void {
     this.recordEvent?.({
       sessionId: this.getSystemSessionId(),
-      type: "turn_wal_appended",
+      type: "recovery_wal_appended",
       payload: {
         scope: this.scope,
         walId: record.walId,
@@ -783,10 +788,10 @@ export class TurnWALStore {
     });
   }
 
-  private emitStatusChanged(input: { previous: TurnWALRecord; next: TurnWALRecord }): void {
+  private emitStatusChanged(input: { previous: RecoveryWalRecord; next: RecoveryWalRecord }): void {
     this.recordEvent?.({
       sessionId: this.getSystemSessionId(),
-      type: "turn_wal_status_changed",
+      type: "recovery_wal_status_changed",
       payload: {
         scope: this.scope,
         walId: input.next.walId,
@@ -799,10 +804,10 @@ export class TurnWALStore {
     });
   }
 
-  private emitCompacted(result: TurnWALCompactResult): void {
+  private emitCompacted(result: RecoveryWalCompactResult): void {
     this.recordEvent?.({
       sessionId: this.getSystemSessionId(),
-      type: "turn_wal_compacted",
+      type: "recovery_wal_compacted",
       payload: {
         scope: result.scope,
         scanned: result.scanned,
@@ -813,13 +818,13 @@ export class TurnWALStore {
   }
 
   private getSystemSessionId(): string {
-    return `turn_wal:${this.scope}`;
+    return `recovery_wal:${this.scope}`;
   }
 
   private setIntegrityIssue(input: { reason: string; index?: number }): void {
     this.integrityIssues = [
       {
-        domain: "turn_wal",
+        domain: "recovery_wal",
         severity: "unavailable",
         reason: input.reason,
         index: input.index,

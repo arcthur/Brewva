@@ -1,8 +1,8 @@
-import type { BrewvaRuntime, ContextBudgetUsage } from "@brewva/brewva-runtime";
+import type { BrewvaHostedRuntimePort, ContextBudgetUsage } from "@brewva/brewva-runtime";
 import type { ComposedContextBlock } from "./context-composer.js";
 
 export function appendSupplementalContextBlocks(
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
   input: {
     sessionId: string;
     usage?: ContextBudgetUsage;
@@ -12,7 +12,7 @@ export function appendSupplementalContextBlocks(
 ): ComposedContextBlock[] {
   const acceptedBlocks: ComposedContextBlock[] = [];
   for (const block of input.blocks) {
-    const decision = runtime.context.appendSupplementalInjection(
+    const decision = runtime.maintain.context.appendSupplementalInjection(
       input.sessionId,
       block.content,
       input.usage,

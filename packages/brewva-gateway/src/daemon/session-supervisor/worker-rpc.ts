@@ -115,42 +115,42 @@ export class SessionWorkerRpcController {
     });
   }
 
-  trackTurnWalId(handle: WorkerHandle, turnId: string, walId: string): void {
-    handle.activeTurnWalIds.set(turnId, walId);
+  trackRecoveryWalId(handle: WorkerHandle, turnId: string, walId: string): void {
+    handle.activeRecoveryWalIds.set(turnId, walId);
     const pending = handle.pendingTurns.get(turnId);
     if (pending) {
       pending.walId = walId;
     }
   }
 
-  untrackTurnWalId(handle: WorkerHandle, turnId: string): string | undefined {
-    const walId = handle.activeTurnWalIds.get(turnId);
-    handle.activeTurnWalIds.delete(turnId);
+  untrackRecoveryWalId(handle: WorkerHandle, turnId: string): string | undefined {
+    const walId = handle.activeRecoveryWalIds.get(turnId);
+    handle.activeRecoveryWalIds.delete(turnId);
     return walId;
   }
 
-  rekeyTurnWalId(handle: WorkerHandle, fromTurnId: string, toTurnId: string): void {
+  rekeyRecoveryWalId(handle: WorkerHandle, fromTurnId: string, toTurnId: string): void {
     if (fromTurnId === toTurnId) {
       return;
     }
-    const walId = handle.activeTurnWalIds.get(fromTurnId);
+    const walId = handle.activeRecoveryWalIds.get(fromTurnId);
     if (!walId) {
       return;
     }
-    handle.activeTurnWalIds.delete(fromTurnId);
-    handle.activeTurnWalIds.set(toTurnId, walId);
+    handle.activeRecoveryWalIds.delete(fromTurnId);
+    handle.activeRecoveryWalIds.set(toTurnId, walId);
   }
 
-  markTurnWalDone(handle: WorkerHandle, turnId: string): void {
-    const walId = this.untrackTurnWalId(handle, turnId);
+  markRecoveryWalDone(handle: WorkerHandle, turnId: string): void {
+    const walId = this.untrackRecoveryWalId(handle, turnId);
     if (!walId) return;
-    this.deps.turnWalStore?.markDone(walId);
+    this.deps.recoveryWalStore?.markDone(walId);
   }
 
-  markTurnWalFailed(handle: WorkerHandle, turnId: string, error?: string): void {
-    const walId = this.untrackTurnWalId(handle, turnId);
+  markRecoveryWalFailed(handle: WorkerHandle, turnId: string, error?: string): void {
+    const walId = this.untrackRecoveryWalId(handle, turnId);
     if (!walId) return;
-    this.deps.turnWalStore?.markFailed(walId, error);
+    this.deps.recoveryWalStore?.markFailed(walId, error);
   }
 
   rekeyPendingTurn(handle: WorkerHandle, fromTurnId: string, toTurnId: string): void {
@@ -214,15 +214,15 @@ export class SessionWorkerRpcController {
     for (const queued of handle.turnQueue) {
       queued.reject(error);
       if (queued.walId) {
-        this.deps.turnWalStore?.markFailed(queued.walId, `worker_crash:${error.message}`);
+        this.deps.recoveryWalStore?.markFailed(queued.walId, `worker_crash:${error.message}`);
       }
     }
     handle.turnQueue = [];
 
-    for (const [, walId] of handle.activeTurnWalIds) {
-      this.deps.turnWalStore?.markFailed(walId, `worker_crash:${error.message}`);
+    for (const [, walId] of handle.activeRecoveryWalIds) {
+      this.deps.recoveryWalStore?.markFailed(walId, `worker_crash:${error.message}`);
     }
-    handle.activeTurnWalIds.clear();
+    handle.activeRecoveryWalIds.clear();
     handle.activeTurnId = null;
   }
 
@@ -271,7 +271,7 @@ export class SessionWorkerRpcController {
         handle.activeTurnId = message.payload.turnId;
         this.deps.touchActivity(handle);
       } else if (message.event === "session.turn.end") {
-        this.markTurnWalDone(handle, message.payload.turnId);
+        this.markRecoveryWalDone(handle, message.payload.turnId);
         this.resolvePendingTurn(handle, message.payload.turnId, {
           attemptId: message.payload.attemptId,
           assistantText: message.payload.assistantText,
@@ -282,7 +282,7 @@ export class SessionWorkerRpcController {
         }
         this.deps.onTurnQueueReady(handle);
       } else if (message.event === "session.turn.error") {
-        this.markTurnWalFailed(handle, message.payload.turnId, message.payload.message);
+        this.markRecoveryWalFailed(handle, message.payload.turnId, message.payload.message);
         this.rejectPendingTurn(handle, message.payload.turnId, message.payload.message);
         if (handle.activeTurnId === message.payload.turnId) {
           handle.activeTurnId = null;

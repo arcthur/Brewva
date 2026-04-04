@@ -73,9 +73,9 @@ function forceNamespaceConfig(baseConfig: BrewvaConfig, agentId: string): Brewva
         ...baseConfig.infrastructure.events,
         dir: `${stateRoot}/events`,
       },
-      turnWal: {
-        ...baseConfig.infrastructure.turnWal,
-        dir: `${stateRoot}/turn-wal`,
+      recoveryWal: {
+        ...baseConfig.infrastructure.recoveryWal,
+        dir: `${stateRoot}/recovery-wal`,
       },
     },
   };

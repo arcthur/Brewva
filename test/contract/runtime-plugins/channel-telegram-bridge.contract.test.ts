@@ -1,14 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { createRuntimeTelegramChannelBridge } from "@brewva/brewva-gateway/runtime-plugins";
-import type { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { createHostedRuntimePort } from "@brewva/brewva-runtime";
 import type { TurnEnvelope } from "@brewva/brewva-runtime/channels";
 import { resolveRequestUrl } from "../../helpers.js";
+import { createRuntimeFixture } from "../../helpers/runtime.js";
 
-interface RuntimeLike {
-  events: {
-    record: (input: Record<string, unknown>) => void;
-  };
-}
+type CapturedRuntimeEvent = {
+  type?: string;
+  payload?: Record<string, unknown>;
+  sessionId?: string;
+  turn?: number;
+  timestamp?: number;
+};
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -48,14 +51,14 @@ const OUTBOUND_TURN: TurnEnvelope = {
 
 describe("runtime telegram channel bridge helper", () => {
   test("given polling transport, when telegram update arrives, then runtime bridge emits ingested turn telemetry", async () => {
-    const events: Record<string, unknown>[] = [];
-    const runtime: RuntimeLike = {
+    const events: CapturedRuntimeEvent[] = [];
+    const runtime = createRuntimeFixture({
       events: {
-        record: (input) => {
+        record: (input: CapturedRuntimeEvent) => {
           events.push(input);
         },
       },
-    };
+    });
     const inboundTurns: TurnEnvelope[] = [];
     const inboundSeen = createDeferred<void>();
     const secondPollGate = createDeferred<Response>();
@@ -99,7 +102,7 @@ describe("runtime telegram channel bridge helper", () => {
     };
 
     const { bridge } = createRuntimeTelegramChannelBridge({
-      runtime: runtime as unknown as BrewvaRuntime,
+      runtime: createHostedRuntimePort(runtime),
       token: "bot-token",
       transport: {
         fetchImpl,
@@ -121,14 +124,14 @@ describe("runtime telegram channel bridge helper", () => {
   });
 
   test("given outbound assistant turn, when bridge sends telegram message, then emitted telemetry is recorded", async () => {
-    const events: Record<string, unknown>[] = [];
-    const runtime: RuntimeLike = {
+    const events: CapturedRuntimeEvent[] = [];
+    const runtime = createRuntimeFixture({
       events: {
-        record: (input) => {
+        record: (input: CapturedRuntimeEvent) => {
           events.push(input);
         },
       },
-    };
+    });
     const fetchImpl = async (
       input: string | URL | Request,
       init?: RequestInit,
@@ -150,7 +153,7 @@ describe("runtime telegram channel bridge helper", () => {
     };
 
     const { bridge } = createRuntimeTelegramChannelBridge({
-      runtime: runtime as unknown as BrewvaRuntime,
+      runtime: createHostedRuntimePort(runtime),
       token: "bot-token",
       transport: { fetchImpl },
       onInboundTurn: async () => undefined,

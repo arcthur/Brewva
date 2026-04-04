@@ -118,6 +118,48 @@ describe("Brewva config loader normalization", () => {
     );
   });
 
+  test("fails fast when an unknown infrastructure section is present in a file", () => {
+    const workspace = createTestWorkspace("unknown-infrastructure-file");
+    writeFileSync(
+      join(workspace, ".brewva/brewva.json"),
+      JSON.stringify(
+        {
+          infrastructure: {
+            unexpectedInfrastructureField: {
+              enabled: true,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    expect(() => loadBrewvaConfig({ cwd: workspace, configPath: ".brewva/brewva.json" })).toThrow(
+      /unknown property "unexpectedInfrastructureField"/,
+    );
+  });
+
+  test("fails fast when an unknown infrastructure section is passed directly", () => {
+    const workspace = createTestWorkspace("unknown-infrastructure-direct");
+    const config = structuredClone(DEFAULT_BREWVA_CONFIG) as unknown as Record<string, unknown>;
+    config["infrastructure"] = {
+      ...DEFAULT_BREWVA_CONFIG.infrastructure,
+      unexpectedInfrastructureField: {
+        enabled: true,
+      },
+    };
+
+    expect(
+      () =>
+        new BrewvaRuntime({
+          cwd: workspace,
+          config: config as unknown as typeof DEFAULT_BREWVA_CONFIG,
+        }),
+    ).toThrow(/unknown property "unexpectedInfrastructureField"/);
+  });
+
   test("normalizes minimal projection config fields deterministically", () => {
     const workspace = createTestWorkspace("projection-minimal");
     writeFileSync(

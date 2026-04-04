@@ -11,6 +11,7 @@ describe("hosted context telemetry", () => {
       turn?: number;
       type: string;
       payload?: object;
+      timestamp?: number;
     }> = [];
     const runtime = createRuntimeFixture({
       events: {
@@ -45,21 +46,21 @@ describe("hosted context telemetry", () => {
       injectionAccepted: true,
     });
 
-    expect(recorded).toEqual([
-      {
-        sessionId: "s-telemetry",
-        turn: 3,
-        type: CONTEXT_COMPOSED_EVENT_TYPE,
-        payload: {
-          narrativeBlockCount: 1,
-          constraintBlockCount: 1,
-          diagnosticBlockCount: 1,
-          totalTokens: 16,
-          narrativeTokens: 10,
-          narrativeRatio: 0.625,
-          injectionAccepted: true,
-        },
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({
+      sessionId: "s-telemetry",
+      turn: 3,
+      type: CONTEXT_COMPOSED_EVENT_TYPE,
+      payload: {
+        narrativeBlockCount: 1,
+        constraintBlockCount: 1,
+        diagnosticBlockCount: 1,
+        totalTokens: 16,
+        narrativeTokens: 10,
+        narrativeRatio: 0.625,
+        injectionAccepted: true,
       },
-    ]);
+    });
+    expect(recorded[0]?.timestamp).toEqual(expect.any(Number));
   });
 });

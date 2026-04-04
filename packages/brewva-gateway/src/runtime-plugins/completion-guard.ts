@@ -1,4 +1,4 @@
-import { listSkillOutputs, type BrewvaRuntime } from "@brewva/brewva-runtime";
+import { listSkillOutputs, type BrewvaHostedRuntimePort } from "@brewva/brewva-runtime";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 const MAX_NUDGES_PER_PROMPT = 2;
@@ -17,7 +17,10 @@ function formatGuardMessage(skillName: string, outputs: string[]): string {
   ].join("\n");
 }
 
-export function registerCompletionGuard(extensionApi: ExtensionAPI, runtime: BrewvaRuntime): void {
+export function registerCompletionGuard(
+  extensionApi: ExtensionAPI,
+  runtime: BrewvaHostedRuntimePort,
+): void {
   const hooks = extensionApi as unknown as {
     on(event: string, handler: (event: unknown, ctx: unknown) => unknown): void;
   };
@@ -33,7 +36,7 @@ export interface CompletionGuardLifecycle {
 
 export function createCompletionGuardLifecycle(
   extensionApi: ExtensionAPI,
-  runtime: BrewvaRuntime,
+  runtime: BrewvaHostedRuntimePort,
 ): CompletionGuardLifecycle {
   const nudgeCounts = new Map<string, number>();
 
@@ -42,7 +45,7 @@ export function createCompletionGuardLifecycle(
       const sessionId = (
         ctx as { sessionManager: { getSessionId: () => string } }
       ).sessionManager.getSessionId();
-      const active = runtime.skills.getActive(sessionId);
+      const active = runtime.inspect.skills.getActive(sessionId);
       if (!active) {
         nudgeCounts.delete(sessionId);
         return undefined;

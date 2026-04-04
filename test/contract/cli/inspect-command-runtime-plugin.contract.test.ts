@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createInspectCommandRuntimePlugin } from "@brewva/brewva-cli";
 import type { RuntimePluginApi } from "@brewva/brewva-gateway/runtime-plugins";
 import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { requireDefined } from "../../helpers/assertions.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
@@ -65,7 +66,7 @@ describe("inspect interactive command runtime plugin", () => {
       config: structuredClone(DEFAULT_BREWVA_CONFIG),
     });
     const sessionId = "inspect-command-session-1";
-    runtime.events.record({
+    recordRuntimeEvent(runtime, {
       sessionId,
       type: "session_bootstrap",
       payload: {
@@ -78,9 +79,9 @@ describe("inspect interactive command runtime plugin", () => {
         },
       },
     });
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.tools.markCall(sessionId, "edit");
-    runtime.tools.trackCallStart({
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    runtime.authority.tools.markCall(sessionId, "edit");
+    runtime.authority.tools.trackCallStart({
       sessionId,
       toolCallId: "edit-1",
       toolName: "edit",
@@ -91,13 +92,13 @@ describe("inspect interactive command runtime plugin", () => {
       "export const outOfScope = 2;\n",
       "utf8",
     );
-    runtime.tools.trackCallEnd({
+    runtime.authority.tools.trackCallEnd({
       sessionId,
       toolCallId: "edit-1",
       toolName: "edit",
       channelSuccess: true,
     });
-    runtime.tools.recordResult({
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "bash -lc 'if then'" },
@@ -105,7 +106,7 @@ describe("inspect interactive command runtime plugin", () => {
       channelSuccess: false,
     });
 
-    const beforeEventCount = runtime.events.query(sessionId).length;
+    const beforeEventCount = runtime.inspect.events.query(sessionId).length;
     const { api, commands } = createCommandApiMock();
     await createInspectCommandRuntimePlugin(runtime, {
       maxWidgetLines: 64,
@@ -132,7 +133,7 @@ describe("inspect interactive command runtime plugin", () => {
 
     await inspectCommand.handler("src", ctx);
 
-    expect(runtime.events.query(sessionId)).toHaveLength(beforeEventCount);
+    expect(runtime.inspect.events.query(sessionId)).toHaveLength(beforeEventCount);
     expect(widgets.length).toBeGreaterThan(0);
     expect(widgets.at(-1)?.id).toBe("brewva-inspect");
     expect(widgets.at(-1)?.options?.placement).toBe("belowEditor");

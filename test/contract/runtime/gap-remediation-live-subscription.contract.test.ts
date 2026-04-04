@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { BrewvaRuntime, type BrewvaStructuredEvent } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { requireDefined } from "../../helpers/assertions.js";
 import {
   GAP_REMEDIATION_CONFIG_PATH,
@@ -17,13 +18,13 @@ describe("Gap remediation: live event subscription", () => {
     const sessionId = "event-subscribe-1";
 
     const received: BrewvaStructuredEvent[] = [];
-    const unsubscribe = runtime.events.subscribe((event) => {
+    const unsubscribe = runtime.inspect.events.subscribe((event) => {
       received.push(event);
     });
 
-    runtime.context.onTurnStart(sessionId, 1);
-    runtime.events.record({ sessionId, type: "session_start", payload: { cwd: workspace } });
-    runtime.tools.recordResult({
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    recordRuntimeEvent(runtime, { sessionId, type: "session_start", payload: { cwd: workspace } });
+    runtime.authority.tools.recordResult({
       sessionId,
       toolName: "exec",
       args: { command: "echo ok" },
@@ -46,7 +47,7 @@ describe("Gap remediation: live event subscription", () => {
 
     unsubscribe();
     const before = received.length;
-    runtime.events.record({ sessionId, type: "turn_end", turn: 1 });
+    recordRuntimeEvent(runtime, { sessionId, type: "turn_end", turn: 1 });
     expect(received).toHaveLength(before);
   });
 });

@@ -1,25 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import { applyContextContract } from "@brewva/brewva-gateway/runtime-plugins";
+import type { BrewvaHostedRuntimePort } from "@brewva/brewva-runtime";
 
 describe("context contract", () => {
   test("refreshes dynamic thresholds when an existing contract block is present", () => {
     const runtime = {
-      context: {
-        getCompactionThresholdRatio(_sessionId: string, usage?: { percent?: number | null }) {
-          return usage?.percent === 0.5 ? 0.82 : 0.9;
-        },
-        getHardLimitRatio(_sessionId: string, usage?: { percent?: number | null }) {
-          return usage?.percent === 0.5 ? 0.94 : 0.97;
+      inspect: {
+        context: {
+          getCompactionThresholdRatio(_sessionId: string, usage?: { percent?: number | null }) {
+            return usage?.percent === 0.5 ? 0.82 : 0.9;
+          },
+          getHardLimitRatio(_sessionId: string, usage?: { percent?: number | null }) {
+            return usage?.percent === 0.5 ? 0.94 : 0.97;
+          },
         },
       },
-    };
+    } as BrewvaHostedRuntimePort;
 
-    const first = applyContextContract("base prompt", runtime as never, "contract-1", {
+    const first = applyContextContract("base prompt", runtime, "contract-1", {
       tokens: 500,
       contextWindow: 1000,
       percent: 0.5,
     });
-    const refreshed = applyContextContract(first, runtime as never, "contract-1", {
+    const refreshed = applyContextContract(first, runtime, "contract-1", {
       tokens: 900000,
       contextWindow: 1000000,
       percent: 0.9,

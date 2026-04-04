@@ -1,28 +1,30 @@
 import type {
   BrewvaConfig,
-  TurnWALRecord,
-  TurnWALRecoveryResult,
-  TurnWALSource,
+  RecoveryWalRecord,
+  RecoveryWalRecoveryResult,
+  RecoveryWalSource,
 } from "../contracts/index.js";
-import { TurnWALStore } from "./turn-wal.js";
+import { RecoveryWalStore } from "./recovery-wal.js";
 
-export interface TurnWALRecoverHandlerInput {
-  record: TurnWALRecord;
-  store: TurnWALStore;
+export interface RecoveryWalRecoverHandlerInput {
+  record: RecoveryWalRecord;
+  store: RecoveryWalStore;
 }
 
-export type TurnWALRecoverHandler = (input: TurnWALRecoverHandlerInput) => Promise<void> | void;
+export type RecoveryWalRecoverHandler = (
+  input: RecoveryWalRecoverHandlerInput,
+) => Promise<void> | void;
 
-export interface TurnWALRecoveryOptions {
+export interface RecoveryWalRecoveryOptions {
   workspaceRoot: string;
-  config: BrewvaConfig["infrastructure"]["turnWal"];
+  config: BrewvaConfig["infrastructure"]["recoveryWal"];
   now?: () => number;
-  handlers?: Partial<Record<TurnWALSource, TurnWALRecoverHandler>>;
+  handlers?: Partial<Record<RecoveryWalSource, RecoveryWalRecoverHandler>>;
   scopeFilter?: (scope: string) => boolean;
   recordEvent?: (input: { sessionId: string; type: string; payload?: object }) => void;
 }
 
-function buildEmptySummary(): TurnWALRecoveryResult {
+function buildEmptySummary(): RecoveryWalRecoveryResult {
   return {
     recoveredAt: 0,
     scanned: 0,
@@ -70,9 +72,9 @@ function toErrorMessage(error: unknown): string {
   return "unknown_recovery_error";
 }
 
-export class TurnWALRecovery {
+export class RecoveryWalRecovery {
   private readonly now: () => number;
-  private readonly handlers: Partial<Record<TurnWALSource, TurnWALRecoverHandler>>;
+  private readonly handlers: Partial<Record<RecoveryWalSource, RecoveryWalRecoverHandler>>;
   private readonly scopeFilter: (scope: string) => boolean;
   private readonly maxRetries: number;
   private readonly defaultTtlMs: number;
@@ -81,7 +83,7 @@ export class TurnWALRecovery {
     | ((input: { sessionId: string; type: string; payload?: object }) => void)
     | undefined;
 
-  constructor(private readonly options: TurnWALRecoveryOptions) {
+  constructor(private readonly options: RecoveryWalRecoveryOptions) {
     this.now = options.now ?? (() => Date.now());
     this.handlers = options.handlers ?? {};
     this.scopeFilter = options.scopeFilter ?? (() => true);
@@ -91,7 +93,7 @@ export class TurnWALRecovery {
     this.recordEvent = options.recordEvent;
   }
 
-  async recover(): Promise<TurnWALRecoveryResult> {
+  async recover(): Promise<RecoveryWalRecoveryResult> {
     const result = buildEmptySummary();
     const recoveredAt = this.now();
     result.recoveredAt = recoveredAt;
@@ -99,13 +101,13 @@ export class TurnWALRecovery {
       return result;
     }
 
-    const scopes = TurnWALStore.listScopeIds({
+    const scopes = RecoveryWalStore.listScopeIds({
       workspaceRoot: this.options.workspaceRoot,
       dir: this.options.config.dir,
     }).filter((scope) => this.scopeFilter(scope));
 
     for (const scope of scopes) {
-      const store = new TurnWALStore({
+      const store = new RecoveryWalStore({
         workspaceRoot: this.options.workspaceRoot,
         config: this.options.config,
         scope,
@@ -157,7 +159,7 @@ export class TurnWALRecovery {
     return result;
   }
 
-  private isExpired(record: TurnWALRecord, nowMs: number): boolean {
+  private isExpired(record: RecoveryWalRecord, nowMs: number): boolean {
     const ttlMs =
       typeof record.ttlMs === "number" && Number.isFinite(record.ttlMs) && record.ttlMs > 0
         ? Math.floor(record.ttlMs)
@@ -168,10 +170,10 @@ export class TurnWALRecovery {
     return lastActivity + ttlMs < nowMs;
   }
 
-  private emitRecoveryCompleted(result: TurnWALRecoveryResult): void {
+  private emitRecoveryCompleted(result: RecoveryWalRecoveryResult): void {
     this.recordEvent?.({
-      sessionId: "turn_wal:recovery",
-      type: "turn_wal_recovery_completed",
+      sessionId: "recovery_wal:recovery",
+      type: "recovery_wal_recovery_completed",
       payload: {
         recoveredAt: result.recoveredAt,
         scanned: result.scanned,

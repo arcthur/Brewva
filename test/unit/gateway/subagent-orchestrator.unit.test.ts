@@ -9,6 +9,7 @@ import {
   type HostedSubagentSessionOptions,
 } from "@brewva/brewva-gateway";
 import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 
 function createTempWorkspace(prefix: string): string {
@@ -43,7 +44,7 @@ describe("hosted subagent orchestrator", () => {
                 "export const message = 'after';\n",
                 "utf8",
               );
-              childRuntime.cost.recordAssistantUsage({
+              childRuntime.authority.cost.recordAssistantUsage({
                 sessionId: childSessionId,
                 model: "test-child-model",
                 inputTokens: 12,
@@ -125,7 +126,7 @@ describe("hosted subagent orchestrator", () => {
       ]),
     );
 
-    const workerResults = runtime.session.listWorkerResults(parentSessionId);
+    const workerResults = runtime.inspect.session.listWorkerResults(parentSessionId);
     expect(workerResults).toHaveLength(1);
     expect(workerResults[0]).toMatchObject({
       workerId: outcome.runId,
@@ -141,11 +142,13 @@ describe("hosted subagent orchestrator", () => {
     expect(childWorkspaceRoot).not.toBe(workspaceRoot);
     expect(existsSync(childWorkspaceRoot)).toBe(false);
 
-    const costSummary = runtime.cost.getSummary(parentSessionId);
+    const costSummary = runtime.inspect.cost.getSummary(parentSessionId);
     expect(costSummary.totalTokens).toBe(20);
     expect(costSummary.totalCostUsd).toBe(0.004);
 
-    const completedEvents = runtime.events.list(parentSessionId, { type: "subagent_completed" });
+    const completedEvents = runtime.inspect.events.list(parentSessionId, {
+      type: "subagent_completed",
+    });
     expect(completedEvents).toHaveLength(1);
     expect(completedEvents[0]?.payload).toMatchObject({
       workerStatus: "ok",
@@ -228,7 +231,7 @@ describe("hosted subagent orchestrator", () => {
     expect(result.ok).toBe(true);
     expect(capturedBuiltinTools).toEqual(["read"]);
     expect(capturedEventsLevel).toBe("ops");
-    expect(runtime.session.listWorkerResults(parentSessionId)).toEqual([
+    expect(runtime.inspect.session.listWorkerResults(parentSessionId)).toEqual([
       expect.objectContaining({
         status: "skipped",
         summary: "Observation only.",
@@ -272,7 +275,7 @@ describe("hosted subagent orchestrator", () => {
                 } as AgentSessionEvent);
               }
 
-              childRuntime.events.record({
+              recordRuntimeEvent(childRuntime, {
                 sessionId: childSessionId,
                 type: "session_turn_transition",
                 payload: {
@@ -540,7 +543,7 @@ describe("hosted subagent orchestrator", () => {
       ]),
     );
     expect(
-      runtime.events.list(parentSessionId, { type: "subagent_outcome_parse_failed" }),
+      runtime.inspect.events.list(parentSessionId, { type: "subagent_outcome_parse_failed" }),
     ).toHaveLength(0);
 
     await rm(workspaceRoot, { recursive: true, force: true });
@@ -645,10 +648,10 @@ describe("hosted subagent orchestrator", () => {
     });
     expect(outcome.summary).toBe("Boundary review completed without a blocking issue.");
     expect(
-      runtime.events.list(parentSessionId, { type: "subagent_outcome_parse_failed" }),
+      runtime.inspect.events.list(parentSessionId, { type: "subagent_outcome_parse_failed" }),
     ).toHaveLength(0);
     expect(
-      runtime.events.list(parentSessionId, { type: "subagent_completed" })[0]?.payload,
+      runtime.inspect.events.list(parentSessionId, { type: "subagent_completed" })[0]?.payload,
     ).toMatchObject({
       resultData: {
         kind: "review",
@@ -747,7 +750,7 @@ describe("hosted subagent orchestrator", () => {
     expect(outcome.data).toBeUndefined();
     expect(outcome.summary).toBe("QA completed, but only a prose summary is available.");
     expect(
-      runtime.events.list(parentSessionId, { type: "subagent_outcome_parse_failed" }),
+      runtime.inspect.events.list(parentSessionId, { type: "subagent_outcome_parse_failed" }),
     ).toHaveLength(1);
 
     await rm(workspaceRoot, { recursive: true, force: true });
@@ -845,7 +848,7 @@ describe("hosted subagent orchestrator", () => {
       status: "cancelled",
     });
 
-    const events = runtime.events.list(parentSessionId, { type: "subagent_cancelled" });
+    const events = runtime.inspect.events.list(parentSessionId, { type: "subagent_cancelled" });
     expect(events).toHaveLength(1);
 
     await rm(workspaceRoot, { recursive: true, force: true });
@@ -880,7 +883,7 @@ describe("hosted subagent orchestrator", () => {
       },
     });
 
-    runtime.session.clearState("parent-session-clear");
+    runtime.maintain.session.clearState("parent-session-clear");
 
     expect(cancelled).toEqual([
       {
@@ -908,7 +911,7 @@ describe("hosted subagent orchestrator", () => {
           session: {
             dispose() {},
             async prompt() {
-              childRuntime.cost.recordAssistantUsage({
+              childRuntime.authority.cost.recordAssistantUsage({
                 sessionId: childSessionId,
                 model: "test-child-model",
                 inputTokens: 6,
