@@ -43,8 +43,8 @@ export function collectQaCoverageTexts(outputs: Record<string, unknown>): string
       "command",
       "tool",
       "expected",
-      "observedOutput",
-      "probeType",
+      "observed_output",
+      "probe_type",
       "summary",
     ] as const) {
       const text = readString(check[field]);
@@ -52,7 +52,7 @@ export function collectQaCoverageTexts(outputs: Record<string, unknown>): string
         texts.push(normalizeComparableText(text));
       }
     }
-    for (const artifactRef of readStringArray(check.artifactRefs)) {
+    for (const artifactRef of readStringArray(check.evidence_refs)) {
       texts.push(normalizeComparableText(artifactRef));
     }
   }

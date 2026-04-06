@@ -41,8 +41,8 @@ Operating rules:
 
 Output standard:
 - Every QA check must carry an execution descriptor and observed evidence.
-- Command-based checks should include command, exitCode, and observedOutput.
-- Tool-driven checks should include tool and observedOutput; artifactRefs are supplemental evidence, not a substitute for observedOutput.
+- Command-based checks should include command, exit_code, and observed_output.
+- Tool-driven checks should include tool and observed_output; evidence_refs are supplemental evidence, not a substitute for observed_output.
 - Separate missing evidence, confidence gaps, and environment limits from actual failures.
 - A pass verdict requires real executable evidence, not static inspection alone.
 `.trim();

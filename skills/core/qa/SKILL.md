@@ -20,32 +20,14 @@ intent:
     - qa_missing_evidence
     - qa_confidence_gaps
     - qa_environment_limits
-  output_contracts:
-    qa_report:
-      kind: text
-      min_words: 3
-      min_length: 18
-    qa_findings:
-      kind: json
-      min_items: 0
-    qa_verdict:
-      kind: enum
-      values:
-        - pass
-        - fail
-        - inconclusive
-    qa_checks:
-      kind: json
-      min_items: 1
-    qa_missing_evidence:
-      kind: json
-      min_items: 0
-    qa_confidence_gaps:
-      kind: json
-      min_items: 0
-    qa_environment_limits:
-      kind: json
-      min_items: 0
+  semantic_bindings:
+    qa_report: qa.qa_report.v1
+    qa_findings: qa.qa_findings.v1
+    qa_verdict: qa.qa_verdict.v1
+    qa_checks: qa.qa_checks.v1
+    qa_missing_evidence: qa.qa_missing_evidence.v1
+    qa_confidence_gaps: qa.qa_confidence_gaps.v1
+    qa_environment_limits: qa.qa_environment_limits.v1
 effects:
   allowed_effects:
     - workspace_read

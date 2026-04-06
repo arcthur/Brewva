@@ -81,6 +81,7 @@ maintenance. They do not promote projection files into source-of-truth inputs.
 - `session_bootstrap`
 - `session_start`
 - `session_shutdown`
+- `unclean_shutdown_reconciled`
 - `session_turn_transition`
 - `turn_input_recorded`
 - `turn_render_committed`
@@ -125,6 +126,13 @@ or replace receipt-bearing runtime facts.
 worker process cannot record it itself, gateway reconciliation writes the
 receipt directly to the persisted agent event log path. There is no config- or
 workspace-derived fallback synthesis path.
+
+`unclean_shutdown_reconciled` is the replay-first diagnostic receipt for a
+session whose durable tape still shows open tool calls, open turns, or an
+active skill without a terminal session receipt. It does not replace
+`session_shutdown`. Instead it records that startup/resume/inspect
+reconciliation detected an unclean stop and projected explicit diagnostic state
+for inspection surfaces.
 
 `gateway_session_bound` is the gateway control-plane receipt that binds a
 public gateway session id to an agent session id and its durable event-log
@@ -254,6 +262,8 @@ filesystem-probe compatibility shim in the recovery path.
 
 - `skill_activated`
 - `skill_completed`
+- `skill_completion_rejected`
+- `skill_contract_failed`
 - `skill_refresh_recorded`
 - `skill_budget_warning`
 - `skill_parallel_warning`
@@ -267,6 +277,15 @@ host calls `runtime.maintain.skills.refresh({ sessionId, ... })`. It records exp
 skill-registry rebuild activity for inspection, including the refresh reason,
 the rewritten index path, and bundled system-install summary. It is not replay
 truth.
+
+`skill_completion_rejected` records an atomic `skill_complete` validation
+failure. The payload carries machine-readable output issues, the canonical
+expected skeleton, and the remaining repair budget so hosted surfaces can enter
+restricted repair posture without committing partial outputs.
+
+`skill_contract_failed` records terminal contract failure after the repair
+budget is exhausted. It is the durable failure receipt for semantic-bound skill
+completion, distinct from a generic hosted interruption or process shutdown.
 
 ### Narrative Memory And Semantic Recall
 
@@ -367,6 +386,12 @@ Instead, workflow artifacts and posture are derived from existing durable
 events and session state:
 
 - `skill_completed`
+  - completed specialist artifacts that passed canonical validation and were
+    committed atomically
+- `skill_completion_rejected`
+  - explicit repair-required contract failures with latest validation issues
+- `skill_contract_failed`
+  - terminal contract failure after repair exhaustion
   - discovery, strategy-review, design plus planning handoff artifacts
     (`design_spec`, `execution_plan`, `risk_register`,
     `implementation_targets`), implementation, review, QA, ship, and retro
@@ -418,6 +443,7 @@ The audit-retained core includes:
   `turn_start`, `turn_end`, `message_end`, and `agent_end`
 - hosted compaction receipts such as `session_compact_requested`,
   `session_compact`, and `session_turn_transition`
+- `unclean_shutdown_reconciled`
 - tool execution receipts such as `tool_call`, `tool_execution_start`,
   `tool_execution_end`, and `tool_result_recorded`
 - `tool_output_search`
@@ -448,6 +474,8 @@ The audit-retained core includes:
 - `worker_results_apply_failed`
 - `skill_activated`
 - `skill_completed`
+- `skill_completion_rejected`
+- `skill_contract_failed`
 - `skill_promotion_draft_derived`
 - `skill_promotion_reviewed`
 - `skill_promotion_promoted`

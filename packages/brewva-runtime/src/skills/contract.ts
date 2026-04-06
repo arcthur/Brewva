@@ -3,6 +3,7 @@ import { basename, dirname } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type {
   LoadableSkillCategory,
+  SemanticArtifactSchemaId,
   SkillCategory,
   SkillCompletionDefinition,
   SkillContract,
@@ -24,6 +25,7 @@ import type {
   TaskPhase,
   ToolEffectClass,
 } from "../contracts/index.js";
+import { isSemanticArtifactSchemaId } from "../contracts/semantic-artifacts.js";
 import { normalizeToolName } from "../utils/tool-name.js";
 
 interface ParsedFrontmatter {
@@ -298,18 +300,21 @@ function parseOutputContract(
   switch (kind) {
     case "text": {
       assertAllowedKeys(data, ["kind", "min_words", "min_length"], filePath, fieldPath);
+      const minWords = readOptionalPositiveIntegerField(data, "min_words", filePath, fieldPath);
+      const minLength = readOptionalPositiveIntegerField(data, "min_length", filePath, fieldPath);
       return {
         kind,
-        minWords: readOptionalPositiveIntegerField(data, "min_words", filePath, fieldPath),
-        minLength: readOptionalPositiveIntegerField(data, "min_length", filePath, fieldPath),
+        ...(minWords !== undefined ? { minWords } : {}),
+        ...(minLength !== undefined ? { minLength } : {}),
       };
     }
     case "enum": {
       assertAllowedKeys(data, ["kind", "values", "case_sensitive"], filePath, fieldPath);
+      const caseSensitive = readOptionalBooleanField(data, "case_sensitive", filePath, fieldPath);
       return {
         kind,
         values: requireStringArrayField(data, "values", filePath),
-        caseSensitive: readOptionalBooleanField(data, "case_sensitive", filePath, fieldPath),
+        ...(caseSensitive !== undefined ? { caseSensitive } : {}),
       };
     }
     case "json": {
@@ -319,19 +324,26 @@ function parseOutputContract(
         filePath,
         fieldPath,
       );
+      const minKeys = readOptionalNonNegativeIntegerField(data, "min_keys", filePath, fieldPath);
+      const minItems = readOptionalNonNegativeIntegerField(data, "min_items", filePath, fieldPath);
+      const requiredFields = Object.prototype.hasOwnProperty.call(data, "required_fields")
+        ? readOptionalStringArrayField(data, "required_fields", filePath)?.map((field) =>
+            field.trim(),
+          )
+        : undefined;
+      const fieldContracts = Object.prototype.hasOwnProperty.call(data, "field_contracts")
+        ? parseOutputContractMap(data.field_contracts, filePath, `${fieldPath}.field_contracts`)
+        : undefined;
+      const itemContract = Object.prototype.hasOwnProperty.call(data, "item_contract")
+        ? parseOutputContract(data.item_contract, filePath, `${fieldPath}.item_contract`)
+        : undefined;
       return {
         kind,
-        minKeys: readOptionalNonNegativeIntegerField(data, "min_keys", filePath, fieldPath),
-        minItems: readOptionalNonNegativeIntegerField(data, "min_items", filePath, fieldPath),
-        requiredFields: readOptionalStringArrayField(data, "required_fields", filePath)?.map(
-          (field) => field.trim(),
-        ),
-        fieldContracts: Object.prototype.hasOwnProperty.call(data, "field_contracts")
-          ? parseOutputContractMap(data.field_contracts, filePath, `${fieldPath}.field_contracts`)
-          : undefined,
-        itemContract: Object.prototype.hasOwnProperty.call(data, "item_contract")
-          ? parseOutputContract(data.item_contract, filePath, `${fieldPath}.item_contract`)
-          : undefined,
+        ...(minKeys !== undefined ? { minKeys } : {}),
+        ...(minItems !== undefined ? { minItems } : {}),
+        ...(requiredFields !== undefined ? { requiredFields } : {}),
+        ...(fieldContracts !== undefined ? { fieldContracts } : {}),
+        ...(itemContract !== undefined ? { itemContract } : {}),
       };
     }
     default:
@@ -342,11 +354,19 @@ function parseOutputContract(
 function normalizeOutputContracts(
   data: Record<string, unknown>,
   outputs: string[] | undefined,
+  semanticBindings: Record<string, SemanticArtifactSchemaId> | undefined,
   category: SkillCategory,
   filePath: string,
 ): Record<string, SkillOutputContract> | undefined {
+  const semanticBoundOutputs = new Set(Object.keys(semanticBindings ?? {}));
   if (!Object.prototype.hasOwnProperty.call(data, "output_contracts")) {
     if (category !== "overlay" && (outputs?.length ?? 0) > 0) {
+      const missingAuthoredContracts = (outputs ?? []).filter(
+        (outputName) => !semanticBoundOutputs.has(outputName),
+      );
+      if (missingAuthoredContracts.length === 0) {
+        return undefined;
+      }
       failSkillContract(filePath, "missing required frontmatter field 'output_contracts'.");
     }
     return undefined;
@@ -363,9 +383,18 @@ function normalizeOutputContracts(
         `output_contracts contains undeclared outputs: ${unexpected.join(", ")}.`,
       );
     }
-    const missing = outputNames.filter(
-      (name) => !Object.prototype.hasOwnProperty.call(parsed, name),
+    const authoredBoundOutputs = Object.keys(parsed).filter((name) =>
+      semanticBoundOutputs.has(name),
     );
+    if (authoredBoundOutputs.length > 0) {
+      failSkillContract(
+        filePath,
+        `intent.output_contracts must not declare semantic-bound outputs: ${authoredBoundOutputs.join(", ")}.`,
+      );
+    }
+    const missing = outputNames
+      .filter((name) => !semanticBoundOutputs.has(name))
+      .filter((name) => !Object.prototype.hasOwnProperty.call(parsed, name));
     if (missing.length > 0) {
       failSkillContract(
         filePath,
@@ -377,6 +406,69 @@ function normalizeOutputContracts(
     failSkillContract(filePath, "output_contracts cannot be declared when outputs is empty.");
   }
   return Object.keys(parsed).length > 0 ? parsed : undefined;
+}
+
+function normalizeSemanticBindings(
+  intent: Record<string, unknown>,
+  outputs: string[] | undefined,
+  category: SkillCategory,
+  filePath: string,
+): Record<string, SemanticArtifactSchemaId> | undefined {
+  if (!Object.prototype.hasOwnProperty.call(intent, "semantic_bindings")) {
+    return undefined;
+  }
+  if (category === "overlay") {
+    const bindings = readOptionalRecordField(intent, "semantic_bindings", filePath);
+    if (!bindings || Object.keys(bindings).length === 0) {
+      return undefined;
+    }
+  }
+
+  const bindings = requireRecordField(intent, "semantic_bindings", filePath);
+  const declaredOutputs = new Set(outputs ?? []);
+  const normalized: Record<string, SemanticArtifactSchemaId> = {};
+  for (const [name, rawSchemaId] of Object.entries(bindings)) {
+    const outputName = name.trim();
+    if (!outputName) {
+      failSkillContract(
+        filePath,
+        "intent.semantic_bindings must use non-empty output names as keys.",
+      );
+    }
+    if ((outputs?.length ?? 0) > 0 && !declaredOutputs.has(outputName)) {
+      failSkillContract(
+        filePath,
+        `intent.semantic_bindings contains undeclared output '${outputName}'.`,
+      );
+    }
+    if (typeof rawSchemaId !== "string" || !isSemanticArtifactSchemaId(rawSchemaId.trim())) {
+      failSkillContract(
+        filePath,
+        `intent.semantic_bindings.${outputName} must reference a known semantic artifact schema id.`,
+      );
+    }
+    normalized[outputName] = rawSchemaId.trim() as SemanticArtifactSchemaId;
+  }
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function validateSemanticBindingContracts(
+  outputContracts: Record<string, SkillOutputContract> | undefined,
+  semanticBindings: Record<string, SemanticArtifactSchemaId> | undefined,
+  filePath: string,
+): void {
+  if (!semanticBindings || Object.keys(semanticBindings).length === 0) {
+    return;
+  }
+  const authoredBoundOutputs = Object.keys(outputContracts ?? {}).filter((outputName) =>
+    Object.prototype.hasOwnProperty.call(semanticBindings, outputName),
+  );
+  if (authoredBoundOutputs.length > 0) {
+    failSkillContract(
+      filePath,
+      `intent.output_contracts must not declare semantic-bound outputs: ${authoredBoundOutputs.join(", ")}.`,
+    );
+  }
 }
 
 const TOOL_EFFECT_CLASSES: ToolEffectClass[] = [
@@ -413,7 +505,15 @@ function normalizeIntentContract(
     category === "overlay"
       ? readNullableStringArrayField(intent, "outputs", filePath)
       : requireStringArrayField(intent, "outputs", filePath);
-  const outputContracts = normalizeOutputContracts(intent, outputs, category, filePath);
+  const semanticBindings = normalizeSemanticBindings(intent, outputs, category, filePath);
+  const outputContracts = normalizeOutputContracts(
+    intent,
+    outputs,
+    semanticBindings,
+    category,
+    filePath,
+  );
+  validateSemanticBindingContracts(outputContracts, semanticBindings, filePath);
 
   const completionDefinition = readOptionalRecordField(intent, "completion_definition", filePath);
   const verificationLevel = completionDefinition?.verification_level;
@@ -442,6 +542,7 @@ function normalizeIntentContract(
   return {
     outputs,
     outputContracts,
+    semanticBindings,
     completionDefinition: normalizedCompletionDefinition,
   };
 }
@@ -1008,13 +1109,31 @@ function mergeIntentContract(
   if (!base && !patch) {
     return undefined;
   }
+  const baseSemanticBindings = base?.semanticBindings;
+  const hasBaseSemanticBindings = Boolean(
+    baseSemanticBindings && Object.keys(baseSemanticBindings).length > 0,
+  );
+  const patchTouchesIntentSemantics =
+    patch?.outputs !== undefined ||
+    patch?.outputContracts !== undefined ||
+    patch?.completionDefinition !== undefined ||
+    patch?.semanticBindings !== undefined;
+  if (hasBaseSemanticBindings && patchTouchesIntentSemantics) {
+    failSkillContract(
+      filePath,
+      "semantic-bound skills cannot change intent outputs, output_contracts, completion_definition, or semantic_bindings through overlays or overrides.",
+    );
+  }
   const outputs = patch?.outputs ?? base?.outputs;
   const outputContracts = patch?.outputContracts
     ? mergeOutputContracts(base?.outputContracts, patch.outputContracts, outputs ?? [], filePath)
     : base?.outputContracts;
+  const semanticBindings = patch?.semanticBindings ?? baseSemanticBindings;
+  validateSemanticBindingContracts(outputContracts, semanticBindings, filePath);
   return {
     outputs,
     outputContracts,
+    semanticBindings,
     completionDefinition: mergeCompletionDefinition(
       base?.completionDefinition,
       patch?.completionDefinition,
@@ -1248,6 +1367,23 @@ export function mergeOverlayContract(
   base: SkillContract,
   overlay: SkillContractOverride,
 ): SkillContract {
+  const baseSemanticBindings = base.intent?.semanticBindings;
+  const hasBaseSemanticBindings = Boolean(
+    baseSemanticBindings && Object.keys(baseSemanticBindings).length > 0,
+  );
+  if (
+    hasBaseSemanticBindings &&
+    overlay.intent &&
+    (overlay.intent.outputs !== undefined ||
+      overlay.intent.outputContracts !== undefined ||
+      overlay.intent.completionDefinition !== undefined ||
+      overlay.intent.semanticBindings !== undefined)
+  ) {
+    failSkillContract(
+      base.name,
+      "semantic-bound skill overlays cannot modify outputs, output_contracts, completion_definition, or semantic_bindings.",
+    );
+  }
   const routing = mergeRoutingPolicy(base.routing, overlay.routing);
   const selection = mergeSelectionPolicy(base.selection, overlay.selection);
   const mergedOutputs = [
@@ -1277,6 +1413,7 @@ export function mergeOverlayContract(
     intent: {
       outputs: mergedOutputs,
       outputContracts,
+      semanticBindings: base.intent?.semanticBindings,
       completionDefinition: mergeCompletionDefinition(
         base.intent?.completionDefinition,
         overlay.intent?.completionDefinition,

@@ -2,9 +2,13 @@
 
 Use these patterns when skills need to produce consistent, high-quality output.
 
-Pair each declared output with an explicit `intent.output_contracts` entry in
-frontmatter. Keep the contract just strong enough to reject placeholder output
-without over-constraining normal use.
+For ordinary authored outputs, pair each declared output with an explicit
+`intent.output_contracts` entry in frontmatter. Keep the contract just strong
+enough to reject placeholder output without over-constraining normal use.
+
+For runtime-owned canonical artifacts, declare `intent.semantic_bindings`
+instead and let runtime derive the matching output contracts. Do not hand-author
+duplicate `intent.output_contracts` entries for semantic-bound outputs.
 
 ## Structured Array Pattern
 

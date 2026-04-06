@@ -78,11 +78,11 @@ function readQaCheck(value: unknown): QaCheck | undefined {
     return undefined;
   }
   const name = readString(value.name);
-  const result = readString(value.result);
+  const status = readString(value.status);
   const command = readString(value.command);
   const tool = readString(value.tool);
-  const observedOutput = readString(value.observedOutput);
-  if (!name || (result !== "pass" && result !== "fail" && result !== "inconclusive")) {
+  const observedOutput = readString(value.observed_output);
+  if (!name || (status !== "pass" && status !== "fail" && status !== "inconclusive")) {
     return undefined;
   }
   if (!observedOutput) {
@@ -90,18 +90,18 @@ function readQaCheck(value: unknown): QaCheck | undefined {
   }
   const base = {
     name,
-    result,
+    status,
     cwd: readString(value.cwd),
     expected: readString(value.expected),
-    observedOutput,
-    probeType: readString(value.probeType),
+    observed_output: observedOutput,
+    probe_type: readString(value.probe_type),
     summary: readString(value.summary),
-    artifactRefs: readStringArray(value.artifactRefs),
-  } satisfies Omit<QaCheck, "command" | "exitCode" | "tool">;
+    evidence_refs: readStringArray(value.evidence_refs),
+  } satisfies Omit<QaCheck, "command" | "exit_code" | "tool">;
   if (command) {
     const exitCode =
-      typeof value.exitCode === "number" && Number.isFinite(value.exitCode)
-        ? value.exitCode
+      typeof value.exit_code === "number" && Number.isFinite(value.exit_code)
+        ? value.exit_code
         : undefined;
     if (exitCode === undefined) {
       return undefined;
@@ -109,7 +109,7 @@ function readQaCheck(value: unknown): QaCheck | undefined {
     return {
       ...base,
       command,
-      exitCode,
+      exit_code: exitCode,
       ...(tool ? { tool } : {}),
     };
   }
@@ -131,7 +131,7 @@ function appendUnique(values: string[] | undefined, message: string): string[] {
 }
 
 function isAdversarialQaCheck(check: QaCheck): boolean {
-  const probeType = readString(check.probeType)?.toLowerCase();
+  const probeType = readString(check.probe_type)?.toLowerCase();
   if (!probeType) {
     return false;
   }
@@ -150,14 +150,14 @@ function isAdversarialQaCheck(check: QaCheck): boolean {
 }
 
 function normalizeQaOutcomeData(data: QaSubagentOutcomeData): QaSubagentOutcomeData {
-  const failedChecks = data.checks.filter((check) => check.result === "fail");
-  const inconclusiveChecks = data.checks.filter((check) => check.result === "inconclusive");
+  const failedChecks = data.checks.filter((check) => check.status === "fail");
+  const inconclusiveChecks = data.checks.filter((check) => check.status === "inconclusive");
   const hasExecutableEvidence = data.checks.length > 0;
   const hasAdversarialProbe = data.checks.some(isAdversarialQaCheck);
   let verdict = data.verdict;
-  let missingEvidence = data.missingEvidence;
-  let confidenceGaps = data.confidenceGaps;
-  const environmentLimits = data.environmentLimits;
+  let missingEvidence = data.missing_evidence;
+  let confidenceGaps = data.confidence_gaps;
+  const environmentLimits = data.environment_limits;
 
   if (verdict === "pass" && failedChecks.length > 0) {
     verdict = "fail";
@@ -203,9 +203,24 @@ function normalizeQaOutcomeData(data: QaSubagentOutcomeData): QaSubagentOutcomeD
     kind: "qa",
     verdict,
     checks: data.checks,
-    ...(missingEvidence?.length ? { missingEvidence } : {}),
-    ...(confidenceGaps?.length ? { confidenceGaps } : {}),
-    ...(environmentLimits?.length ? { environmentLimits } : {}),
+    ...(missingEvidence?.length ? { missing_evidence: missingEvidence } : {}),
+    ...(confidenceGaps?.length ? { confidence_gaps: confidenceGaps } : {}),
+    ...(environmentLimits?.length ? { environment_limits: environmentLimits } : {}),
+  };
+}
+
+function toCanonicalQaSkillCheck(check: QaCheck): Record<string, unknown> {
+  return {
+    name: check.name,
+    status: check.status,
+    summary: check.summary ?? check.name,
+    ...(check.command ? { command: check.command, exit_code: check.exit_code } : {}),
+    ...(check.tool ? { tool: check.tool } : {}),
+    ...(check.cwd ? { cwd: check.cwd } : {}),
+    ...(check.expected ? { expected: check.expected } : {}),
+    observed_output: check.observed_output,
+    ...(check.probe_type ? { probe_type: check.probe_type } : {}),
+    ...(check.evidence_refs ? { evidence_refs: check.evidence_refs } : {}),
   };
 }
 
@@ -226,13 +241,13 @@ function buildQaSkillOutputs(
       Array.isArray(existing?.qa_findings) && existing.qa_findings.length > 0
         ? existing.qa_findings
         : data.checks
-            .filter((check) => check.result !== "pass")
+            .filter((check) => check.status !== "pass")
             .map((check) => check.summary ?? check.name),
     qa_verdict: data.verdict,
-    qa_checks: data.checks,
-    qa_missing_evidence: data.missingEvidence ?? [],
-    qa_confidence_gaps: data.confidenceGaps ?? [],
-    qa_environment_limits: data.environmentLimits ?? [],
+    qa_checks: data.checks.map((check) => toCanonicalQaSkillCheck(check)),
+    qa_missing_evidence: data.missing_evidence ?? [],
+    qa_confidence_gaps: data.confidence_gaps ?? [],
+    qa_environment_limits: data.environment_limits ?? [],
   };
 }
 
@@ -466,7 +481,7 @@ function parseOutcomeData(
     }
     const verdict = readString(payload.verdict);
     const invalidCheckCount = rawChecks.length - checks.length;
-    const confidenceGaps = readStringArray(payload.confidenceGaps);
+    const confidenceGaps = readStringArray(payload.confidence_gaps);
     return normalizeQaOutcomeData({
       kind: "qa",
       checks,
@@ -474,15 +489,15 @@ function parseOutcomeData(
         verdict === "pass" || verdict === "fail" || verdict === "inconclusive"
           ? verdict
           : "inconclusive",
-      missingEvidence: readStringArray(payload.missingEvidence),
-      confidenceGaps:
+      missing_evidence: readStringArray(payload.missing_evidence),
+      confidence_gaps:
         invalidCheckCount > 0
           ? appendUnique(
               confidenceGaps,
               `${invalidCheckCount} qa_check entr${invalidCheckCount === 1 ? "y was" : "ies were"} discarded because the canonical execution evidence contract was not satisfied.`,
             )
           : confidenceGaps,
-      environmentLimits: readStringArray(payload.environmentLimits),
+      environment_limits: readStringArray(payload.environment_limits),
     } satisfies QaSubagentOutcomeData);
   }
 

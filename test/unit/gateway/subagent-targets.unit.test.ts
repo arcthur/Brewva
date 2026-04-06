@@ -153,7 +153,7 @@ describe("delegation prompt and catalog composition", () => {
     expect(prompt).toContain("Recognize your own rationalizations");
     expect(prompt).toContain("The code looks correct based on my reading.");
     expect(prompt).toContain("Do not invent QA checks from code reading or expectation alone.");
-    expect(prompt).toContain("exitCode");
+    expect(prompt).toContain("exit_code");
   });
 
   test("materializes the built-in patch worker through the catalog", async () => {

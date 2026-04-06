@@ -1,7 +1,11 @@
 import type {
+  ActiveSkillRuntimeState,
   BrewvaEventRecord,
   IntegrityIssue,
+  OpenToolCallRecord,
   ResourceLeaseRecord,
+  SessionUncleanShutdownDiagnostic,
+  SkillCompletionFailureRecord,
   SkillOutputRecord,
   VerificationCheckRun,
   VerificationSessionState,
@@ -65,12 +69,21 @@ export function applySessionHydrationFold<State>(
 export interface SkillHydrationState {
   turn: number;
   activeSkill?: string;
+  activeSkillState?: ActiveSkillRuntimeState;
+  latestSkillFailure?: SkillCompletionFailureRecord;
   toolCalls: number;
   toolContractWarnings: Set<string>;
   governanceMetadataWarnings: Set<string>;
   skillBudgetWarnings: Set<string>;
   skillParallelWarnings: Set<string>;
   skillOutputs: Map<string, SkillOutputRecord>;
+}
+
+export interface ToolLifecycleHydrationState {
+  openToolCalls: Map<string, OpenToolCallRecord>;
+  latestUncleanShutdownDiagnostic?: SessionUncleanShutdownDiagnostic;
+  lastSessionShutdownAt?: number;
+  latestEventAt?: number;
 }
 
 export interface ResourceLeaseHydrationState {

@@ -70,7 +70,7 @@ describe("repository catalog contracts", () => {
     );
   });
 
-  test("built-in base skills declare explicit output contracts for every declared output", () => {
+  test("built-in base skills resolve output contracts for every declared output", () => {
     const runtime = createCleanRuntime();
     const missing = runtime.inspect.skills.list().flatMap((skill) => {
       const outputs = listSkillOutputs(skill.contract);
@@ -85,6 +85,23 @@ describe("repository catalog contracts", () => {
     });
 
     expect(missing).toEqual([]);
+  });
+
+  test("semantic-bound base skills derive output contracts instead of hand-authoring them", () => {
+    const design = parseSkillDocument(`${repoRoot()}/skills/core/design/SKILL.md`, "core");
+    const implementation = parseSkillDocument(
+      `${repoRoot()}/skills/core/implementation/SKILL.md`,
+      "core",
+    );
+    const review = parseSkillDocument(`${repoRoot()}/skills/core/review/SKILL.md`, "core");
+    const qa = parseSkillDocument(`${repoRoot()}/skills/core/qa/SKILL.md`, "core");
+    const ship = parseSkillDocument(`${repoRoot()}/skills/core/ship/SKILL.md`, "core");
+
+    for (const parsed of [design, implementation, review, qa, ship]) {
+      expect(parsed.contract.intent?.outputContracts).toBeUndefined();
+      expect(Object.keys(parsed.contract.intent?.semanticBindings ?? {}).length).toBeGreaterThan(0);
+      expect(Object.keys(getSkillOutputContracts(parsed.contract)).length).toBeGreaterThan(0);
+    }
   });
 
   test("all loadable routed skills declare explicit selection policy", () => {

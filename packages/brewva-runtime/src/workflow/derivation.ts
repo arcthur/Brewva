@@ -855,9 +855,9 @@ function extractSubagentQaArtifact(event: BrewvaEventRecord): WorkflowDraftArtif
         delegate: delegate ?? null,
         runId: readString(payload.runId) ?? null,
         qaVerdict: verdict ?? null,
-        missingEvidence: readStringArray(resultData?.missingEvidence),
-        confidenceGaps: readStringArray(resultData?.confidenceGaps),
-        environmentLimits: readStringArray(resultData?.environmentLimits),
+        missingEvidence: readStringArray(resultData?.missing_evidence),
+        confidenceGaps: readStringArray(resultData?.confidence_gaps),
+        environmentLimits: readStringArray(resultData?.environment_limits),
       },
     }),
   ];

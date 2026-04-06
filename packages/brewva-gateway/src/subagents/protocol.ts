@@ -206,21 +206,21 @@ function buildJsonShapeExample(input: {
           checks: [
             {
               name: "smoke-check",
-              result: "inconclusive",
+              status: "inconclusive",
               command: "bun test",
               tool: "exec",
               cwd: ".",
-              exitCode: 124,
+              exit_code: 124,
               expected: "Command should execute and preserve a bounded output excerpt.",
-              observedOutput: "Command not executed in this run.",
-              probeType: "adversarial",
+              observed_output: "Command not executed in this run.",
+              probe_type: "adversarial",
               summary:
                 "The command was not actually executed, so the verdict remains inconclusive.",
-              artifactRefs: ["session:child:agent_end"],
+              evidence_refs: ["session:child:agent_end"],
             },
           ],
-          missingEvidence: ["No authoritative QA command evidence was attached."],
-          confidenceGaps: ["Happy-path only; no adversarial probe was observed."],
+          missing_evidence: ["No authoritative QA command evidence was attached."],
+          confidence_gaps: ["Happy-path only; no adversarial probe was observed."],
         } as Record<string, unknown>)
       : ({
           patchSummary: "Updated delegation handoff state handling.",
@@ -279,11 +279,11 @@ export function buildStructuredOutcomeContract(input: {
               ]
       : input.resultMode === "qa"
         ? [
-            "For qa mode, include verdict, checks, and any missingEvidence, confidenceGaps, or environmentLimits.",
-            "Do not invent QA checks from code reading or expectation alone. If you did not run it, record missingEvidence instead.",
+            "For qa mode, include verdict, checks, and any missing_evidence, confidence_gaps, or environment_limits.",
+            "Do not invent QA checks from code reading or expectation alone. If you did not run it, record missing_evidence instead.",
             "Every QA check must carry an execution descriptor and observed evidence.",
-            "Command-based QA checks should record command, exitCode, observedOutput, and result.",
-            "Tool-driven QA checks should record tool, observedOutput, and result. artifactRefs are supplemental evidence, not a substitute for observedOutput.",
+            "Command-based QA checks should record command, exit_code, observed_output, and status.",
+            "Tool-driven QA checks should record tool, observed_output, and status. evidence_refs are supplemental evidence, not a substitute for observed_output.",
             "Use inconclusive when the environment or evidence is insufficient for a pass/fail claim.",
           ]
         : ["For patch mode, include patchSummary and changes."];

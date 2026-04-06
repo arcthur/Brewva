@@ -1,4 +1,5 @@
 import type {
+  SemanticArtifactSchemaId,
   SkillContractLike,
   SkillCostHint,
   SkillEffectLevel,
@@ -8,6 +9,7 @@ import type {
   SkillResourceBudget,
   ToolEffectClass,
 } from "../contracts/index.js";
+import { deriveSemanticBindingOutputContracts } from "../contracts/semantic-artifacts.js";
 
 const READ_ONLY_EFFECTS: ToolEffectClass[] = ["workspace_read", "runtime_observe"];
 const EXECUTE_EFFECTS = new Set<ToolEffectClass>(["local_exec", "external_network"]);
@@ -29,7 +31,17 @@ export function listSkillOutputs(contract: SkillContractLike | undefined): strin
 export function getSkillOutputContracts(
   contract: SkillContractLike | undefined,
 ): Record<string, SkillOutputContract> {
-  return { ...resolveSkillIntent(contract).outputContracts };
+  const intent = resolveSkillIntent(contract);
+  return {
+    ...(intent.outputContracts ?? {}),
+    ...deriveSemanticBindingOutputContracts(intent.semanticBindings),
+  };
+}
+
+export function getSkillSemanticBindings(
+  contract: SkillContractLike | undefined,
+): Record<string, SemanticArtifactSchemaId> {
+  return { ...(resolveSkillIntent(contract).semanticBindings ?? {}) };
 }
 
 export function deriveSkillEffectLevel(

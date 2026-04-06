@@ -25,25 +25,25 @@ export interface DelegationArtifactRef {
 
 interface QaCheckBase {
   name: string;
-  result: "pass" | "fail" | "inconclusive";
+  status: "pass" | "fail" | "inconclusive";
   cwd?: string;
   expected?: string;
-  observedOutput: string;
-  probeType?: string;
+  observed_output: string;
+  probe_type?: string;
   summary?: string;
-  artifactRefs?: string[];
+  evidence_refs?: string[];
 }
 
 export interface QaCommandCheck extends QaCheckBase {
   command: string;
-  exitCode: number;
+  exit_code: number;
   tool?: string;
 }
 
 export interface QaToolCheck extends QaCheckBase {
   tool: string;
   command?: never;
-  exitCode?: never;
+  exit_code?: never;
 }
 
 export type QaCheck = QaCommandCheck | QaToolCheck;
@@ -52,9 +52,9 @@ export interface QaSubagentOutcomeData {
   kind: "qa";
   verdict: "pass" | "fail" | "inconclusive";
   checks: QaCheck[];
-  missingEvidence?: string[];
-  confidenceGaps?: string[];
-  environmentLimits?: string[];
+  missing_evidence?: string[];
+  confidence_gaps?: string[];
+  environment_limits?: string[];
 }
 
 export interface DelegationModelRouteRecord {

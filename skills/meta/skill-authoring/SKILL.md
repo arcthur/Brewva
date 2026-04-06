@@ -100,6 +100,9 @@ Produce:
 - `skill_contract`: intent, effect governance, explicit `default_lease` plus
   `hard_ceiling`, and execution hints
 - `skill_scaffold`: a minimal SKILL skeleton and required resources
+- when an output is runtime-owned and canonical, prefer
+  `intent.semantic_bindings` and let runtime derive the bound output contracts
+  instead of hand-authoring duplicate `intent.output_contracts`
 - when an output is an array of structured objects, prefer `kind: json` plus a
   recursive `item_contract` instead of leaving the array shape implicit
 

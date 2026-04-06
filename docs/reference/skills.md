@@ -63,7 +63,7 @@ Current rules:
 
 Skill frontmatter supports intent, effect, resource, and execution metadata:
 
-- `intent.outputs/intent.output_contracts`
+- `intent.outputs/intent.output_contracts/intent.semantic_bindings`
 - `selection.when_to_use/selection.examples/selection.paths/selection.phases`
 - `effects.allowed_effects/effects.denied_effects`
 - `resources.default_lease/resources.hard_ceiling`
@@ -120,10 +120,13 @@ compose-style workflow assistance live in runtime/control-plane code today rathe
 structured `SKILL.md` documents.
 
 `intent.output_contracts` makes artifact quality explicit in the skill contract
-instead of hiding it inside runtime heuristics. Non-overlay skills with
-declared outputs must define a contract for every output. Overlays may inherit
-base output contracts, but they cannot silently replace an existing base output
-contract.
+instead of hiding it inside runtime heuristics. For ordinary authored outputs,
+non-overlay skills with declared outputs must define a contract for every
+output. For semantic-bound outputs, authors must declare
+`intent.semantic_bindings` and let runtime derive the corresponding
+`output_contracts`; authored `intent.output_contracts` must not duplicate those
+bound outputs. Overlays may inherit base output contracts, but they cannot
+silently replace an existing base output contract.
 
 Current output contract kinds are intentionally limited to `text`, `enum`, and
 `json`. `json` contracts may also declare `required_fields` plus recursive

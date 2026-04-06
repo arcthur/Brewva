@@ -1,6 +1,15 @@
 import {
-  DESIGN_EXECUTION_MODE_HINTS,
+  getSemanticArtifactSchema,
+  type ActiveSkillRuntimeState,
   type BrewvaEventRecord,
+  type ContextBudgetUsage,
+  DESIGN_EXECUTION_MODE_HINTS,
+  SKILL_REPAIR_ALLOWED_TOOL_NAMES,
+  SKILL_REPAIR_MAX_ATTEMPTS,
+  SKILL_REPAIR_MAX_TOOL_CALLS,
+  SKILL_REPAIR_TOKEN_BUDGET,
+  type SemanticArtifactSchemaId,
+  type SkillCompletionFailureRecord,
   coerceDesignExecutionPlan,
   coerceDesignImplementationTargets,
   coerceDesignRiskRegister,
@@ -17,16 +26,24 @@ import {
   SkillActivationResult,
   SkillDocument,
   SkillOutputContract,
+  SkillOutputValidationIssue,
   SkillOutputValidationResult,
+  type SkillRepairBudgetState,
   TaskSpec,
   TaskState,
 } from "../contracts/index.js";
 import {
+  SKILL_COMPLETION_REJECTED_EVENT_TYPE,
+  SKILL_CONTRACT_FAILED_EVENT_TYPE,
   VERIFICATION_OUTCOME_RECORDED_EVENT_TYPE,
   VERIFICATION_WRITE_MARKED_EVENT_TYPE,
   WORKER_RESULTS_APPLIED_EVENT_TYPE,
 } from "../events/event-types.js";
-import { getSkillOutputContracts, listSkillOutputs } from "../skills/facets.js";
+import {
+  getSkillOutputContracts,
+  getSkillSemanticBindings,
+  listSkillOutputs,
+} from "../skills/facets.js";
 import type { SkillRegistry } from "../skills/registry.js";
 import { parseTaskSpec } from "../task/spec.js";
 import {
@@ -41,6 +58,14 @@ type InformativeTextOptions = {
   minWords?: number;
   minLength?: number;
 };
+const REPAIR_ALLOWED_TOOL_NAME_SET = new Set<string>(SKILL_REPAIR_ALLOWED_TOOL_NAMES);
+const PLANNING_SEMANTIC_OUTPUT_KEYS = [
+  "design_spec",
+  "execution_plan",
+  "execution_mode_hint",
+  "risk_register",
+  "implementation_targets",
+] as const;
 const REVIEW_SEMANTIC_OUTPUT_KEYS = ["review_report", "review_findings", "merge_decision"] as const;
 const QA_SEMANTIC_OUTPUT_KEYS = ["qa_report", "qa_findings", "qa_verdict", "qa_checks"] as const;
 const REVIEW_SEMANTIC_EVIDENCE_KEYS = [...PLANNING_EVIDENCE_KEYS, "verification_evidence"] as const;
@@ -258,6 +283,57 @@ function evidenceListMentionsKey(values: readonly string[], key: string): boolea
   return values.some((value) => value.toLowerCase().includes(normalizedKey));
 }
 
+function resolveOutputRootKey(name: string): string {
+  const match = name.trim().match(/^[^.[\]]+/u);
+  return match?.[0] ?? name.trim();
+}
+
+function resolveIssueSchemaId(
+  issueName: string,
+  semanticBindings: Record<string, SemanticArtifactSchemaId> | undefined,
+): SemanticArtifactSchemaId | undefined {
+  if (!semanticBindings) {
+    return undefined;
+  }
+  return semanticBindings[resolveOutputRootKey(issueName)];
+}
+
+function annotateSemanticIssues(
+  issues: Array<{ name: string; reason: string }>,
+  semanticBindings: Record<string, SemanticArtifactSchemaId> | undefined,
+): SkillOutputValidationIssue[] {
+  return issues.map((issue) => {
+    const schemaId = resolveIssueSchemaId(issue.name, semanticBindings);
+    return {
+      name: issue.name,
+      reason: issue.reason,
+      ...(schemaId ? { schemaId } : {}),
+    };
+  });
+}
+
+function buildGenericExpectedOutput(outputName: string, contract: SkillOutputContract): unknown {
+  switch (contract.kind) {
+    case "text":
+      return `<provide ${outputName}>`;
+    case "enum":
+      return contract.values[0] ?? `<select ${outputName}>`;
+    case "json":
+      if (contract.itemContract) {
+        return [buildGenericExpectedOutput(`${outputName}[0]`, contract.itemContract)];
+      }
+      return Object.fromEntries(
+        (contract.requiredFields ?? []).map((fieldName) => [
+          fieldName,
+          buildGenericExpectedOutput(
+            `${outputName}.${fieldName}`,
+            contract.fieldContracts?.[fieldName] ?? { kind: "text", minLength: 1 },
+          ),
+        ]),
+      );
+  }
+}
+
 type VerificationEvidenceState = "present" | "stale" | "missing";
 
 function resolveVerificationEvidenceContext(events: readonly BrewvaEventRecord[]): {
@@ -450,7 +526,7 @@ function validateReviewSemanticOutputs(
 
 function isQaCheckRecord(value: unknown): value is Record<string, unknown> {
   return (
-    isRecord(value) && normalizeText(value.name) !== null && normalizeText(value.result) !== null
+    isRecord(value) && normalizeText(value.name) !== null && normalizeText(value.status) !== null
   );
 }
 
@@ -463,14 +539,14 @@ function hasQaExecutionDescriptor(check: Record<string, unknown>): boolean {
 }
 
 function hasQaObservedEvidence(check: Record<string, unknown>): boolean {
-  return normalizeText(check.observedOutput) !== null;
+  return normalizeText(check.observed_output) !== null;
 }
 
 function hasQaExitCodeWhenCommanded(check: Record<string, unknown>): boolean {
   if (normalizeText(check.command) === null) {
     return true;
   }
-  return typeof check.exitCode === "number" && Number.isFinite(check.exitCode);
+  return typeof check.exit_code === "number" && Number.isFinite(check.exit_code);
 }
 
 function isAdversarialQaProbeType(value: unknown): boolean {
@@ -511,13 +587,13 @@ function validateQaSemanticOutputs(
   }
 
   const failedChecks = checks.filter(
-    (check) => normalizeText(check.result)?.toLowerCase() === "fail",
+    (check) => normalizeText(check.status)?.toLowerCase() === "fail",
   );
   const inconclusiveChecks = checks.filter(
-    (check) => normalizeText(check.result)?.toLowerCase() === "inconclusive",
+    (check) => normalizeText(check.status)?.toLowerCase() === "inconclusive",
   );
   const hasExecutableEvidence = checks.some(hasExecutableQaEvidence);
-  const hasAdversarialProbe = checks.some((check) => isAdversarialQaProbeType(check.probeType));
+  const hasAdversarialProbe = checks.some((check) => isAdversarialQaProbeType(check.probe_type));
   const invalidChecks = checks.flatMap((check, index) => {
     const issues: Array<{ name: string; reason: string }> = [];
     if (!hasQaExecutionDescriptor(check)) {
@@ -529,13 +605,13 @@ function validateQaSemanticOutputs(
     if (!hasQaObservedEvidence(check)) {
       issues.push({
         name: `qa_checks[${index}]`,
-        reason: "qa_check requires observedOutput",
+        reason: "qa_check requires observed_output",
       });
     }
     if (!hasQaExitCodeWhenCommanded(check)) {
       issues.push({
         name: `qa_checks[${index}]`,
-        reason: "qa_check with a command requires exitCode",
+        reason: "qa_check with a command requires exit_code",
       });
     }
     return issues;
@@ -629,17 +705,6 @@ function validateQaSemanticOutputs(
   return [];
 }
 
-function skillDeclaresAllOutputs(
-  skill: SkillDocument | undefined,
-  outputKeys: readonly string[],
-): skill is SkillDocument {
-  if (!skill) {
-    return false;
-  }
-  const declaredOutputs = listSkillOutputs(skill.contract);
-  return outputKeys.every((key) => declaredOutputs.includes(key));
-}
-
 function skillRequestsAnyInputs(
   skill: SkillDocument | undefined,
   inputKeys: readonly string[],
@@ -652,6 +717,17 @@ function skillRequestsAnyInputs(
     ...(skill.contract.consumes ?? []),
   ]);
   return inputKeys.some((key) => requestedInputs.has(key));
+}
+
+function skillDeclaresAllOutputs(
+  skill: SkillDocument | undefined,
+  outputKeys: readonly string[],
+): skill is SkillDocument {
+  if (!skill) {
+    return false;
+  }
+  const declaredOutputs = listSkillOutputs(skill.contract);
+  return outputKeys.every((key) => declaredOutputs.includes(key));
 }
 
 function resolvePlanningEvidenceState(
@@ -735,6 +811,11 @@ export class SkillLifecycleService {
     }
 
     state.activeSkill = name;
+    state.activeSkillState = {
+      skillName: name,
+      phase: "active",
+    };
+    state.latestSkillFailure = undefined;
     state.toolCalls = 0;
     this.recordEvent({
       sessionId,
@@ -749,9 +830,18 @@ export class SkillLifecycleService {
   }
 
   getActiveSkill(sessionId: string): SkillDocument | undefined {
-    const active = this.sessionState.getExistingCell(sessionId)?.activeSkill;
+    const cell = this.sessionState.getExistingCell(sessionId);
+    const active = cell?.activeSkillState?.skillName ?? cell?.activeSkill;
     if (!active) return undefined;
     return this.skills.get(active);
+  }
+
+  getActiveSkillState(sessionId: string): ActiveSkillRuntimeState | undefined {
+    return this.sessionState.getExistingCell(sessionId)?.activeSkillState;
+  }
+
+  getLatestSkillFailure(sessionId: string): SkillCompletionFailureRecord | undefined {
+    return this.sessionState.getExistingCell(sessionId)?.latestSkillFailure;
   }
 
   validateSkillOutputs(
@@ -765,6 +855,8 @@ export class SkillLifecycleService {
 
     const expected = listSkillOutputs(skill.contract);
     const outputContracts = getSkillOutputContracts(skill.contract);
+    const semanticBindings = getSkillSemanticBindings(skill.contract);
+    const semanticSchemaIds = new Set(Object.values(semanticBindings ?? {}));
     const consumedOutputs = this.getAvailableConsumedOutputs(sessionId, skill.name);
     const events = this.listEvents?.(sessionId) ?? [];
     const planningEvidenceState = resolvePlanningEvidenceState(events, consumedOutputs);
@@ -772,45 +864,76 @@ export class SkillLifecycleService {
     const missing = expected.filter(
       (name) => !isOutputPresent(outputs[name], outputContracts[name]),
     );
-    const invalid = expected.flatMap((name) => {
-      if (missing.includes(name)) {
-        return [];
-      }
-      const contract = outputContracts[name];
-      if (!contract) {
-        return [];
-      }
-      const reason = validateOutputContract(outputs[name], contract, name);
-      return reason ? [{ name, reason }] : [];
-    });
+    const invalid = annotateSemanticIssues(
+      expected.flatMap((name) => {
+        if (missing.includes(name)) {
+          return [];
+        }
+        const contract = outputContracts[name];
+        if (!contract) {
+          return [];
+        }
+        const reason = validateOutputContract(outputs[name], contract, name);
+        return reason ? [{ name, reason }] : [];
+      }),
+      semanticBindings,
+    );
 
-    invalid.push(...validatePlanningSemanticOutputs(outputs));
-
-    if (skill.name === "implementation") {
-      invalid.push(...validateImplementationSemanticOutputs(outputs, consumedOutputs));
-    }
     if (
+      [...semanticSchemaIds].some((schemaId) => schemaId.startsWith("planning.")) ||
+      skillDeclaresAllOutputs(skill, PLANNING_SEMANTIC_OUTPUT_KEYS)
+    ) {
+      invalid.push(
+        ...annotateSemanticIssues(validatePlanningSemanticOutputs(outputs), semanticBindings),
+      );
+    }
+
+    if (
+      semanticSchemaIds.has("implementation.change_set.v1") ||
+      semanticSchemaIds.has("implementation.files_changed.v1") ||
+      semanticSchemaIds.has("implementation.verification_evidence.v1") ||
+      skill.name === "implementation"
+    ) {
+      invalid.push(
+        ...annotateSemanticIssues(
+          validateImplementationSemanticOutputs(outputs, consumedOutputs),
+          semanticBindings,
+        ),
+      );
+    }
+
+    if (
+      [...semanticSchemaIds].some((schemaId) => schemaId.startsWith("review.")) ||
       skill.name === "review" ||
       (skillDeclaresAllOutputs(skill, REVIEW_SEMANTIC_OUTPUT_KEYS) &&
         skillRequestsAnyInputs(skill, REVIEW_SEMANTIC_EVIDENCE_KEYS))
     ) {
-      const requiresVerificationEvidence =
-        skill.name === "review" || skillRequestsAnyInputs(skill, ["verification_evidence"]);
       invalid.push(
-        ...validateReviewSemanticOutputs(
-          outputs,
-          planningEvidenceState,
-          verificationEvidenceContext.state,
-          requiresVerificationEvidence,
+        ...annotateSemanticIssues(
+          validateReviewSemanticOutputs(
+            outputs,
+            planningEvidenceState,
+            verificationEvidenceContext.state,
+            skill.name === "review" || skillRequestsAnyInputs(skill, ["verification_evidence"]),
+          ),
+          semanticBindings,
         ),
       );
     }
-    if (skill.name === "qa" || skillDeclaresAllOutputs(skill, QA_SEMANTIC_OUTPUT_KEYS)) {
+
+    if (
+      [...semanticSchemaIds].some((schemaId) => schemaId.startsWith("qa.")) ||
+      skill.name === "qa" ||
+      skillDeclaresAllOutputs(skill, QA_SEMANTIC_OUTPUT_KEYS)
+    ) {
       invalid.push(
-        ...validateQaSemanticOutputs(
-          outputs,
-          consumedOutputs,
-          verificationEvidenceContext.coverageTexts,
+        ...annotateSemanticIssues(
+          validateQaSemanticOutputs(
+            outputs,
+            consumedOutputs,
+            verificationEvidenceContext.coverageTexts,
+          ),
+          semanticBindings,
         ),
       );
     }
@@ -823,7 +946,7 @@ export class SkillLifecycleService {
 
   completeSkill(sessionId: string, outputs: Record<string, unknown>): SkillOutputValidationResult {
     const state = this.sessionState.getCell(sessionId);
-    const activeSkillName = state.activeSkill ?? null;
+    const activeSkillName = state.activeSkillState?.skillName ?? state.activeSkill ?? null;
     const validation = this.validateSkillOutputs(sessionId, outputs);
     if (!validation.ok) {
       return validation;
@@ -839,6 +962,8 @@ export class SkillLifecycleService {
       const outputKeys = Object.keys(outputs).toSorted();
 
       state.activeSkill = undefined;
+      state.activeSkillState = undefined;
+      state.latestSkillFailure = undefined;
       state.toolCalls = 0;
 
       this.recordEvent({
@@ -856,6 +981,252 @@ export class SkillLifecycleService {
       this.maybePromoteTaskSpec(sessionId, outputs);
     }
     return validation;
+  }
+
+  recordCompletionFailure(
+    sessionId: string,
+    outputs: Record<string, unknown>,
+    validation: SkillOutputValidationResult & { ok: false },
+    usage?: ContextBudgetUsage,
+  ): SkillCompletionFailureRecord | undefined {
+    const state = this.sessionState.getCell(sessionId);
+    const skill = this.getActiveSkill(sessionId);
+    const skillName = skill?.name ?? state.activeSkillState?.skillName ?? state.activeSkill;
+    if (!skill || !skillName) {
+      return undefined;
+    }
+
+    const previousBudget = state.latestSkillFailure?.repairBudget;
+    const currentTokens = typeof usage?.tokens === "number" ? usage.tokens : undefined;
+    const enteredAtTokens = previousBudget?.enteredAtTokens ?? currentTokens;
+    const latestObservedTokens = currentTokens ?? previousBudget?.latestObservedTokens;
+    const usedTokens =
+      typeof enteredAtTokens === "number" && typeof latestObservedTokens === "number"
+        ? Math.max(0, latestObservedTokens - enteredAtTokens)
+        : previousBudget?.usedTokens;
+    const repairBudget: SkillRepairBudgetState = {
+      maxAttempts: SKILL_REPAIR_MAX_ATTEMPTS,
+      usedAttempts: (previousBudget?.usedAttempts ?? 0) + 1,
+      remainingAttempts: Math.max(
+        0,
+        SKILL_REPAIR_MAX_ATTEMPTS - ((previousBudget?.usedAttempts ?? 0) + 1),
+      ),
+      maxToolCalls: SKILL_REPAIR_MAX_TOOL_CALLS,
+      usedToolCalls: previousBudget?.usedToolCalls ?? 0,
+      remainingToolCalls: Math.max(
+        0,
+        SKILL_REPAIR_MAX_TOOL_CALLS - (previousBudget?.usedToolCalls ?? 0),
+      ),
+      tokenBudget: SKILL_REPAIR_TOKEN_BUDGET,
+      ...(enteredAtTokens !== undefined ? { enteredAtTokens } : {}),
+      ...(latestObservedTokens !== undefined ? { latestObservedTokens } : {}),
+      ...(usedTokens !== undefined ? { usedTokens } : {}),
+    };
+    const phase: SkillCompletionFailureRecord["phase"] =
+      repairBudget.remainingAttempts > 0 ? "repair_required" : "failed_contract";
+    const failure: SkillCompletionFailureRecord = {
+      skillName,
+      occurredAt: Date.now(),
+      phase,
+      outputKeys: Object.keys(outputs).toSorted(),
+      missing: [...validation.missing],
+      invalid: validation.invalid.map((issue) => ({ ...issue })),
+      expectedOutputs: this.buildExpectedOutputs(skill, validation),
+      repairBudget,
+    };
+
+    state.latestSkillFailure = failure;
+    if (phase === "repair_required") {
+      state.activeSkill = skillName;
+      state.activeSkillState = {
+        skillName,
+        phase: "repair_required",
+        repairBudget,
+        latestFailure: failure,
+      };
+    } else {
+      state.activeSkill = undefined;
+      state.activeSkillState = undefined;
+      state.toolCalls = 0;
+    }
+
+    this.recordEvent({
+      sessionId,
+      type: SKILL_COMPLETION_REJECTED_EVENT_TYPE,
+      turn: this.getCurrentTurn(sessionId),
+      payload: failure,
+    });
+
+    if (phase === "failed_contract") {
+      this.recordEvent({
+        sessionId,
+        type: SKILL_CONTRACT_FAILED_EVENT_TYPE,
+        turn: this.getCurrentTurn(sessionId),
+        payload: failure,
+      });
+    }
+
+    return failure;
+  }
+
+  explainRepairToolAccess(
+    sessionId: string,
+    toolName: string,
+    usage?: ContextBudgetUsage,
+  ): { allowed: boolean; reason?: string } {
+    const state = this.sessionState.getExistingCell(sessionId);
+    const activeSkillState = state?.activeSkillState;
+    if (!activeSkillState || activeSkillState.phase !== "repair_required") {
+      return { allowed: true };
+    }
+
+    const normalizedToolName = toolName.trim().toLowerCase();
+    if (!REPAIR_ALLOWED_TOOL_NAME_SET.has(normalizedToolName)) {
+      return {
+        allowed: false,
+        reason: `Repair posture only allows: ${SKILL_REPAIR_ALLOWED_TOOL_NAMES.join(", ")}.`,
+      };
+    }
+
+    const repairBudget = activeSkillState.repairBudget ?? state?.latestSkillFailure?.repairBudget;
+    if (!repairBudget) {
+      return { allowed: true };
+    }
+    if (repairBudget.remainingToolCalls <= 0) {
+      return {
+        allowed: false,
+        reason: `Repair posture exhausted maxToolCalls=${repairBudget.maxToolCalls}.`,
+      };
+    }
+
+    const currentTokens = typeof usage?.tokens === "number" ? usage.tokens : undefined;
+    const enteredAtTokens = repairBudget.enteredAtTokens;
+    const usedTokens =
+      typeof currentTokens === "number" && typeof enteredAtTokens === "number"
+        ? Math.max(0, currentTokens - enteredAtTokens)
+        : repairBudget.usedTokens;
+    if (typeof usedTokens === "number" && usedTokens >= repairBudget.tokenBudget) {
+      return {
+        allowed: false,
+        reason: `Repair posture exhausted tokenBudget=${repairBudget.tokenBudget}.`,
+      };
+    }
+
+    return { allowed: true };
+  }
+
+  consumeRepairToolAccess(
+    sessionId: string,
+    toolName: string,
+    usage?: ContextBudgetUsage,
+  ): { allowed: boolean; reason?: string } {
+    const state = this.sessionState.getCell(sessionId);
+    const activeSkillState = state.activeSkillState;
+    if (!activeSkillState || activeSkillState.phase !== "repair_required") {
+      return { allowed: true };
+    }
+
+    const access = this.explainRepairToolAccess(sessionId, toolName, usage);
+    if (!access.allowed) {
+      this.failRepairBudget(sessionId, access.reason);
+      return access;
+    }
+
+    const latestFailure = state.latestSkillFailure;
+    const repairBudget = latestFailure?.repairBudget;
+    if (!latestFailure || !repairBudget) {
+      return { allowed: true };
+    }
+
+    const currentTokens = typeof usage?.tokens === "number" ? usage.tokens : undefined;
+    const enteredAtTokens = repairBudget.enteredAtTokens ?? currentTokens;
+    const latestObservedTokens = currentTokens ?? repairBudget.latestObservedTokens;
+    const usedTokens =
+      typeof enteredAtTokens === "number" && typeof latestObservedTokens === "number"
+        ? Math.max(0, latestObservedTokens - enteredAtTokens)
+        : repairBudget.usedTokens;
+    const nextBudget: SkillRepairBudgetState = {
+      ...repairBudget,
+      usedToolCalls: repairBudget.usedToolCalls + 1,
+      remainingToolCalls: Math.max(0, repairBudget.remainingToolCalls - 1),
+      ...(enteredAtTokens !== undefined ? { enteredAtTokens } : {}),
+      ...(latestObservedTokens !== undefined ? { latestObservedTokens } : {}),
+      ...(usedTokens !== undefined ? { usedTokens } : {}),
+    };
+    const nextFailure: SkillCompletionFailureRecord = {
+      ...latestFailure,
+      repairBudget: nextBudget,
+    };
+    state.latestSkillFailure = nextFailure;
+    state.activeSkillState = {
+      ...activeSkillState,
+      repairBudget: nextBudget,
+      latestFailure: nextFailure,
+    };
+
+    return { allowed: true };
+  }
+
+  private failRepairBudget(sessionId: string, reason?: string): void {
+    const state = this.sessionState.getCell(sessionId);
+    const latestFailure = state.latestSkillFailure;
+    if (!latestFailure || latestFailure.phase === "failed_contract") {
+      return;
+    }
+    const failed: SkillCompletionFailureRecord = {
+      ...latestFailure,
+      phase: "failed_contract",
+      repairBudget: {
+        ...latestFailure.repairBudget,
+        remainingToolCalls: 0,
+      },
+    };
+    state.latestSkillFailure = failed;
+    state.activeSkill = undefined;
+    state.activeSkillState = undefined;
+    state.toolCalls = 0;
+    this.recordEvent({
+      sessionId,
+      type: SKILL_CONTRACT_FAILED_EVENT_TYPE,
+      turn: this.getCurrentTurn(sessionId),
+      payload: {
+        ...failed,
+        ...(reason ? { failureReason: reason } : {}),
+      },
+    });
+  }
+
+  private buildExpectedOutputs(
+    skill: SkillDocument,
+    validation: SkillOutputValidationResult & { ok: false },
+  ): Record<string, unknown> {
+    const outputContracts = getSkillOutputContracts(skill.contract);
+    const semanticBindings = getSkillSemanticBindings(skill.contract);
+    const selectedKeys = new Set<string>(validation.missing);
+    for (const issue of validation.invalid) {
+      selectedKeys.add(resolveOutputRootKey(issue.name));
+    }
+    if (selectedKeys.size === 0) {
+      for (const outputName of listSkillOutputs(skill.contract)) {
+        selectedKeys.add(outputName);
+      }
+    }
+
+    return Object.fromEntries(
+      [...selectedKeys]
+        .filter((outputName) => outputName.length > 0)
+        .map((outputName) => {
+          const schemaId = semanticBindings?.[outputName];
+          if (schemaId) {
+            return [outputName, structuredClone(getSemanticArtifactSchema(schemaId).example)];
+          }
+          const contract = outputContracts[outputName];
+          if (contract) {
+            return [outputName, buildGenericExpectedOutput(outputName, contract)];
+          }
+          return [outputName, `<provide ${outputName}>`];
+        }),
+    );
   }
 
   getSkillOutputs(sessionId: string, skillName: string): Record<string, unknown> | undefined {

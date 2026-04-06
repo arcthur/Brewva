@@ -5,10 +5,20 @@ import type {
   BrewvaEventRecord,
   IntegrityIssue,
   IntegrityStatus,
+  OpenTurnRecord,
+  OpenToolCallRecord,
   SessionHydrationState,
+  SessionUncleanShutdownReason,
+  SessionUncleanShutdownDiagnostic,
 } from "../contracts/index.js";
 import type { SessionCostTracker } from "../cost/tracker.js";
-import { TOOL_OUTPUT_ARTIFACT_PERSIST_FAILED_EVENT_TYPE } from "../events/event-types.js";
+import {
+  SESSION_SHUTDOWN_EVENT_TYPE,
+  SESSION_UNCLEAN_SHUTDOWN_RECONCILED_EVENT_TYPE,
+  TOOL_OUTPUT_ARTIFACT_PERSIST_FAILED_EVENT_TYPE,
+  TURN_END_EVENT_TYPE,
+  TURN_START_EVENT_TYPE,
+} from "../events/event-types.js";
 import type { BrewvaEventStore } from "../events/store.js";
 import type { EvidenceLedger } from "../ledger/evidence-ledger.js";
 import type { ParallelBudgetManager } from "../parallel/budget.js";
@@ -26,6 +36,7 @@ import { createCostHydrationFold } from "./session-hydration-fold-cost.js";
 import { createLedgerHydrationFold } from "./session-hydration-fold-ledger.js";
 import { createResourceLeaseHydrationFold } from "./session-hydration-fold-resource-lease.js";
 import { createSkillHydrationFold } from "./session-hydration-fold-skill.js";
+import { createToolLifecycleHydrationFold } from "./session-hydration-fold-tool-lifecycle.js";
 import { createVerificationHydrationFold } from "./session-hydration-fold-verification.js";
 import {
   applySessionHydrationFold,
@@ -71,6 +82,8 @@ interface SessionHydrationRun {
   applyContext: SessionHydrationApplyContext;
   foldEntries: SessionHydrationFoldEntry[];
 }
+
+const UNCLEAN_SHUTDOWN_RECONCILIATION_GRACE_MS = 5_000;
 
 export class SessionLifecycleService {
   private readonly sessionState: RuntimeSessionStateStore;
@@ -120,6 +133,7 @@ export class SessionLifecycleService {
 
   private static readonly hydrationFolds: SessionHydrationFold<unknown>[] = [
     createSkillHydrationFold(),
+    createToolLifecycleHydrationFold(),
     createVerificationHydrationFold(),
     createResourceLeaseHydrationFold(),
     createCostHydrationFold(),
@@ -169,6 +183,19 @@ export class SessionLifecycleService {
       status: this.resolveIntegrityStatus(issues),
       issues,
     };
+  }
+
+  getOpenToolCalls(sessionId: string): OpenToolCallRecord[] {
+    this.ensureHydrated(sessionId);
+    return [...(this.sessionState.getExistingCell(sessionId)?.openToolCalls.values() ?? [])].map(
+      (record) => ({ ...record }),
+    );
+  }
+
+  getUncleanShutdownDiagnostic(sessionId: string): SessionUncleanShutdownDiagnostic | undefined {
+    this.ensureHydrated(sessionId);
+    const diagnostic = this.sessionState.getExistingCell(sessionId)?.uncleanShutdownDiagnostic;
+    return diagnostic ? structuredClone(diagnostic) : undefined;
   }
 
   onClearState(listener: (sessionId: string) => void): () => void {
@@ -263,6 +290,7 @@ export class SessionLifecycleService {
     const hydrationRun = this.createHydrationRun(sessionId, state, integrityIssues);
     this.replayHydrationEvents(sessionId, events, hydrationRun, replayState);
     this.applyHydrationRun(state, events, hydrationRun);
+    this.reconcileUncleanShutdown(sessionId, events, state);
   }
 
   private resetHydrationSupportStores(sessionId: string): void {
@@ -470,6 +498,125 @@ export class SessionLifecycleService {
 
     if (event.type !== "cost_update" || !payload) return;
     this.costTracker.applyCostUpdateEvent(sessionId, payload, turn, event.timestamp);
+  }
+
+  private reconcileUncleanShutdown(
+    sessionId: string,
+    events: BrewvaEventRecord[],
+    state: RuntimeSessionStateCell,
+  ): void {
+    if (events.length === 0) {
+      return;
+    }
+
+    const latestEvent = events[events.length - 1];
+    if (!latestEvent || latestEvent.type === SESSION_SHUTDOWN_EVENT_TYPE) {
+      return;
+    }
+    if (Date.now() - latestEvent.timestamp < UNCLEAN_SHUTDOWN_RECONCILIATION_GRACE_MS) {
+      return;
+    }
+    if (
+      events.some((event) => event.type === SESSION_UNCLEAN_SHUTDOWN_RECONCILED_EVENT_TYPE) ||
+      state.uncleanShutdownDiagnostic
+    ) {
+      return;
+    }
+
+    const openToolCalls = [...state.openToolCalls.values()]
+      .map((record) => ({ ...record }))
+      .toSorted(
+        (left, right) =>
+          left.openedAt - right.openedAt || left.toolCallId.localeCompare(right.toolCallId),
+      );
+    const openTurns = this.collectOpenTurns(events);
+    const reasons: SessionUncleanShutdownReason[] = [];
+    if (openToolCalls.length > 0) {
+      reasons.push("open_tool_calls_without_terminal_receipt");
+    }
+    if (openTurns.length > 0) {
+      reasons.push("open_turn_without_terminal_receipt");
+    }
+    if (state.activeSkillState) {
+      reasons.push("active_skill_without_terminal_receipt");
+    }
+    if (reasons.length === 0) {
+      return;
+    }
+
+    const diagnostic: SessionUncleanShutdownDiagnostic = {
+      detectedAt: Date.now(),
+      reasons,
+      openToolCalls,
+      ...(openTurns.length > 0 ? { openTurns } : {}),
+      ...(state.activeSkillState ? { activeSkill: structuredClone(state.activeSkillState) } : {}),
+      ...(state.latestSkillFailure
+        ? { latestFailure: structuredClone(state.latestSkillFailure) }
+        : {}),
+      latestEventType: latestEvent.type,
+      latestEventAt: latestEvent.timestamp,
+    };
+    state.uncleanShutdownDiagnostic = diagnostic;
+
+    this.appendHydrationIssue(state, {
+      domain: "event_tape",
+      severity: "degraded",
+      sessionId,
+      eventType: SESSION_UNCLEAN_SHUTDOWN_RECONCILED_EVENT_TYPE,
+      reason: `${reasons.join("+")}:${[
+        openToolCalls.length > 0
+          ? `tools=${openToolCalls.map((record) => record.toolName).join(",")}`
+          : null,
+        openTurns.length > 0 ? `turns=${openTurns.map((record) => record.turn).join(",")}` : null,
+        state.activeSkillState ? `skill=${state.activeSkillState.skillName}` : null,
+      ]
+        .filter((entry): entry is string => Boolean(entry))
+        .join(";")}`,
+    });
+
+    this.recordEvent({
+      sessionId,
+      type: SESSION_UNCLEAN_SHUTDOWN_RECONCILED_EVENT_TYPE,
+      payload: diagnostic,
+      skipTapeCheckpoint: true,
+    });
+  }
+
+  private collectOpenTurns(events: BrewvaEventRecord[]): OpenTurnRecord[] {
+    const openTurns = new Map<number, OpenTurnRecord>();
+    for (const event of events) {
+      if (typeof event.turn !== "number" || !Number.isFinite(event.turn)) {
+        continue;
+      }
+      const turn = Math.max(0, Math.floor(event.turn));
+      if (event.type === TURN_START_EVENT_TYPE) {
+        openTurns.set(turn, {
+          turn,
+          startedAt: event.timestamp,
+          eventId: event.id,
+        });
+        continue;
+      }
+      if (event.type === TURN_END_EVENT_TYPE) {
+        openTurns.delete(turn);
+      }
+    }
+    return [...openTurns.values()].toSorted((left, right) => left.turn - right.turn);
+  }
+
+  private appendHydrationIssue(state: RuntimeSessionStateCell, issue: IntegrityIssue): void {
+    const key = this.integrityIssueKey(issue);
+    const existingKeys = new Set(
+      state.hydration.issues.map((entry) => this.integrityIssueKey(entry)),
+    );
+    if (existingKeys.has(key)) {
+      return;
+    }
+    state.hydration = {
+      ...state.hydration,
+      status: "degraded",
+      issues: [...state.hydration.issues, issue],
+    };
   }
 
   private normalizeTurn(value: unknown): number {

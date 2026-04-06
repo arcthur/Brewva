@@ -139,6 +139,117 @@ describe("runtime facade coverage", () => {
     );
   });
 
+  test("session inspection exposes unclean shutdown reconciliation and open tool calls", () => {
+    let now = 1_740_000_000_000;
+    const restoreNow = patchDateNow(() => now);
+
+    try {
+      const workspace = createTestWorkspace("runtime-facade-unclean-shutdown");
+      const config = createOpsRuntimeConfig();
+      const sessionId = "runtime-facade-unclean-shutdown-1";
+      const runtime = new BrewvaRuntime({ cwd: workspace, config });
+
+      runtime.maintain.context.onTurnStart(sessionId, 1);
+      expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
+      recordRuntimeEvent(runtime, {
+        sessionId,
+        type: "tool_execution_start",
+        turn: 1,
+        timestamp: now,
+        payload: {
+          toolCallId: "read-1",
+          toolName: "read",
+          args: {
+            path: "README.md",
+          },
+        },
+      });
+
+      now += 10_000;
+      const reloaded = new BrewvaRuntime({ cwd: workspace, config });
+
+      expect(reloaded.inspect.session.getOpenToolCalls(sessionId)).toEqual([
+        expect.objectContaining({
+          toolCallId: "read-1",
+          toolName: "read",
+        }),
+      ]);
+      expect(reloaded.inspect.session.getUncleanShutdownDiagnostic(sessionId)).toMatchObject({
+        reasons: expect.arrayContaining([
+          "open_tool_calls_without_terminal_receipt",
+          "active_skill_without_terminal_receipt",
+        ]),
+        openToolCalls: [
+          expect.objectContaining({
+            toolCallId: "read-1",
+            toolName: "read",
+          }),
+        ],
+        activeSkill: expect.objectContaining({
+          skillName: "design",
+          phase: "active",
+        }),
+        latestEventType: "tool_execution_start",
+      });
+      expect(
+        reloaded.inspect.events.query(sessionId, { type: "unclean_shutdown_reconciled" }),
+      ).toHaveLength(1);
+    } finally {
+      restoreNow();
+    }
+  });
+
+  test("session inspection exposes unclean shutdown reconciliation for open turns without tool calls", () => {
+    let now = 1_740_000_100_000;
+    const restoreNow = patchDateNow(() => now);
+
+    try {
+      const workspace = createTestWorkspace("runtime-facade-unclean-open-turn");
+      const config = createOpsRuntimeConfig();
+      const sessionId = "runtime-facade-unclean-open-turn-1";
+      const runtime = new BrewvaRuntime({ cwd: workspace, config });
+
+      runtime.maintain.context.onTurnStart(sessionId, 2);
+      recordRuntimeEvent(runtime, {
+        sessionId,
+        type: "turn_start",
+        turn: 2,
+        timestamp: now,
+        payload: {
+          turnId: "turn-2",
+        },
+      });
+      expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
+
+      now += 10_000;
+      const reloaded = new BrewvaRuntime({ cwd: workspace, config });
+
+      expect(reloaded.inspect.session.getOpenToolCalls(sessionId)).toEqual([]);
+      expect(reloaded.inspect.session.getUncleanShutdownDiagnostic(sessionId)).toMatchObject({
+        reasons: expect.arrayContaining([
+          "open_turn_without_terminal_receipt",
+          "active_skill_without_terminal_receipt",
+        ]),
+        openToolCalls: [],
+        openTurns: [
+          expect.objectContaining({
+            turn: 2,
+          }),
+        ],
+        activeSkill: expect.objectContaining({
+          skillName: "design",
+          phase: "active",
+        }),
+        latestEventType: "skill_activated",
+      });
+      expect(
+        reloaded.inspect.events.query(sessionId, { type: "unclean_shutdown_reconciled" }),
+      ).toHaveLength(1);
+    } finally {
+      restoreNow();
+    }
+  });
+
   test("events.toStructured mirrors structured queries through the public events facade", () => {
     const config = structuredClone(DEFAULT_BREWVA_CONFIG);
     config.infrastructure.events.level = "debug";
