@@ -322,6 +322,85 @@ describe("skill_complete tool", () => {
     expect(runtime.inspect.skills.getActive(sessionId)).toBeUndefined();
   });
 
+  test("rejected completions enter repair posture and exhaust deterministically", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-complete-repair-posture-"));
+    const config = structuredClone(DEFAULT_BREWVA_CONFIG);
+    config.infrastructure.events.enabled = true;
+    config.ledger.path = ".orchestrator/ledger/evidence.jsonl";
+    config.infrastructure.events.dir = ".orchestrator/events";
+    const runtime = new BrewvaRuntime({ cwd: workspace, config });
+    const sessionId = "skill-complete-repair-posture";
+    const loadTool = createSkillLoadTool({ runtime });
+    const completeTool = createSkillCompleteTool({
+      runtime,
+      verification: { executeCommands: false },
+    });
+
+    await loadTool.execute(
+      "tc-load-design-repair",
+      { name: "design" },
+      undefined,
+      undefined,
+      fakeContext(sessionId),
+    );
+
+    const invalidOutputs = {
+      design_spec: "todo",
+    };
+
+    const first = await completeTool.execute(
+      "tc-complete-design-repair-1",
+      {
+        outputs: invalidOutputs,
+      },
+      undefined,
+      undefined,
+      fakeContext(sessionId),
+    );
+
+    expect(extractTextContent(first)).toContain("Skill completion rejected.");
+    expect(runtime.inspect.skills.getActiveState(sessionId)).toMatchObject({
+      skillName: "design",
+      phase: "repair_required",
+      repairBudget: expect.objectContaining({
+        maxAttempts: 2,
+        usedAttempts: 1,
+        remainingAttempts: 1,
+        maxToolCalls: 6,
+        remainingToolCalls: 6,
+      }),
+    });
+    expect(runtime.inspect.skills.getLatestFailure(sessionId)).toMatchObject({
+      skillName: "design",
+      phase: "repair_required",
+      missing: ["execution_plan", "execution_mode_hint", "risk_register", "implementation_targets"],
+      expectedOutputs: expect.objectContaining({
+        execution_plan: expect.any(Array),
+        risk_register: expect.any(Array),
+      }),
+    });
+    const second = await completeTool.execute(
+      "tc-complete-design-repair-2",
+      {
+        outputs: invalidOutputs,
+      },
+      undefined,
+      undefined,
+      fakeContext(sessionId),
+    );
+
+    expect(extractTextContent(second)).toContain("Skill completion rejected.");
+    expect(runtime.inspect.skills.getActiveState(sessionId)).toBeUndefined();
+    expect(runtime.inspect.skills.getLatestFailure(sessionId)).toMatchObject({
+      skillName: "design",
+      phase: "failed_contract",
+      repairBudget: expect.objectContaining({
+        usedAttempts: 2,
+        remainingAttempts: 0,
+      }),
+    });
+  });
+
   test("rejects non-canonical planning taxonomy even when a custom skill contract is looser", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-complete-planning-taxonomy-"));
     writeSkill(join(workspace, ".brewva/skills/core/planning-loose/SKILL.md"), {
@@ -1025,11 +1104,12 @@ The WAL boundary must keep replay ordering deterministic.
           qa_checks: [
             {
               name: "smoke",
-              result: "pass",
+              status: "pass",
+              summary: "Smoke path passed under executable verification.",
               command: "bun test -- smoke",
-              exitCode: 0,
-              observedOutput: "smoke path passed",
-              probeType: "baseline",
+              exit_code: 0,
+              observed_output: "smoke path passed",
+              probe_type: "baseline",
             },
           ],
           qa_missing_evidence: [],
@@ -1076,12 +1156,13 @@ The WAL boundary must keep replay ordering deterministic.
           qa_checks: [
             {
               name: "boundary-input",
-              result: "pass",
+              status: "pass",
+              summary: "Boundary input probe passed with executable evidence.",
               command: "bun test -- boundary-input",
-              exitCode: 0,
-              observedOutput: "boundary-input passed",
-              probeType: "boundary",
-              artifactRefs: ["artifacts/qa-boundary.txt"],
+              exit_code: 0,
+              observed_output: "boundary-input passed",
+              probe_type: "boundary",
+              evidence_refs: ["artifacts/qa-boundary.txt"],
             },
           ],
           qa_missing_evidence: [],
@@ -1126,10 +1207,11 @@ The WAL boundary must keep replay ordering deterministic.
           qa_checks: [
             {
               name: "boundary-input",
-              result: "pass",
+              status: "pass",
+              summary: "Boundary input probe passed, but the exit code was not preserved.",
               command: "bun test -- boundary-input",
-              observedOutput: "boundary-input passed",
-              probeType: "boundary",
+              observed_output: "boundary-input passed",
+              probe_type: "boundary",
             },
           ],
           qa_missing_evidence: [],
@@ -1145,7 +1227,7 @@ The WAL boundary must keep replay ordering deterministic.
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completion rejected.");
     expect(text).toContain("qa_checks[0]");
-    expect(text).toContain("exitCode");
+    expect(text).toContain("exit_code");
     expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("qa");
   });
 
@@ -1176,9 +1258,10 @@ The WAL boundary must keep replay ordering deterministic.
           qa_checks: [
             {
               name: "boundary-input",
-              result: "inconclusive",
-              observedOutput: "Boundary harness state was inspected manually.",
-              probeType: "boundary",
+              status: "inconclusive",
+              summary: "Boundary harness state was inspected manually without executable replay.",
+              observed_output: "Boundary harness state was inspected manually.",
+              probe_type: "boundary",
             },
           ],
           qa_missing_evidence: ["No executable or tool-backed descriptor was preserved."],
@@ -1226,10 +1309,11 @@ The WAL boundary must keep replay ordering deterministic.
           qa_checks: [
             {
               name: "boundary-input",
-              result: "inconclusive",
+              status: "inconclusive",
+              summary: "Boundary probe ran, but the observed output was not preserved.",
               command: "bun test -- boundary-input",
-              exitCode: 0,
-              probeType: "boundary",
+              exit_code: 0,
+              probe_type: "boundary",
             },
           ],
           qa_missing_evidence: ["No observed output excerpt was preserved."],
@@ -1245,7 +1329,7 @@ The WAL boundary must keep replay ordering deterministic.
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completion rejected.");
     expect(text).toContain("qa_checks[0]");
-    expect(text).toContain("observedOutput");
+    expect(text).toContain("observed_output");
     expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("qa");
   });
 
@@ -1276,9 +1360,10 @@ The WAL boundary must keep replay ordering deterministic.
           qa_checks: [
             {
               name: "broken-flow",
-              result: "fail",
+              status: "fail",
+              summary: "Broken flow still fails, but the evidence packet is incomplete.",
               command: "bun test -- broken-flow",
-              probeType: "adversarial",
+              probe_type: "adversarial",
             },
           ],
           qa_missing_evidence: [],
@@ -2545,11 +2630,12 @@ The WAL boundary must keep replay ordering deterministic.
           qa_checks: [
             {
               name: "boundary-input",
-              result: "pass",
+              status: "pass",
+              summary: "Boundary input probe passed but did not cover the required plan evidence.",
               command: "bun test -- boundary-input",
-              exitCode: 0,
-              observedOutput: "boundary-input passed",
-              probeType: "boundary",
+              exit_code: 0,
+              observed_output: "boundary-input passed",
+              probe_type: "boundary",
             },
           ],
           qa_missing_evidence: [],
@@ -2659,11 +2745,13 @@ The WAL boundary must keep replay ordering deterministic.
           qa_checks: [
             {
               name: "boundary-input",
-              result: "pass",
+              status: "pass",
+              summary:
+                "Boundary probe passed and runtime verification covered the remaining evidence.",
               command: "bun test -- boundary-input",
-              exitCode: 0,
-              observedOutput: "boundary-input passed",
-              probeType: "boundary",
+              exit_code: 0,
+              observed_output: "boundary-input passed",
+              probe_type: "boundary",
             },
           ],
           qa_missing_evidence: [],

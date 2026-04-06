@@ -127,6 +127,11 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
       const sessionId = getSessionId(ctx);
       const events = options.runtime.inspect.events.query(sessionId);
       const taskState = options.runtime.inspect.task.getState(sessionId);
+      const activeSkillState = options.runtime.inspect.skills.getActiveState(sessionId);
+      const latestSkillFailure = options.runtime.inspect.skills.getLatestFailure(sessionId);
+      const openToolCalls = options.runtime.inspect.session.getOpenToolCalls(sessionId);
+      const uncleanShutdownDiagnostic =
+        options.runtime.inspect.session.getUncleanShutdownDiagnostic(sessionId);
       const pendingWorkerResults = options.runtime.inspect.session.listWorkerResults(sessionId);
       const pendingDelegationOutcomes = await listPendingDelegationOutcomes(options, sessionId);
       const stallAdjudication = readLatestStallAdjudication(events);
@@ -183,7 +188,47 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
         `retro: ${posture.retro}`,
         `pending_worker_results: ${snapshot.pendingWorkerResults}`,
         `pending_delegation_outcomes: ${snapshot.pendingDelegationOutcomes}`,
+        `active_skill: ${
+          activeSkillState
+            ? `${activeSkillState.skillName} phase=${activeSkillState.phase}`
+            : "none"
+        }`,
+        `open_tool_calls: ${openToolCalls.length}`,
       ];
+
+      if (activeSkillState?.phase === "repair_required" && activeSkillState.repairBudget) {
+        lines.push(
+          `repair_budget: remaining_attempts=${activeSkillState.repairBudget.remainingAttempts} remaining_tool_calls=${activeSkillState.repairBudget.remainingToolCalls} token_budget=${activeSkillState.repairBudget.tokenBudget} used_tokens=${activeSkillState.repairBudget.usedTokens ?? "unknown"}`,
+        );
+      } else {
+        lines.push("repair_budget: none");
+      }
+
+      if (latestSkillFailure) {
+        lines.push(
+          `latest_completion_rejection: ${formatTimestamp(latestSkillFailure.occurredAt)} phase=${latestSkillFailure.phase} missing=${
+            latestSkillFailure.missing.length > 0 ? latestSkillFailure.missing.join(", ") : "none"
+          } invalid=${
+            latestSkillFailure.invalid.length > 0
+              ? latestSkillFailure.invalid
+                  .map((issue) =>
+                    issue.schemaId ? `${issue.name}[${issue.schemaId}]` : issue.name,
+                  )
+                  .join(", ")
+              : "none"
+          }`,
+        );
+      } else {
+        lines.push("latest_completion_rejection: none");
+      }
+
+      if (uncleanShutdownDiagnostic) {
+        lines.push(
+          `unclean_shutdown: detected_at=${formatTimestamp(uncleanShutdownDiagnostic.detectedAt)} reasons=${uncleanShutdownDiagnostic.reasons.join(",")} open_tool_calls=${uncleanShutdownDiagnostic.openToolCalls.length} open_turns=${uncleanShutdownDiagnostic.openTurns?.map((record) => record.turn).join(",") ?? "none"} latest_event=${uncleanShutdownDiagnostic.latestEventType ?? "unknown"}`,
+        );
+      } else {
+        lines.push("unclean_shutdown: none");
+      }
 
       if (stallAdjudication) {
         lines.push(
@@ -211,6 +256,24 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
           lines.push(
             `- ${run.delegate}/${run.label ?? run.runId}: ${run.status}${run.summary ? ` :: ${run.summary}` : ""}`,
           );
+        }
+      }
+
+      if (openToolCalls.length > 0) {
+        lines.push("open_tool_call_details:");
+        for (const openToolCall of openToolCalls) {
+          lines.push(
+            `- ${openToolCall.toolName} id=${openToolCall.toolCallId} opened_at=${formatTimestamp(
+              openToolCall.openedAt,
+            )}${typeof openToolCall.turn === "number" ? ` turn=${openToolCall.turn}` : ""}`,
+          );
+        }
+      }
+
+      if ((uncleanShutdownDiagnostic?.openTurns?.length ?? 0) > 0) {
+        lines.push("open_turn_details:");
+        for (const openTurn of uncleanShutdownDiagnostic?.openTurns ?? []) {
+          lines.push(`- turn=${openTurn.turn} started_at=${formatTimestamp(openTurn.startedAt)}`);
         }
       }
 
@@ -247,6 +310,10 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
               summary: run.summary,
               handoffState: run.delivery?.handoffState ?? null,
             })),
+            activeSkillState,
+            latestSkillFailure,
+            openToolCalls,
+            uncleanShutdownDiagnostic,
             stallAdjudication,
             updatedAt: snapshot.updatedAt,
           },

@@ -161,8 +161,9 @@ const DEFAULT_MAX_VISIBLE_NAMES = 12;
 const SURFACE_ORDER: Record<CapabilitySurface, number> = {
   base: 0,
   skill: 1,
-  operator: 2,
-  external: 3,
+  control_plane: 2,
+  operator: 3,
+  external: 4,
 };
 const BOUNDARY_ORDER: Record<ToolExecutionBoundary, number> = {
   safe: 0,
@@ -316,6 +317,7 @@ function createEmptyInventory(): CapabilityVisibilityInventory {
     hiddenBySurface: {
       base: 0,
       skill: 0,
+      control_plane: 0,
       operator: 0,
       external: 0,
     },
@@ -385,6 +387,7 @@ function formatVisibleNames(names: string[], maxCount: number): string {
 function resolveManifestLoadWhen(surface: CapabilitySurface): string {
   if (surface === "base") return "always_on";
   if (surface === "skill") return "active_or_accepted_skill";
+  if (surface === "control_plane") return "control_plane";
   if (surface === "operator") return "operator_or_meta_profile";
   return "provider_specific";
 }
@@ -652,6 +655,8 @@ export function buildCapabilityView(input: BuildCapabilityViewInput): BuildCapab
     hiddenBySurface: {
       base: entries.filter((entry) => !entry.visible && entry.surface === "base").length,
       skill: entries.filter((entry) => !entry.visible && entry.surface === "skill").length,
+      control_plane: entries.filter((entry) => !entry.visible && entry.surface === "control_plane")
+        .length,
       operator: entries.filter((entry) => !entry.visible && entry.surface === "operator").length,
       external: entries.filter((entry) => !entry.visible && entry.surface === "external").length,
     },

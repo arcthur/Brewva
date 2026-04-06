@@ -92,7 +92,10 @@ export interface ToolGateServiceOptions {
   alwaysAllowedTools: string[];
   resolveToolAuthority: (toolName: string, args?: Record<string, unknown>) => ResolvedToolAuthority;
   resourceLeaseService: Pick<ResourceLeaseService, "getEffectiveBudget">;
-  skillLifecycleService: Pick<SkillLifecycleService, "getActiveSkill">;
+  skillLifecycleService: Pick<
+    SkillLifecycleService,
+    "getActiveSkill" | "explainRepairToolAccess" | "consumeRepairToolAccess"
+  >;
   contextService: Pick<ContextService, "checkContextCompactionGate" | "observeContextUsage">;
   proposalAdmissionService: Pick<ProposalAdmissionService, "submitProposal">;
   effectCommitmentDeskService: Pick<
@@ -114,6 +117,16 @@ export class ToolGateService {
     args?: Record<string, unknown>,
   ) => ResolvedToolAuthority;
   private readonly getActiveSkill: (sessionId: string) => SkillDocument | undefined;
+  private readonly explainRepairToolAccess: (
+    sessionId: string,
+    toolName: string,
+    usage?: ContextBudgetUsage,
+  ) => { allowed: boolean; reason?: string };
+  private readonly consumeRepairToolAccess: (
+    sessionId: string,
+    toolName: string,
+    usage?: ContextBudgetUsage,
+  ) => { allowed: boolean; reason?: string };
   private readonly getCurrentTurn: (sessionId: string) => number;
   private readonly getEffectiveBudget: ResourceLeaseService["getEffectiveBudget"];
   private readonly recordEvent: (input: {
@@ -157,6 +170,10 @@ export class ToolGateService {
     );
     this.resolveToolAuthority = (toolName, args) => options.resolveToolAuthority(toolName, args);
     this.getActiveSkill = (sessionId) => options.skillLifecycleService.getActiveSkill(sessionId);
+    this.explainRepairToolAccess = (sessionId, toolName, usage) =>
+      options.skillLifecycleService.explainRepairToolAccess(sessionId, toolName, usage);
+    this.consumeRepairToolAccess = (sessionId, toolName, usage) =>
+      options.skillLifecycleService.consumeRepairToolAccess(sessionId, toolName, usage);
     this.getCurrentTurn = (sessionId) => options.getCurrentTurn(sessionId);
     this.getEffectiveBudget = (sessionId, contract, skillName) =>
       options.resourceLeaseService.getEffectiveBudget(sessionId, contract, skillName);
@@ -306,6 +323,21 @@ export class ToolGateService {
         },
       });
       return { allowed: false, reason: access.reason };
+    }
+
+    const repairAccess = this.explainRepairToolAccess(sessionId, normalizedToolName);
+    if (!repairAccess.allowed) {
+      this.recordEvent({
+        sessionId,
+        type: "tool_call_blocked",
+        turn: this.getCurrentTurn(sessionId),
+        payload: {
+          toolName: normalizedToolName,
+          skill: skill?.name ?? null,
+          reason: repairAccess.reason ?? "Tool call blocked by repair posture.",
+        },
+      });
+      return { allowed: false, reason: repairAccess.reason };
     }
 
     const budget = this.costTracker.getBudgetStatus(sessionId);
@@ -458,6 +490,11 @@ export class ToolGateService {
         allowed: false,
         reason: `Effectful tool '${normalizedToolName}' requires an exact governance descriptor.`,
       };
+    }
+
+    const repairAccess = this.explainRepairToolAccess(sessionId, normalizedToolName);
+    if (!repairAccess.allowed) {
+      return repairAccess;
     }
 
     const boundary = this.evaluateBoundaryPolicy(sessionId, toolName, args, cwd);
@@ -945,6 +982,30 @@ export class ToolGateService {
     if (!gateDecision.allowed) {
       return {
         ...gateDecision,
+        authority,
+      };
+    }
+
+    const repairConsumption = this.consumeRepairToolAccess(
+      input.sessionId,
+      normalizedToolName,
+      input.usage,
+    );
+    if (!repairConsumption.allowed) {
+      this.recordEvent({
+        sessionId: input.sessionId,
+        type: "tool_call_blocked",
+        turn: this.getCurrentTurn(input.sessionId),
+        payload: {
+          toolName: normalizedToolName,
+          skill: this.getActiveSkill(input.sessionId)?.name ?? null,
+          reason: repairConsumption.reason ?? "Tool call blocked by repair posture.",
+        },
+      });
+      return {
+        allowed: false,
+        boundary,
+        reason: repairConsumption.reason,
         authority,
       };
     }

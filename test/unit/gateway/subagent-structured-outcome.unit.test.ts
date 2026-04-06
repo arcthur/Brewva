@@ -94,7 +94,7 @@ describe("subagent structured outcome normalization", () => {
     expect(outcome.parseError).toBe("invalid_structured_outcome_payload");
   });
 
-  test("rejects QA structured outcomes when the only command check omits exitCode", () => {
+  test("rejects QA structured outcomes when the only command check omits exit_code", () => {
     const outcome = extractStructuredOutcomeData({
       resultMode: "qa",
       skillName: "qa",
@@ -104,10 +104,10 @@ describe("subagent structured outcome normalization", () => {
         checks: [
           {
             name: "boundary-check",
-            result: "pass",
+            status: "pass",
             command: "bun test -- boundary-check",
-            observedOutput: "boundary-check passed",
-            probeType: "boundary",
+            observed_output: "boundary-check passed",
+            probe_type: "boundary",
           },
         ],
       }),
@@ -127,14 +127,14 @@ describe("subagent structured outcome normalization", () => {
         checks: [
           {
             name: "boundary-check",
-            result: "pass",
+            status: "pass",
             command: "bun test -- boundary-check",
             tool: "exec",
             cwd: ".",
-            exitCode: 0,
-            observedOutput: "boundary-check passed",
-            probeType: "boundary",
-            artifactRefs: ["artifacts/boundary-check.txt"],
+            exit_code: 0,
+            observed_output: "boundary-check passed",
+            probe_type: "boundary",
+            evidence_refs: ["artifacts/boundary-check.txt"],
           },
         ],
         verdict: "pass",
@@ -150,8 +150,11 @@ describe("subagent structured outcome normalization", () => {
       qa_checks: [
         expect.objectContaining({
           command: "bun test -- boundary-check",
-          exitCode: 0,
-          probeType: "boundary",
+          exit_code: 0,
+          status: "pass",
+          summary: "boundary-check",
+          probe_type: "boundary",
+          observed_output: "boundary-check passed",
         }),
       ],
     });
@@ -168,9 +171,9 @@ describe("subagent structured outcome normalization", () => {
         checks: [
           {
             name: "boundary-check",
-            result: "pass",
-            observedOutput: "Boundary harness looked healthy.",
-            probeType: "boundary",
+            status: "pass",
+            observed_output: "Boundary harness looked healthy.",
+            probe_type: "boundary",
           },
         ],
       }),
@@ -180,7 +183,7 @@ describe("subagent structured outcome normalization", () => {
     expect(outcome.parseError).toBe("invalid_structured_outcome_payload");
   });
 
-  test("rejects QA structured outcomes when the only check omits observedOutput", () => {
+  test("rejects QA structured outcomes when the only check omits observed_output", () => {
     const outcome = extractStructuredOutcomeData({
       resultMode: "qa",
       skillName: "qa",
@@ -191,10 +194,10 @@ describe("subagent structured outcome normalization", () => {
         checks: [
           {
             name: "boundary-check",
-            result: "pass",
+            status: "pass",
             command: "bun test -- boundary-check",
-            exitCode: 0,
-            probeType: "boundary",
+            exit_code: 0,
+            probe_type: "boundary",
           },
         ],
       }),
@@ -215,17 +218,17 @@ describe("subagent structured outcome normalization", () => {
         checks: [
           {
             name: "boundary-check",
-            result: "pass",
+            status: "pass",
             command: "bun test -- boundary-check",
-            exitCode: 0,
-            observedOutput: "boundary-check passed",
-            probeType: "boundary",
+            exit_code: 0,
+            observed_output: "boundary-check passed",
+            probe_type: "boundary",
           },
           {
             name: "discarded-check",
-            result: "pass",
+            status: "pass",
             command: "bun test -- discarded-check",
-            probeType: "boundary",
+            probe_type: "boundary",
           },
         ],
       }),

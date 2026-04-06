@@ -1,9 +1,4 @@
 ---
-intent:
-  outputs:
-    - review_report
-    - review_findings
-    - merge_decision
 effects:
   allowed_effects:
     - workspace_read

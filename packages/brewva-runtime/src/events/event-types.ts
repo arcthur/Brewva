@@ -52,11 +52,15 @@ export const SESSION_COMPACT_REQUEST_FAILED_EVENT_TYPE = "session_compact_reques
 export const SESSION_SHUTDOWN_EVENT_TYPE = "session_shutdown" as const;
 export const SESSION_START_EVENT_TYPE = "session_start" as const;
 export const SESSION_TURN_TRANSITION_EVENT_TYPE = "session_turn_transition" as const;
+export const SESSION_UNCLEAN_SHUTDOWN_RECONCILED_EVENT_TYPE =
+  "unclean_shutdown_reconciled" as const;
 export const TURN_INPUT_RECORDED_EVENT_TYPE = "turn_input_recorded" as const;
 export const TURN_RENDER_COMMITTED_EVENT_TYPE = "turn_render_committed" as const;
 export const SKILL_ACTIVATED_EVENT_TYPE = "skill_activated" as const;
 export const SKILL_BUDGET_WARNING_EVENT_TYPE = "skill_budget_warning" as const;
 export const SKILL_COMPLETED_EVENT_TYPE = "skill_completed" as const;
+export const SKILL_COMPLETION_REJECTED_EVENT_TYPE = "skill_completion_rejected" as const;
+export const SKILL_CONTRACT_FAILED_EVENT_TYPE = "skill_contract_failed" as const;
 export const SKILL_REFRESH_RECORDED_EVENT_TYPE = "skill_refresh_recorded" as const;
 export const SKILL_RECOMMENDATION_DERIVED_EVENT_TYPE = "skill_recommendation_derived" as const;
 export const SKILL_PARALLEL_WARNING_EVENT_TYPE = "skill_parallel_warning" as const;
@@ -196,11 +200,14 @@ export const BREWVA_REGISTERED_EVENT_TYPES = [
   SESSION_SHUTDOWN_EVENT_TYPE,
   SESSION_START_EVENT_TYPE,
   SESSION_TURN_TRANSITION_EVENT_TYPE,
+  SESSION_UNCLEAN_SHUTDOWN_RECONCILED_EVENT_TYPE,
   TURN_INPUT_RECORDED_EVENT_TYPE,
   TURN_RENDER_COMMITTED_EVENT_TYPE,
   SKILL_ACTIVATED_EVENT_TYPE,
   SKILL_BUDGET_WARNING_EVENT_TYPE,
   SKILL_COMPLETED_EVENT_TYPE,
+  SKILL_COMPLETION_REJECTED_EVENT_TYPE,
+  SKILL_CONTRACT_FAILED_EVENT_TYPE,
   SKILL_REFRESH_RECORDED_EVENT_TYPE,
   SKILL_RECOMMENDATION_DERIVED_EVENT_TYPE,
   SKILL_PARALLEL_WARNING_EVENT_TYPE,

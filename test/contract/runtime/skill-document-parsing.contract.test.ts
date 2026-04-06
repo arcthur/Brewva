@@ -666,6 +666,97 @@ describe("skill document parsing", () => {
     });
   });
 
+  test("parses semantic bindings for canonical first-party skills", () => {
+    const parsed = parseSkillDocument(`${repoRoot()}/skills/core/design/SKILL.md`, "core");
+
+    expect(parsed.contract.intent?.semanticBindings).toEqual({
+      design_spec: "planning.design_spec.v1",
+      execution_plan: "planning.execution_plan.v1",
+      execution_mode_hint: "planning.execution_mode_hint.v1",
+      risk_register: "planning.risk_register.v1",
+      implementation_targets: "planning.implementation_targets.v1",
+    });
+    expect(listSkillOutputs(parsed.contract)).toEqual([
+      "design_spec",
+      "execution_plan",
+      "execution_mode_hint",
+      "risk_register",
+      "implementation_targets",
+    ]);
+    expect(parsed.contract.intent?.outputContracts).toBeUndefined();
+  });
+
+  test("rejects authored output contracts for semantic-bound outputs", () => {
+    const filePath = createTempSkillDocument(
+      "brewva-semantic-bound-authored-contract-",
+      "skills/core/design/SKILL.md",
+      [
+        "---",
+        "name: design",
+        "description: design skill",
+        ...MINIMAL_SELECTION_LINES,
+        "intent:",
+        "  outputs: [design_spec]",
+        "  output_contracts:",
+        "    design_spec:",
+        "      kind: text",
+        "      min_words: 4",
+        "      min_length: 24",
+        "  semantic_bindings:",
+        "    design_spec: planning.design_spec.v1",
+        "effects:",
+        "  allowed_effects: [workspace_read]",
+        "resources:",
+        "  default_lease:",
+        "    max_tool_calls: 10",
+        "    max_tokens: 10000",
+        "  hard_ceiling:",
+        "    max_tool_calls: 20",
+        "    max_tokens: 20000",
+        "execution_hints:",
+        "  preferred_tools: [read]",
+        "  fallback_tools: []",
+        "consumes: []",
+        "---",
+        "# design",
+      ],
+    );
+
+    expect(() => parseSkillDocument(filePath, "core")).toThrow(
+      "must not declare semantic-bound outputs",
+    );
+  });
+
+  test("rejects overlays that modify outputs for semantic-bound skills", () => {
+    const base = parseSkillDocument(`${repoRoot()}/skills/core/design/SKILL.md`, "core");
+    const overlayPath = createTempSkillDocument(
+      "brewva-semantic-bound-overlay-",
+      "skills/project/overlays/design/SKILL.md",
+      [
+        "---",
+        "intent:",
+        "  outputs: [design_spec, execution_plan]",
+        "effects:",
+        "  allowed_effects: [workspace_read]",
+        "resources:",
+        "  default_lease:",
+        "    max_tool_calls: 10",
+        "    max_tokens: 10000",
+        "execution_hints:",
+        "  preferred_tools: [read]",
+        "  fallback_tools: []",
+        "consumes: []",
+        "---",
+        "# design overlay",
+      ],
+    );
+    const overlay = parseSkillDocument(overlayPath, "overlay");
+
+    expect(() => mergeOverlayContract(base.contract, overlay.contract)).toThrow(
+      "semantic-bound skill overlays cannot modify outputs",
+    );
+  });
+
   test("parses skill-local resources with relative paths", () => {
     const parsed = parseSkillDocument(`${repoRoot()}/skills/meta/skill-authoring/SKILL.md`, "meta");
 
@@ -734,13 +825,8 @@ describe("skill document parsing", () => {
     expect(contracts.execution_plan).toEqual({
       kind: "json",
       minItems: 1,
-      minKeys: undefined,
-      requiredFields: [],
-      fieldContracts: undefined,
       itemContract: {
         kind: "json",
-        minKeys: undefined,
-        minItems: undefined,
         requiredFields: ["step", "intent"],
         fieldContracts: {
           step: {
@@ -754,7 +840,6 @@ describe("skill document parsing", () => {
             minLength: 16,
           },
         },
-        itemContract: undefined,
       },
     });
   });

@@ -45,6 +45,7 @@ import type {
   BrewvaReplaySession,
   BrewvaConfig,
   BrewvaStructuredEvent,
+  ActiveSkillRuntimeState,
   DeepReadonly,
   DecideEffectCommitmentInput,
   DecideEffectCommitmentResult,
@@ -63,14 +64,17 @@ import type {
   ToolMutationRollbackResult,
   SkillDocument,
   SkillActivationResult,
+  SkillCompletionFailureRecord,
   SkillOutputValidationResult,
   SkillRefreshInput,
   SkillRefreshResult,
   SkillRegistryLoadReport,
   SkillRoutingScope,
   SessionHydrationState,
+  SessionUncleanShutdownDiagnostic,
   SessionCostSummary,
   SessionWireFrame,
+  OpenToolCallRecord,
   TapeSearchResult,
   TapeSearchScope,
   TapeHandoffResult,
@@ -254,10 +258,18 @@ interface BrewvaRuntimeMethodGroups {
     get(name: string): SkillDocument | undefined;
     activate(sessionId: string, name: string): SkillActivationResult;
     getActive(sessionId: string): SkillDocument | undefined;
+    getActiveState(sessionId: string): ActiveSkillRuntimeState | undefined;
+    getLatestFailure(sessionId: string): SkillCompletionFailureRecord | undefined;
     validateOutputs(
       sessionId: string,
       outputs: Record<string, unknown>,
     ): SkillOutputValidationResult;
+    recordCompletionFailure(
+      sessionId: string,
+      outputs: Record<string, unknown>,
+      validation: SkillOutputValidationResult & { ok: false },
+      usage?: ContextBudgetUsage,
+    ): SkillCompletionFailureRecord | undefined;
     complete(
       sessionId: string,
       output: Record<string, unknown>,
@@ -578,6 +590,8 @@ interface BrewvaRuntimeMethodGroups {
   session: {
     recordWorkerResult(sessionId: string, result: WorkerResult): void;
     listWorkerResults(sessionId: string): WorkerResult[];
+    getOpenToolCalls(sessionId: string): OpenToolCallRecord[];
+    getUncleanShutdownDiagnostic(sessionId: string): SessionUncleanShutdownDiagnostic | undefined;
     mergeWorkerResults(sessionId: string): WorkerMergeReport;
     applyMergedWorkerResults(
       sessionId: string,
@@ -605,7 +619,10 @@ interface BrewvaRuntimeMethodGroups {
 }
 
 export interface BrewvaAuthorityPort {
-  readonly skills: Pick<BrewvaRuntimeMethodGroups["skills"], "activate" | "complete">;
+  readonly skills: Pick<
+    BrewvaRuntimeMethodGroups["skills"],
+    "activate" | "recordCompletionFailure" | "complete"
+  >;
   readonly proposals: Pick<
     BrewvaRuntimeMethodGroups["proposals"],
     "submit" | "decideEffectCommitment"
@@ -651,6 +668,8 @@ export interface BrewvaInspectionPort {
     | "list"
     | "get"
     | "getActive"
+    | "getActiveState"
+    | "getLatestFailure"
     | "validateOutputs"
     | "getOutputs"
     | "getConsumedOutputs"
@@ -712,7 +731,12 @@ export interface BrewvaInspectionPort {
   readonly cost: Pick<BrewvaRuntimeMethodGroups["cost"], "getSummary">;
   readonly session: Pick<
     BrewvaRuntimeMethodGroups["session"],
-    "listWorkerResults" | "mergeWorkerResults" | "getHydration" | "getIntegrity"
+    | "listWorkerResults"
+    | "getOpenToolCalls"
+    | "getUncleanShutdownDiagnostic"
+    | "mergeWorkerResults"
+    | "getHydration"
+    | "getIntegrity"
   >;
   readonly sessionWire: Pick<BrewvaRuntimeMethodGroups["sessionWire"], "query" | "subscribe">;
 }
@@ -966,8 +990,13 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
         get: (name) => this.skillRegistry.get(name),
         activate: (sessionId, name) => this.skillLifecycleService.activateSkill(sessionId, name),
         getActive: (sessionId) => this.skillLifecycleService.getActiveSkill(sessionId),
+        getActiveState: (sessionId) => this.skillLifecycleService.getActiveSkillState(sessionId),
+        getLatestFailure: (sessionId) =>
+          this.skillLifecycleService.getLatestSkillFailure(sessionId),
         validateOutputs: (sessionId, outputs) =>
           this.skillLifecycleService.validateSkillOutputs(sessionId, outputs),
+        recordCompletionFailure: (sessionId, outputs, validation, usage) =>
+          this.skillLifecycleService.recordCompletionFailure(sessionId, outputs, validation, usage),
         complete: (sessionId, output) =>
           this.skillLifecycleService.completeSkill(sessionId, output),
         getOutputs: (sessionId, skillName) =>
@@ -1211,6 +1240,9 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
         recordWorkerResult: (sessionId, result) =>
           this.parallelService.recordWorkerResult(sessionId, result),
         listWorkerResults: (sessionId) => this.parallelService.listWorkerResults(sessionId),
+        getOpenToolCalls: (sessionId) => this.sessionLifecycleService.getOpenToolCalls(sessionId),
+        getUncleanShutdownDiagnostic: (sessionId) =>
+          this.sessionLifecycleService.getUncleanShutdownDiagnostic(sessionId),
         mergeWorkerResults: (sessionId) => this.parallelService.mergeWorkerResults(sessionId),
         applyMergedWorkerResults: (sessionId, input) =>
           this.parallelService.applyMergedWorkerResults(sessionId, input),
@@ -1259,7 +1291,11 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
   } {
     return {
       authority: {
-        skills: bindMethods(methodGroups.skills, ["activate", "complete"] as const),
+        skills: bindMethods(methodGroups.skills, [
+          "activate",
+          "recordCompletionFailure",
+          "complete",
+        ] as const),
         proposals: bindMethods(methodGroups.proposals, [
           "submit",
           "decideEffectCommitment",
@@ -1308,6 +1344,8 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
           "list",
           "get",
           "getActive",
+          "getActiveState",
+          "getLatestFailure",
           "validateOutputs",
           "getOutputs",
           "getConsumedOutputs",
@@ -1364,6 +1402,8 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
         cost: bindMethods(methodGroups.cost, ["getSummary"] as const),
         session: bindMethods(methodGroups.session, [
           "listWorkerResults",
+          "getOpenToolCalls",
+          "getUncleanShutdownDiagnostic",
           "mergeWorkerResults",
           "getHydration",
           "getIntegrity",

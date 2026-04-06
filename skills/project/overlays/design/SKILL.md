@@ -1,10 +1,4 @@
 ---
-intent:
-  outputs:
-    - design_spec
-    - execution_plan
-    - execution_mode_hint
-    - risk_register
 effects:
   allowed_effects:
     - workspace_read

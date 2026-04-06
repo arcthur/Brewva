@@ -642,6 +642,12 @@ export function createSkillCompleteTool(options: BrewvaToolOptions): ToolDefinit
 
       const completion = options.runtime.inspect.skills.validateOutputs(sessionId, outputs);
       if (!completion.ok) {
+        const failure = options.runtime.authority.skills.recordCompletionFailure(
+          sessionId,
+          outputs,
+          completion,
+          options.runtime.inspect.context.getUsage(sessionId),
+        );
         const details = [
           completion.missing.length > 0
             ? `Missing required outputs: ${completion.missing.join(", ")}`
@@ -658,6 +664,7 @@ export function createSkillCompleteTool(options: BrewvaToolOptions): ToolDefinit
           ok: false,
           missing: completion.missing,
           invalid: completion.invalid,
+          ...(failure ? { repair: failure } : {}),
           ...(learningResearchSynthesis ? { learningResearchSynthesis } : {}),
           ...(reviewSynthesis ? { reviewSynthesis } : {}),
         });
@@ -686,6 +693,12 @@ export function createSkillCompleteTool(options: BrewvaToolOptions): ToolDefinit
 
       const finalized = options.runtime.authority.skills.complete(sessionId, outputs);
       if (!finalized.ok) {
+        const failure = options.runtime.authority.skills.recordCompletionFailure(
+          sessionId,
+          outputs,
+          finalized,
+          options.runtime.inspect.context.getUsage(sessionId),
+        );
         const details = [
           finalized.missing.length > 0
             ? `Missing required outputs: ${finalized.missing.join(", ")}`
@@ -702,6 +715,7 @@ export function createSkillCompleteTool(options: BrewvaToolOptions): ToolDefinit
           ok: false,
           missing: finalized.missing,
           invalid: finalized.invalid,
+          ...(failure ? { repair: failure } : {}),
           verification,
           ...(learningResearchSynthesis ? { learningResearchSynthesis } : {}),
           ...(reviewSynthesis ? { reviewSynthesis } : {}),

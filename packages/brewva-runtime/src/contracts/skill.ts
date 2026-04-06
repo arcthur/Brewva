@@ -9,6 +9,42 @@ export type SkillRoutingScope = "core" | "domain" | "operator" | "meta";
 export type SkillCostHint = "low" | "medium" | "high";
 export type SkillEffectLevel = "read_only" | "execute" | "mutation";
 export type SkillRootSource = "system_root" | "global_root" | "project_root" | "config_root";
+export const SEMANTIC_ARTIFACT_SCHEMA_IDS = [
+  "planning.design_spec.v1",
+  "planning.execution_plan.v1",
+  "planning.execution_mode_hint.v1",
+  "planning.risk_register.v1",
+  "planning.implementation_targets.v1",
+  "implementation.change_set.v1",
+  "implementation.files_changed.v1",
+  "implementation.verification_evidence.v1",
+  "review.review_report.v1",
+  "review.review_findings.v1",
+  "review.merge_decision.v1",
+  "qa.qa_report.v1",
+  "qa.qa_findings.v1",
+  "qa.qa_verdict.v1",
+  "qa.qa_checks.v1",
+  "qa.qa_missing_evidence.v1",
+  "qa.qa_confidence_gaps.v1",
+  "qa.qa_environment_limits.v1",
+  "ship.ship_report.v1",
+  "ship.release_checklist.v1",
+  "ship.ship_decision.v1",
+] as const;
+export type SemanticArtifactSchemaId = (typeof SEMANTIC_ARTIFACT_SCHEMA_IDS)[number];
+export type SkillSemanticBindings = Record<string, SemanticArtifactSchemaId>;
+export const SKILL_REPAIR_ALLOWED_TOOL_NAMES = [
+  "skill_complete",
+  "workflow_status",
+  "task_view_state",
+  "ledger_query",
+  "tape_info",
+  "session_compact",
+] as const;
+export const SKILL_REPAIR_MAX_ATTEMPTS = 2;
+export const SKILL_REPAIR_MAX_TOOL_CALLS = 6;
+export const SKILL_REPAIR_TOKEN_BUDGET = 12_000;
 
 export interface SkillRegistryRoot {
   rootDir: string;
@@ -80,6 +116,7 @@ export interface SkillCompletionDefinition {
 export interface SkillIntentContract {
   outputs?: string[];
   outputContracts?: Record<string, SkillOutputContract>;
+  semanticBindings?: SkillSemanticBindings;
   completionDefinition?: SkillCompletionDefinition;
 }
 
@@ -264,6 +301,7 @@ export type SkillActivationResult =
 export interface SkillOutputValidationIssue {
   name: string;
   reason: string;
+  schemaId?: SemanticArtifactSchemaId;
 }
 
 export type SkillOutputValidationResult =
@@ -281,4 +319,35 @@ export interface SkillOutputRecord {
   skillName: string;
   completedAt: number;
   outputs: Record<string, unknown>;
+}
+
+export interface SkillRepairBudgetState {
+  maxAttempts: number;
+  usedAttempts: number;
+  remainingAttempts: number;
+  maxToolCalls: number;
+  usedToolCalls: number;
+  remainingToolCalls: number;
+  tokenBudget: number;
+  enteredAtTokens?: number;
+  latestObservedTokens?: number;
+  usedTokens?: number;
+}
+
+export interface SkillCompletionFailureRecord {
+  skillName: string;
+  occurredAt: number;
+  phase: "repair_required" | "failed_contract";
+  outputKeys: string[];
+  missing: string[];
+  invalid: SkillOutputValidationIssue[];
+  expectedOutputs: Record<string, unknown>;
+  repairBudget: SkillRepairBudgetState;
+}
+
+export interface ActiveSkillRuntimeState {
+  skillName: string;
+  phase: "active" | "repair_required";
+  repairBudget?: SkillRepairBudgetState;
+  latestFailure?: SkillCompletionFailureRecord;
 }

@@ -1,9 +1,4 @@
 ---
-intent:
-  outputs:
-    - change_set
-    - files_changed
-    - verification_evidence
 effects:
   allowed_effects:
     - workspace_read

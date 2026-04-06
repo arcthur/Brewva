@@ -42,19 +42,28 @@ function createRuntime(
 }
 
 describe("effect governance policy modes", () => {
-  test("standard mode warns on unauthorized effects and deduplicates the warning", () => {
+  test("standard mode warns on unauthorized non-control-plane effects and deduplicates the warning", () => {
     const workspace = createPolicyWorkspace("effect-governance-warn");
     const runtime = createRuntime(workspace, { security: { mode: "standard" } });
     const sessionId = "effect-governance-warn-1";
 
+    runtime.maintain.tools.registerGovernanceDescriptor("custom_network_tool", {
+      effects: ["external_network"],
+      defaultRisk: "high",
+    });
     expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
 
     expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
     expect(runtime.inspect.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(
+      0,
+    );
+
+    expect(runtime.inspect.tools.checkAccess(sessionId, "custom_network_tool").allowed).toBe(true);
+    expect(runtime.inspect.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(
       1,
     );
 
-    expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "custom_network_tool").allowed).toBe(true);
     expect(runtime.inspect.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(
       1,
     );
@@ -66,16 +75,32 @@ describe("effect governance policy modes", () => {
     const sessionId = "effect-governance-warn-restart-1";
 
     const runtime = createRuntime(workspace, options);
+    runtime.maintain.tools.registerGovernanceDescriptor("custom_network_tool", {
+      effects: ["external_network"],
+      defaultRisk: "high",
+    });
     runtime.maintain.context.onTurnStart(sessionId, 1);
     expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
     expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
+    expect(runtime.inspect.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(
+      0,
+    );
+    expect(runtime.inspect.tools.checkAccess(sessionId, "custom_network_tool").allowed).toBe(true);
     expect(runtime.inspect.events.query(sessionId, { type: "tool_contract_warning" })).toHaveLength(
       1,
     );
 
     const reloaded = createRuntime(workspace, options);
+    reloaded.maintain.tools.registerGovernanceDescriptor("custom_network_tool", {
+      effects: ["external_network"],
+      defaultRisk: "high",
+    });
     reloaded.maintain.context.onTurnStart(sessionId, 1);
     expect(reloaded.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
+    expect(
+      reloaded.inspect.events.query(sessionId, { type: "tool_contract_warning" }),
+    ).toHaveLength(1);
+    expect(reloaded.inspect.tools.checkAccess(sessionId, "custom_network_tool").allowed).toBe(true);
     expect(
       reloaded.inspect.events.query(sessionId, { type: "tool_contract_warning" }),
     ).toHaveLength(1);
@@ -103,18 +128,23 @@ describe("effect governance policy modes", () => {
     expect(runtime.inspect.events.query(sessionId, { type: "tool_call_blocked" })).toHaveLength(1);
   });
 
-  test("strict mode blocks unauthorized effects while control-plane tools stay allowed", () => {
+  test("strict mode blocks unauthorized non-control-plane effects while control-plane tools stay allowed", () => {
     const workspace = createPolicyWorkspace("effect-governance-enforce");
     const runtime = createRuntime(workspace, { security: { mode: "strict" } });
     const sessionId = "effect-governance-enforce-1";
 
+    runtime.maintain.tools.registerGovernanceDescriptor("custom_network_tool", {
+      effects: ["external_network"],
+      defaultRisk: "high",
+    });
     expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
 
-    const blocked = runtime.inspect.tools.checkAccess(sessionId, "task_add_item");
+    const blocked = runtime.inspect.tools.checkAccess(sessionId, "custom_network_tool");
     expect(blocked.allowed).toBe(false);
     expect(blocked.reason).toContain("unauthorized effects");
     expect(runtime.inspect.events.query(sessionId, { type: "tool_call_blocked" })).toHaveLength(1);
 
+    expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
     expect(runtime.inspect.tools.checkAccess(sessionId, "resource_lease").allowed).toBe(true);
     expect(runtime.inspect.tools.checkAccess(sessionId, "cost_view").allowed).toBe(true);
     expect(runtime.inspect.tools.checkAccess(sessionId, "tape_handoff").allowed).toBe(true);
@@ -142,8 +172,13 @@ describe("effect governance policy modes", () => {
     });
     const sessionId = "effect-governance-standard-override-1";
 
+    runtime.maintain.tools.registerGovernanceDescriptor("custom_network_tool", {
+      effects: ["external_network"],
+      defaultRisk: "high",
+    });
     expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
-    const blocked = runtime.inspect.tools.checkAccess(sessionId, "task_add_item");
+    expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
+    const blocked = runtime.inspect.tools.checkAccess(sessionId, "custom_network_tool");
     expect(blocked.allowed).toBe(false);
     expect(blocked.reason).toContain("unauthorized effects");
   });
@@ -610,8 +645,13 @@ describe("resource lease negotiation", () => {
     });
     const sessionId = "resource-lease-effect-1";
 
+    runtime.maintain.tools.registerGovernanceDescriptor("custom_network_tool", {
+      effects: ["external_network"],
+      defaultRisk: "high",
+    });
     expect(runtime.authority.skills.activate(sessionId, "design").ok).toBe(true);
-    expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(false);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "custom_network_tool").allowed).toBe(false);
 
     const lease = runtime.authority.tools.requestResourceLease(sessionId, {
       reason: "Need one more read call while staying within the design skill boundary.",
@@ -619,7 +659,8 @@ describe("resource lease negotiation", () => {
       ttlTurns: 2,
     });
     expect(lease.ok).toBe(true);
-    expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(false);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "task_add_item").allowed).toBe(true);
+    expect(runtime.inspect.tools.checkAccess(sessionId, "custom_network_tool").allowed).toBe(false);
     expect(runtime.inspect.tools.listResourceLeases(sessionId)).toHaveLength(1);
   });
 

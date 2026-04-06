@@ -58,6 +58,29 @@ EFFECT_CLASSES = {
 }
 COST_HINTS = {"low", "medium", "high"}
 VERIFICATION_LEVELS = {"quick", "standard", "strict"}
+SEMANTIC_ARTIFACT_SCHEMA_IDS = {
+    "planning.design_spec.v1",
+    "planning.execution_plan.v1",
+    "planning.execution_mode_hint.v1",
+    "planning.risk_register.v1",
+    "planning.implementation_targets.v1",
+    "implementation.change_set.v1",
+    "implementation.files_changed.v1",
+    "implementation.verification_evidence.v1",
+    "review.review_report.v1",
+    "review.review_findings.v1",
+    "review.merge_decision.v1",
+    "qa.qa_report.v1",
+    "qa.qa_findings.v1",
+    "qa.qa_verdict.v1",
+    "qa.qa_checks.v1",
+    "qa.qa_missing_evidence.v1",
+    "qa.qa_confidence_gaps.v1",
+    "qa.qa_environment_limits.v1",
+    "ship.ship_report.v1",
+    "ship.release_checklist.v1",
+    "ship.ship_decision.v1",
+}
 OUTPUT_CONTRACT_KINDS = {"text", "enum", "json"}
 TASK_PHASES = {
     "align",
@@ -200,7 +223,9 @@ def validate_output_contract_shape(
 
 
 def validate_output_contracts(
-    intent: dict[str, object], skill_dir: Path
+    intent: dict[str, object],
+    skill_dir: Path,
+    semantic_bound_outputs: set[str],
 ) -> tuple[bool, str | None]:
     overlay = is_overlay_skill(skill_dir)
     outputs = intent.get("outputs")
@@ -217,6 +242,11 @@ def validate_output_contracts(
     output_contracts = intent.get("output_contracts")
     if output_contracts is None:
         if outputs and not overlay:
+            missing_authored = [
+                output for output in outputs if isinstance(output, str) and output not in semantic_bound_outputs
+            ]
+            if not missing_authored:
+                return True, None
             return False, "Missing 'intent.output_contracts' for declared outputs"
         return True, None
 
@@ -225,8 +255,19 @@ def validate_output_contracts(
 
     declared_outputs = {item for item in outputs if isinstance(item, str)}
     contract_keys = set(output_contracts.keys())
+    redundant_semantic = sorted(name for name in contract_keys if name in semantic_bound_outputs)
+    if redundant_semantic and not overlay:
+        return (
+            False,
+            "Field 'intent.output_contracts' must not declare semantic-bound outputs: "
+            + ", ".join(redundant_semantic),
+        )
     if not overlay:
-        missing = sorted(declared_outputs - contract_keys)
+        missing = sorted(
+            name
+            for name in declared_outputs - contract_keys
+            if name not in semantic_bound_outputs
+        )
         if missing:
             return (
                 False,
@@ -257,6 +298,33 @@ def validate_output_contracts(
     return True, None
 
 
+def validate_semantic_bindings(
+    intent: dict[str, object]
+) -> tuple[bool, str | None]:
+    semantic_bindings = intent.get("semantic_bindings")
+    if semantic_bindings is None:
+        return True, None
+    if not isinstance(semantic_bindings, dict):
+        return False, "Field 'intent.semantic_bindings' must be an object"
+
+    outputs = intent.get("outputs")
+    declared_outputs = {item for item in outputs if isinstance(item, str)} if isinstance(outputs, list) else set()
+    for name, schema_id in semantic_bindings.items():
+        if not isinstance(name, str) or not name.strip():
+            return False, "Field 'intent.semantic_bindings' must use non-empty string keys"
+        if declared_outputs and name not in declared_outputs:
+            return (
+                False,
+                "Field 'intent.semantic_bindings' contains undeclared outputs: " + name,
+            )
+        if not isinstance(schema_id, str) or schema_id not in SEMANTIC_ARTIFACT_SCHEMA_IDS:
+            return (
+                False,
+                f"Field 'intent.semantic_bindings.{name}' must reference a known semantic artifact schema id",
+            )
+    return True, None
+
+
 def validate_intent(
     frontmatter: dict[str, object], skill_dir: Path
 ) -> tuple[bool, str | None]:
@@ -269,7 +337,22 @@ def validate_intent(
     if not isinstance(intent, dict):
         return False, "Field 'intent' must be an object"
 
-    ok, message = validate_output_contracts(intent, skill_dir)
+    ok, message = validate_semantic_bindings(intent)
+    if not ok:
+        return ok, message
+
+    semantic_bindings = intent.get("semantic_bindings")
+    semantic_bound_outputs = (
+        {
+            name
+            for name in semantic_bindings.keys()
+            if isinstance(semantic_bindings, dict) and isinstance(name, str)
+        }
+        if isinstance(semantic_bindings, dict)
+        else set()
+    )
+
+    ok, message = validate_output_contracts(intent, skill_dir, semantic_bound_outputs)
     if not ok:
         return ok, message
 

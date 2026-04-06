@@ -1,4 +1,5 @@
 import {
+  SKILL_REPAIR_ALLOWED_TOOL_NAMES,
   SKILL_RECOMMENDATION_DERIVED_EVENT_TYPE,
   TOOL_SURFACE_RESOLVED_EVENT_TYPE,
   getToolGovernanceDescriptor,
@@ -10,6 +11,7 @@ import {
 } from "@brewva/brewva-runtime";
 import {
   BASE_BREWVA_TOOL_NAMES,
+  CONTROL_PLANE_BREWVA_TOOL_NAMES,
   getBrewvaToolMetadata,
   getBrewvaToolSurface,
   MANAGED_BREWVA_TOOL_NAMES,
@@ -35,6 +37,7 @@ import {
 const CAPABILITY_REQUEST_PATTERN = /\$([a-z][a-z0-9_]*)/g;
 const BUILTIN_ALWAYS_ON_TOOL_NAMES = ["read", "edit", "write"] as const;
 const MANAGED_TOOL_NAME_SET = new Set(MANAGED_BREWVA_TOOL_NAMES);
+const REPAIR_ALLOWED_TOOL_NAME_SET = new Set<string>(SKILL_REPAIR_ALLOWED_TOOL_NAMES);
 const PRE_SKILL_CONTROL_PLANE_TOOL_NAMES = [
   "skill_load",
   "workflow_status",
@@ -71,6 +74,17 @@ type ToolSurfaceSkill = Pick<
   "name" | "description" | "category" | "markdown" | "contract"
 >;
 
+type ToolSurfaceSkillState = {
+  skillName: string;
+  phase: "active" | "repair_required";
+  repairBudget?: {
+    remainingAttempts: number;
+    remainingToolCalls: number;
+    tokenBudget: number;
+    usedTokens?: number;
+  };
+};
+
 export interface ToolSurfaceRuntime {
   config: {
     skills: {
@@ -89,6 +103,7 @@ export interface ToolSurfaceRuntime {
     skills: {
       list(): ToolSurfaceSkill[];
       getActive(sessionId: string): ToolSurfaceSkill | null | undefined;
+      getActiveState(sessionId: string): ToolSurfaceSkillState | undefined;
       get(name: string): ToolSurfaceSkill | undefined;
       getLoadReport(): {
         loadedSkills: string[];
@@ -242,6 +257,7 @@ type TurnSurfacePlan = {
   recommendationSet: SkillRecommendationSet;
   skillNames: string[];
   hasActiveSkill: boolean;
+  repairRequired: boolean;
   recommendedSkillNames: string[];
   skillGateMode: SkillRecommendationGateMode;
   taskSpecReady: boolean;
@@ -263,7 +279,9 @@ function resolveTurnSurfacePlan(input: {
     MANAGED_TOOL_NAME_SET.has(toolName),
   );
   const surfaceSkills = resolveSurfaceSkills(input.runtime, input.sessionId);
+  const activeSkillState = input.runtime.inspect.skills.getActiveState(input.sessionId);
   const hasActiveSkill = surfaceSkills.length > 0;
+  const repairRequired = activeSkillState?.phase === "repair_required";
   const recommendationSet = deriveSkillRecommendations(input.runtime, {
     sessionId: input.sessionId,
     prompt: input.prompt,
@@ -289,6 +307,7 @@ function resolveTurnSurfacePlan(input: {
     recommendationSet,
     skillNames: surfaceSkills.map((skill) => skill.name),
     hasActiveSkill,
+    repairRequired,
     recommendedSkillNames: recommendationSet.recommendations.map((entry) => entry.name),
     skillGateMode: recommendationSet.gateMode,
     taskSpecReady: recommendationSet.taskSpecReady,
@@ -315,11 +334,14 @@ function resolveActiveToolNames(input: {
   skillGateMode: SkillRecommendationGateMode;
   taskSpecReady: boolean;
   operatorProfile: boolean;
+  repairRequired: boolean;
   baseActiveCount: number;
   skillActiveCount: number;
+  controlPlaneActiveCount: number;
   operatorActiveCount: number;
   externalActiveCount: number;
   hiddenSkillCount: number;
+  hiddenControlPlaneCount: number;
   hiddenOperatorCount: number;
   recommendationSet: SkillRecommendationSet;
 } {
@@ -352,6 +374,73 @@ function resolveActiveToolNames(input: {
     allowedRequestedManagedToolNames,
   );
 
+  if (turnPlan.repairRequired) {
+    for (const toolName of requestedActivatedToolNames) {
+      if (REPAIR_ALLOWED_TOOL_NAME_SET.has(toolName)) {
+        active.add(toolName);
+      }
+    }
+    for (const toolName of SKILL_REPAIR_ALLOWED_TOOL_NAMES) {
+      if (knownToolNames.has(toolName)) {
+        active.add(toolName);
+      }
+    }
+
+    const activeToolNames = allToolNames.filter((toolName) => active.has(toolName));
+    const baseActiveCount = activeToolNames.filter(
+      (toolName) => getBrewvaToolSurface(toolName) === "base",
+    ).length;
+    const skillActiveCount = activeToolNames.filter(
+      (toolName) => getBrewvaToolSurface(toolName) === "skill",
+    ).length;
+    const controlPlaneActiveCount = activeToolNames.filter(
+      (toolName) => getBrewvaToolSurface(toolName) === "control_plane",
+    ).length;
+    const operatorActiveCount = activeToolNames.filter(
+      (toolName) => getBrewvaToolSurface(toolName) === "operator",
+    ).length;
+    const externalActiveCount = activeToolNames.filter(
+      (toolName) => getBrewvaToolSurface(toolName) === undefined,
+    ).length;
+    const hiddenSkillCount = allToolNames.filter(
+      (toolName) => !active.has(toolName) && getBrewvaToolSurface(toolName) === "skill",
+    ).length;
+    const hiddenControlPlaneCount = allToolNames.filter(
+      (toolName) => !active.has(toolName) && getBrewvaToolSurface(toolName) === "control_plane",
+    ).length;
+    const hiddenOperatorCount = allToolNames.filter(
+      (toolName) => !active.has(toolName) && getBrewvaToolSurface(toolName) === "operator",
+    ).length;
+
+    return {
+      activeToolNames,
+      managedActiveCount: [...active].filter((toolName) => isManagedBrewvaToolName(toolName))
+        .length,
+      requestedToolNames: turnPlan.requestedToolNames.filter((toolName) =>
+        knownToolNames.has(toolName),
+      ),
+      requestedActivatedToolNames,
+      ignoredRequestedToolNames: turnPlan.requestedToolNames
+        .filter((toolName) => knownToolNames.has(toolName))
+        .filter((toolName) => !requestedActivatedToolNames.includes(toolName)),
+      skillNames: turnPlan.skillNames,
+      recommendedSkillNames: turnPlan.recommendedSkillNames,
+      skillGateMode: turnPlan.skillGateMode,
+      taskSpecReady: turnPlan.taskSpecReady,
+      operatorProfile: turnPlan.operatorProfile,
+      repairRequired: true,
+      baseActiveCount,
+      skillActiveCount,
+      controlPlaneActiveCount,
+      operatorActiveCount,
+      externalActiveCount,
+      hiddenSkillCount,
+      hiddenControlPlaneCount,
+      hiddenOperatorCount,
+      recommendationSet: turnPlan.recommendationSet,
+    };
+  }
+
   if (turnPlan.hasActiveSkill) {
     for (const toolName of BUILTIN_ALWAYS_ON_TOOL_NAMES) {
       if (knownToolNames.has(toolName)) {
@@ -359,6 +448,11 @@ function resolveActiveToolNames(input: {
       }
     }
     for (const toolName of BASE_BREWVA_TOOL_NAMES) {
+      if (knownToolNames.has(toolName)) {
+        active.add(toolName);
+      }
+    }
+    for (const toolName of CONTROL_PLANE_BREWVA_TOOL_NAMES) {
       if (knownToolNames.has(toolName)) {
         active.add(toolName);
       }
@@ -404,6 +498,9 @@ function resolveActiveToolNames(input: {
   const skillActiveCount = activeToolNames.filter(
     (toolName) => getBrewvaToolSurface(toolName) === "skill",
   ).length;
+  const controlPlaneActiveCount = activeToolNames.filter(
+    (toolName) => getBrewvaToolSurface(toolName) === "control_plane",
+  ).length;
   const operatorActiveCount = activeToolNames.filter(
     (toolName) => getBrewvaToolSurface(toolName) === "operator",
   ).length;
@@ -412,6 +509,9 @@ function resolveActiveToolNames(input: {
   ).length;
   const hiddenSkillCount = allToolNames.filter(
     (toolName) => !active.has(toolName) && getBrewvaToolSurface(toolName) === "skill",
+  ).length;
+  const hiddenControlPlaneCount = allToolNames.filter(
+    (toolName) => !active.has(toolName) && getBrewvaToolSurface(toolName) === "control_plane",
   ).length;
   const hiddenOperatorCount = allToolNames.filter(
     (toolName) => !active.has(toolName) && getBrewvaToolSurface(toolName) === "operator",
@@ -432,11 +532,14 @@ function resolveActiveToolNames(input: {
     skillGateMode: turnPlan.skillGateMode,
     taskSpecReady: turnPlan.taskSpecReady,
     operatorProfile: turnPlan.operatorProfile,
+    repairRequired: false,
     baseActiveCount,
     skillActiveCount,
+    controlPlaneActiveCount,
     operatorActiveCount,
     externalActiveCount,
     hiddenSkillCount,
+    hiddenControlPlaneCount,
     hiddenOperatorCount,
     recommendationSet: turnPlan.recommendationSet,
   };
@@ -541,11 +644,14 @@ function resolveAndActivateToolSurface(input: {
       skillGateMode: resolved.skillGateMode,
       taskSpecReady: resolved.taskSpecReady,
       operatorProfile: resolved.operatorProfile,
+      repairRequired: resolved.repairRequired,
       baseActiveCount: resolved.baseActiveCount,
       skillActiveCount: resolved.skillActiveCount,
+      controlPlaneActiveCount: resolved.controlPlaneActiveCount,
       operatorActiveCount: resolved.operatorActiveCount,
       externalActiveCount: resolved.externalActiveCount,
       hiddenSkillCount: resolved.hiddenSkillCount,
+      hiddenControlPlaneCount: resolved.hiddenControlPlaneCount,
       hiddenOperatorCount: resolved.hiddenOperatorCount,
     },
   });

@@ -16,17 +16,10 @@ intent:
     - change_set
     - files_changed
     - verification_evidence
-  output_contracts:
-    change_set:
-      kind: text
-      min_words: 3
-      min_length: 18
-    files_changed:
-      kind: json
-      min_items: 1
-    verification_evidence:
-      kind: json
-      min_items: 1
+  semantic_bindings:
+    change_set: implementation.change_set.v1
+    files_changed: implementation.files_changed.v1
+    verification_evidence: implementation.verification_evidence.v1
 effects:
   allowed_effects:
     - workspace_read

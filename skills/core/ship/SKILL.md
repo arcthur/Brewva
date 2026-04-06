@@ -16,20 +16,10 @@ intent:
     - ship_report
     - release_checklist
     - ship_decision
-  output_contracts:
-    ship_report:
-      kind: text
-      min_words: 3
-      min_length: 18
-    release_checklist:
-      kind: json
-      min_items: 1
-    ship_decision:
-      kind: enum
-      values:
-        - ready
-        - needs_follow_up
-        - blocked
+  semantic_bindings:
+    ship_report: ship.ship_report.v1
+    release_checklist: ship.release_checklist.v1
+    ship_decision: ship.ship_decision.v1
 effects:
   allowed_effects:
     - workspace_read

@@ -1,6 +1,10 @@
 import type {
+  ActiveSkillRuntimeState,
+  OpenToolCallRecord,
   ResourceLeaseRecord,
   SessionHydrationState,
+  SessionUncleanShutdownDiagnostic,
+  SkillCompletionFailureRecord,
   SkillOutputRecord,
 } from "../contracts/index.js";
 
@@ -17,8 +21,12 @@ export interface ConsecutiveToolCallState {
 
 export class RuntimeSessionStateCell {
   activeSkill?: string;
+  activeSkillState?: ActiveSkillRuntimeState;
+  latestSkillFailure?: SkillCompletionFailureRecord;
   turn = 0;
   toolCalls = 0;
+  openToolCalls = new Map<string, OpenToolCallRecord>();
+  uncleanShutdownDiagnostic?: SessionUncleanShutdownDiagnostic;
   consecutiveToolCall?: ConsecutiveToolCallState;
   effectCommitmentRequestIdsByToolCallId = new Map<string, string>();
   inflightEffectCommitmentRequestIds = new Set<string>();
