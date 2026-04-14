@@ -42,6 +42,7 @@ export async function createHostedSessionServicesBundle(input: {
   settings: HostedSessionSettings;
   runtime?: BrewvaRuntime;
   runtimePlugins?: HostedSessionServicesBundle["runtimePlugins"];
+  sessionId?: string;
 }): Promise<HostedSessionServicesBundle> {
   return hostedSessionBackendAdapter.createServicesBundle(input);
 }

@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": ["node", "bun-types"]
+  },
+  "references": [{ "path": "../brewva-tui" }],
+  "include": ["src/**/*.ts", "runtime/**/*.ts", "runtime/**/*.tsx"]
+}

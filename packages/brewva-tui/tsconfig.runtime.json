@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "@brewva/brewva-tui/vendor-opentui-react",
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@brewva/brewva-tui/vendor-opentui-react": ["./runtime/vendor/opentui-react"],
+      "@brewva/brewva-tui/vendor-opentui-react/jsx-runtime": [
+        "./runtime/vendor/opentui-react/jsx-runtime.d.ts"
+      ],
+      "@brewva/brewva-tui/vendor-opentui-react/jsx-dev-runtime": [
+        "./runtime/vendor/opentui-react/jsx-dev-runtime.d.ts"
+      ],
+      "@brewva/brewva-tui/vendor-opentui-react/*": ["./runtime/vendor/opentui-react/*"]
+    },
+    "types": ["node", "bun-types"]
+  },
+  "include": ["src/**/*.ts", "runtime/**/*.ts", "runtime/**/*.tsx", "runtime/**/*.d.ts"]
+}

@@ -23,6 +23,75 @@ Implementation source: `packages/brewva-cli/src/index.ts`.
 - Scheduler daemon mode (`--daemon`)
 - Channel gateway mode (`--channel`)
 
+## Interactive Shell Contract
+
+Interactive mode is the only supported interactive architecture. The earlier
+thin prompt loop is retired rather than kept as a compatibility branch.
+
+The shell is a dual-layer operator surface:
+
+- one conversation shell remains the default home
+- approvals, questions, tasks, inspect, session switching, and pager drill-down
+  render as overlays or pagers over the same Brewva truth
+- the shell runs in `alternate-screen`
+- OpenTUI is loaded only after CLI mode resolution commits to interactive
+  full-screen execution; non-interactive commands and Node-based dist entrypoints
+  stay on the Node-safe module graph
+- status widgets render in a right rail on wide terminals and stack under the
+  transcript on narrow terminals instead of compressing the conversation canvas
+- the shell selects a built-in dark or light theme from terminal background
+  detection at startup; operators can still override it explicitly with
+  `/theme <name>`
+
+### Interactive Keyboard Defaults
+
+- `Enter`
+  - submit composer
+- `Ctrl-J` / `Alt-Enter`
+  - insert newline
+- `Ctrl-O`
+  - open pending questions
+- `Ctrl-E`
+  - open the external editor from the composer, or open the external pager
+    when the active surface exposes long-form details such as pager, inspect
+    sections, task output, or inbox drill-down
+- `Ctrl-A` / `Ctrl-T` / `Ctrl-G` / `Ctrl-I` / `Ctrl-N`
+  - open approvals, tasks, sessions, inspect, or the inbox
+- `PageUp` / `PageDown`
+  - move the transcript or the active detail surface by a half-page
+- `Esc`
+  - dismiss completion or leave the active overlay layer
+- arrow keys
+  - navigate completion and list surfaces
+- number shortcuts
+  - trigger approval or question actions when offered
+
+### Interactive Completion And Overlays
+
+Completion and overlays are part of the stable command contract:
+
+- slash-command completion is triggered by `/`
+- workspace path completion is triggered by `@`
+- interactive overlays include approval, question, task, inspect, session, and
+  pager surfaces
+- task drill-down must expose recent output, structured result data, and
+  artifact refs rather than only listing task metadata
+
+### Terminal Capability Fallback
+
+- implicit interactive mode falls back to `--print` behavior when stdin/stdout
+  are not TTYs
+- implicit interactive mode also falls back to `--print` when prompt text is
+  available but the terminal is low capability (for example `TERM=dumb`)
+- explicit `--interactive` on a non-TTY terminal is an error
+- requests for the full-screen shell on unsupported or low-capability terminals
+  fail fast with a clear interactive-mode error instead of reviving the retired
+  renderer
+- promoted interactive builds currently cover `darwin-arm64`, `darwin-x64`,
+  `linux-x64` (glibc), `linux-arm64` (glibc), and `windows-x64`
+- musl builds remain non-interactive until native OpenTUI support is added and
+  verified
+
 ## Interactive Runtime-Plugin Commands
 
 Embedded interactive sessions register a small operator command set through
@@ -31,6 +100,7 @@ runtime plugins:
 - `/inspect [dir] | /inspect clear`
 - `/insights [dir] | /insights clear`
 - `/questions | /questions clear`
+- `/theme | /theme list | /theme <name>`
 - `/answer <question-id> <answer>`
 - `/agent-overlays | /agent-overlays validate | /agent-overlays <name> | /agent-overlays clear`
 - `/update [operator hints]`
@@ -582,7 +652,6 @@ Channel mode examples:
 
 ## Startup Defaults
 
-- Interactive mode defaults to quiet startup (reducing banner/changelog/version-check output).
+- Interactive mode defaults to quiet startup (reducing banner/changelog output).
 - Startup UI defaults are sourced from `BrewvaConfig.ui` and applied by `@brewva/brewva-cli`.
 - Use `--verbose` to explicitly enable detailed startup output.
-- To temporarily restore version-check notifications, run: `BREWVA_SKIP_VERSION_CHECK= bun run start`.

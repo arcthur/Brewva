@@ -12,7 +12,13 @@ artifacts and reference comparison.
 
 ## Lifecycle Stages
 
-1. Parse CLI args and resolve mode/input (`packages/brewva-cli/src/index.ts`)
+1. Parse CLI args, resolve mode/input, and apply terminal capability policy
+   (`packages/brewva-cli/src/index.ts`)
+   - prompt resolution happens before interactive fallback decisions
+   - the OpenTUI runtime is loaded only after the CLI commits to interactive
+     full-screen execution
+   - non-TTY and other low-capability terminals may fall back to one-shot text
+     mode when the interactive shell is not viable
 2. Create session + runtime through the stable host entrypoint
    (`packages/brewva-gateway/src/host/create-hosted-session.ts`; implementation
    lives in `packages/brewva-gateway/src/host/hosted-session-bootstrap.ts`)
@@ -34,6 +40,13 @@ artifacts and reference comparison.
 - JSON one-shot (`--mode json`/`--json`): emits normal stream plus final `brewva_event_bundle`
 - Interactive CLI: uses the same managed session substrate as hosted execution;
   product differences stay in operator UX and transport, not in runtime truth
+  - once mode resolution commits to interactive execution, CLI boots the
+    OpenTUI-backed shell in `alternate-screen`
+  - approvals, questions, tasks, inspect, session switching, and pager
+    drill-down remain presentation over Brewva-owned session state rather than
+    a second lifecycle truth
+  - unsupported interactive targets and low-capability full-screen terminals
+    fail before shell boot instead of reviving a parallel renderer path
 - `brewva inspect`: builds an operator forensic report for one replayable
   session from tape plus nearby artifact diagnostics; it is not the live
   transport replay stream

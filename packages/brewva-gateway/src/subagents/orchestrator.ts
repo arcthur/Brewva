@@ -1291,6 +1291,7 @@ export function createHostedSubagentAdapter(
         return {
           runId: record.runId,
           delegate: record.delegate,
+          consultKind: record.consultKind,
           parentSessionId: record.parentSessionId,
           status: record.status,
           createdAt: record.createdAt,
@@ -1300,8 +1301,14 @@ export function createHostedSubagentAdapter(
           parentSkill: record.parentSkill,
           kind: record.kind,
           boundary: record.boundary,
+          modelRoute: record.modelRoute
+            ? {
+                ...record.modelRoute,
+              }
+            : undefined,
           summary: record.summary,
           error: record.error,
+          resultData: record.resultData ? structuredClone(record.resultData) : undefined,
           artifactRefs: record.artifactRefs?.map((ref) => ({
             kind: ref.kind,
             path: ref.path,

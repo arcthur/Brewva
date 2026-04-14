@@ -25,7 +25,8 @@ import {
 } from "@brewva/brewva-runtime";
 import { formatISO } from "date-fns";
 import { createAgentOverlaysCommandRuntimePlugin } from "./agent-overlays-command-runtime-plugin.js";
-import { runCliInteractiveSession, runCliPrintSession } from "./cli-runtime.js";
+import type { CliInteractiveSessionOptions } from "./cli-runtime.js";
+import { runCliPrintSession } from "./cli-runtime.js";
 import { runCredentialsCli } from "./credentials.js";
 import { runDaemon } from "./daemon-mode.js";
 import {
@@ -40,6 +41,7 @@ import { runInsightsCli } from "./insights.js";
 import { handleInspectChannelCommand } from "./inspect-channel-command.js";
 import { createInspectCommandRuntimePlugin } from "./inspect-command-runtime-plugin.js";
 import { resolveTargetSession, runInspectCli } from "./inspect.js";
+import { resolveEffectiveCliMode } from "./interactive-mode.js";
 import { writeJsonLine } from "./json-lines.js";
 import { handleQuestionsChannelCommand } from "./questions-channel-command.js";
 import { createQuestionsCommandRuntimePlugin } from "./questions-command-runtime-plugin.js";
@@ -47,8 +49,11 @@ import { createBrewvaSession } from "./session.js";
 import { createUpdateCommandRuntimePlugin } from "./update-command-runtime-plugin.js";
 
 const NODE_VERSION_RANGE = "^20.19.0 || >=22.12.0";
-const BREWVA_SKIP_VERSION_CHECK_ENV = "BREWVA_SKIP_VERSION_CHECK";
-const PI_SKIP_VERSION_CHECK_ENV = "PI_SKIP_VERSION_CHECK";
+const BREWVA_TUI_SMOKE_ENV = "BREWVA_TUI_SMOKE";
+const BREWVA_OPENTUI_UNSUPPORTED_MESSAGE =
+  "Interactive TUI is not available on this Brewva build target yet. Use --print/--mode json or a promoted glibc/macOS build.";
+
+type CliInteractiveRuntimeModule = typeof import("@brewva/brewva-cli/internal-tui-runtime");
 
 type Semver = Readonly<{ major: number; minor: number; patch: number }>;
 
@@ -154,7 +159,7 @@ Options:
                         Telegram getUpdates batch size (1-100)
   --telegram-poll-retry-ms <ms>
                         Delay before retry when polling fails
-  --session <id>        Target session id for --undo/--replay
+  --session <id>        Target session id for interactive resume, --undo, or --replay
   --verbose             Verbose interactive startup
   -v, --version         Show CLI version
   -h, --help            Show help
@@ -199,6 +204,13 @@ const CLI_TRUSTED_LOCAL_GOVERNANCE = { profile: "personal" } as const;
 function printVersion(): void {
   console.log(CLI_VERSION);
 }
+
+const loadCliInteractiveRuntime: () => Promise<CliInteractiveRuntimeModule> =
+  process.env.BREWVA_OPENTUI_SUPPORTED === "0"
+    ? async () => {
+        throw new Error(BREWVA_OPENTUI_UNSUPPORTED_MESSAGE);
+      }
+    : async () => await import("@brewva/brewva-cli/internal-tui-runtime");
 
 type CliMode = "interactive" | "print-text" | "print-json";
 type CliBackendKind = "auto" | "embedded" | "gateway";
@@ -757,34 +769,6 @@ async function readPipedStdin(): Promise<string | undefined> {
   });
 }
 
-function resolveEffectiveMode(parsed: CliArgs): CliMode | null {
-  if (parsed.mode !== "interactive") {
-    return parsed.mode;
-  }
-
-  const hasTerminal = process.stdin.isTTY && process.stdout.isTTY;
-  if (hasTerminal) {
-    return "interactive";
-  }
-
-  if (parsed.modeExplicit) {
-    console.error("Error: interactive mode requires a TTY terminal.");
-    return null;
-  }
-
-  return "print-text";
-}
-
-function applyDefaultInteractiveEnv(mode: CliMode): void {
-  if (mode !== "interactive") return;
-  const skipVersionCheck = process.env[BREWVA_SKIP_VERSION_CHECK_ENV];
-  if (skipVersionCheck !== undefined) {
-    process.env[PI_SKIP_VERSION_CHECK_ENV] = skipVersionCheck;
-    return;
-  }
-  process.env[PI_SKIP_VERSION_CHECK_ENV] = "1";
-}
-
 function printReplayText(
   events: Array<{
     timestamp: number;
@@ -847,6 +831,11 @@ function printGatewayCostSummary(input: {
 
 async function run(): Promise<void> {
   process.title = "brewva";
+  if (process.env[BREWVA_TUI_SMOKE_ENV] === "1") {
+    const { runCliInteractiveSmoke } = await loadCliInteractiveRuntime();
+    await runCliInteractiveSmoke();
+    return;
+  }
   const rawArgs = process.argv.slice(2);
   if (rawArgs[0] === "insight") {
     console.error(
@@ -977,31 +966,8 @@ async function run(): Promise<void> {
     return;
   }
 
-  const mode = resolveEffectiveMode(parsed);
-  if (!mode) {
-    process.exitCode = 1;
-    return;
-  }
-  if (parsed.backend === "gateway") {
-    if (parsed.undo || parsed.replay) {
-      console.error("Error: --backend gateway is not supported with --undo/--replay.");
-      process.exitCode = 1;
-      return;
-    }
-    if (mode === "interactive") {
-      console.error("Error: --backend gateway is not supported in interactive mode.");
-      process.exitCode = 1;
-      return;
-    }
-    if (mode === "print-json") {
-      console.error("Error: --backend gateway is not supported with --mode json.");
-      process.exitCode = 1;
-      return;
-    }
-  }
-  applyDefaultInteractiveEnv(mode);
-
   if (parsed.replay) {
+    const replayMode: CliMode = parsed.mode === "print-json" ? "print-json" : "print-text";
     const runtime = new BrewvaRuntime({
       cwd: parsed.cwd,
       configPath: parsed.configPath,
@@ -1014,7 +980,7 @@ async function run(): Promise<void> {
       return;
     }
     const events = runtime.inspect.events.queryStructured(targetSessionId);
-    if (mode === "print-json") {
+    if (replayMode === "print-json") {
       for (const event of events) {
         await writeJsonLine(event);
       }
@@ -1064,6 +1030,33 @@ async function run(): Promise<void> {
     initialMessage = taskSpec.goal;
   }
 
+  const modeResolution = resolveEffectiveCliMode({
+    requestedMode: parsed.mode,
+    modeExplicit: parsed.modeExplicit,
+    initialMessage,
+    capabilitiesInput: {
+      env: process.env,
+      stdin: {
+        isTTY: process.stdin.isTTY,
+      },
+      stdout: {
+        isTTY: process.stdout.isTTY,
+        columns: process.stdout.columns,
+        rows: process.stdout.rows,
+        getColorDepth:
+          typeof process.stdout.getColorDepth === "function"
+            ? () => process.stdout.getColorDepth()
+            : undefined,
+      },
+    },
+  });
+  if ("error" in modeResolution) {
+    console.error(modeResolution.error);
+    process.exitCode = 1;
+    return;
+  }
+  const mode = modeResolution.mode;
+
   if (mode !== "interactive" && !initialMessage) {
     printHelp();
     process.exitCode = 1;
@@ -1074,6 +1067,24 @@ async function run(): Promise<void> {
     console.error("Error: --task/--task-file is not supported with --backend gateway.");
     process.exitCode = 1;
     return;
+  }
+
+  if (parsed.backend === "gateway") {
+    if (parsed.undo || parsed.replay) {
+      console.error("Error: --backend gateway is not supported with --undo/--replay.");
+      process.exitCode = 1;
+      return;
+    }
+    if (mode === "interactive") {
+      console.error("Error: --backend gateway is not supported in interactive mode.");
+      process.exitCode = 1;
+      return;
+    }
+    if (mode === "print-json") {
+      console.error("Error: --backend gateway is not supported with --mode json.");
+      process.exitCode = 1;
+      return;
+    }
   }
 
   const shouldAttemptGatewayPrint =
@@ -1130,21 +1141,27 @@ async function run(): Promise<void> {
     routingDefaultScopes: [...DEFAULT_HOSTED_ROUTING_SCOPES],
   });
   const operatorRuntime = createOperatorRuntimePort(runtime);
-  const { session } = await createBrewvaSession({
-    runtime,
-    cwd: parsed.cwd,
-    configPath: parsed.configPath,
-    model: parsed.model,
-    agentId: parsed.agentId,
-    managedToolMode: parsed.managedToolMode,
-    runtimePlugins: [
-      createInspectCommandRuntimePlugin(operatorRuntime),
-      createInsightsCommandRuntimePlugin(operatorRuntime),
-      createQuestionsCommandRuntimePlugin(runtime),
-      createAgentOverlaysCommandRuntimePlugin(runtime),
-      createUpdateCommandRuntimePlugin(runtime),
-    ],
-  });
+  const createRuntimePlugins = () => [
+    createInspectCommandRuntimePlugin(operatorRuntime),
+    createInsightsCommandRuntimePlugin(operatorRuntime),
+    createQuestionsCommandRuntimePlugin(runtime),
+    createAgentOverlaysCommandRuntimePlugin(runtime),
+    createUpdateCommandRuntimePlugin(runtime),
+  ];
+  const openEmbeddedSession = (sessionId?: string) =>
+    createBrewvaSession({
+      runtime,
+      cwd: parsed.cwd,
+      configPath: parsed.configPath,
+      model: parsed.model,
+      agentId: parsed.agentId,
+      managedToolMode: parsed.managedToolMode,
+      sessionId,
+      runtimePlugins: createRuntimePlugins(),
+    });
+  let sessionResult = await openEmbeddedSession(parsed.sessionId);
+  let session = sessionResult.session;
+  let orchestration = sessionResult.orchestration;
   const printSession = wrapSessionWithSettledPrompts(session, { runtime });
 
   const getSessionId = (): string => session.sessionManager.getSessionId();
@@ -1222,10 +1239,22 @@ async function run(): Promise<void> {
 
   try {
     if (mode === "interactive") {
-      await runCliInteractiveSession(session, {
+      const interactiveRuntime = await loadCliInteractiveRuntime();
+      const interactiveOptions: CliInteractiveSessionOptions = {
+        runtime,
+        orchestration,
+        cwd: parsed.cwd ?? runtime.cwd,
         initialMessage,
         verbose: parsed.verbose,
-      });
+        openSession: (sessionId) => openEmbeddedSession(sessionId),
+        createSession: () => openEmbeddedSession(undefined),
+        onSessionChange: (next) => {
+          sessionResult = next;
+          session = next.session;
+          orchestration = next.orchestration;
+        },
+      };
+      await interactiveRuntime.runCliInteractiveSession(session, interactiveOptions);
       printCostSummary(getSessionId(), runtime);
       return;
     }

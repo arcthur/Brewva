@@ -12,7 +12,10 @@
     { "path": "./packages/brewva-ingress" },
     { "path": "./packages/brewva-tools" },
     { "path": "./packages/brewva-gateway" },
+    { "path": "./packages/brewva-tui" },
+    { "path": "./packages/brewva-tui/tsconfig.runtime.json" },
     { "path": "./packages/brewva-cli" },
+    { "path": "./packages/brewva-cli/tsconfig.runtime.json" },
     { "path": "./script" }
   ]
 }

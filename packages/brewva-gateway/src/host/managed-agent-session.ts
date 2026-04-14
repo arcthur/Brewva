@@ -77,6 +77,7 @@ export interface CreateBrewvaManagedAgentSessionOptions {
   customTools?: readonly BrewvaToolDefinition[];
   initialModel?: BrewvaRegisteredModel;
   initialThinkingLevel?: BrewvaPromptThinkingLevel;
+  ui?: BrewvaToolUiPort;
 }
 
 type PendingQueuedItem =
@@ -431,6 +432,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
   readonly #toolPromptSnippets = new Map<string, string>();
   readonly #toolPromptGuidelines = new Map<string, string[]>();
   readonly #listeners = new Set<(event: BrewvaPromptSessionEvent) => void>();
+  #ui: BrewvaToolUiPort;
   readonly #queuedSteering: string[] = [];
   readonly #queuedFollowUps: string[] = [];
   readonly #pendingNextTurnMessages: Array<Extract<BrewvaAgentEngineMessage, { role: "custom" }>> =
@@ -457,11 +459,13 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     customTools: readonly BrewvaToolDefinition[];
     runner: BrewvaHostPluginRunner;
     agent: BrewvaAgentEngine;
+    ui?: BrewvaToolUiPort;
   }) {
     this.#cwd = input.cwd;
     this.#settings = input.settings;
     this.#catalog = input.catalog;
     this.#resourceLoader = input.resourceLoader;
+    this.#ui = input.ui ?? NOOP_UI;
     this.sessionManager = input.sessionStore;
     this.settingsManager = new ManagedSessionSettingsView(input.settings);
     this.modelRegistry = new ManagedSessionModelCatalogView(input.catalog);
@@ -603,6 +607,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       customTools: toolDefinitions,
       runner,
       agent,
+      ui: options.ui,
     });
     await session.initialize();
     await session.emitSessionStart();
@@ -759,6 +764,10 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
 
   waitForIdle(): Promise<void> {
     return this.#agent.waitForIdle();
+  }
+
+  setUiPort(ui: BrewvaToolUiPort): void {
+    this.#ui = ui;
   }
 
   async setModel(model: BrewvaSessionModelDescriptor): Promise<void> {
@@ -1116,8 +1125,8 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
 
   private createToolContext(): BrewvaToolContext {
     return {
-      ui: NOOP_UI,
-      hasUI: false,
+      ui: this.#ui,
+      hasUI: this.#ui !== NOOP_UI,
       cwd: this.#cwd,
       sessionManager: {
         getSessionId: () => this.sessionManager.getSessionId(),

@@ -12,6 +12,7 @@ import {
   type BrewvaRegisteredModel,
   type BrewvaSessionMessageEntry,
   type BrewvaToolContext,
+  type BrewvaToolUiPort,
 } from "@brewva/brewva-substrate";
 import { createBrewvaManagedAgentSession } from "../../../packages/brewva-gateway/src/host/managed-agent-session.js";
 import { HostedRuntimeTapeSessionStore } from "../../../packages/brewva-gateway/src/host/runtime-projection-session-store.js";
@@ -272,6 +273,74 @@ describe("managed agent session compaction", () => {
         kind: "idle",
       },
     ]);
+
+    session.dispose();
+  });
+
+  test("attaches a UI port after session creation so tool context no longer falls back to NOOP_UI", async () => {
+    const { session } = await createManagedSessionFixture("managed-agent-session-ui-attach");
+    const createToolContext = (
+      session as unknown as {
+        createToolContext(): BrewvaToolContext;
+      }
+    ).createToolContext.bind(session);
+
+    expect(createToolContext().hasUI).toBe(false);
+
+    const ui: BrewvaToolUiPort = {
+      async select() {
+        return undefined;
+      },
+      async confirm() {
+        return false;
+      },
+      async input() {
+        return undefined;
+      },
+      notify() {},
+      onTerminalInput() {
+        return () => undefined;
+      },
+      setStatus() {},
+      setWorkingMessage() {},
+      setHiddenThinkingLabel() {},
+      setWidget() {},
+      setFooter() {},
+      setHeader() {},
+      setTitle() {},
+      async custom() {
+        return undefined as never;
+      },
+      pasteToEditor() {},
+      setEditorText() {},
+      getEditorText() {
+        return "";
+      },
+      async editor() {
+        return undefined;
+      },
+      setEditorComponent() {},
+      theme: {},
+      getAllThemes() {
+        return [];
+      },
+      getTheme() {
+        return undefined;
+      },
+      setTheme() {
+        return { success: true };
+      },
+      getToolsExpanded() {
+        return true;
+      },
+      setToolsExpanded() {},
+    };
+
+    session.setUiPort(ui);
+
+    const nextContext = createToolContext();
+    expect(nextContext.hasUI).toBe(true);
+    expect(nextContext.ui).toBe(ui);
 
     session.dispose();
   });

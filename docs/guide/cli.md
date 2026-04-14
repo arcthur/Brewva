@@ -17,6 +17,68 @@ together. For the complete flag-level contract, use
 - Scheduler daemon mode (`--daemon`)
 - Channel gateway mode (`--channel`)
 
+## Interactive Shell
+
+Interactive mode is the OpenTUI-backed Brewva shell. It uses a dual-layer
+operator model:
+
+- the default surface is one conversation shell
+- operator surfaces such as approvals, questions, tasks, inspect, sessions, and
+  pager drill-down render as overlays over the same session truth
+- the base layout is transcript canvas, multiline composer, and bottom status
+  bar
+- widget cards stay in a right rail on wide terminals and collapse under the
+  transcript on narrow terminals so the conversation canvas keeps readable width
+
+The bottom status bar is the primary runtime hint surface. It carries the
+current mode, selected model / thinking posture, follow state (`live` vs
+`scrolled`), pending approval or question badges, background-task hints, and
+concise action suggestions.
+
+The shell chooses a built-in dark or light theme from the terminal background
+at startup, and the operator can switch themes explicitly with `/theme <name>`.
+
+### Keyboard And Completion
+
+The first-pass keyboard contract is:
+
+- `Enter` submits the composer
+- `Ctrl-J` / `Alt-Enter` inserts a newline
+- `Ctrl-E` opens the external editor from the composer, and opens an external
+  pager when the active surface exposes long-form details such as pager,
+  inspect sections, task output, or inbox drill-down
+- `Ctrl-A` / `Ctrl-O` / `Ctrl-T` / `Ctrl-G` / `Ctrl-I` / `Ctrl-N` open
+  approvals, questions, tasks, sessions, inspect, and the inbox
+- `PageUp` / `PageDown` move the transcript or the active detail surface by a
+  half-page
+- `Esc` dismisses completion or leaves the active overlay layer
+- arrow keys navigate completion and list surfaces
+- number shortcuts select approval or question actions when available
+
+Completion remains keyboard-first:
+
+- `/` opens slash-command completion with summaries and argument hints
+- `@` opens quoted or unquoted workspace path completion
+- completion is advisory only; it does not mutate session state until the
+  operator accepts an action
+
+### Overlays And Drill-Down
+
+The shell keeps operator actions inside the same interactive surface:
+
+- approval overlay
+- question overlay
+- task browser
+- inspect overlay
+- session switcher
+- fullscreen pager
+
+Opening an overlay preserves the current composer draft. Task review stays
+replay-visible: the task browser shows running, completed, and failed runs with
+recent summaries, and its pager drill-down exposes output details such as
+delivery state, `resultData`, artifact refs, and the worker-session inspect
+handoff (`brewva inspect --session <workerSessionId>`).
+
 ## Primary Subcommands
 
 - `brewva credentials`: encrypted credential vault management
@@ -134,9 +196,15 @@ For subcommand-scoped flags such as `--host`, `--port`, `--state-dir`,
 ## Startup Behavior
 
 - Interactive mode defaults to quiet startup, reducing
-  banner/changelog/version-check noise during initialization
+  banner/changelog noise during initialization
 - Startup UI behavior is controlled by `BrewvaConfig.ui` (`ui.quietStartup`)
   and applied by `@brewva/brewva-cli`
+- Interactive mode uses the OpenTUI shell in `alternate-screen`
+- OpenTUI loads only after CLI mode and terminal capability resolution commit to
+  an interactive full-screen path
+- Brewva currently pins `@opentui/core` to `0.1.99`; the vendored React
+  reconciler snapshot lives under
+  `packages/brewva-tui/runtime/vendor/opentui-react`
 
 ## Mode and Input Resolution
 
@@ -145,14 +213,34 @@ For subcommand-scoped flags such as `--host`, `--port`, `--state-dir`,
   `TaskSpec.goal`
 - When stdin/stdout is not a TTY and no explicit mode is selected, CLI falls
   back to text print mode
+- When stdin/stdout are TTYs but the terminal is low capability (for example
+  `TERM=dumb`) and prompt text is already available, CLI also falls back to
+  text print mode
 - Explicit `--interactive` requires a TTY terminal and exits with an error
   otherwise
+- When the full-screen shell is requested on a low-capability terminal, CLI
+  fails fast with an interactive-mode error instead of reviving the retired
+  line-oriented loop
 - `--replay` and `--undo` are mutually exclusive
 - `--replay` and `--undo` default to auto-resolved sessions when `--session` is
   omitted
 - `--replay` and `--undo` cannot be combined with `--task` or `--task-file`
 - CLI parse and validation failures return exit code `1`
 - `--help` and `--version` return exit code `0`
+
+## Interactive Platform Policy
+
+Promoted interactive targets are:
+
+- `darwin-arm64`
+- `darwin-x64`
+- `linux-x64` (glibc)
+- `linux-arm64` (glibc)
+- `windows-x64`
+
+Musl targets continue shipping Brewva binaries for non-interactive flows, but
+interactive OpenTUI mode is intentionally unsupported there and fails fast
+until musl-compatible native artifacts are added and verified.
 
 ## Managed Tools and Backend Selection
 
@@ -190,6 +278,7 @@ Embedded interactive sessions register a small runtime-plugin command set:
 - `/inspect [dir] | /inspect clear`
 - `/insights [dir] | /insights clear`
 - `/questions | /questions clear`
+- `/theme | /theme list | /theme <name>`
 - `/answer <question-id> <answer>`
 - `/agent-overlays | /agent-overlays validate | /agent-overlays <name> | /agent-overlays clear`
 - `/update [operator hints]`

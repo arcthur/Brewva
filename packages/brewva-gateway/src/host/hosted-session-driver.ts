@@ -8,6 +8,7 @@ import type {
   BrewvaReadToolOptions,
   BrewvaRegisteredModel,
   BrewvaToolDefinition,
+  BrewvaToolUiPort,
 } from "@brewva/brewva-substrate";
 import {
   createBrewvaEditToolDefinition,
@@ -47,6 +48,7 @@ export interface CreateHostedManagedSessionOptions {
   model?: BrewvaRegisteredModel;
   thinkingLevel?: string;
   customTools?: HostedSessionCustomTool[];
+  ui?: BrewvaToolUiPort;
 }
 
 export interface HostedSessionServices {
@@ -67,6 +69,8 @@ export interface CreateHostedSessionRuntimeOptions {
   requestedModel?: BrewvaRegisteredModel;
   requestedThinkingLevel?: string;
   customTools?: HostedSessionCustomTool[];
+  sessionId?: string;
+  ui?: BrewvaToolUiPort;
 }
 
 export interface HostedManagedSessionRuntimeResult {

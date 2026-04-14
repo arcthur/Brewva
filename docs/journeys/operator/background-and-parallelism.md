@@ -120,6 +120,22 @@ flowchart TD
 - merge conflicts return a conflict report only; they do not mutate the parent
   workspace
 
+## Interactive Task Review
+
+In the interactive shell, delegated runs surface through the task browser
+rather than through a hidden local queue.
+
+Operator expectations:
+
+- list entries show running, completed, and failed runs with recent summaries
+- selecting a run opens a pager-backed drill-down with status, delivery state,
+  summary/error, worker session id, token/cost summary, structured result data,
+  and artifact refs
+- when a worker session id exists, the shell exposes the exact
+  `brewva inspect --session <workerSessionId>` handoff
+- stop or cancel still routes through the existing operator ports and
+  `subagent_cancel`; the task browser does not own independent task truth
+
 ## Observability
 
 - primary inspection surfaces:

@@ -16,6 +16,7 @@ import type {
   BrewvaManagedPromptSession,
   BrewvaModelCatalog,
   BrewvaRegisteredModel,
+  BrewvaToolUiPort,
 } from "@brewva/brewva-substrate";
 import {
   attachBrewvaToolExecutionTraits,
@@ -67,6 +68,7 @@ export interface HostedSessionResult {
   session: HostedSession;
   runtime: BrewvaRuntime;
   modelFallbackMessage?: string;
+  orchestration?: BrewvaToolOrchestration;
 }
 
 export interface CreateHostedSessionOptions extends RuntimeCreateBrewvaSessionOptions {
@@ -78,6 +80,8 @@ export interface CreateHostedSessionOptions extends RuntimeCreateBrewvaSessionOp
   contextProfile?: "minimal" | "standard" | "full";
   enableSubagents?: boolean;
   scopeId?: string;
+  sessionId?: string;
+  ui?: BrewvaToolUiPort;
 }
 
 interface HostedEnvironment {
@@ -800,6 +804,8 @@ export async function createHostedSession(
     requestedModel: environment.requestedModelSelection.model,
     requestedThinkingLevel: environment.requestedModelSelection.thinkingLevel,
     customTools,
+    sessionId: options.sessionId,
+    ui: options.ui,
   });
   activeSemanticModel =
     toRegisteredSemanticModel(
@@ -823,5 +829,6 @@ export async function createHostedSession(
     session,
     runtime,
     modelFallbackMessage: sessionRuntime.modelFallbackMessage,
+    orchestration,
   };
 }

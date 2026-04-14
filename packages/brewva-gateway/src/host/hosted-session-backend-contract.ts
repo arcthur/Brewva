@@ -84,6 +84,7 @@ export interface HostedSessionBackendAdapter {
     settings: HostedSessionSettings;
     runtime?: BrewvaRuntime;
     runtimePlugins?: readonly import("@brewva/brewva-substrate").BrewvaHostPluginFactory[];
+    sessionId?: string;
   }): Promise<HostedSessionServicesBundle>;
   createSessionResult(input: {
     services: HostedSessionServicesBundle;

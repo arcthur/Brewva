@@ -132,8 +132,10 @@ None currently.
 - `docs/research/promoted/rfc-inspectable-operator-experience-overlays.md`
 - `docs/research/promoted/rfc-iteration-facts-and-model-native-optimization-protocols.md`
 - `docs/research/promoted/rfc-kernel-level-reasoning-revert-and-branch-continuity.md`
+- `docs/research/promoted/rfc-cli-tui-dual-layer-operator-shell.md`
 - `docs/research/promoted/rfc-model-native-product-reconstruction-and-closure-vnext.md`
 - `docs/research/promoted/rfc-narrative-memory-product-and-bounded-semantic-recall.md`
+- `docs/research/promoted/rfc-opentui-adoption-for-brewva-cli-shell-and-native-boundary.md`
 - `docs/research/promoted/rfc-preparse-normalization-model-capability-and-live-audit-split.md`
 - `docs/research/promoted/rfc-recall-first-compounding-intelligence-and-experience-products.md`
 - `docs/research/promoted/rfc-repository-fitness-plane-and-runtime-boundary.md`

@@ -1,11 +1,51 @@
 import process from "node:process";
-import readline from "node:readline/promises";
+import type { BrewvaRuntime } from "@brewva/brewva-runtime";
 import type {
   BrewvaManagedPromptSession,
   BrewvaPromptSessionEvent,
 } from "@brewva/brewva-substrate";
+import {
+  extractMessageError,
+  extractVisibleTextFromMessage,
+  readMessageRole,
+  readMessageStopReason,
+} from "./message-content.js";
+import type { BrewvaSessionResult } from "./session.js";
+import type { CliShellSessionBundle } from "./tui-app/types.js";
 
 type CliPrintMode = "json" | "text";
+
+export interface CliInteractiveShellOptions {
+  cwd: string;
+  initialMessage?: string;
+  verbose?: boolean;
+  openSession(sessionId: string): Promise<BrewvaSessionResult>;
+  createSession(): Promise<BrewvaSessionResult>;
+  onSessionChange?(result: BrewvaSessionResult): void;
+}
+
+export interface CliInteractiveSessionOptions extends CliInteractiveShellOptions {
+  runtime: BrewvaRuntime;
+  orchestration?: BrewvaSessionResult["orchestration"];
+}
+
+export interface CliInteractiveSmokeResult {
+  backend: "opentui";
+  screenMode: "alternate-screen";
+  label?: string;
+}
+
+export type CliInteractiveShellLauncher = (
+  bundle: CliShellSessionBundle,
+  options: {
+    cwd: string;
+    initialMessage?: string;
+    verbose?: boolean;
+    openSession(sessionId: string): Promise<CliShellSessionBundle>;
+    createSession(): Promise<CliShellSessionBundle>;
+    onBundleChange?(bundle: CliShellSessionBundle): void;
+  },
+) => Promise<void>;
 
 function writeStdout(text: string): void {
   if (text.length === 0) {
@@ -21,45 +61,6 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
-function extractVisibleTextFromMessage(message: unknown): string {
-  const record = asRecord(message);
-  if (!record) {
-    return "";
-  }
-
-  const directContent = record.content;
-  if (typeof directContent === "string") {
-    return directContent;
-  }
-  if (typeof record.text === "string") {
-    return record.text;
-  }
-  if (!Array.isArray(directContent)) {
-    return "";
-  }
-
-  const segments: string[] = [];
-  for (const part of directContent) {
-    if (typeof part === "string") {
-      segments.push(part);
-      continue;
-    }
-    const contentPart = asRecord(part);
-    if (!contentPart) {
-      continue;
-    }
-    if (typeof contentPart.text === "string") {
-      segments.push(contentPart.text);
-      continue;
-    }
-    const nested = asRecord(contentPart.content);
-    if (nested && typeof nested.text === "string") {
-      segments.push(nested.text);
-    }
-  }
-  return segments.join("");
-}
-
 async function runCliTurn(
   session: BrewvaManagedPromptSession,
   prompt: string,
@@ -69,6 +70,7 @@ async function runCliTurn(
 ): Promise<string> {
   let emittedText = "";
   let streamedText = false;
+  let terminalAssistantError: string | undefined;
 
   const unsubscribe = session.subscribe((event: BrewvaPromptSessionEvent) => {
     if (event.type === "message_update") {
@@ -91,6 +93,15 @@ async function runCliTurn(
       return;
     }
 
+    if (readMessageRole(event.message) !== "assistant") {
+      return;
+    }
+
+    if (readMessageStopReason(event.message) === "error") {
+      terminalAssistantError = extractMessageError(event.message) ?? "Assistant turn failed.";
+      return;
+    }
+
     const fallbackText = extractVisibleTextFromMessage(event.message);
     if (fallbackText.length === 0 || emittedText.length > 0) {
       return;
@@ -109,6 +120,10 @@ async function runCliTurn(
     unsubscribe();
   }
 
+  if (terminalAssistantError) {
+    throw new Error(terminalAssistantError);
+  }
+
   if (options.printText && streamedText && !emittedText.endsWith("\n")) {
     writeStdout("\n");
   }
@@ -116,55 +131,40 @@ async function runCliTurn(
   return emittedText;
 }
 
-function printInteractiveBanner(session: BrewvaManagedPromptSession): void {
-  const sessionId = session.sessionManager.getSessionId();
-  const model =
-    session.model && session.model.provider && session.model.id
-      ? `${session.model.provider}/${session.model.id}`
-      : "unresolved-model";
-  writeStdout(`Session ${sessionId} (${model})\n`);
-}
-
 export async function runCliInteractiveSession(
   session: BrewvaManagedPromptSession,
-  options: {
-    initialMessage?: string;
-    verbose?: boolean;
-  },
+  options: CliInteractiveSessionOptions,
+  launchInteractiveShell: CliInteractiveShellLauncher,
 ): Promise<void> {
-  if (options.verbose) {
-    printInteractiveBanner(session);
-  }
-
-  if (typeof options.initialMessage === "string" && options.initialMessage.trim().length > 0) {
-    await runCliTurn(session, options.initialMessage, { printText: true });
-  }
-
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: true,
-    historySize: 1_000,
-  });
-
-  try {
-    rl.setPrompt("> ");
-    rl.prompt();
-    for await (const line of rl) {
-      const prompt = line.trim();
-      if (prompt.length === 0) {
-        rl.prompt();
-        continue;
-      }
-      if (prompt === "/exit" || prompt === "/quit") {
-        break;
-      }
-      await runCliTurn(session, prompt, { printText: true });
-      rl.prompt();
-    }
-  } finally {
-    rl.close();
-  }
+  await launchInteractiveShell(
+    {
+      session,
+      runtime: options.runtime,
+      orchestration: options.orchestration,
+    },
+    {
+      cwd: options.cwd,
+      initialMessage: options.initialMessage,
+      verbose: options.verbose,
+      async openSession(sessionId) {
+        const result = await options.openSession(sessionId);
+        options.onSessionChange?.(result);
+        return result;
+      },
+      async createSession() {
+        const result = await options.createSession();
+        options.onSessionChange?.(result);
+        return result;
+      },
+      onBundleChange(bundle) {
+        options.onSessionChange?.({
+          session: bundle.session,
+          runtime: bundle.runtime,
+          orchestration: bundle.orchestration,
+        });
+      },
+    },
+  );
 }
 
 export async function runCliPrintSession(

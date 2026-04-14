@@ -207,6 +207,7 @@ async function createHostedLocalSessionServicesBundle(input: {
   settings: HostedSessionSettings;
   runtime?: BrewvaRuntime;
   runtimePlugins?: readonly BrewvaHostPluginFactory[];
+  sessionId?: string;
 }): Promise<HostedSessionServicesBundle> {
   const settingsManager = readHostedSettingsHandle(input.settings);
   const runtime = input.runtime ?? new BrewvaRuntime({ cwd: input.cwd });
@@ -224,7 +225,7 @@ async function createHostedLocalSessionServicesBundle(input: {
     cwd: input.cwd,
     settingsManager,
     resourceLoader,
-    sessionManager: new HostedRuntimeTapeSessionStore(runtime, input.cwd),
+    sessionManager: new HostedRuntimeTapeSessionStore(runtime, input.cwd, input.sessionId),
     runtimePlugins,
   };
 }
@@ -275,6 +276,7 @@ async function createHostedLocalSessionResult(input: {
       resourceLoader,
       runtimePlugins: input.services.runtimePlugins,
       customTools,
+      ui: input.options.ui,
       initialModel: sessionResolution.model,
       initialThinkingLevel: thinkingLevel,
     }),

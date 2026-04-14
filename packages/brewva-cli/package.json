@@ -14,13 +14,28 @@
       "bun": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./internal-tui-runtime": {
+      "types": "./dist/internal-tui-runtime.d.ts",
+      "bun": "./runtime/internal-tui-runtime.ts",
+      "import": "./dist/internal-tui-runtime.js",
+      "default": "./dist/internal-tui-runtime.js"
+    },
+    "./tui-app/state": {
+      "types": "./dist/tui-app/state/index.d.ts",
+      "bun": "./src/tui-app/state/index.ts",
+      "import": "./dist/tui-app/state/index.js",
+      "default": "./dist/tui-app/state/index.js"
     }
   },
   "dependencies": {
     "@brewva/brewva-gateway": "workspace:*",
     "@brewva/brewva-runtime": "workspace:*",
     "@brewva/brewva-substrate": "workspace:*",
-    "date-fns": "^4.1.0"
+    "@brewva/brewva-tui": "workspace:*",
+    "date-fns": "^4.1.0",
+    "marked": "^18.0.0",
+    "react": "19.2.5"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

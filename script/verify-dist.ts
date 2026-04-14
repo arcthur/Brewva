@@ -93,6 +93,8 @@ const DIST_FORBIDDEN_MARKERS = [
   '"piConfig"',
 ];
 
+const NODE_SAFE_DIST_FORBIDDEN_MARKERS = ["bun:ffi", "@opentui/core"];
+
 function collectTextFiles(root: string): string[] {
   if (!existsSync(root)) {
     return [];
@@ -129,10 +131,18 @@ function collectTextFiles(root: string): string[] {
 }
 
 function assertNoPiEraMarkers(paths: string[]): void {
+  assertNoForbiddenMarkers(paths, DIST_FORBIDDEN_MARKERS, "dist artifact branding check failed");
+}
+
+function assertNoForbiddenMarkers(
+  paths: string[],
+  markers: readonly string[],
+  label: string,
+): void {
   const matches: string[] = [];
   for (const filePath of paths) {
     const content = readFileSync(filePath, "utf8");
-    for (const marker of DIST_FORBIDDEN_MARKERS) {
+    for (const marker of markers) {
       if (content.includes(marker)) {
         matches.push(`${filePath}: ${marker}`);
       }
@@ -141,7 +151,7 @@ function assertNoPiEraMarkers(paths: string[]): void {
 
   if (matches.length > 0) {
     throw new Error(
-      `dist artifact branding check failed:\n${matches.slice(0, 20).join("\n")}${
+      `${label}:\n${matches.slice(0, 20).join("\n")}${
         matches.length > 20 ? `\n...and ${matches.length - 20} more` : ""
       }`,
     );
@@ -176,6 +186,7 @@ function main(): void {
       "@brewva/brewva-channels-telegram",
       "@brewva/brewva-ingress",
       "@brewva/brewva-tools",
+      "@brewva/brewva-tui",
       "@brewva/brewva-gateway/host",
       "@brewva/brewva-gateway/runtime-plugins",
       "@brewva/brewva-cli",
@@ -187,8 +198,9 @@ function main(): void {
         throw new Error("expected dist entrypoint, got " + entry.path);
       }
     }
-    const [cliModule, hostModule, runtimePluginsModule, gatewayModule] = await Promise.all([
+    const [cliModule, tuiModule, hostModule, runtimePluginsModule, gatewayModule] = await Promise.all([
       import("@brewva/brewva-cli"),
+      import("@brewva/brewva-tui"),
       import("@brewva/brewva-gateway/host"),
       import("@brewva/brewva-gateway/runtime-plugins"),
       import("@brewva/brewva-gateway"),
@@ -196,6 +208,7 @@ function main(): void {
         .filter(
           (name) =>
             name !== "@brewva/brewva-cli" &&
+            name !== "@brewva/brewva-tui" &&
             name !== "@brewva/brewva-gateway/host" &&
             name !== "@brewva/brewva-gateway/runtime-plugins" &&
             name !== "@brewva/brewva-gateway",
@@ -208,8 +221,39 @@ function main(): void {
     if (typeof runtimePluginsModule.createHostedTurnPipeline !== "function") {
       throw new Error("gateway runtime-plugins subpath missing createHostedTurnPipeline export");
     }
+    if (typeof tuiModule.detectTerminalCapabilities !== "function") {
+      throw new Error("tui root entry missing detectTerminalCapabilities export");
+    }
+    if (typeof tuiModule.createHeadlessTerminalHarness !== "function") {
+      throw new Error("tui root entry missing createHeadlessTerminalHarness export");
+    }
+    if (typeof cliModule.parseArgs !== "function") {
+      throw new Error("cli root entry missing parseArgs export");
+    }
     if ("createBrewvaSession" in cliModule || "registerRuntimeCoreEventBridge" in cliModule) {
       throw new Error("cli root entry unexpectedly re-exported gateway host helpers");
+    }
+    const cliInternalRuntime = await import("@brewva/brewva-cli/internal-tui-runtime");
+    const tuiInternalRuntime = await import("@brewva/brewva-tui/internal-opentui-runtime");
+    if (typeof cliInternalRuntime.runCliInteractiveSmoke !== "function") {
+      throw new Error("cli internal runtime stub missing runCliInteractiveSmoke");
+    }
+    if (typeof tuiInternalRuntime.runOpenTuiSmoke !== "function") {
+      throw new Error("tui internal runtime stub missing runOpenTuiSmoke");
+    }
+    const cliRuntimeMessage = await cliInternalRuntime
+      .runCliInteractiveSmoke()
+      .then(() => "")
+      .catch((error) => (error instanceof Error ? error.message : String(error)));
+    const tuiRuntimeMessage = await tuiInternalRuntime
+      .runOpenTuiSmoke()
+      .then(() => "")
+      .catch((error) => (error instanceof Error ? error.message : String(error)));
+    if (!cliRuntimeMessage.includes("direct Node.js dist execution")) {
+      throw new Error("cli internal runtime import did not resolve to the Node-safe stub");
+    }
+    if (!tuiRuntimeMessage.includes("native interactive runtime")) {
+      throw new Error("tui internal runtime import did not resolve to the Node-safe stub");
     }
     if ("registerRuntimeCoreEventBridge" in hostModule) {
       throw new Error("gateway host subpath still exports removed session event bridge helper");
@@ -241,6 +285,14 @@ function main(): void {
     ...collectTextFiles(resolve(repoRoot, "distribution")),
     ...collectTextFiles(resolve(repoRoot, "packages", "brewva-cli", "runtime-assets")),
   ]);
+  assertNoForbiddenMarkers(
+    [
+      ...collectTextFiles(resolve(repoRoot, "packages", "brewva-cli", "dist")),
+      ...collectTextFiles(resolve(repoRoot, "packages", "brewva-tui", "dist")),
+    ],
+    NODE_SAFE_DIST_FORBIDDEN_MARKERS,
+    "node-safe dist quarantine check failed",
+  );
 
   console.log("dist smoke checks passed");
 }

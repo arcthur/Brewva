@@ -1,6 +1,7 @@
 import type { ContextState } from "../contracts/context-state.js";
 import type { BrewvaToolContentPart } from "../contracts/tool.js";
 import type { ToolExecutionPhase } from "../execution/tool-phase.js";
+import type { BrewvaToolUiPort } from "../host-api/ui.js";
 
 export type BrewvaPromptQueueBehavior = "steer" | "followUp";
 export type BrewvaPromptInputSource = "interactive" | "extension" | (string & {});
@@ -155,6 +156,7 @@ export interface BrewvaManagedPromptSession extends BrewvaSubscribablePromptSess
   settingsManager: BrewvaManagedSessionSettingsView;
   getContextState(): ContextState;
   waitForIdle(): Promise<void>;
+  setUiPort(ui: BrewvaToolUiPort): void;
   abort(): Promise<void>;
   dispose(): void;
 }

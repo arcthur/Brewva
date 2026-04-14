@@ -14,6 +14,7 @@
     { "path": "../packages/brewva-ingress" },
     { "path": "../packages/brewva-tools" },
     { "path": "../packages/brewva-gateway" },
+    { "path": "../packages/brewva-tui" },
     { "path": "../packages/brewva-cli" }
   ],
   "include": ["./**/*.ts", "./**/*.d.ts"]

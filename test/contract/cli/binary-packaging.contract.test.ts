@@ -26,4 +26,16 @@ describe("binary packaging contract", () => {
     expect(existsSync(exportHtmlPath)).toBe(true);
     expect(existsSync(photonPath)).toBe(true);
   });
+
+  test("extracts staged OpenTUI tarballs without absolute archive paths", () => {
+    const repoRoot = resolve(import.meta.dirname, "../../..");
+    const buildScriptPath = resolve(repoRoot, "script", "build-binaries.ts");
+    const buildScriptSource = readFileSync(buildScriptPath, "utf8");
+
+    expect(buildScriptSource).toContain("tarballName");
+    expect(buildScriptSource).toContain("cwd(stageRoot)");
+    expect(buildScriptSource).toContain("-xzf");
+    expect(buildScriptSource).not.toContain("tar -xzf ${tarballPath}");
+    expect(buildScriptSource).not.toContain("--force-local");
+  });
 });

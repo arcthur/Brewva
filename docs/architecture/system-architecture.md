@@ -79,6 +79,37 @@ Boundary rule:
 - every committed decision produces a receipt
 - tape is commitment memory, not a best-effort debug log
 
+## Interactive Shell Boundary
+
+The interactive CLI lives in the `Experience Ring` and now uses a dual-layer
+operator shell model.
+
+- `@brewva/brewva-cli`
+  - owns shell state, semantic keybinding contexts, overlay priority, operator
+    actions, and transcript / approval / question / task / inspect / session
+    truth
+- `@brewva/brewva-tui`
+  - owns terminal capability policy and the OpenTUI quarantine boundary
+- OpenTUI
+  - owns rendering, editor, viewport, layout, cursor, and selection mechanics
+  - does not own Brewva session or operator truth
+
+Boundary rules:
+
+- the default home remains one conversation shell
+- approvals, questions, tasks, inspect, session switching, and pager drill-down
+  render as overlays or pagers over the same Brewva truth
+- the root `@brewva/brewva-tui` surface stays Node-safe for dist smoke and
+  non-interactive imports
+- the Bun/OpenTUI runtime loads only after CLI mode resolution commits to
+  interactive full-screen execution
+- the first OpenTUI-backed shell standardizes on
+  `screenMode: "alternate-screen"`
+- Brewva currently pins `@opentui/core` to `0.1.99`
+- the vendored React reconciler snapshot lives under
+  `packages/brewva-tui/runtime/vendor/opentui-react` and is updated only
+  through an explicit upstream audit
+
 ## Substrate Boundary
 
 Between the kernel ring and the experience ring, Brewva now treats the

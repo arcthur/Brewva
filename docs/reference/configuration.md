@@ -289,6 +289,30 @@ and approval-bearing flows; runtime does not enter a silent no-audit write path.
 
 - `ui.quietStartup`: `true`
 
+Interactive shell policy that remains fixed rather than configurable:
+
+- screen mode is `alternate-screen`
+- terminal capability fallback is driven by runtime detection, not config flags
+- promoted interactive targets are `darwin-arm64`, `darwin-x64`, `linux-x64`,
+  `linux-arm64`, and `windows-x64`
+- musl targets remain non-interactive until native OpenTUI artifacts are added
+  and verified
+
+## Interactive Shell Packaging And Runtime Boundary
+
+The interactive shell is implemented through a repo-owned quarantine boundary:
+
+- `@brewva/brewva-tui` root exports remain Node-safe for dist smoke and
+  non-interactive imports
+- Bun/OpenTUI runtime code lives behind the
+  `@brewva/brewva-tui/internal-opentui-runtime` seam and loads only after CLI
+  mode resolution commits to interactive execution
+- Brewva currently pins `@opentui/core` to `0.1.99`
+- the vendored React reconciler snapshot lives under
+  `packages/brewva-tui/runtime/vendor/opentui-react`
+- that vendored snapshot is updated only through an explicit upstream audit;
+  developer-local linking is not part of the supported release path
+
 ## Security Policy Model
 
 `security.mode` is a strategy-level control:
