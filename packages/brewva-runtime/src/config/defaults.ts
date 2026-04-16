@@ -101,6 +101,27 @@ export const DEFAULT_BREWVA_CONFIG: BrewvaConfig = {
     maxConsecutiveErrors: 3,
     maxRecoveryCatchUps: 5,
     staleOneShotRecoveryThresholdMs: 3_600_000,
+    selfImprove: {
+      enabled: false,
+      parentSessionId: "schedule:policy:self-improve",
+      intentId: "schedule:policy:self-improve:recurring",
+      reason:
+        "Run the self-improve skill on recurring repository friction and only emit reviewable promotion candidates.",
+      goalRef: "schedule:self-improve",
+      continuityMode: "inherit",
+      cron: "0 9 * * 1",
+      maxRuns: 10_000,
+      taskSpec: {
+        goal: "Run the self-improve skill against repeated repository delivery friction and generate only reviewable promotion candidates or a quiet no-signal outcome.",
+        expectedBehavior:
+          "Inspect repeated review, retro, runtime, and promotion evidence; keep the loop proposal-only; and exit cleanly when fewer than two independent occurrences qualify.",
+        constraints: [
+          "Do not patch skill files or write repository docs directly from the scheduled run.",
+          "Require at least two independent occurrences before calling a pattern systemic.",
+          "If evidence is insufficient, stop without operator-visible noise beyond inspectable runtime evidence.",
+        ],
+      },
+    },
   },
   parallel: {
     enabled: true,

@@ -47,6 +47,7 @@ type TimerHandle = unknown;
 
 const RECURRING_JITTER_INTERVAL_RATIO = 0.1;
 const MAX_RECURRING_JITTER_MS = 15 * 60 * 1000;
+const MAX_TIMER_DELAY_MS = 0x7fffffff;
 
 function sortEventsByTime(left: BrewvaEventRecord, right: BrewvaEventRecord): number {
   // Keep comparator timestamp-only so stable sort preserves append order when timestamps collide.
@@ -501,6 +502,7 @@ export class SchedulerService {
 
   updateIntent(
     input: ScheduleIntentUpdateInput & { parentSessionId: string },
+    options?: { allowInactiveReactivation?: boolean },
   ): ScheduleIntentUpdateResult {
     const parentSessionId = normalizeOptionalString(input.parentSessionId);
     if (!parentSessionId) return { ok: false, error: "missing_parent_session_id" };
@@ -512,7 +514,8 @@ export class SchedulerService {
     if (intent.parentSessionId !== parentSessionId)
       return { ok: false, error: "intent_owner_mismatch" };
     const canReactivate =
-      intent.status === "converged" &&
+      (intent.status === "converged" ||
+        (options?.allowInactiveReactivation === true && intent.status === "cancelled")) &&
       typeof input.maxRuns === "number" &&
       input.maxRuns > intent.runCount;
     if (intent.status !== "active" && !canReactivate)
@@ -872,7 +875,7 @@ export class SchedulerService {
     if (intent.status !== "active") return;
     if (typeof intent.nextRunAt !== "number" || !Number.isFinite(intent.nextRunAt)) return;
 
-    const delayMs = Math.max(0, intent.nextRunAt - this.now());
+    const delayMs = Math.min(MAX_TIMER_DELAY_MS, Math.max(0, intent.nextRunAt - this.now()));
     const handle = this.setTimer(() => {
       void this.fireIntent(intent.intentId);
     }, delayMs);
@@ -1230,6 +1233,14 @@ export class SchedulerService {
     if (!intent || intent.status !== "active") return;
 
     const now = this.now();
+    if (
+      typeof intent.nextRunAt === "number" &&
+      Number.isFinite(intent.nextRunAt) &&
+      intent.nextRunAt > now
+    ) {
+      this.armTimer(intent);
+      return;
+    }
     if (intent.leaseUntilMs !== undefined && intent.leaseUntilMs > now) {
       this.armTimer(intent);
       return;

@@ -385,4 +385,45 @@ describe("scheduler service limit contract", () => {
 
     scheduler.stop();
   });
+
+  test("does not reactivate a cancelled intent through the public update path", async () => {
+    const workspace = createWorkspace("cancelled-reactivation-guard");
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const scheduler = new SchedulerService({
+      runtime: schedulerRuntimePort(runtime),
+      enableExecution: false,
+    });
+    await scheduler.recover();
+
+    const created = scheduler.createIntent({
+      parentSessionId: "session-cancelled-reactivation-guard",
+      reason: "cancelled reactivation guard",
+      continuityMode: "inherit",
+      runAt: Date.now() + 120_000,
+      maxRuns: 1,
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      scheduler.stop();
+      return;
+    }
+
+    const cancelled = scheduler.cancelIntent({
+      parentSessionId: "session-cancelled-reactivation-guard",
+      intentId: created.intent.intentId,
+    });
+    expect(cancelled.ok).toBe(true);
+
+    const updated = scheduler.updateIntent({
+      parentSessionId: "session-cancelled-reactivation-guard",
+      intentId: created.intent.intentId,
+      maxRuns: 2,
+    });
+    scheduler.stop();
+
+    expect(updated.ok).toBe(false);
+    if (!updated.ok) {
+      expect(updated.error).toBe("intent_not_active");
+    }
+  });
 });

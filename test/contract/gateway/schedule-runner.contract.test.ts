@@ -56,6 +56,7 @@ describe("gateway contract: schedule runner", () => {
       summary: "The release prep is partially complete.",
       nextSteps: "Resolve the last reviewer comment.",
     });
+    expect(runtime.authority.skills.activate(parentSessionId, "self-improve").ok).toBe(true);
 
     const openedSessionIds: string[] = [];
     const stoppedSessionIds: string[] = [];
@@ -139,6 +140,7 @@ describe("gateway contract: schedule runner", () => {
           summary: "The release prep is partially complete.",
           nextSteps: "Resolve the last reviewer comment.",
         }),
+        activeSkillName: "self-improve",
       });
       expect(sentPrompt?.prompt).toContain("[Schedule Wakeup]");
       expect(sentPrompt?.prompt).toContain("reason: nightly follow-up");

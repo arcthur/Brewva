@@ -607,6 +607,7 @@ function buildPromotionState(input: {
       const id = `spd:${slugify(candidate.signature, "promotion")}`;
       return buildDraftFromCandidate(candidate, lifecycleById.get(id));
     })
+    .filter((draft) => draft.sourceSkillName !== "self-improve" || draft.repeatCount >= 2)
     .toSorted(
       (left, right) =>
         right.lastValidatedAt - left.lastValidatedAt || left.id.localeCompare(right.id),

@@ -5,6 +5,8 @@ export interface AppliedSchedulePromptTrigger {
   taskSpecApplied: boolean;
   truthFactsApplied: number;
   anchorApplied: boolean;
+  skillApplied: boolean;
+  skillActivationReason?: string;
 }
 
 export function applySchedulePromptTrigger(
@@ -17,6 +19,8 @@ export function applySchedulePromptTrigger(
       taskSpecApplied: false,
       truthFactsApplied: 0,
       anchorApplied: false,
+      skillApplied: false,
+      skillActivationReason: undefined,
     };
   }
 
@@ -52,9 +56,21 @@ export function applySchedulePromptTrigger(
     anchorApplied = true;
   }
 
+  let skillApplied = false;
+  let skillActivationReason: string | undefined;
+  if (trigger.activeSkillName) {
+    const activated = runtime.authority.skills.activate(sessionId, trigger.activeSkillName);
+    skillApplied = activated.ok;
+    if (!activated.ok) {
+      skillActivationReason = activated.reason;
+    }
+  }
+
   return {
     taskSpecApplied,
     truthFactsApplied,
     anchorApplied,
+    skillApplied,
+    skillActivationReason,
   };
 }

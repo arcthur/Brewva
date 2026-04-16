@@ -37,6 +37,7 @@ export interface SchedulePromptTrigger {
   taskSpec?: TaskSpec | null;
   truthFacts?: TruthFact[];
   parentAnchor?: SchedulePromptAnchor | null;
+  activeSkillName?: string;
 }
 
 export type SendPromptTrigger = SchedulePromptTrigger;

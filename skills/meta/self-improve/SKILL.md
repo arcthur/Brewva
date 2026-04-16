@@ -115,6 +115,8 @@ iteration-fact history. Cluster the evidence:
 
 **If fewer than 2 independent occurrences exist**: Stop. The pattern is not
 repeated. Record the single observation and exit — do not inflate it.
+If this pass was triggered by scheduler policy, exit quietly rather than
+creating operator-facing noise.
 **If evidence is available**: Proceed to Phase 2.
 
 ### Phase 2: Distill improvement candidates

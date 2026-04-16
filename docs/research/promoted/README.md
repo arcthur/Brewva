@@ -46,6 +46,7 @@ refresh the pointer summary and `Last reviewed` metadata here.
 - [`rfc-repository-native-compound-knowledge-and-review-ensemble.md`](./rfc-repository-native-compound-knowledge-and-review-ensemble.md)
 - [`rfc-skill-distribution-refresh-and-catalog-surface.md`](./rfc-skill-distribution-refresh-and-catalog-surface.md)
 - [`rfc-skill-contract-layering-project-context-and-explicit-activation.md`](./rfc-skill-contract-layering-project-context-and-explicit-activation.md)
+- [`rfc-skill-compounding-loop-completeness-and-parameterization-model.md`](./rfc-skill-compounding-loop-completeness-and-parameterization-model.md)
 - [`rfc-specialist-subagents-and-adversarial-verification.md`](./rfc-specialist-subagents-and-adversarial-verification.md)
 - [`rfc-tool-search-advisor-and-auto-broadened-discovery.md`](./rfc-tool-search-advisor-and-auto-broadened-discovery.md)
 

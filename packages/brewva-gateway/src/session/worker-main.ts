@@ -1,4 +1,5 @@
 import {
+  SCHEDULE_TRIGGER_APPLY_WARNING_EVENT_TYPE,
   type ContextPressureView,
   TURN_INPUT_RECORDED_EVENT_TYPE,
   TURN_RENDER_COMMITTED_EVENT_TYPE,
@@ -562,7 +563,23 @@ async function runTurn(input: {
   > | null = null;
   try {
     if (input.trigger?.kind === "schedule") {
-      applySchedulePromptTrigger(sessionResult.runtime, input.agentSessionId, input.trigger);
+      const appliedTrigger = applySchedulePromptTrigger(
+        sessionResult.runtime,
+        input.agentSessionId,
+        input.trigger,
+      );
+      if (input.trigger.activeSkillName && !appliedTrigger.skillApplied) {
+        recordRuntimeEvent(sessionResult.runtime, {
+          sessionId: input.agentSessionId,
+          type: SCHEDULE_TRIGGER_APPLY_WARNING_EVENT_TYPE,
+          payload: {
+            warning: "skill_activation_failed",
+            skillName: input.trigger.activeSkillName,
+            continuityMode: input.trigger.continuityMode,
+            reason: appliedTrigger.skillActivationReason ?? "unknown",
+          },
+        });
+      }
     }
     if (typeof input.walReplayId === "string" && input.walReplayId.trim().length > 0) {
       recordSessionTurnTransition(sessionResult.runtime, {

@@ -202,6 +202,8 @@ Input: "Check whether this branch is ready for a PR and tell me what still block
 - `ship_decision` reflects real release posture, not optimistic intent.
 - The handoff names which release path was evaluated and which action still
   remains for an operator, CI system, or GitHub workflow.
+- If the release outcome exposes a repeated delivery-process weakness, hand off
+  to `retro` first; `ship` does not call `knowledge_capture` inline.
 
 ## Stop Conditions
 

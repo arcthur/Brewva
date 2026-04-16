@@ -6,11 +6,14 @@ import process from "node:process";
 import {
   BrewvaRuntime,
   SESSION_WIRE_SCHEMA,
+  type BrewvaScheduleSelfImproveConfig,
   type ContextPressureView,
   type SessionWireFrame,
   type SessionWireStatusState,
+  type TaskSpec,
   createTrustedLocalGovernancePort,
   loadBrewvaConfig,
+  normalizeTaskSpec,
   resolveWorkspaceRootDir,
   type ManagedToolMode,
 } from "@brewva/brewva-runtime";
@@ -69,6 +72,7 @@ const DEFAULT_MAX_PAYLOAD_BYTES = 256 * 1024;
 const DEFAULT_HEARTBEAT_TICK_INTERVAL_MS = 15_000;
 const WEBSOCKET_CLOSE_TIMEOUT_MS = 3_000;
 const HTTP_CLOSE_TIMEOUT_MS = 3_000;
+const SELF_IMPROVE_SKILL_NAME = "self-improve";
 const SESSION_SCOPED_EVENTS = new Set<GatewayEvent>(["session.wire.frame"]);
 
 export type ConnectionPhase = "connected" | "authenticating" | "authenticated" | "closing";
@@ -615,6 +619,11 @@ export class GatewayDaemon {
       : !this.schedulerEventsEnabled
         ? "events_disabled"
         : undefined;
+    if (runtimeConfig.schedule.selfImprove.enabled && this.schedulerUnavailableReason) {
+      throw new Error(
+        `schedule.selfImprove requires scheduler availability (reason=${this.schedulerUnavailableReason}).`,
+      );
+    }
     this.schedulerRuntime = !this.schedulerUnavailableReason
       ? new BrewvaRuntime({
           cwd: resolvedCwd,
@@ -691,6 +700,7 @@ export class GatewayDaemon {
       await this.supervisor.start();
       if (this.scheduler) {
         await this.scheduler.recover();
+        this.reconcileAutonomousSelfImproveSchedule();
       }
       this.heartbeatScheduler.start();
       this.startTickEmitter();
@@ -773,6 +783,126 @@ export class GatewayDaemon {
     } catch (error) {
       await this.cleanupFailedStart();
       throw error;
+    }
+  }
+
+  private buildAutonomousSelfImproveTaskSpec(policy: BrewvaScheduleSelfImproveConfig): TaskSpec {
+    const spec: TaskSpec = {
+      schema: "brewva.task.v1",
+      goal: policy.taskSpec.goal,
+    };
+    if (typeof policy.taskSpec.expectedBehavior === "string") {
+      spec.expectedBehavior = policy.taskSpec.expectedBehavior;
+    }
+    if (Array.isArray(policy.taskSpec.constraints) && policy.taskSpec.constraints.length > 0) {
+      spec.constraints = [...policy.taskSpec.constraints];
+    }
+    return spec;
+  }
+
+  private isAutonomousSelfImproveIntentCurrent(input: {
+    intent: ReturnType<SchedulerService["listIntents"]>[number];
+    policy: BrewvaScheduleSelfImproveConfig;
+  }): boolean {
+    return (
+      input.intent.status === "active" &&
+      input.intent.reason === input.policy.reason &&
+      input.intent.goalRef === input.policy.goalRef &&
+      input.intent.continuityMode === input.policy.continuityMode &&
+      input.intent.cron === input.policy.cron &&
+      (!input.policy.timeZone || input.intent.timeZone === input.policy.timeZone) &&
+      input.intent.maxRuns === input.policy.maxRuns
+    );
+  }
+
+  private seedAutonomousSelfImproveParentSession(
+    runtime: BrewvaRuntime,
+    policy: BrewvaScheduleSelfImproveConfig,
+  ): void {
+    const expectedTaskSpec = normalizeTaskSpec(this.buildAutonomousSelfImproveTaskSpec(policy));
+    const currentTaskSpecRaw = runtime.inspect.task.getState(policy.parentSessionId).spec;
+    const currentTaskSpec = currentTaskSpecRaw ? normalizeTaskSpec(currentTaskSpecRaw) : null;
+    if (JSON.stringify(currentTaskSpec) !== JSON.stringify(expectedTaskSpec)) {
+      runtime.authority.task.setSpec(policy.parentSessionId, expectedTaskSpec);
+    }
+
+    const activeSkill = runtime.inspect.skills.getActive(policy.parentSessionId)?.name;
+    if (activeSkill === SELF_IMPROVE_SKILL_NAME) {
+      return;
+    }
+    const activated = runtime.authority.skills.activate(
+      policy.parentSessionId,
+      SELF_IMPROVE_SKILL_NAME,
+    );
+    if (!activated.ok) {
+      throw new Error(
+        `Failed to activate ${SELF_IMPROVE_SKILL_NAME} policy session: ${activated.reason}`,
+      );
+    }
+  }
+
+  private reconcileAutonomousSelfImproveSchedule(): void {
+    if (!this.scheduler || !this.schedulerRuntime) {
+      return;
+    }
+
+    const policy = this.schedulerRuntime.config.schedule.selfImprove;
+    const existing = this.scheduler
+      .listIntents({ parentSessionId: policy.parentSessionId })
+      .find((intent) => intent.intentId === policy.intentId);
+
+    if (!policy.enabled) {
+      if (existing?.status === "active") {
+        const cancelled = this.scheduler.cancelIntent({
+          parentSessionId: policy.parentSessionId,
+          intentId: policy.intentId,
+          reason: "Disabled by schedule.selfImprove.enabled=false.",
+        });
+        if (!cancelled.ok) {
+          throw new Error(`Failed to disable autonomous self-improve schedule: ${cancelled.error}`);
+        }
+      }
+      return;
+    }
+
+    this.seedAutonomousSelfImproveParentSession(this.schedulerRuntime, policy);
+
+    if (!existing) {
+      const created = this.scheduler.createIntent({
+        parentSessionId: policy.parentSessionId,
+        intentId: policy.intentId,
+        reason: policy.reason,
+        goalRef: policy.goalRef,
+        continuityMode: policy.continuityMode,
+        cron: policy.cron,
+        timeZone: policy.timeZone,
+        maxRuns: policy.maxRuns,
+      });
+      if (!created.ok) {
+        throw new Error(`Failed to create autonomous self-improve schedule: ${created.error}`);
+      }
+      return;
+    }
+
+    if (this.isAutonomousSelfImproveIntentCurrent({ intent: existing, policy })) {
+      return;
+    }
+
+    const updated = this.scheduler.updateIntent(
+      {
+        parentSessionId: policy.parentSessionId,
+        intentId: policy.intentId,
+        reason: policy.reason,
+        goalRef: policy.goalRef,
+        continuityMode: policy.continuityMode,
+        cron: policy.cron,
+        timeZone: policy.timeZone,
+        maxRuns: Math.max(policy.maxRuns, existing.runCount + 1),
+      },
+      { allowInactiveReactivation: true },
+    );
+    if (!updated.ok) {
+      throw new Error(`Failed to reconcile autonomous self-improve schedule: ${updated.error}`);
     }
   }
 

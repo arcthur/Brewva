@@ -42,6 +42,23 @@ export interface BrewvaSecurityExactCallLoopConfig {
   exemptTools: string[];
 }
 
+export interface BrewvaScheduleSelfImproveConfig {
+  enabled: boolean;
+  parentSessionId: string;
+  intentId: string;
+  reason: string;
+  goalRef: string;
+  continuityMode: "inherit" | "fresh";
+  cron: string;
+  timeZone?: string;
+  maxRuns: number;
+  taskSpec: {
+    goal: string;
+    expectedBehavior?: string;
+    constraints?: readonly string[];
+  };
+}
+
 export interface BrewvaConfig {
   ui: {
     quietStartup: boolean;
@@ -107,6 +124,7 @@ export interface BrewvaConfig {
     maxConsecutiveErrors: number;
     maxRecoveryCatchUps: number;
     staleOneShotRecoveryThresholdMs: number;
+    selfImprove: BrewvaScheduleSelfImproveConfig;
   };
   parallel: {
     enabled: boolean;
@@ -230,7 +248,11 @@ export interface BrewvaConfigFile {
       sandbox?: Partial<BrewvaConfig["security"]["execution"]["sandbox"]>;
     };
   };
-  schedule?: Partial<BrewvaConfig["schedule"]>;
+  schedule?: Partial<Omit<BrewvaConfig["schedule"], "selfImprove">> & {
+    selfImprove?: Partial<Omit<BrewvaConfig["schedule"]["selfImprove"], "taskSpec">> & {
+      taskSpec?: Partial<BrewvaConfig["schedule"]["selfImprove"]["taskSpec"]>;
+    };
+  };
   parallel?: Partial<BrewvaConfig["parallel"]>;
   channels?: Partial<Omit<BrewvaConfig["channels"], "orchestration">> & {
     orchestration?: Partial<

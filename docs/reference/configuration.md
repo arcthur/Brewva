@@ -207,6 +207,20 @@ Verification plan semantics:
 - `schedule.maxConsecutiveErrors`: `3`
 - `schedule.maxRecoveryCatchUps`: `5`
 - `schedule.staleOneShotRecoveryThresholdMs`: `3600000`
+- `schedule.selfImprove.enabled`: `false`
+- `schedule.selfImprove.parentSessionId`: `schedule:policy:self-improve`
+- `schedule.selfImprove.intentId`: `schedule:policy:self-improve:recurring`
+- `schedule.selfImprove.reason`: recurring `self-improve` wakeup reason text
+- `schedule.selfImprove.goalRef`: `schedule:self-improve`
+- `schedule.selfImprove.continuityMode`: `inherit`
+- `schedule.selfImprove.cron`: `0 9 * * 1`
+- `schedule.selfImprove.timeZone`: local scheduler timezone when omitted
+- `schedule.selfImprove.maxRuns`: `10000`
+- `schedule.selfImprove.taskSpec.goal`: stable TaskSpec goal for the policy
+- `schedule.selfImprove.taskSpec.expectedBehavior`: stable expected behavior for
+  the policy
+- `schedule.selfImprove.taskSpec.constraints`: stable no-write / repeat-backed
+  constraints for the policy
 
 Schedule semantics notes:
 
@@ -216,6 +230,13 @@ Schedule semantics notes:
   one-shot schedules
 - `staleOneShotRecoveryThresholdMs` controls when a missed one-shot is deferred
   during recovery instead of firing immediately
+- `schedule.selfImprove` is a config-backed recurring policy: when enabled, the
+  gateway scheduler seeds or reconciles one durable recurring intent plus a
+  parent session that carries the `self-improve` active skill and TaskSpec
+- `schedule.selfImprove` requires scheduler availability, so it is only valid
+  when both `schedule.enabled` and `infrastructure.events.enabled` are true
+- the scheduled run remains proposal-only; it may derive promotion candidates
+  but it does not bypass `self-improve`'s `workspace_write` denial
 
 ### `parallel`
 

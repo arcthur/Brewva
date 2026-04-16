@@ -80,6 +80,13 @@ function readSchedulePromptAnchor(value: unknown): SchedulePromptAnchor | null |
   };
 }
 
+function readActiveSkillNameField(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  return readStringField(record, key);
+}
+
 function mapPromptSourceToChannel(source: "gateway" | "heartbeat" | "schedule"): string {
   if (source === "heartbeat") {
     return "heartbeat";
@@ -144,6 +151,7 @@ export function extractTriggerFromEnvelope(envelope: TurnEnvelope): SendPromptTr
     taskSpec: readTaskSpecField(raw, "taskSpec"),
     truthFacts: readTruthFactsField(raw, "truthFacts"),
     parentAnchor: readSchedulePromptAnchor(raw.parentAnchor),
+    activeSkillName: readActiveSkillNameField(raw, "activeSkillName"),
   };
   return trigger;
 }

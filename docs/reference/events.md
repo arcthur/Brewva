@@ -569,6 +569,7 @@ inspection.
 - `schedule_recovery_deferred`
 - `schedule_recovery_summary`
 - `schedule_wakeup`
+- `schedule_trigger_apply_warning`
 - `schedule_child_session_started`
 - `schedule_child_session_finished`
 - `schedule_child_session_failed`
@@ -594,6 +595,11 @@ Current schedule-recovery notes:
 - `schedule_recovery_summary` records per-parent-session `dueIntents`,
   `firedIntents`, `deferredIntents`, and the configured
   `maxRecoveryCatchUps`
+- `schedule_trigger_apply_warning` records inherited trigger application
+  degradation before the worker turn starts. The current warning shape is
+  `warning=skill_activation_failed` with `skillName`, `continuityMode`, and
+  `reason`, so a scheduled run that misses its carried active skill is visible
+  from `inspect.events` instead of failing silently.
 
 ## Workflow-Derived Surfaces
 

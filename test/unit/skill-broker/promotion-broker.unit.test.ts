@@ -48,6 +48,25 @@ function recordPromotionSourceEvent(input: {
 }
 
 describe("skill promotion broker", () => {
+  test("does not derive promotion drafts from a single self-improve occurrence", () => {
+    const workspace = createWorkspaceWithSkills("skill-promotion-single-occurrence");
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+
+    recordPromotionSourceEvent({
+      runtime,
+      sessionId: "promotion-session-single",
+      timestamp: 1_000,
+      plan: "Patch self-improve so repeated failures produce reviewable promotion drafts.",
+    });
+
+    const broker = new SkillPromotionBroker(runtime, {
+      subscribeToEvents: false,
+      minRefreshIntervalMs: 1,
+    });
+
+    expect(broker.list()).toHaveLength(0);
+  });
+
   test("derives repeat-backed drafts, preserves review state, and materializes promotion packets", () => {
     const workspace = createWorkspaceWithSkills("skill-promotion-broker");
     const runtime = new BrewvaRuntime({ cwd: workspace });
@@ -127,6 +146,12 @@ describe("skill promotion broker", () => {
       runtime,
       sessionId: "promotion-session-provider",
       timestamp: 3_000,
+      plan: "Patch self-improve so repeated failures produce reviewable promotion drafts.",
+    });
+    recordPromotionSourceEvent({
+      runtime,
+      sessionId: "promotion-session-provider-2",
+      timestamp: 4_000,
       plan: "Patch self-improve so repeated failures produce reviewable promotion drafts.",
     });
 

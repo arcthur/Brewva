@@ -114,6 +114,44 @@ Runtime compiles internal selection features from authored `selection`,
 `description`, and markdown trigger text at load time. Authors do not maintain a
 second keyword-only routing table.
 
+## Parameterizing Skill Invocations Via `task_set_spec`
+
+Brewva's near-term parameterization model is TaskSpec-first rather than
+contract-level `SkillContract.parameters`.
+
+Use `task_set_spec` to make the invocation subject machine-readable:
+
+- `goal`
+  - the bounded job the active skill should own
+- `expectedBehavior`
+  - the semantic outcome or convergence posture the caller expects
+- `constraints`
+  - non-goals, hard limits, and explicit do-not-do boundaries
+- `targets.files`
+  - concrete repository scope for path-aware routing and later inspection
+- `targets.symbols`
+  - symbol-level subject when the invocation is about a named API, class, or
+    workflow seam
+
+This is the stable way to apply one skill procedure to different subjects
+without widening the base skill contract.
+
+Authoring guidance:
+
+- write `selection.when_to_use` for the reusable procedure, not for one
+  repository path
+- expect callers to bind the current subject through TaskSpec, not through
+  freeform prose alone
+- prefer structured `targets.files` / `targets.symbols` over burying scope in
+  narrative prompt text when the subject is known up front
+- use `expectedBehavior` and `constraints` to disambiguate two invocations of
+  the same skill that share a goal shape but differ in safety or completion
+  posture
+
+Interactive hosted routing already scores against `TaskSpec.goal`,
+`expectedBehavior`, `constraints`, and explicit targets. Strengthening TaskSpec
+usage is therefore the current path for invocation parameterization.
+
 For non-overlay skills:
 
 - both `resources.default_lease` and `resources.hard_ceiling` are required
@@ -440,6 +478,9 @@ control state.
 Promotion remains explicit. `self-improve` may help derive repeat-backed
 lessons, but `skill_promotion` is the control-plane path that reviews and
 materializes those drafts.
+
+Scheduled `self-improve` runs do not change that boundary. They are still
+repeat-backed, proposal-only passes rather than autonomous skill-file writes.
 
 ## Project Overlays
 

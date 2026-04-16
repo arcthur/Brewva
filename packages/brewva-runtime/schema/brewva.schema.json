@@ -196,6 +196,33 @@
                 }
               }
             },
+            "recoveryWal": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "compactAfterMs": {
+                  "type": "number"
+                },
+                "defaultTtlMs": {
+                  "type": "number"
+                },
+                "dir": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "maxRetries": {
+                  "type": "number"
+                },
+                "scheduleTurnTtlMs": {
+                  "type": "number"
+                },
+                "toolTurnTtlMs": {
+                  "type": "number"
+                }
+              }
+            },
             "toolFailureInjection": {
               "type": "object",
               "additionalProperties": false,
@@ -222,33 +249,6 @@
                   "type": "number"
                 },
                 "maxOutputChars": {
-                  "type": "number"
-                }
-              }
-            },
-            "recoveryWal": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "compactAfterMs": {
-                  "type": "number"
-                },
-                "defaultTtlMs": {
-                  "type": "number"
-                },
-                "dir": {
-                  "type": "string"
-                },
-                "enabled": {
-                  "type": "boolean"
-                },
-                "maxRetries": {
-                  "type": "number"
-                },
-                "scheduleTurnTtlMs": {
-                  "type": "number"
-                },
-                "toolTurnTtlMs": {
                   "type": "number"
                 }
               }
@@ -325,11 +325,63 @@
             "minIntervalMs": {
               "type": "number"
             },
-            "staleOneShotRecoveryThresholdMs": {
-              "type": "number"
-            },
             "projectionPath": {
               "type": "string"
+            },
+            "selfImprove": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "continuityMode": {
+                  "type": "string",
+                  "enum": ["inherit", "fresh"]
+                },
+                "cron": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "goalRef": {
+                  "type": "string"
+                },
+                "intentId": {
+                  "type": "string"
+                },
+                "maxRuns": {
+                  "type": "number"
+                },
+                "parentSessionId": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "taskSpec": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "constraints": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "expectedBehavior": {
+                      "type": "string"
+                    },
+                    "goal": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "timeZone": {
+                  "type": "string"
+                }
+              }
+            },
+            "staleOneShotRecoveryThresholdMs": {
+              "type": "number"
             }
           }
         },
@@ -657,6 +709,35 @@
         }
       ]
     },
+    "SemanticArtifactSchemaId": {
+      "type": "string",
+      "enum": [
+        "planning.design_spec.v1",
+        "planning.execution_plan.v1",
+        "planning.execution_mode_hint.v1",
+        "planning.risk_register.v1",
+        "planning.implementation_targets.v1",
+        "planning.success_criteria.v1",
+        "planning.approach_simplicity_check.v1",
+        "planning.scope_declaration.v1",
+        "implementation.change_set.v1",
+        "implementation.files_changed.v1",
+        "implementation.verification_evidence.v1",
+        "review.review_report.v1",
+        "review.review_findings.v1",
+        "review.merge_decision.v1",
+        "qa.qa_report.v1",
+        "qa.qa_findings.v1",
+        "qa.qa_verdict.v1",
+        "qa.qa_checks.v1",
+        "qa.qa_missing_evidence.v1",
+        "qa.qa_confidence_gaps.v1",
+        "qa.qa_environment_limits.v1",
+        "ship.ship_report.v1",
+        "ship.release_checklist.v1",
+        "ship.ship_decision.v1"
+      ]
+    },
     "SkillCompletionDefinition": {
       "type": "object",
       "additionalProperties": false,
@@ -739,6 +820,9 @@
               "items": {
                 "type": "string"
               }
+            },
+            "semanticBindings": {
+              "$ref": "#/definitions/SkillSemanticBindings"
             }
           }
         },
@@ -790,6 +874,33 @@
           "properties": {
             "scope": {
               "$ref": "#/definitions/SkillRoutingScope"
+            }
+          }
+        },
+        "selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "examples": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "phases": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/TaskPhase"
+              }
+            },
+            "whenToUse": {
+              "type": "string"
             }
           }
         },
@@ -861,6 +972,15 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "fieldContracts": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/SkillOutputContract"
+          }
+        },
+        "itemContract": {
+          "$ref": "#/definitions/SkillOutputContract"
+        },
         "kind": {
           "type": "string",
           "const": "json"
@@ -870,6 +990,12 @@
         },
         "minKeys": {
           "type": "number"
+        },
+        "requiredFields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "required": ["kind"]
@@ -895,6 +1021,12 @@
       "type": "string",
       "enum": ["core", "domain", "operator", "meta"]
     },
+    "SkillSemanticBindings": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/SemanticArtifactSchemaId"
+      }
+    },
     "SkillSuggestedChain": {
       "type": "object",
       "additionalProperties": false,
@@ -907,6 +1039,18 @@
         }
       },
       "required": ["steps"]
+    },
+    "TaskPhase": {
+      "type": "string",
+      "enum": [
+        "align",
+        "investigate",
+        "execute",
+        "verify",
+        "ready_for_acceptance",
+        "blocked",
+        "done"
+      ]
     },
     "ToolEffectClass": {
       "type": "string",

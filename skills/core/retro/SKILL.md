@@ -184,6 +184,7 @@ Output:
 - `retro_summary` explains the delivery arc well enough that a future reader understands what was attempted and what mattered.
 - `retro_findings` rank meaningful lessons with evidence citations, not just event lists.
 - `followup_recommendation` identifies the single best next improvement, with a clear destination if the work belongs in `self-improve`.
+- When `retro_findings` contains any `type: systemic` entry, `followup_recommendation` must name a post-retro `knowledge_capture` step as the next operator action. Do not attempt to call `knowledge_capture` inside the retro run itself — this skill does not hold `workspace_write` permission.
 
 ## Stop Conditions
 

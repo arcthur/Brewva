@@ -8,10 +8,11 @@ import {
   SCHEDULE_CHILD_SESSION_FINISHED_EVENT_TYPE,
   SCHEDULE_CHILD_SESSION_STARTED_EVENT_TYPE,
   SCHEDULE_WAKEUP_EVENT_TYPE,
+  SKILL_ACTIVATED_EVENT_TYPE,
   parseScheduleIntentEvent,
 } from "@brewva/brewva-runtime";
 import { writeMinimalConfig } from "../../helpers/config.js";
-import { buildGatewayWorkerHarnessEnv } from "../../helpers/gateway.js";
+import { buildGatewayWorkerHarnessEnv, startGatewayDaemonHarness } from "../../helpers/gateway.js";
 import { cleanupWorkspace, createWorkspace, repoRoot } from "../../helpers/workspace.js";
 
 interface DaemonProcess {
@@ -21,7 +22,7 @@ interface DaemonProcess {
 }
 
 async function waitForCondition<T>(
-  check: () => T | null | undefined,
+  check: () => T | Promise<T | null | undefined> | null | undefined,
   options: {
     timeoutMs?: number;
     intervalMs?: number;
@@ -34,7 +35,7 @@ async function waitForCondition<T>(
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
-    const value = check();
+    const value = await check();
     if (value !== null && value !== undefined) {
       return value;
     }
@@ -201,6 +202,7 @@ describe("system: scheduler daemon", () => {
       summary: "Release prep is partially complete.",
       nextSteps: "Resolve the final reviewer comment.",
     });
+    expect(setupRuntime.authority.skills.activate(parentSessionId, "self-improve").ok).toBe(true);
     const created = await setupRuntime.authority.schedule.createIntent(parentSessionId, {
       intentId: "intent-scheduler-daemon",
       reason: "nightly release follow-up",
@@ -271,6 +273,12 @@ describe("system: scheduler daemon", () => {
 
       const childTask = persisted.inspect.task.getState(childSessionId);
       expect(childTask.spec?.goal).toBe(parentTaskGoal);
+      const childSkillEvents = persisted.inspect.events.query(childSessionId, {
+        type: SKILL_ACTIVATED_EVENT_TYPE,
+      });
+      expect(childSkillEvents.at(-1)?.payload).toMatchObject({
+        skillName: "self-improve",
+      });
 
       const childTruth = persisted.inspect.truth.getState(childSessionId);
       expect(childTruth.facts).toEqual(
@@ -305,6 +313,98 @@ describe("system: scheduler daemon", () => {
       ]);
     } finally {
       await stopSchedulerDaemon(daemon);
+      cleanupWorkspace(workspace);
+    }
+  }, 15_000);
+
+  test("daemon seeds a single durable autonomous self-improve schedule from config", async () => {
+    const workspace = createWorkspace("scheduler-daemon-self-improve");
+    writeMinimalConfig(workspace, {
+      schedule: {
+        enabled: true,
+        selfImprove: {
+          enabled: true,
+          parentSessionId: "policy-self-improve-parent",
+          intentId: "policy-self-improve-intent",
+          reason: "Run self-improve automatically from the scheduler policy.",
+          goalRef: "policy:self-improve",
+          continuityMode: "inherit",
+          cron: "0 0 1 1 *",
+          maxRuns: 321,
+          taskSpec: {
+            goal: "Run self-improve on repeated repository friction.",
+            expectedBehavior:
+              "Load self-improve, inspect repeated evidence, and stop without writes when the pattern is not repeat-backed.",
+            constraints: [
+              "Do not write repository files directly from the scheduled run.",
+              "Only emit promotion candidates after repeated evidence.",
+            ],
+          },
+        },
+      },
+      infrastructure: {
+        events: {
+          enabled: true,
+        },
+      },
+    });
+    mkdirSync(join(workspace, ".brewva"), { recursive: true });
+
+    const firstDaemon = await startGatewayDaemonHarness({ workspace });
+    try {
+      const observer = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
+      const seededIntent = await waitForCondition(
+        async () => {
+          const intents = await observer.inspect.schedule.listIntents({
+            parentSessionId: "policy-self-improve-parent",
+          });
+          return intents.find((intent) => intent.intentId === "policy-self-improve-intent");
+        },
+        {
+          message: "expected daemon to seed the autonomous self-improve schedule intent",
+        },
+      );
+      const cancelled = await observer.authority.schedule.cancelIntent(
+        "policy-self-improve-parent",
+        {
+          intentId: seededIntent.intentId,
+          reason: "operator_cancelled_for_restart_reconcile_test",
+        },
+      );
+      expect(cancelled.ok).toBe(true);
+    } finally {
+      await firstDaemon.dispose();
+    }
+
+    const secondDaemon = await startGatewayDaemonHarness({ workspace });
+    try {
+      const observer = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
+      const intent = await waitForCondition(
+        async () => {
+          const intents = await observer.inspect.schedule.listIntents({
+            parentSessionId: "policy-self-improve-parent",
+          });
+          return intents.length === 1 ? intents[0] : null;
+        },
+        {
+          message:
+            "expected daemon restart to keep exactly one autonomous self-improve schedule intent",
+        },
+      );
+
+      expect(intent).toMatchObject({
+        intentId: "policy-self-improve-intent",
+        parentSessionId: "policy-self-improve-parent",
+        reason: "Run self-improve automatically from the scheduler policy.",
+        goalRef: "policy:self-improve",
+        continuityMode: "inherit",
+        cron: "0 0 1 1 *",
+        maxRuns: 321,
+        status: "active",
+      });
+      expect(typeof intent.nextRunAt).toBe("number");
+    } finally {
+      await secondDaemon.dispose();
       cleanupWorkspace(workspace);
     }
   }, 15_000);

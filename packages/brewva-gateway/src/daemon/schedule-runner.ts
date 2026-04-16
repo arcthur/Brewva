@@ -1,9 +1,15 @@
 import {
   BrewvaRuntime,
+  SESSION_SHUTDOWN_EVENT_TYPE,
+  SKILL_ACTIVATED_EVENT_TYPE,
+  SKILL_COMPLETED_EVENT_TYPE,
+  SKILL_COMPLETION_REJECTED_EVENT_TYPE,
+  SKILL_CONTRACT_FAILED_EVENT_TYPE,
   SCHEDULE_CHILD_SESSION_FAILED_EVENT_TYPE,
   SCHEDULE_CHILD_SESSION_FINISHED_EVENT_TYPE,
   SCHEDULE_CHILD_SESSION_STARTED_EVENT_TYPE,
   SCHEDULE_WAKEUP_EVENT_TYPE,
+  type BrewvaEventRecord,
   type ManagedToolMode,
   type ScheduleContinuityMode,
   type ScheduleIntentProjectionRecord,
@@ -21,6 +27,7 @@ export interface ScheduleContinuationSnapshot {
   taskSpec: TaskSpec | null;
   truthFacts: TruthFact[];
   parentAnchor: SchedulePromptAnchor | null;
+  activeSkillName?: string;
 }
 
 function clampText(value: string | undefined, maxChars: number): string | undefined {
@@ -38,6 +45,55 @@ export function buildScheduleWorkerSessionId(input: {
   return `schedule:${input.intentId}:${input.runIndex}`;
 }
 
+function readOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function readEventPayloadRecord(event: BrewvaEventRecord): Record<string, unknown> | null {
+  return event.payload && typeof event.payload === "object" && !Array.isArray(event.payload)
+    ? (event.payload as Record<string, unknown>)
+    : null;
+}
+
+function readEventPayloadSkillName(event: BrewvaEventRecord): string | undefined {
+  const payload = readEventPayloadRecord(event);
+  return payload ? readOptionalString(payload.skillName) : undefined;
+}
+
+function deriveParentActiveSkillName(
+  runtime: BrewvaRuntime,
+  sessionId: string,
+): string | undefined {
+  let activeSkillName = runtime.inspect.skills.getActive(sessionId)?.name;
+  for (const event of runtime.inspect.events.list(sessionId)) {
+    if (event.type === SESSION_SHUTDOWN_EVENT_TYPE) {
+      activeSkillName = undefined;
+      continue;
+    }
+    if (event.type === SKILL_ACTIVATED_EVENT_TYPE) {
+      activeSkillName = readEventPayloadSkillName(event);
+      continue;
+    }
+    if (event.type === SKILL_COMPLETION_REJECTED_EVENT_TYPE) {
+      const skillName = readEventPayloadSkillName(event);
+      const payload = readEventPayloadRecord(event);
+      activeSkillName = payload?.phase === "repair_required" ? skillName : undefined;
+      continue;
+    }
+    if (
+      event.type === SKILL_COMPLETED_EVENT_TYPE ||
+      event.type === SKILL_CONTRACT_FAILED_EVENT_TYPE
+    ) {
+      activeSkillName = undefined;
+    }
+  }
+  return activeSkillName;
+}
+
 export function collectScheduleContinuationSnapshot(
   runtime: BrewvaRuntime,
   input: { parentSessionId: string; continuityMode: ScheduleContinuityMode },
@@ -47,6 +103,7 @@ export function collectScheduleContinuationSnapshot(
       taskSpec: null,
       truthFacts: [],
       parentAnchor: null,
+      activeSkillName: undefined,
     };
   }
 
@@ -57,6 +114,7 @@ export function collectScheduleContinuationSnapshot(
     taskSpec: parentTask.spec ?? null,
     truthFacts: parentTruth.facts.map((fact) => structuredClone(fact)),
     parentAnchor: parentAnchor ?? null,
+    activeSkillName: deriveParentActiveSkillName(runtime, input.parentSessionId),
   };
 }
 
@@ -77,6 +135,7 @@ export function buildSchedulePromptTrigger(input: {
     taskSpec: input.snapshot.taskSpec,
     truthFacts: input.snapshot.truthFacts,
     parentAnchor: input.snapshot.parentAnchor,
+    activeSkillName: input.snapshot.activeSkillName,
   };
 }
 

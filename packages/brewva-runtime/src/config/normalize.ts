@@ -11,6 +11,7 @@ const VALID_VERIFICATION_LEVELS = new Set<VerificationLevel>(["quick", "standard
 const VALID_CHANNEL_SCOPE_STRATEGIES = new Set(["chat", "thread"]);
 const VALID_CHANNEL_ACL_MODES = new Set(["open", "closed"]);
 const VALID_SKILL_ROUTING_SCOPES = new Set(["core", "domain", "operator", "meta"]);
+const VALID_SCHEDULE_CONTINUITY_MODES = new Set(["inherit", "fresh"]);
 
 type AnyRecord = Record<string, unknown>;
 const LEGACY_CONTEXT_BUDGET_KEYS = new Set([
@@ -60,7 +61,7 @@ function normalizeOptionalNonEmptyString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function normalizeStringArray(value: unknown, fallback: string[]): string[] {
+function normalizeStringArray(value: unknown, fallback: readonly string[]): string[] {
   if (!Array.isArray(value)) return [...fallback];
   return value
     .filter((entry): entry is string => typeof entry === "string")
@@ -475,6 +476,7 @@ function normalizeScheduleConfig(
   scheduleInput: AnyRecord,
   defaults: BrewvaConfig["schedule"],
 ): BrewvaConfig["schedule"] {
+  const selfImproveInput = isRecord(scheduleInput.selfImprove) ? scheduleInput.selfImprove : {};
   return {
     enabled: normalizeBoolean(scheduleInput.enabled, defaults.enabled),
     projectionPath: normalizeNonEmptyString(scheduleInput.projectionPath, defaults.projectionPath),
@@ -503,6 +505,42 @@ function normalizeScheduleConfig(
       scheduleInput.staleOneShotRecoveryThresholdMs,
       defaults.staleOneShotRecoveryThresholdMs,
     ),
+    selfImprove: {
+      enabled: normalizeBoolean(selfImproveInput.enabled, defaults.selfImprove.enabled),
+      parentSessionId: normalizeNonEmptyString(
+        selfImproveInput.parentSessionId,
+        defaults.selfImprove.parentSessionId,
+      ),
+      intentId: normalizeNonEmptyString(selfImproveInput.intentId, defaults.selfImprove.intentId),
+      reason: normalizeNonEmptyString(selfImproveInput.reason, defaults.selfImprove.reason),
+      goalRef: normalizeNonEmptyString(selfImproveInput.goalRef, defaults.selfImprove.goalRef),
+      continuityMode: normalizeStrictStringEnum(
+        selfImproveInput.continuityMode,
+        defaults.selfImprove.continuityMode,
+        VALID_SCHEDULE_CONTINUITY_MODES,
+        "schedule.selfImprove.continuityMode",
+      ),
+      cron: normalizeNonEmptyString(selfImproveInput.cron, defaults.selfImprove.cron),
+      timeZone:
+        normalizeOptionalNonEmptyString(selfImproveInput.timeZone) ?? defaults.selfImprove.timeZone,
+      maxRuns: normalizePositiveInteger(selfImproveInput.maxRuns, defaults.selfImprove.maxRuns),
+      taskSpec: {
+        goal: normalizeNonEmptyString(
+          isRecord(selfImproveInput.taskSpec) ? selfImproveInput.taskSpec.goal : undefined,
+          defaults.selfImprove.taskSpec.goal,
+        ),
+        expectedBehavior:
+          normalizeOptionalNonEmptyString(
+            isRecord(selfImproveInput.taskSpec)
+              ? selfImproveInput.taskSpec.expectedBehavior
+              : undefined,
+          ) ?? defaults.selfImprove.taskSpec.expectedBehavior,
+        constraints: normalizeStringArray(
+          isRecord(selfImproveInput.taskSpec) ? selfImproveInput.taskSpec.constraints : undefined,
+          defaults.selfImprove.taskSpec.constraints ?? [],
+        ),
+      },
+    },
   };
 }
 
