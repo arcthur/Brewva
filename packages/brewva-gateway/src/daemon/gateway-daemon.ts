@@ -63,6 +63,7 @@ import {
 } from "./session-backend.js";
 import { SessionSupervisor } from "./session-supervisor.js";
 import {
+  deriveSessionStatusSeedFromLifecycleSnapshot,
   deriveSessionStatusSeedFromFrame,
   deriveSessionStatusSeedFromHistory,
   sameSessionStatusSeed,
@@ -1915,6 +1916,19 @@ export class GatewayDaemon {
     }
   }
 
+  private async querySessionLifecycleSeed(sessionId: string): Promise<SessionStatusSeed | null> {
+    try {
+      const lifecycle = await this.supervisor.querySessionLifecycle(sessionId);
+      return lifecycle ? deriveSessionStatusSeedFromLifecycleSnapshot(lifecycle) : null;
+    } catch (error) {
+      this.logger.warn("session lifecycle query failed", {
+        sessionId,
+        error: toErrorMessage(error),
+      });
+      return null;
+    }
+  }
+
   private async buildSessionStatusFrameForSession(input: {
     sessionId: string;
     state: SessionWireStatusState;
@@ -2069,8 +2083,10 @@ export class GatewayDaemon {
         !this.pendingSessionStatusBySession.has(normalizedSessionId)
       ) {
         const statusRevision = this.sessionStatusRevisionBySession.get(normalizedSessionId) ?? 0;
+        const lifecycleSeed = await this.querySessionLifecycleSeed(normalizedSessionId);
         const statusSeed =
           this.sessionStatusBySession.get(normalizedSessionId) ??
+          lifecycleSeed ??
           deriveSessionStatusSeedFromHistory(
             normalizedSessionId,
             [

@@ -175,6 +175,7 @@ export function createSessionBackendStub(overrides: Partial<SessionBackend> = {}
     listWorkers: (): SessionWorkerInfo[] => [],
     querySessionWire: async () => [],
     querySessionContextPressure: async (): Promise<ContextPressureView | undefined> => undefined,
+    querySessionLifecycle: async () => undefined,
     ...overrides,
   };
 }

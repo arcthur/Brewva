@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
+  HostedTransitionGateError,
+  TURN_TRANSITION_TEST_ONLY,
   getHostedTurnTransitionCoordinator,
   projectHostedTransitionSnapshot,
   recordSessionTurnTransition,
@@ -151,9 +153,21 @@ describe("hosted turn transition coordinator", () => {
     recordSessionTurnTransition(runtime, {
       sessionId,
       reason: "compaction_retry",
+      status: "entered",
+      attempt: 1,
+    });
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "compaction_retry",
       status: "failed",
       attempt: 1,
       error: "resume failed",
+    });
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "compaction_retry",
+      status: "entered",
+      attempt: 2,
     });
     recordSessionTurnTransition(runtime, {
       sessionId,
@@ -165,16 +179,28 @@ describe("hosted turn transition coordinator", () => {
     recordSessionTurnTransition(runtime, {
       sessionId,
       reason: "compaction_retry",
+      status: "entered",
+      attempt: 3,
+    });
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "compaction_retry",
       status: "failed",
       attempt: 3,
       error: "resume failed",
     });
 
     let snapshot = coordinator.getSnapshot(sessionId);
-    expect(snapshot.sequence).toBe(3);
+    expect(snapshot.sequence).toBe(6);
     expect(snapshot.consecutiveFailuresByReason.compaction_retry).toBe(3);
     expect(snapshot.breakerOpenByReason.compaction_retry).toBe(true);
 
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "compaction_retry",
+      status: "entered",
+      attempt: 4,
+    });
     recordSessionTurnTransition(runtime, {
       sessionId,
       reason: "compaction_retry",
@@ -183,7 +209,7 @@ describe("hosted turn transition coordinator", () => {
     });
 
     snapshot = coordinator.getSnapshot(sessionId);
-    expect(snapshot.sequence).toBe(4);
+    expect(snapshot.sequence).toBe(8);
     expect(snapshot.consecutiveFailuresByReason.compaction_retry).toBe(0);
     expect(snapshot.breakerOpenByReason.compaction_retry).toBe(false);
     expect(snapshot.latest).toMatchObject({
@@ -261,6 +287,12 @@ describe("hosted turn transition coordinator", () => {
     recordSessionTurnTransition(runtime, {
       sessionId,
       reason: "reasoning_revert_resume",
+      status: "entered",
+      sourceEventType: "reasoning_revert",
+    });
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "reasoning_revert_resume",
       status: "completed",
       sourceEventType: "reasoning_revert",
     });
@@ -294,6 +326,12 @@ describe("hosted turn transition coordinator", () => {
     recordSessionTurnTransition(runtime, {
       sessionId,
       reason: "compaction_retry",
+      status: "entered",
+      attempt: 1,
+    });
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "compaction_retry",
       status: "failed",
       attempt: 1,
       error: "resume failed",
@@ -315,6 +353,12 @@ describe("hosted turn transition coordinator", () => {
     recordSessionTurnTransition(runtime, {
       sessionId,
       reason: "provider_fallback_retry",
+      status: "entered",
+      attempt: 2,
+    });
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "provider_fallback_retry",
       status: "failed",
       attempt: 2,
       error: "provider failed",
@@ -323,8 +367,292 @@ describe("hosted turn transition coordinator", () => {
     const transitions = runtime.inspect.events.queryStructured(sessionId, {
       type: "session_turn_transition",
     });
-    expect(transitions).toHaveLength(2);
+    expect(transitions).toHaveLength(4);
     expect(transitions[0]?.turn).toBe(7);
-    expect(transitions[1]?.turn).toBeUndefined();
+    expect(transitions[1]?.turn).toBe(7);
+    expect(transitions[2]?.turn).toBeUndefined();
+    expect(transitions[3]?.turn).toBeUndefined();
+  });
+
+  test("rejects duplicate entered transitions for an already active reason", () => {
+    const runtime = createRuntimeFixture();
+    const sessionId = "turn-transition-duplicate-entered";
+
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "compaction_retry",
+      status: "entered",
+    });
+
+    expect(() => {
+      recordSessionTurnTransition(runtime, {
+        sessionId,
+        reason: "compaction_retry",
+        status: "entered",
+      });
+    }).toThrow(HostedTransitionGateError);
+
+    const transitions = runtime.inspect.events.queryStructured(sessionId, {
+      type: "session_turn_transition",
+    });
+    expect(transitions).toHaveLength(1);
+  });
+
+  test("rejects completed transitions when no active entered transition exists", () => {
+    const runtime = createRuntimeFixture();
+    const sessionId = "turn-transition-missing-entered";
+
+    expect(() => {
+      recordSessionTurnTransition(runtime, {
+        sessionId,
+        reason: "provider_fallback_retry",
+        status: "completed",
+      });
+    }).toThrow(HostedTransitionGateError);
+
+    const transitions = runtime.inspect.events.queryStructured(sessionId, {
+      type: "session_turn_transition",
+    });
+    expect(transitions).toHaveLength(0);
+  });
+
+  test("rejects reason and family mismatches at the transition gate", () => {
+    const runtime = createRuntimeFixture();
+    const sessionId = "turn-transition-family-mismatch";
+
+    expect(() => {
+      recordSessionTurnTransition(runtime, {
+        sessionId,
+        reason: "effect_commitment_pending",
+        family: "recovery",
+        status: "entered",
+      });
+    }).toThrow(HostedTransitionGateError);
+
+    const transitions = runtime.inspect.events.queryStructured(sessionId, {
+      type: "session_turn_transition",
+    });
+    expect(transitions).toHaveLength(0);
+  });
+
+  test("rejects new entered transitions after the session has closed", () => {
+    const runtime = createRuntimeFixture();
+    const sessionId = "turn-transition-after-close";
+
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      type: "session_shutdown",
+      payload: {
+        reason: "host_closed",
+      },
+    });
+
+    expect(runtime.inspect.lifecycle.getSnapshot(sessionId).summary.kind).toBe("closed");
+    expect(() => {
+      recordSessionTurnTransition(runtime, {
+        sessionId,
+        reason: "compaction_retry",
+        status: "entered",
+      });
+    }).toThrow(HostedTransitionGateError);
+
+    const transitions = runtime.inspect.events.queryStructured(sessionId, {
+      type: "session_turn_transition",
+    });
+    expect(transitions).toHaveLength(0);
+  });
+
+  test("rebuilds gate state from persisted transitions when live event subscriptions are unavailable", () => {
+    const runtime = createRuntimeFixture();
+    const sessionId = "turn-transition-persisted-rebuild";
+
+    Object.assign(runtime.inspect.events, {
+      subscribe() {
+        return () => undefined;
+      },
+    });
+
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "compaction_retry",
+      status: "entered",
+      sourceEventId: "compact-1",
+      sourceEventType: "session_compact",
+    });
+
+    expect(() => {
+      recordSessionTurnTransition(runtime, {
+        sessionId,
+        reason: "compaction_retry",
+        status: "completed",
+        sourceEventId: "compact-1",
+        sourceEventType: "session_compact",
+      });
+    }).not.toThrow();
+
+    const transitions = runtime.inspect.events.queryStructured(sessionId, {
+      type: "session_turn_transition",
+    });
+    expect(transitions).toHaveLength(2);
+    expect(transitions.map((event) => event.payload)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason: "compaction_retry",
+          status: "entered",
+          sourceEventId: "compact-1",
+        }),
+        expect.objectContaining({
+          reason: "compaction_retry",
+          status: "completed",
+          sourceEventId: "compact-1",
+        }),
+      ]),
+    );
+  });
+
+  test("hydrates transition state once and folds newly recorded events incrementally", () => {
+    const runtime = createRuntimeFixture();
+    const sessionId = "turn-transition-hydrate-once";
+    let queryStructuredCalls = 0;
+    const originalQueryStructured = runtime.inspect.events.queryStructured;
+    Object.assign(runtime.inspect.events, {
+      queryStructured(
+        querySessionId: string,
+        query?: Parameters<typeof originalQueryStructured>[1],
+      ) {
+        queryStructuredCalls += 1;
+        return originalQueryStructured(querySessionId, query);
+      },
+    });
+
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "compaction_retry",
+      status: "entered",
+    });
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "compaction_retry",
+      status: "completed",
+    });
+
+    expect(queryStructuredCalls).toBe(1);
+  });
+
+  test("checks for terminal shutdown receipts without rebuilding the lifecycle aggregate", () => {
+    const runtime = createRuntimeFixture();
+    const sessionId = "turn-transition-shutdown-query";
+
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      type: "session_shutdown",
+      payload: {
+        reason: "host_closed",
+      },
+    });
+
+    Object.assign(runtime.inspect.lifecycle, {
+      getSnapshot() {
+        throw new Error("lifecycle snapshot should not be consulted for entered gate checks");
+      },
+    });
+
+    expect(() => {
+      recordSessionTurnTransition(runtime, {
+        sessionId,
+        reason: "compaction_retry",
+        status: "entered",
+      });
+    }).toThrow(HostedTransitionGateError);
+  });
+
+  test("flushes all corrupted reason-level active transition keys on completion", () => {
+    const state = TURN_TRANSITION_TEST_ONLY.createEmptyState();
+    state.hydrated = true;
+
+    TURN_TRANSITION_TEST_ONLY.foldTransition(state, {
+      reason: "compaction_gate_blocked",
+      status: "entered",
+      sequence: 1,
+      family: "context",
+      attempt: null,
+      sourceEventId: "compact-1",
+      sourceEventType: "context_compaction_gate_blocked_tool",
+      error: null,
+      breakerOpen: false,
+      model: null,
+    });
+    TURN_TRANSITION_TEST_ONLY.foldTransition(state, {
+      reason: "compaction_gate_blocked",
+      status: "entered",
+      sequence: 2,
+      family: "context",
+      attempt: null,
+      sourceEventId: "compact-2",
+      sourceEventType: "context_compaction_gate_blocked_tool",
+      error: null,
+      breakerOpen: false,
+      model: null,
+    });
+    TURN_TRANSITION_TEST_ONLY.foldTransition(state, {
+      reason: "compaction_gate_blocked",
+      status: "completed",
+      sequence: 3,
+      family: "context",
+      attempt: null,
+      sourceEventId: "compact-clear",
+      sourceEventType: "context_compaction_gate_cleared",
+      error: null,
+      breakerOpen: false,
+      model: null,
+    });
+
+    expect(state.activeTransitionKeys.size).toBe(0);
+    expect(state.activeReasonCounts.compaction_gate_blocked).toBeUndefined();
+    expect(state.pendingFamily).toBeNull();
+  });
+
+  test("maps pending parent-turn delegation outcomes into delegation transitions", () => {
+    const runtime = createRuntimeFixture();
+    const sessionId = "turn-transition-pending-delegation";
+    const coordinator = getHostedTurnTransitionCoordinator(runtime);
+
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      turn: 9,
+      type: "subagent_completed",
+      payload: {
+        runId: "run-pending-1",
+        delegate: "review",
+        status: "completed",
+        summary: "Waiting for the parent turn to consume the delegation outcome.",
+        deliveryMode: "text_only",
+        deliveryHandoffState: "pending_parent_turn",
+        deliveryReadyAt: 9,
+        deliveryUpdatedAt: 9,
+      },
+    });
+
+    expect(coordinator.getSnapshot(sessionId).pendingFamily).toBe("delegation");
+
+    expect(() => {
+      recordSessionTurnTransition(runtime, {
+        sessionId,
+        turn: 10,
+        reason: "subagent_delivery_pending",
+        status: "completed",
+        family: "delegation",
+      });
+    }).not.toThrow();
+
+    const transitions = runtime.inspect.events.queryStructured(sessionId, {
+      type: "session_turn_transition",
+    });
+    expect(transitions).toHaveLength(1);
+    expect(transitions[0]?.payload).toMatchObject({
+      reason: "subagent_delivery_pending",
+      status: "completed",
+      family: "delegation",
+    });
   });
 });

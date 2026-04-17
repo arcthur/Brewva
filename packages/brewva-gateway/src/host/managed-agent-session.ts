@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
-import type { SessionWireFrame } from "@brewva/brewva-runtime";
+import type { SessionLifecycleSnapshot, SessionWireFrame } from "@brewva/brewva-runtime";
 import {
   DEFAULT_CONTEXT_STATE,
   advanceSessionPhaseResult,
   buildBrewvaSystemPrompt,
   buildBrewvaPromptText,
+  canTransitionSessionPhase,
   cloneBrewvaPromptContentParts,
   createBrewvaHostPluginRunner,
   expandBrewvaPromptTemplate,
@@ -41,6 +42,7 @@ import {
 import {
   deriveSessionPhaseFromRuntimeFactFrame,
   deriveSessionPhaseFromRuntimeFactHistory,
+  type RuntimeFactSessionPhaseProjection,
 } from "../session/session-phase-runtime-facts.js";
 import {
   createHostedAgentEngine,
@@ -57,6 +59,7 @@ import {
   type BrewvaAgentEngineToolResultMessage,
   type BrewvaAgentEngineTransport,
 } from "./hosted-agent-engine.js";
+import type { HostedSessionLogger } from "./logger.js";
 
 export interface BrewvaManagedAgentSessionSettingsPort {
   getQuietStartup(): boolean;
@@ -81,6 +84,7 @@ export interface CreateBrewvaManagedAgentSessionOptions {
   initialModel?: BrewvaRegisteredModel;
   initialThinkingLevel?: BrewvaPromptThinkingLevel;
   ui?: BrewvaToolUiPort;
+  logger?: HostedSessionLogger;
 }
 
 type PendingQueuedItem =
@@ -110,6 +114,7 @@ export interface ManagedAgentSessionStore extends ManagedAgentSessionStoreCore {
   querySessionWire?(): SessionWireFrame[];
   dispose?(): void;
   readContextState?(): ContextState;
+  readLifecycle?(): SessionLifecycleSnapshot | undefined;
   previewCompaction(
     summary: string,
     tokensBefore: number,
@@ -355,6 +360,73 @@ function inferRecoveryCrashPoint(
       return "tool_executing";
     default:
       return "wal_append";
+  }
+}
+
+function deriveSessionPhaseFromLifecycleSnapshot(
+  snapshot: SessionLifecycleSnapshot,
+  fallbackTurn: number,
+): RuntimeFactSessionPhaseProjection | null {
+  const resolvedTurn = fallbackTurn > 0 ? fallbackTurn : 1;
+  switch (snapshot.execution.kind) {
+    case "idle":
+      return {
+        phase: { kind: "idle" },
+      };
+    case "tool_executing": {
+      const toolCallId = snapshot.execution.toolCallId;
+      const toolName = snapshot.execution.toolName;
+      const toolExecutionTurn =
+        snapshot.tooling.openToolCalls.find((record) => record.toolCallId === toolCallId)?.turn ??
+        resolvedTurn;
+      return {
+        phase: {
+          kind: "tool_executing",
+          toolCallId,
+          toolName,
+          turn: toolExecutionTurn,
+        },
+      };
+    }
+    case "waiting_approval": {
+      if (!snapshot.execution.toolCallId || !snapshot.execution.toolName) {
+        return null;
+      }
+      return {
+        phase: {
+          kind: "waiting_approval",
+          requestId:
+            snapshot.execution.requestId ?? `transition:${snapshot.execution.reason ?? "approval"}`,
+          toolCallId: snapshot.execution.toolCallId,
+          toolName: snapshot.execution.toolName,
+          turn: resolvedTurn,
+        },
+        reason: snapshot.execution.reason ?? undefined,
+        detail: snapshot.execution.detail ?? undefined,
+      };
+    }
+    case "recovering":
+      return {
+        phase: {
+          kind: "recovering",
+          recoveryAnchor: snapshot.execution.reason
+            ? `transition:${snapshot.execution.reason}`
+            : undefined,
+          turn: resolvedTurn,
+        },
+        reason: snapshot.execution.reason ?? undefined,
+        detail: snapshot.execution.detail ?? undefined,
+      };
+    case "terminated":
+      return {
+        phase: {
+          kind: "terminated",
+          reason: "host_closed",
+        },
+        reason: snapshot.execution.reason ?? undefined,
+      };
+    default:
+      return null;
   }
 }
 
@@ -606,6 +678,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
   #turnIndex = 0;
   #turnStartTimestamp = 0;
   #contextState: ContextState = { ...DEFAULT_CONTEXT_STATE };
+  readonly #logger: HostedSessionLogger | null;
 
   constructor(input: {
     cwd: string;
@@ -617,6 +690,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     runner: BrewvaHostPluginRunner;
     agent: BrewvaAgentEngine;
     ui?: BrewvaToolUiPort;
+    logger?: HostedSessionLogger;
   }) {
     this.#cwd = input.cwd;
     this.#settings = input.settings;
@@ -629,6 +703,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     this.#registeredTools = [...input.customTools];
     this.#runner = input.runner;
     this.#agent = input.agent;
+    this.#logger = input.logger ?? null;
   }
 
   static async create(
@@ -766,6 +841,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       runner,
       agent,
       ui: options.ui,
+      logger: options.logger,
     });
     await session.initialize();
     await session.emitSessionStart();
@@ -778,14 +854,22 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     if (restoredMessages.length > 0) {
       this.replaceMessages(restoredMessages);
     }
-    const runtimeFactHistory = this.sessionManager.querySessionWire?.();
-    if (runtimeFactHistory && runtimeFactHistory.length > 0) {
-      await this.reconcileSessionPhase(
-        deriveSessionPhaseFromRuntimeFactHistory(
-          this.sessionManager.getSessionId(),
-          runtimeFactHistory,
-        ).phase,
-      );
+    const lifecycleSnapshot = this.sessionManager.readLifecycle?.();
+    const lifecycleProjection = lifecycleSnapshot
+      ? deriveSessionPhaseFromLifecycleSnapshot(lifecycleSnapshot, this.resolvePhaseTurn())
+      : null;
+    if (lifecycleProjection) {
+      await this.reconcileSessionPhase(lifecycleProjection.phase);
+    } else {
+      const runtimeFactHistory = this.sessionManager.querySessionWire?.();
+      if (runtimeFactHistory && runtimeFactHistory.length > 0) {
+        await this.reconcileSessionPhase(
+          deriveSessionPhaseFromRuntimeFactHistory(
+            this.sessionManager.getSessionId(),
+            runtimeFactHistory,
+          ).phase,
+        );
+      }
     }
     this.#agent.subscribe(async (event) => {
       await this.handleAgentEvent(event);
@@ -1705,6 +1789,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     if (sameSessionPhase(previousPhase, nextPhase)) {
       return;
     }
+    this.warnOnIncompatibleReconciledSessionPhase(previousPhase, nextPhase);
     this.#sessionPhase = nextPhase;
     await this.#runner.emit(
       "session_phase_change",
@@ -1720,6 +1805,31 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       phase: nextPhase,
       previousPhase,
     });
+  }
+
+  private warnOnIncompatibleReconciledSessionPhase(
+    previousPhase: SessionPhase,
+    nextPhase: SessionPhase,
+  ): void {
+    const validationEvent = deriveCompatibilityValidationEvent(previousPhase, nextPhase);
+    if (!validationEvent) {
+      return;
+    }
+    if (canTransitionSessionPhase(previousPhase, validationEvent)) {
+      return;
+    }
+    const fields = {
+      validationEvent: validationEvent.type,
+      previousKind: previousPhase.kind,
+      nextKind: nextPhase.kind,
+      previousPhase,
+      nextPhase,
+    };
+    if (this.#logger) {
+      this.#logger.warn("managed_agent_session_phase_reconcile_mismatch", fields);
+      return;
+    }
+    console.warn("managed_agent_session_phase_reconcile_mismatch", fields);
   }
 
   private getSessionPhase(): SessionPhase {
@@ -1852,6 +1962,69 @@ function sameSessionPhase(left: SessionPhase, right: SessionPhase): boolean {
   }
 
   const exhaustive: never = left;
+  return exhaustive;
+}
+
+function deriveCompatibilityValidationEvent(
+  previousPhase: SessionPhase,
+  nextPhase: SessionPhase,
+): SessionPhaseEvent | null {
+  switch (nextPhase.kind) {
+    case "idle":
+      switch (previousPhase.kind) {
+        case "model_streaming":
+          return { type: "finish_model_stream" };
+        case "tool_executing":
+          return { type: "finish_tool_execution" };
+        case "waiting_approval":
+          return { type: "approval_resolved" };
+        case "recovering":
+          return { type: "finish_recovery" };
+        default:
+          return null;
+      }
+    case "model_streaming":
+      return {
+        type: "start_model_stream",
+        modelCallId: nextPhase.modelCallId,
+        turn: nextPhase.turn,
+      };
+    case "tool_executing":
+      return {
+        type: "start_tool_execution",
+        toolCallId: nextPhase.toolCallId,
+        toolName: nextPhase.toolName,
+        turn: nextPhase.turn,
+      };
+    case "waiting_approval":
+      return previousPhase.kind === "tool_executing"
+        ? {
+            type: "wait_for_approval",
+            requestId: nextPhase.requestId,
+          }
+        : null;
+    case "recovering":
+      return previousPhase.kind === "crashed"
+        ? {
+            type: "resume",
+          }
+        : null;
+    case "crashed":
+      return {
+        type: "crash",
+        crashAt: nextPhase.crashAt,
+        turn: nextPhase.turn,
+        recoveryAnchor: nextPhase.recoveryAnchor,
+        modelCallId: nextPhase.modelCallId,
+        toolCallId: nextPhase.toolCallId,
+      };
+    case "terminated":
+      return {
+        type: "terminate",
+        reason: nextPhase.reason,
+      };
+  }
+  const exhaustive: never = nextPhase;
   return exhaustive;
 }
 

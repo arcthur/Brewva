@@ -6,6 +6,7 @@ import {
   ROLLBACK_EVENT_TYPE,
   SESSION_SHUTDOWN_EVENT_TYPE,
   SESSION_TURN_TRANSITION_EVENT_TYPE,
+  SUBAGENT_COMPLETED_EVENT_TYPE,
   TURN_INPUT_RECORDED_EVENT_TYPE,
   TURN_RENDER_COMMITTED_EVENT_TYPE,
   type BrewvaStructuredEvent,
@@ -54,7 +55,8 @@ interface HostedSessionTransitionState {
   pendingFamily: HostedTransitionFamily | null;
   activeTurnNumber: number | null;
   activeAttemptSequence: number | null;
-  activeReasons: Partial<Record<TurnTransitionReason, true>>;
+  activeReasonCounts: Partial<Record<TurnTransitionReason, number>>;
+  activeTransitionKeys: Set<string>;
   operatorVisibleFactGeneration: number;
   consecutiveFailuresByReason: Partial<Record<BreakerManagedReason, number>>;
   breakerOpenByReason: Partial<Record<BreakerManagedReason, boolean>>;
@@ -88,6 +90,29 @@ export interface RecordSessionTurnTransitionInput {
   breakerOpen?: boolean;
   model?: string | null;
   turn?: number;
+}
+
+type HostedTransitionGateViolation =
+  | "duplicate_entered"
+  | "family_mismatch"
+  | "missing_active_transition"
+  | "session_closed";
+
+export class HostedTransitionGateError extends Error {
+  readonly name = "HostedTransitionGateError";
+
+  constructor(
+    message: string,
+    readonly details: {
+      sessionId: string;
+      reason: TurnTransitionReason;
+      status: HostedTransitionStatus;
+      family: HostedTransitionFamily;
+      violation: HostedTransitionGateViolation;
+    },
+  ) {
+    super(message);
+  }
 }
 
 export const HOSTED_TRANSITION_BREAKER_THRESHOLD = 3;
@@ -124,6 +149,12 @@ const ATTEMPT_SUPERSESSION_REASONS = new Set<TurnTransitionReason>([
   "provider_fallback_retry",
   "max_output_recovery",
   "reasoning_revert_resume",
+]);
+
+const REASON_LEVEL_COMPLETION_REASONS = new Set<TurnTransitionReason>([
+  "compaction_gate_blocked",
+  "effect_commitment_pending",
+  "subagent_delivery_pending",
 ]);
 
 function parseAttemptIdSequence(value: unknown): number | null {
@@ -167,7 +198,8 @@ function createEmptyState(): HostedSessionTransitionState {
     pendingFamily: null,
     activeTurnNumber: null,
     activeAttemptSequence: null,
-    activeReasons: {},
+    activeReasonCounts: {},
+    activeTransitionKeys: new Set<string>(),
     operatorVisibleFactGeneration: 0,
     consecutiveFailuresByReason: {},
     breakerOpenByReason: {},
@@ -185,6 +217,84 @@ function normalizeNumber(value: unknown): number | null {
 
 function normalizeBoolean(value: unknown): boolean {
   return value === true;
+}
+
+function resolveTransitionFamily(
+  input: Pick<RecordSessionTurnTransitionInput, "reason" | "family">,
+): HostedTransitionFamily {
+  return input.family ?? transitionReasonFamily[input.reason];
+}
+
+function hasPendingParentTurnDelegationHandoff(event: BrewvaStructuredEvent): boolean {
+  if (event.type !== SUBAGENT_COMPLETED_EVENT_TYPE) {
+    return false;
+  }
+  if (!event.payload || typeof event.payload !== "object" || Array.isArray(event.payload)) {
+    return false;
+  }
+  return (
+    (event.payload as { deliveryHandoffState?: unknown }).deliveryHandoffState ===
+    "pending_parent_turn"
+  );
+}
+
+function resolveTransitionActivityKey(input: {
+  reason: TurnTransitionReason;
+  sourceEventId: string | null;
+}): string {
+  return `${input.reason}::${input.sourceEventId ?? "__no_source__"}`;
+}
+
+function hasActiveTransitionKey(state: HostedSessionTransitionState, key: string): boolean {
+  return state.activeTransitionKeys.has(key);
+}
+
+function hasActiveReason(
+  state: HostedSessionTransitionState,
+  reason: TurnTransitionReason,
+): boolean {
+  return (state.activeReasonCounts[reason] ?? 0) > 0;
+}
+
+function incrementActiveReason(
+  state: HostedSessionTransitionState,
+  reason: TurnTransitionReason,
+): void {
+  state.activeReasonCounts[reason] = (state.activeReasonCounts[reason] ?? 0) + 1;
+}
+
+function decrementActiveReason(
+  state: HostedSessionTransitionState,
+  reason: TurnTransitionReason,
+): void {
+  const nextCount = (state.activeReasonCounts[reason] ?? 0) - 1;
+  if (nextCount > 0) {
+    state.activeReasonCounts[reason] = nextCount;
+    return;
+  }
+  delete state.activeReasonCounts[reason];
+}
+
+function releaseReasonLevelActiveTransition(
+  state: HostedSessionTransitionState,
+  reason: TurnTransitionReason,
+): void {
+  for (const key of state.activeTransitionKeys) {
+    if (!key.startsWith(`${reason}::`)) {
+      continue;
+    }
+    state.activeTransitionKeys.delete(key);
+    decrementActiveReason(state, reason);
+  }
+}
+
+function hasSessionShutdownReceipt(runtime: BrewvaHostedRuntimePort, sessionId: string): boolean {
+  return (
+    runtime.inspect.events.query(sessionId, {
+      type: SESSION_SHUTDOWN_EVENT_TYPE,
+      last: 1,
+    }).length > 0
+  );
 }
 
 function isTurnTransitionReason(value: unknown): value is TurnTransitionReason {
@@ -285,6 +395,23 @@ function foldObservedHostedTransitionEvent(
   if (operatorVisibleEventTypes.has(event.type)) {
     state.operatorVisibleFactGeneration += 1;
   }
+  if (
+    hasPendingParentTurnDelegationHandoff(event as BrewvaStructuredEvent) &&
+    !hasActiveReason(state, "subagent_delivery_pending")
+  ) {
+    foldTransition(state, {
+      reason: "subagent_delivery_pending",
+      status: "entered",
+      sequence: state.sequence,
+      family: "delegation",
+      attempt: null,
+      sourceEventId: null,
+      sourceEventType: event.type,
+      error: null,
+      breakerOpen: false,
+      model: null,
+    });
+  }
   if (event.type !== SESSION_TURN_TRANSITION_EVENT_TYPE) {
     return state;
   }
@@ -299,22 +426,37 @@ function foldTransition(
   state: HostedSessionTransitionState,
   payload: SessionTurnTransitionPayload,
 ): HostedSessionTransitionState {
+  const activityKey = resolveTransitionActivityKey({
+    reason: payload.reason,
+    sourceEventId: payload.sourceEventId,
+  });
   state.sequence = Math.max(state.sequence, payload.sequence);
   state.latest = { ...payload };
   if (payload.status === "entered" && ATTEMPT_SUPERSESSION_REASONS.has(payload.reason)) {
     state.activeAttemptSequence = (state.activeAttemptSequence ?? 1) + 1;
   }
   if (payload.status === "entered") {
-    state.activeReasons[payload.reason] = true;
+    if (!hasActiveTransitionKey(state, activityKey)) {
+      state.activeTransitionKeys.add(activityKey);
+      incrementActiveReason(state, payload.reason);
+    }
     state.pendingFamily = payload.family;
   } else {
-    delete state.activeReasons[payload.reason];
+    if (hasActiveTransitionKey(state, activityKey)) {
+      state.activeTransitionKeys.delete(activityKey);
+      decrementActiveReason(state, payload.reason);
+    } else if (
+      REASON_LEVEL_COMPLETION_REASONS.has(payload.reason) &&
+      hasActiveReason(state, payload.reason)
+    ) {
+      releaseReasonLevelActiveTransition(state, payload.reason);
+    }
     if (
       state.pendingFamily === payload.family &&
-      !Object.keys(state.activeReasons).some((reason) => {
+      !Object.keys(state.activeReasonCounts).some((reason) => {
         const typedReason = reason as TurnTransitionReason;
         return (
-          state.activeReasons[typedReason] === true &&
+          hasActiveReason(state, typedReason) &&
           transitionReasonFamily[typedReason] === payload.family
         );
       })
@@ -339,6 +481,89 @@ function foldTransition(
   }
 
   return state;
+}
+
+function buildTransitionGateError(input: {
+  sessionId: string;
+  reason: TurnTransitionReason;
+  status: HostedTransitionStatus;
+  family: HostedTransitionFamily;
+  violation: HostedTransitionGateViolation;
+  detail: string;
+}): HostedTransitionGateError {
+  return new HostedTransitionGateError(
+    `hosted_turn_transition_gate_reject:${input.violation}:${input.reason}:${input.status}:${input.detail}`,
+    {
+      sessionId: input.sessionId,
+      reason: input.reason,
+      status: input.status,
+      family: input.family,
+      violation: input.violation,
+    },
+  );
+}
+
+function assertRecordableHostedTransition(
+  runtime: BrewvaHostedRuntimePort,
+  state: HostedSessionTransitionState,
+  input: RecordSessionTurnTransitionInput,
+): HostedTransitionFamily {
+  const expectedFamily = transitionReasonFamily[input.reason];
+  const family = resolveTransitionFamily(input);
+  const activityKey = resolveTransitionActivityKey({
+    reason: input.reason,
+    sourceEventId: input.sourceEventId ?? null,
+  });
+  if (family !== expectedFamily) {
+    throw buildTransitionGateError({
+      sessionId: input.sessionId,
+      reason: input.reason,
+      status: input.status,
+      family,
+      violation: "family_mismatch",
+      detail: `expected=${expectedFamily},actual=${family}`,
+    });
+  }
+
+  if (input.status === "entered") {
+    if (hasActiveTransitionKey(state, activityKey)) {
+      throw buildTransitionGateError({
+        sessionId: input.sessionId,
+        reason: input.reason,
+        status: input.status,
+        family,
+        violation: "duplicate_entered",
+        detail: "reason_already_active",
+      });
+    }
+    if (hasSessionShutdownReceipt(runtime, input.sessionId)) {
+      throw buildTransitionGateError({
+        sessionId: input.sessionId,
+        reason: input.reason,
+        status: input.status,
+        family,
+        violation: "session_closed",
+        detail: "summary_kind=closed",
+      });
+    }
+  }
+
+  if (
+    (input.status === "completed" || input.status === "failed") &&
+    !hasActiveTransitionKey(state, activityKey) &&
+    !(REASON_LEVEL_COMPLETION_REASONS.has(input.reason) && hasActiveReason(state, input.reason))
+  ) {
+    throw buildTransitionGateError({
+      sessionId: input.sessionId,
+      reason: input.reason,
+      status: input.status,
+      family,
+      violation: "missing_active_transition",
+      detail: "reason_not_active",
+    });
+  }
+
+  return family;
 }
 
 class HostedTurnTransitionCoordinator {
@@ -401,8 +626,24 @@ class HostedTurnTransitionCoordinator {
       return;
     }
 
+    if (hasPendingParentTurnDelegationHandoff(event)) {
+      if (hasActiveReason(state, "subagent_delivery_pending")) {
+        return;
+      }
+      this.record({
+        sessionId: event.sessionId,
+        turn: event.turn,
+        reason: "subagent_delivery_pending",
+        status: "entered",
+        family: "delegation",
+        sourceEventId: event.id,
+        sourceEventType: event.type,
+      });
+      return;
+    }
+
     if (event.type === CONTEXT_COMPACTION_GATE_BLOCKED_TOOL_EVENT_TYPE) {
-      if (state.activeReasons.compaction_gate_blocked === true) {
+      if (hasActiveReason(state, "compaction_gate_blocked")) {
         return;
       }
       this.record({
@@ -418,7 +659,7 @@ class HostedTurnTransitionCoordinator {
     }
 
     if (event.type === "context_compaction_gate_cleared") {
-      if (state.activeReasons.compaction_gate_blocked !== true) {
+      if (!hasActiveReason(state, "compaction_gate_blocked")) {
         return;
       }
       this.record({
@@ -434,7 +675,7 @@ class HostedTurnTransitionCoordinator {
     }
 
     if (event.type === EFFECT_COMMITMENT_APPROVAL_REQUESTED_EVENT_TYPE) {
-      if (state.activeReasons.effect_commitment_pending === true) {
+      if (hasActiveReason(state, "effect_commitment_pending")) {
         return;
       }
       this.record({
@@ -450,7 +691,7 @@ class HostedTurnTransitionCoordinator {
     }
 
     if (event.type === EFFECT_COMMITMENT_APPROVAL_DECIDED_EVENT_TYPE) {
-      if (state.activeReasons.effect_commitment_pending !== true) {
+      if (!hasActiveReason(state, "effect_commitment_pending")) {
         return;
       }
       this.record({
@@ -491,9 +732,9 @@ class HostedTurnTransitionCoordinator {
 
   record(input: RecordSessionTurnTransitionInput): void {
     const state = this.getState(input.sessionId);
-    const family = input.family ?? transitionReasonFamily[input.reason];
+    const family = assertRecordableHostedTransition(this.runtime, state, input);
     const sequence = state.sequence + 1;
-    recordRuntimeEvent(this.runtime, {
+    const recordedEvent = recordRuntimeEvent(this.runtime, {
       sessionId: input.sessionId,
       turn: resolveActiveHostedTurn(state, input.turn),
       type: SESSION_TURN_TRANSITION_EVENT_TYPE,
@@ -510,6 +751,13 @@ class HostedTurnTransitionCoordinator {
         model: input.model ?? null,
       } satisfies SessionTurnTransitionPayload,
     });
+    if (recordedEvent === undefined || state.sequence >= sequence) {
+      return;
+    }
+    foldObservedHostedTransitionEvent(
+      state,
+      this.runtime.inspect.events.toStructured(recordedEvent),
+    );
   }
 
   dispose(): void {
@@ -550,9 +798,12 @@ export function projectHostedTransitionSnapshot(
 }
 
 export const TURN_TRANSITION_TEST_ONLY = {
+  assertRecordableHostedTransition,
+  buildTransitionGateError,
   createEmptyState,
   foldObservedHostedTransitionEvent,
   foldTransition,
   projectHostedTransitionSnapshot,
   readTransitionPayload,
+  resolveTransitionFamily,
 };

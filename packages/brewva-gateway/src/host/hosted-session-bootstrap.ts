@@ -59,6 +59,7 @@ import {
   type HostedSessionReadToolOptions,
   type HostedSessionSettingsView,
 } from "./hosted-session-driver.js";
+import type { HostedSessionLogger } from "./logger.js";
 import { DEFAULT_HOSTED_ROUTING_SCOPES } from "./routing-defaults.js";
 import { createHostedSemanticReranker } from "./semantic-reranker.js";
 
@@ -82,6 +83,7 @@ export interface CreateHostedSessionOptions extends RuntimeCreateBrewvaSessionOp
   scopeId?: string;
   sessionId?: string;
   ui?: BrewvaToolUiPort;
+  logger?: HostedSessionLogger;
 }
 
 interface HostedEnvironment {
@@ -636,6 +638,7 @@ function createHostedOrchestration(input: {
         contextProfile: childOptions.contextProfile,
         routingScopes: options.routingScopes,
         scopeId: options.scopeId,
+        logger: options.logger,
       }),
   });
   return {
@@ -806,6 +809,7 @@ export async function createHostedSession(
     customTools,
     sessionId: options.sessionId,
     ui: options.ui,
+    logger: options.logger,
   });
   activeSemanticModel =
     toRegisteredSemanticModel(

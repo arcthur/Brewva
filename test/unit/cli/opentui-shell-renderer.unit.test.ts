@@ -21,6 +21,30 @@ import { BrewvaOpenTuiShell } from "../../../packages/brewva-cli/runtime/opentui
 import { CliShellController } from "../../../packages/brewva-cli/src/shell/controller.js";
 import type { CliShellSessionBundle } from "../../../packages/brewva-cli/src/shell/types.js";
 
+async function waitForRenderedFrame(
+  testSetup: Awaited<ReturnType<typeof openTuiSolidTestRender>>,
+  input: {
+    predicate(frame: string): boolean;
+    attempts?: number;
+    settleMs?: number;
+  },
+): Promise<string> {
+  let frame = "";
+  const attempts = input.attempts ?? 8;
+  const settleMs = input.settleMs ?? 20;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    await testSetup.renderOnce();
+    frame = testSetup.captureCharFrame();
+    if (input.predicate(frame)) {
+      return frame;
+    }
+    await openTuiSolidAct(async () => {
+      await Bun.sleep(settleMs);
+    });
+  }
+  return frame;
+}
+
 function createFakeBundle(
   options: {
     approvals?: number;
@@ -211,9 +235,12 @@ describe("opentui solid shell runtime", () => {
       await openTuiSolidAct(async () => {
         await Bun.sleep(CliShellController.STATUS_DEBOUNCE_MS + 20);
       });
-      await testSetup.renderOnce();
-      await testSetup.renderOnce();
-      const frame = testSetup.captureCharFrame();
+      const frame = await waitForRenderedFrame(testSetup, {
+        predicate: (candidate) =>
+          candidate.includes("▣ Brewva") &&
+          candidate.includes("Hello from Brewva") &&
+          candidate.includes("/insights"),
+      });
       expect(frame).toContain("▣ Brewva");
       expect(frame).toContain("Hello from Brewva");
       expect(frame).toContain("warning");

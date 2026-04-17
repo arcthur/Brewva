@@ -1,6 +1,5 @@
 import {
   REASONING_REVERT_EVENT_TYPE,
-  SESSION_TURN_TRANSITION_EVENT_TYPE,
   type BrewvaRuntime,
   type ReasoningRevertRecord,
 } from "@brewva/brewva-runtime";
@@ -114,40 +113,21 @@ function readReasoningRevertResumeStatus(
   sessionId: string,
   revertEventId: string,
 ): ReasoningRevertResumeStatus | null {
-  let latestSequence = -1;
-  let latestStatus: ReasoningRevertResumeStatus | null = null;
-  for (const event of runtime.inspect.events.query(sessionId, {
-    type: SESSION_TURN_TRANSITION_EVENT_TYPE,
-  })) {
-    const payload =
-      event.payload && typeof event.payload === "object" && !Array.isArray(event.payload)
-        ? (event.payload as {
-            sequence?: unknown;
-            reason?: unknown;
-            status?: unknown;
-            sourceEventId?: unknown;
-          })
-        : undefined;
-    if (
-      payload?.reason !== "reasoning_revert_resume" ||
-      payload.sourceEventId !== revertEventId ||
-      (payload.status !== "entered" &&
-        payload.status !== "completed" &&
-        payload.status !== "failed" &&
-        payload.status !== "skipped")
-    ) {
-      continue;
-    }
-    const sequence =
-      typeof payload.sequence === "number" && Number.isFinite(payload.sequence)
-        ? payload.sequence
-        : -1;
-    if (sequence >= latestSequence) {
-      latestSequence = sequence;
-      latestStatus = payload.status;
-    }
+  const transition = runtime.inspect.lifecycle
+    .getSnapshot(sessionId)
+    .recovery.recentTransitions.find(
+      (candidate) =>
+        candidate.reason === "reasoning_revert_resume" && candidate.sourceEventId === revertEventId,
+    );
+  if (
+    transition?.status === "entered" ||
+    transition?.status === "completed" ||
+    transition?.status === "failed" ||
+    transition?.status === "skipped"
+  ) {
+    return transition.status;
   }
-  return latestStatus;
+  return null;
 }
 
 function resolvePendingReasoningRevert(

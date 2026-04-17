@@ -389,6 +389,53 @@ Mutation of WAL rows is not part of the public runtime contract.
   on the inspect surface, while the admitted prompt block carries only the
   history rewrite itself.
 
+### `inspect.lifecycle`
+
+- `getSnapshot(sessionId)`
+
+`inspect.lifecycle` is the runtime-owned aggregate lifecycle contract.
+
+It is a read model, not a second durable truth source. The snapshot composes
+replay-owned domain state plus approved lifecycle helpers so runtime, gateway,
+and host consumers can get one posture answer for the same durable trace.
+
+Stable axes:
+
+- `hydration`
+  - current hydration state plus hydration-local integrity issues
+- `execution`
+  - `idle | model_streaming | tool_executing | waiting_approval | recovering | terminated`
+- `recovery`
+  - recovery posture plus transition provenance and recent hosted transition
+    history
+- `skill`
+  - `none | active | repair_required` plus active skill details when present
+- `approval`
+  - pending approval summary for lifecycle and adapter use
+- `tooling`
+  - replay-owned open tool call view
+- `integrity`
+  - aggregate integrity status
+- `summary`
+  - `cold | active | idle | blocked | recovering | degraded | closed`
+
+Stable rules:
+
+- the snapshot is exported through `SessionLifecycleSnapshot` and is part of
+  the public runtime contract
+- production projection composes hydrated domain reducers, recovery posture,
+  approval state, open tool-call state, hosted transition provenance, and
+  runtime-owned session-wire facts
+- it does not introduce a parallel raw-event production reducer and it does
+  not replace tape, receipts, or Recovery WAL as authority
+- adapters should read `summary` first, then axis-specific detail only when the
+  local surface genuinely needs more precision
+- host-local `SessionPhase` remains a controller FSM for interaction and UI
+  orchestration; it does not outrank the runtime lifecycle snapshot
+- there is currently no separate public lifecycle subscription surface;
+  long-lived transport products still compose live behavior through
+  `inspect.sessionWire`, local cache, and runtime events
+
 ### `inspect.reasoning`
 
 - `getActiveState(sessionId)`

@@ -277,6 +277,7 @@ async function createHostedLocalSessionResult(input: {
       runtimePlugins: input.services.runtimePlugins,
       customTools,
       ui: input.options.ui,
+      logger: input.options.logger,
       initialModel: sessionResolution.model,
       initialThinkingLevel: thinkingLevel,
     }),

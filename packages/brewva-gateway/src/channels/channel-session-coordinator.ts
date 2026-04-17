@@ -5,7 +5,7 @@ import { ConversationBindingStore } from "../conversations/binding-store.js";
 import { createHostedSession, type HostedSessionResult } from "../host/create-hosted-session.js";
 import { waitForAllSettledWithTimeout } from "../utils/async.js";
 import { toErrorMessage } from "../utils/errors.js";
-import { ensureSessionShutdownRecorded } from "../utils/runtime.js";
+import { recordSessionShutdownIfMissing } from "../utils/runtime.js";
 import { AgentRegistry } from "./agent-registry.js";
 import { AgentRuntimeManager } from "./agent-runtime-manager.js";
 import type { AgentSessionUsage } from "./eviction.js";
@@ -243,7 +243,11 @@ export function createChannelSessionCoordinator(input: {
     } catch {
       // Best effort abort for shutdown and deletion cleanup.
     }
-    ensureSessionShutdownRecorded(inputState.runtime, inputState.agentSessionId);
+    recordSessionShutdownIfMissing(inputState.runtime, {
+      sessionId: inputState.agentSessionId,
+      reason: "coordinator_cleanup",
+      source: "channel_session_coordinator",
+    });
     try {
       inputState.runtime.maintain.session.clearState(inputState.agentSessionId);
     } catch {

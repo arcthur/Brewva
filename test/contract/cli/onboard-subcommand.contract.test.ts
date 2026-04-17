@@ -1,15 +1,34 @@
 import { describe, expect, test } from "bun:test";
-import { spawnSync, type SpawnSyncReturns } from "node:child_process";
-import { resolve } from "node:path";
+import { runOnboardCli } from "@brewva/brewva-cli";
 
 type JsonObject = Record<string, unknown>;
 
-function runOnboard(args: string[]): SpawnSyncReturns<string> {
-  const repoRoot = resolve(import.meta.dirname, "../../..");
-  return spawnSync("bun", ["run", "start", "onboard", ...args], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
+async function runOnboard(args: string[]): Promise<{
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}> {
+  const stdoutLines: string[] = [];
+  const stderrLines: string[] = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+  console.log = (...values: unknown[]) => {
+    stdoutLines.push(values.map((value) => String(value)).join(" "));
+  };
+  console.error = (...values: unknown[]) => {
+    stderrLines.push(values.map((value) => String(value)).join(" "));
+  };
+  try {
+    const exitCode = await runOnboardCli(args);
+    return {
+      exitCode,
+      stdout: stdoutLines.join("\n"),
+      stderr: stderrLines.join("\n"),
+    };
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+  }
 }
 
 function findLastJsonObject(stdout: string): JsonObject | undefined {
@@ -44,8 +63,8 @@ function currentPlatformSupervisorName(): "launchd" | "systemd" {
 }
 
 describe("onboard subcommand", () => {
-  test("delegates install-daemon to gateway install in dry-run json mode", () => {
-    const result = runOnboard([
+  test("delegates install-daemon to gateway install in dry-run json mode", async () => {
+    const result = await runOnboard([
       "--install-daemon",
       currentPlatformSupervisorFlag(),
       "--dry-run",
@@ -53,7 +72,7 @@ describe("onboard subcommand", () => {
       "--health-http-port",
       "43112",
     ]);
-    expect(result.status).toBe(0);
+    expect(result.exitCode).toBe(0);
 
     const payload = findLastJsonObject(result.stdout ?? "");
     expect(payload?.schema).toBe("brewva.gateway.install.v1");
@@ -62,14 +81,14 @@ describe("onboard subcommand", () => {
     expect(payload?.supervisor).toBe(currentPlatformSupervisorName());
   });
 
-  test("delegates uninstall-daemon to gateway uninstall in dry-run json mode", () => {
-    const result = runOnboard([
+  test("delegates uninstall-daemon to gateway uninstall in dry-run json mode", async () => {
+    const result = await runOnboard([
       "--uninstall-daemon",
       currentPlatformSupervisorFlag(),
       "--dry-run",
       "--json",
     ]);
-    expect(result.status).toBe(0);
+    expect(result.exitCode).toBe(0);
 
     const payload = findLastJsonObject(result.stdout ?? "");
     expect(payload?.schema).toBe("brewva.gateway.uninstall.v1");
@@ -78,9 +97,9 @@ describe("onboard subcommand", () => {
     expect(payload?.supervisor).toBe(currentPlatformSupervisorName());
   });
 
-  test("rejects missing onboard action", () => {
-    const result = runOnboard([]);
-    expect(result.status).toBe(1);
+  test("rejects missing onboard action", async () => {
+    const result = await runOnboard([]);
+    expect(result.exitCode).toBe(1);
     const combinedOutput = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     expect(combinedOutput.includes("onboard requires --install-daemon or --uninstall-daemon")).toBe(
       true,

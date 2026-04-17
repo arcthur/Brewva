@@ -271,6 +271,43 @@ describe("channel session coordinator ownership", () => {
     }
   });
 
+  test("given coordinator-driven cleanup, when a live session is disposed, then a structured session_shutdown receipt is recorded", async () => {
+    let fixture: Awaited<ReturnType<typeof createCoordinatorFixture>> | undefined;
+
+    fixture = await createCoordinatorFixture({
+      cleanupGracefulTimeoutMs: 25,
+      createSession: async () =>
+        createHostedSessionResult(
+          await fixture!.runtimeManager.getOrCreateRuntime("worker"),
+          "agent-session:cleanup",
+        ),
+    });
+
+    try {
+      const handle = await fixture.coordinator.getOrCreateSession(
+        "scope-cleanup",
+        "worker",
+        createUserTurn("scope-cleanup"),
+      );
+
+      await fixture.coordinator.cleanupAgentSessions("worker");
+
+      const shutdownEvents = handle.runtime.inspect.events.query(handle.agentSessionId, {
+        type: "session_shutdown",
+      });
+      expect(shutdownEvents).toHaveLength(1);
+      expect(shutdownEvents[0]?.payload).toMatchObject({
+        reason: "coordinator_cleanup",
+        source: "channel_session_coordinator",
+      });
+      expect(fixture.coordinator.getLiveSession("scope-cleanup", "worker")).toBeUndefined();
+    } finally {
+      await fixture.coordinator.disposeAllSessions();
+      fixture.coordinator.disposeRuntime("worker");
+      cleanupTestWorkspace(fixture.workspace);
+    }
+  });
+
   test("given a new conversation turn, when resolveScopeKey runs repeatedly, then the coordinator owns binding persistence and emits a single binding event", async () => {
     const fixture = await createCoordinatorFixture({
       cleanupGracefulTimeoutMs: 25,

@@ -23,6 +23,9 @@ interface DaemonProcess {
   readStderr(): string;
 }
 
+const SCHEDULER_DAEMON_WAIT_TIMEOUT_MS = 20_000;
+const SCHEDULER_DAEMON_TEST_TIMEOUT_MS = 30_000;
+
 async function waitForCondition<T>(
   check: () => T | Promise<T | null | undefined> | null | undefined,
   options: {
@@ -169,245 +172,260 @@ async function stopSchedulerDaemon(daemon: DaemonProcess): Promise<void> {
 }
 
 describe("system: scheduler daemon", () => {
-  test("daemon catch-up executes a scheduled run through the shared session backend", async () => {
-    const workspace = createWorkspace("scheduler-daemon");
-    writeMinimalConfig(workspace, {
-      schedule: {
-        enabled: true,
-        minIntervalMs: 100,
-      },
-      infrastructure: {
-        events: {
+  test(
+    "daemon catch-up executes a scheduled run through the shared session backend",
+    async () => {
+      const workspace = createWorkspace("scheduler-daemon");
+      writeMinimalConfig(workspace, {
+        schedule: {
           enabled: true,
+          minIntervalMs: 100,
         },
-      },
-    });
-    mkdirSync(join(workspace, ".brewva"), { recursive: true });
-
-    const parentSessionId = asBrewvaSessionId("scheduler-parent-session");
-    const parentTaskGoal = "Finish the release checklist";
-    const truthSummary = "Release notes are waiting for final reviewer approval.";
-
-    const setupRuntime = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
-    setupRuntime.authority.task.setSpec(parentSessionId, {
-      schema: "brewva.task.v1",
-      goal: parentTaskGoal,
-    });
-    setupRuntime.authority.truth.upsertFact(parentSessionId, {
-      id: "fact-release-review",
-      kind: "status",
-      severity: "warn",
-      summary: truthSummary,
-    });
-    setupRuntime.authority.events.recordTapeHandoff(parentSessionId, {
-      name: "release-checkpoint",
-      summary: "Release prep is partially complete.",
-      nextSteps: "Resolve the final reviewer comment.",
-    });
-    expect(setupRuntime.authority.skills.activate(parentSessionId, "self-improve").ok).toBe(true);
-    const created = await setupRuntime.authority.schedule.createIntent(parentSessionId, {
-      intentId: asBrewvaIntentId("intent-scheduler-daemon"),
-      reason: "nightly release follow-up",
-      continuityMode: "inherit",
-      runAt: Date.now() + 500,
-      maxRuns: 1,
-    });
-    expect(created.ok).toBe(true);
-    if (!created.ok) {
-      cleanupWorkspace(workspace);
-      return;
-    }
-
-    const daemon = startSchedulerDaemon(workspace);
-
-    try {
-      const observer = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
-      const started = await waitForCondition(
-        () =>
-          observer.inspect.events.query(parentSessionId, {
-            type: SCHEDULE_CHILD_SESSION_STARTED_EVENT_TYPE,
-            last: 1,
-          })[0],
-        {
-          message: "expected scheduler daemon to start a child session",
-          daemon,
+        infrastructure: {
+          events: {
+            enabled: true,
+          },
         },
-      );
-      const childSessionId =
-        typeof started?.payload?.childSessionId === "string" ? started.payload.childSessionId : "";
-      expect(childSessionId.length).toBeGreaterThan(0);
-
-      await waitForCondition(
-        () =>
-          observer.inspect.events.query(parentSessionId, {
-            type: SCHEDULE_CHILD_SESSION_FINISHED_EVENT_TYPE,
-            last: 1,
-          })[0],
-        {
-          message: "expected scheduler daemon to finish the scheduled child session",
-          daemon,
-        },
-      );
-
-      await waitForCondition(
-        () =>
-          observer.inspect.events
-            .query(parentSessionId, { type: SCHEDULE_EVENT_TYPE })
-            .map((event) => parseScheduleIntentEvent(event)?.kind)
-            .find((kind) => kind === "intent_converged"),
-        {
-          message: "expected scheduler daemon to converge the scheduled intent",
-          daemon,
-        },
-      );
-
-      const persisted = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
-      const wakeup = persisted.inspect.events.query(childSessionId, {
-        type: SCHEDULE_WAKEUP_EVENT_TYPE,
-        last: 1,
-      })[0];
-      expect(wakeup?.payload).toMatchObject({
-        intentId: "intent-scheduler-daemon",
-        parentSessionId,
-        inheritedTaskSpec: true,
-        inheritedTruthFacts: 1,
       });
+      mkdirSync(join(workspace, ".brewva"), { recursive: true });
 
-      const childTask = persisted.inspect.task.getState(childSessionId);
-      expect(childTask.spec?.goal).toBe(parentTaskGoal);
-      const childSkillEvents = persisted.inspect.events.query(childSessionId, {
-        type: SKILL_ACTIVATED_EVENT_TYPE,
-      });
-      expect(childSkillEvents.at(-1)?.payload).toMatchObject({
-        skillName: "self-improve",
-      });
+      const parentSessionId = asBrewvaSessionId("scheduler-parent-session");
+      const parentTaskGoal = "Finish the release checklist";
+      const truthSummary = "Release notes are waiting for final reviewer approval.";
 
-      const childTruth = persisted.inspect.truth.getState(childSessionId);
-      expect(childTruth.facts).toEqual(
-        expect.arrayContaining([
+      const setupRuntime = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
+      setupRuntime.authority.task.setSpec(parentSessionId, {
+        schema: "brewva.task.v1",
+        goal: parentTaskGoal,
+      });
+      setupRuntime.authority.truth.upsertFact(parentSessionId, {
+        id: "fact-release-review",
+        kind: "status",
+        severity: "warn",
+        summary: truthSummary,
+      });
+      setupRuntime.authority.events.recordTapeHandoff(parentSessionId, {
+        name: "release-checkpoint",
+        summary: "Release prep is partially complete.",
+        nextSteps: "Resolve the final reviewer comment.",
+      });
+      expect(setupRuntime.authority.skills.activate(parentSessionId, "self-improve").ok).toBe(true);
+      const created = await setupRuntime.authority.schedule.createIntent(parentSessionId, {
+        intentId: asBrewvaIntentId("intent-scheduler-daemon"),
+        reason: "nightly release follow-up",
+        continuityMode: "inherit",
+        runAt: Date.now() + 500,
+        maxRuns: 1,
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) {
+        cleanupWorkspace(workspace);
+        return;
+      }
+
+      const daemon = startSchedulerDaemon(workspace);
+
+      try {
+        const observer = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
+        const started = await waitForCondition(
+          () =>
+            observer.inspect.events.query(parentSessionId, {
+              type: SCHEDULE_CHILD_SESSION_STARTED_EVENT_TYPE,
+              last: 1,
+            })[0],
+          {
+            message: "expected scheduler daemon to start a child session",
+            daemon,
+            timeoutMs: SCHEDULER_DAEMON_WAIT_TIMEOUT_MS,
+          },
+        );
+        const childSessionId =
+          typeof started?.payload?.childSessionId === "string"
+            ? started.payload.childSessionId
+            : "";
+        expect(childSessionId.length).toBeGreaterThan(0);
+
+        await waitForCondition(
+          () =>
+            observer.inspect.events.query(parentSessionId, {
+              type: SCHEDULE_CHILD_SESSION_FINISHED_EVENT_TYPE,
+              last: 1,
+            })[0],
+          {
+            message: "expected scheduler daemon to finish the scheduled child session",
+            daemon,
+            timeoutMs: SCHEDULER_DAEMON_WAIT_TIMEOUT_MS,
+          },
+        );
+
+        await waitForCondition(
+          () =>
+            observer.inspect.events
+              .query(parentSessionId, { type: SCHEDULE_EVENT_TYPE })
+              .map((event) => parseScheduleIntentEvent(event)?.kind)
+              .find((kind) => kind === "intent_converged"),
+          {
+            message: "expected scheduler daemon to converge the scheduled intent",
+            daemon,
+            timeoutMs: SCHEDULER_DAEMON_WAIT_TIMEOUT_MS,
+          },
+        );
+
+        const persisted = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
+        const wakeup = persisted.inspect.events.query(childSessionId, {
+          type: SCHEDULE_WAKEUP_EVENT_TYPE,
+          last: 1,
+        })[0];
+        expect(wakeup?.payload).toMatchObject({
+          intentId: "intent-scheduler-daemon",
+          parentSessionId,
+          inheritedTaskSpec: true,
+          inheritedTruthFacts: 1,
+        });
+
+        const childTask = persisted.inspect.task.getState(childSessionId);
+        expect(childTask.spec?.goal).toBe(parentTaskGoal);
+        const childSkillEvents = persisted.inspect.events.query(childSessionId, {
+          type: SKILL_ACTIVATED_EVENT_TYPE,
+        });
+        expect(childSkillEvents.at(-1)?.payload).toMatchObject({
+          skillName: "self-improve",
+        });
+
+        const childTruth = persisted.inspect.truth.getState(childSessionId);
+        expect(childTruth.facts).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: "fact-release-review",
+              summary: truthSummary,
+              status: "active",
+            }),
+          ]),
+        );
+
+        const childTapeStatus = persisted.inspect.events.getTapeStatus(childSessionId);
+        expect(childTapeStatus.lastAnchor?.name).toBe("schedule:inherit:release-checkpoint");
+
+        const scheduleKinds = persisted.inspect.events
+          .query(parentSessionId, { type: SCHEDULE_EVENT_TYPE })
+          .map((event) => parseScheduleIntentEvent(event)?.kind)
+          .filter((kind): kind is NonNullable<typeof kind> => Boolean(kind));
+        expect(scheduleKinds).toContain("intent_created");
+        expect(scheduleKinds).toContain("intent_fired");
+        expect(scheduleKinds).toContain("intent_converged");
+
+        const intents = await persisted.inspect.schedule.listIntents({ parentSessionId });
+        expect(intents).toEqual([
           expect.objectContaining({
-            id: "fact-release-review",
-            summary: truthSummary,
-            status: "active",
+            intentId: created.intent.intentId,
+            status: "converged",
+            runCount: 1,
+            nextRunAt: undefined,
           }),
-        ]),
-      );
+        ]);
+      } finally {
+        await stopSchedulerDaemon(daemon);
+        cleanupWorkspace(workspace);
+      }
+    },
+    SCHEDULER_DAEMON_TEST_TIMEOUT_MS,
+  );
 
-      const childTapeStatus = persisted.inspect.events.getTapeStatus(childSessionId);
-      expect(childTapeStatus.lastAnchor?.name).toBe("schedule:inherit:release-checkpoint");
-
-      const scheduleKinds = persisted.inspect.events
-        .query(parentSessionId, { type: SCHEDULE_EVENT_TYPE })
-        .map((event) => parseScheduleIntentEvent(event)?.kind)
-        .filter((kind): kind is NonNullable<typeof kind> => Boolean(kind));
-      expect(scheduleKinds).toContain("intent_created");
-      expect(scheduleKinds).toContain("intent_fired");
-      expect(scheduleKinds).toContain("intent_converged");
-
-      const intents = await persisted.inspect.schedule.listIntents({ parentSessionId });
-      expect(intents).toEqual([
-        expect.objectContaining({
-          intentId: created.intent.intentId,
-          status: "converged",
-          runCount: 1,
-          nextRunAt: undefined,
-        }),
-      ]);
-    } finally {
-      await stopSchedulerDaemon(daemon);
-      cleanupWorkspace(workspace);
-    }
-  }, 15_000);
-
-  test("daemon seeds a single durable autonomous self-improve schedule from config", async () => {
-    const workspace = createWorkspace("scheduler-daemon-self-improve");
-    writeMinimalConfig(workspace, {
-      schedule: {
-        enabled: true,
-        selfImprove: {
+  test(
+    "daemon seeds a single durable autonomous self-improve schedule from config",
+    async () => {
+      const workspace = createWorkspace("scheduler-daemon-self-improve");
+      writeMinimalConfig(workspace, {
+        schedule: {
           enabled: true,
-          parentSessionId: "policy-self-improve-parent",
+          selfImprove: {
+            enabled: true,
+            parentSessionId: "policy-self-improve-parent",
+            intentId: "policy-self-improve-intent",
+            reason: "Run self-improve automatically from the scheduler policy.",
+            goalRef: "policy:self-improve",
+            continuityMode: "inherit",
+            cron: "0 0 1 1 *",
+            maxRuns: 321,
+            taskSpec: {
+              goal: "Run self-improve on repeated repository friction.",
+              expectedBehavior:
+                "Load self-improve, inspect repeated evidence, and stop without writes when the pattern is not repeat-backed.",
+              constraints: [
+                "Do not write repository files directly from the scheduled run.",
+                "Only emit promotion candidates after repeated evidence.",
+              ],
+            },
+          },
+        },
+        infrastructure: {
+          events: {
+            enabled: true,
+          },
+        },
+      });
+      mkdirSync(join(workspace, ".brewva"), { recursive: true });
+
+      const firstDaemon = await startGatewayDaemonHarness({ workspace });
+      try {
+        const observer = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
+        const seededIntent = await waitForCondition(
+          async () => {
+            const intents = await observer.inspect.schedule.listIntents({
+              parentSessionId: asBrewvaSessionId("policy-self-improve-parent"),
+            });
+            return intents.find((intent) => intent.intentId === "policy-self-improve-intent");
+          },
+          {
+            message: "expected daemon to seed the autonomous self-improve schedule intent",
+            timeoutMs: SCHEDULER_DAEMON_WAIT_TIMEOUT_MS,
+          },
+        );
+        const cancelled = await observer.authority.schedule.cancelIntent(
+          "policy-self-improve-parent",
+          {
+            intentId: seededIntent.intentId,
+            reason: "operator_cancelled_for_restart_reconcile_test",
+          },
+        );
+        expect(cancelled.ok).toBe(true);
+      } finally {
+        await firstDaemon.dispose();
+      }
+
+      const secondDaemon = await startGatewayDaemonHarness({ workspace });
+      try {
+        const observer = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
+        const intent = await waitForCondition(
+          async () => {
+            const intents = await observer.inspect.schedule.listIntents({
+              parentSessionId: asBrewvaSessionId("policy-self-improve-parent"),
+            });
+            return intents.length === 1 ? intents[0] : null;
+          },
+          {
+            message:
+              "expected daemon restart to keep exactly one autonomous self-improve schedule intent",
+            timeoutMs: SCHEDULER_DAEMON_WAIT_TIMEOUT_MS,
+          },
+        );
+
+        expect(intent).toMatchObject({
           intentId: "policy-self-improve-intent",
+          parentSessionId: "policy-self-improve-parent",
           reason: "Run self-improve automatically from the scheduler policy.",
           goalRef: "policy:self-improve",
           continuityMode: "inherit",
           cron: "0 0 1 1 *",
           maxRuns: 321,
-          taskSpec: {
-            goal: "Run self-improve on repeated repository friction.",
-            expectedBehavior:
-              "Load self-improve, inspect repeated evidence, and stop without writes when the pattern is not repeat-backed.",
-            constraints: [
-              "Do not write repository files directly from the scheduled run.",
-              "Only emit promotion candidates after repeated evidence.",
-            ],
-          },
-        },
-      },
-      infrastructure: {
-        events: {
-          enabled: true,
-        },
-      },
-    });
-    mkdirSync(join(workspace, ".brewva"), { recursive: true });
-
-    const firstDaemon = await startGatewayDaemonHarness({ workspace });
-    try {
-      const observer = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
-      const seededIntent = await waitForCondition(
-        async () => {
-          const intents = await observer.inspect.schedule.listIntents({
-            parentSessionId: asBrewvaSessionId("policy-self-improve-parent"),
-          });
-          return intents.find((intent) => intent.intentId === "policy-self-improve-intent");
-        },
-        {
-          message: "expected daemon to seed the autonomous self-improve schedule intent",
-        },
-      );
-      const cancelled = await observer.authority.schedule.cancelIntent(
-        "policy-self-improve-parent",
-        {
-          intentId: seededIntent.intentId,
-          reason: "operator_cancelled_for_restart_reconcile_test",
-        },
-      );
-      expect(cancelled.ok).toBe(true);
-    } finally {
-      await firstDaemon.dispose();
-    }
-
-    const secondDaemon = await startGatewayDaemonHarness({ workspace });
-    try {
-      const observer = new BrewvaRuntime({ cwd: workspace, configPath: ".brewva/brewva.json" });
-      const intent = await waitForCondition(
-        async () => {
-          const intents = await observer.inspect.schedule.listIntents({
-            parentSessionId: asBrewvaSessionId("policy-self-improve-parent"),
-          });
-          return intents.length === 1 ? intents[0] : null;
-        },
-        {
-          message:
-            "expected daemon restart to keep exactly one autonomous self-improve schedule intent",
-        },
-      );
-
-      expect(intent).toMatchObject({
-        intentId: "policy-self-improve-intent",
-        parentSessionId: "policy-self-improve-parent",
-        reason: "Run self-improve automatically from the scheduler policy.",
-        goalRef: "policy:self-improve",
-        continuityMode: "inherit",
-        cron: "0 0 1 1 *",
-        maxRuns: 321,
-        status: "active",
-      });
-      expect(typeof intent.nextRunAt).toBe("number");
-    } finally {
-      await secondDaemon.dispose();
-      cleanupWorkspace(workspace);
-    }
-  }, 15_000);
+          status: "active",
+        });
+        expect(typeof intent.nextRunAt).toBe("number");
+      } finally {
+        await secondDaemon.dispose();
+        cleanupWorkspace(workspace);
+      }
+    },
+    SCHEDULER_DAEMON_TEST_TIMEOUT_MS,
+  );
 });

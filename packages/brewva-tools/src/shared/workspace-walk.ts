@@ -1,4 +1,4 @@
-import { readdirSync, realpathSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 export const DEFAULT_SKIPPED_WORKSPACE_DIRS = new Set([
@@ -25,70 +25,110 @@ export function walkWorkspaceFiles(input: WalkWorkspaceFilesOptions): {
   files: string[];
   overflow: boolean;
 } {
-  const seen = new Set<string>();
+  const seenDirectories = new Set<string>();
+  const seenFiles = new Set<string>();
   const files: string[] = [];
   let overflow = false;
   const skippedDirs = input.skippedDirs ?? DEFAULT_SKIPPED_WORKSPACE_DIRS;
   const allowedHiddenDirs = input.allowedHiddenDirs ?? DEFAULT_ALLOWED_HIDDEN_DIRS;
   const includeRootFiles = input.includeRootFiles ?? true;
 
-  const visit = (target: string, isRoot = false): void => {
-    if (overflow) {
-      return;
-    }
-
-    let canonicalTarget = target;
+  const resolveCanonicalPath = (target: string): string => {
     try {
-      canonicalTarget = realpathSync(target);
+      return realpathSync(target);
     } catch {
-      canonicalTarget = target;
+      return target;
     }
-    if (seen.has(canonicalTarget)) {
-      return;
-    }
-    seen.add(canonicalTarget);
+  };
 
-    let stats: import("node:fs").Stats;
-    try {
-      stats = statSync(canonicalTarget);
-    } catch {
-      return;
-    }
-
-    if (stats.isDirectory()) {
-      let entries: Array<import("node:fs").Dirent>;
-      try {
-        entries = readdirSync(canonicalTarget, { withFileTypes: true });
-      } catch {
-        return;
-      }
-
-      for (const entry of entries) {
-        if (overflow) {
-          return;
-        }
-        if (entry.name.startsWith(".") && !allowedHiddenDirs.has(entry.name)) {
-          continue;
-        }
-        if (entry.isDirectory() && skippedDirs.has(entry.name)) {
-          continue;
-        }
-        visit(join(canonicalTarget, entry.name));
-      }
-      return;
-    }
-
+  const pushFile = (filePath: string, isRoot: boolean): void => {
     if (isRoot && !includeRootFiles) {
       return;
     }
-    if (!stats.isFile() || !input.isMatch(canonicalTarget)) {
+    if (!input.isMatch(filePath)) {
+      return;
+    }
+    if (seenFiles.has(filePath)) {
       return;
     }
     if (files.length >= input.maxFiles) {
       overflow = true;
       return;
     }
-    files.push(canonicalTarget);
+    seenFiles.add(filePath);
+    files.push(filePath);
+  };
+
+  const visitDirectory = (directoryPath: string): void => {
+    if (overflow) {
+      return;
+    }
+    const canonicalDirectory = resolveCanonicalPath(directoryPath);
+    if (seenDirectories.has(canonicalDirectory)) {
+      return;
+    }
+    seenDirectories.add(canonicalDirectory);
+
+    let entries: Array<import("node:fs").Dirent>;
+    try {
+      entries = readdirSync(canonicalDirectory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (overflow) {
+        return;
+      }
+      if (entry.name.startsWith(".") && !allowedHiddenDirs.has(entry.name)) {
+        continue;
+      }
+      if (entry.isDirectory() && skippedDirs.has(entry.name)) {
+        continue;
+      }
+      const childPath = join(canonicalDirectory, entry.name);
+      if (entry.isDirectory()) {
+        visitDirectory(childPath);
+        continue;
+      }
+      if (entry.isFile()) {
+        pushFile(childPath, false);
+        continue;
+      }
+      visit(childPath, false);
+    }
+  };
+
+  const visit = (target: string, isRoot = false): void => {
+    if (overflow) {
+      return;
+    }
+
+    let stats: import("node:fs").Stats;
+    let canonicalTarget = target;
+    try {
+      const targetStats = lstatSync(target);
+      if (targetStats.isSymbolicLink()) {
+        canonicalTarget = resolveCanonicalPath(target);
+        stats = statSync(canonicalTarget);
+      } else {
+        stats = targetStats;
+        if (stats.isDirectory() || stats.isFile()) {
+          canonicalTarget = resolveCanonicalPath(target);
+        }
+      }
+    } catch {
+      return;
+    }
+
+    if (stats.isDirectory()) {
+      visitDirectory(canonicalTarget);
+      return;
+    }
+    if (!stats.isFile()) {
+      return;
+    }
+    pushFile(canonicalTarget, isRoot);
   };
 
   for (const root of input.roots) {

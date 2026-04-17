@@ -433,18 +433,18 @@ function collectReductionCandidates(payload: Record<string, unknown>): Reduction
 }
 
 function shouldSkipForRecovery(runtime: BrewvaHostedRuntimePort, sessionId: string): boolean {
-  const posture = runtime.inspect.recovery.getPosture(sessionId);
-  if (posture.mode === "degraded" || posture.mode === "diagnostic_only") {
+  const lifecycle = runtime.inspect.lifecycle.getSnapshot(sessionId);
+  if (lifecycle.summary.kind === "degraded" || lifecycle.summary.kind === "recovering") {
     return true;
   }
-  if (posture.mode !== "resumable") {
+  if (lifecycle.summary.kind !== "blocked") {
     return false;
   }
-  const workingSet = runtime.inspect.recovery.getWorkingSet(sessionId);
   return (
-    posture.pendingFamily !== null ||
-    posture.latestStatus === "entered" ||
-    (workingSet?.openToolCalls ?? 0) > 0
+    lifecycle.execution.kind === "waiting_approval" ||
+    lifecycle.recovery.pendingFamily !== null ||
+    lifecycle.recovery.latestStatus === "entered" ||
+    lifecycle.tooling.openToolCalls.length > 0
   );
 }
 

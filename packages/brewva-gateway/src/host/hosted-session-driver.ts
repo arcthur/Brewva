@@ -19,6 +19,7 @@ import {
   createHostedSessionRuntimeDriver,
   createHostedSessionRuntimeSettings,
 } from "./hosted-session-runtime.js";
+import type { HostedSessionLogger } from "./logger.js";
 
 export type HostedSessionCustomTool = BrewvaToolDefinition;
 export type HostedSessionReadToolDetails = BrewvaReadToolDetails;
@@ -49,6 +50,7 @@ export interface CreateHostedManagedSessionOptions {
   thinkingLevel?: string;
   customTools?: HostedSessionCustomTool[];
   ui?: BrewvaToolUiPort;
+  logger?: HostedSessionLogger;
 }
 
 export interface HostedSessionServices {
@@ -71,6 +73,7 @@ export interface CreateHostedSessionRuntimeOptions {
   customTools?: HostedSessionCustomTool[];
   sessionId?: string;
   ui?: BrewvaToolUiPort;
+  logger?: HostedSessionLogger;
 }
 
 export interface HostedManagedSessionRuntimeResult {

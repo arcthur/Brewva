@@ -1,21 +1,43 @@
 import { describe, expect, test } from "bun:test";
-import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { runInsightsCli } from "@brewva/brewva-cli";
 import { BrewvaRuntime, DEFAULT_BREWVA_CONFIG } from "@brewva/brewva-runtime";
 import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
-function runInsights(
+async function runInsights(
   args: string[],
   env: NodeJS.ProcessEnv = process.env,
-): SpawnSyncReturns<string> {
-  const repoRoot = resolve(import.meta.dirname, "../../..");
-  return spawnSync("bun", ["run", "start", "insights", ...args], {
-    cwd: repoRoot,
-    encoding: "utf8",
-    env,
-  });
+): Promise<{
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}> {
+  const stdoutLines: string[] = [];
+  const stderrLines: string[] = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalEnv = process.env;
+  console.log = (...values: unknown[]) => {
+    stdoutLines.push(values.map((value) => String(value)).join(" "));
+  };
+  console.error = (...values: unknown[]) => {
+    stderrLines.push(values.map((value) => String(value)).join(" "));
+  };
+  process.env = { ...originalEnv, ...env };
+  try {
+    const exitCode = await runInsightsCli(args);
+    return {
+      exitCode,
+      stdout: stdoutLines.join("\n"),
+      stderr: stderrLines.join("\n"),
+    };
+  } finally {
+    process.env = originalEnv;
+    console.log = originalLog;
+    console.error = originalError;
+  }
 }
 
 function recordWriteSession(
@@ -63,16 +85,16 @@ function recordWriteSession(
 }
 
 describe("insights subcommand", () => {
-  test("prints help text", () => {
-    const result = runInsights(["--help"]);
-    expect(result.status).toBe(0);
+  test("prints help text", async () => {
+    const result = await runInsights(["--help"]);
+    expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Brewva Insights - multi-session aggregation engine");
     expect(result.stdout).toContain("brewva insights [directory] [options]");
   });
 
   test(
     "aggregates actual activity directories across sessions instead of collapsing to the target scope",
-    () => {
+    async () => {
       const workspace = createTestWorkspace("insights-json-report");
       const xdgConfigHome = join(workspace, ".xdg");
       mkdirSync(join(xdgConfigHome, "brewva"), { recursive: true });
@@ -106,14 +128,14 @@ describe("insights subcommand", () => {
         content: "export const tool = 2;\n",
       });
 
-      const result = runInsights(
+      const result = await runInsights(
         ["--cwd", workspace, "--config", ".brewva/brewva.json", "--json", "."],
         {
           ...process.env,
           XDG_CONFIG_HOME: xdgConfigHome,
         },
       );
-      expect(result.status).toBe(0);
+      expect(result.exitCode).toBe(0);
 
       const payload = JSON.parse(result.stdout) as {
         window: { analyzedSessions: number; failedSessions: number };

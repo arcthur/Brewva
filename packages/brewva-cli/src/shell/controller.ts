@@ -1,3 +1,4 @@
+import { recordSessionShutdownIfMissing } from "@brewva/brewva-gateway";
 import { createOperatorRuntimePort } from "@brewva/brewva-runtime";
 import type { BrewvaPromptSessionEvent } from "@brewva/brewva-substrate";
 import {
@@ -2104,6 +2105,15 @@ export class CliShellController {
 
   private async switchBundle(bundle: CliShellSessionBundle): Promise<void> {
     this.snapshotCurrentDraft();
+    try {
+      recordSessionShutdownIfMissing(this.#bundle.runtime, {
+        sessionId: this.#sessionPort.getSessionId(),
+        reason: "cli_shell_session_switch",
+        source: "cli_shell_controller",
+      });
+    } catch {
+      // best effort terminal receipt for session switching
+    }
     this.#bundle.session.dispose();
     this.mountSession(bundle);
     this.initializeState();

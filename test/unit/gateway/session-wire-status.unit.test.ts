@@ -6,6 +6,7 @@ import {
   type SessionWireFrame,
 } from "@brewva/brewva-runtime";
 import {
+  deriveSessionStatusSeedFromLifecycleSnapshot,
   deriveSessionStatusSeedFromFrame,
   deriveSessionStatusSeedFromHistory,
 } from "../../../packages/brewva-gateway/src/daemon/session-wire-status.js";
@@ -176,6 +177,169 @@ describe("session wire status seeds", () => {
     expect(seed).toEqual({
       state: "idle",
       reason: undefined,
+    });
+  });
+
+  test("maps lifecycle snapshot summaries into session status seeds for replay seeding", () => {
+    expect(
+      deriveSessionStatusSeedFromLifecycleSnapshot({
+        hydration: {
+          status: "ready",
+          issues: [],
+        },
+        execution: {
+          kind: "waiting_approval",
+          requestId: "req-1",
+          toolCallId: asBrewvaToolCallId("tool-1"),
+          toolName: asBrewvaToolName("shell"),
+          reason: "approval_requested",
+          detail: "Run guarded command",
+        },
+        recovery: {
+          mode: "idle",
+          latestReason: null,
+          latestStatus: null,
+          pendingFamily: null,
+          degradedReason: null,
+          duplicateSideEffectSuppressionCount: 0,
+          latestSourceEventId: null,
+          latestSourceEventType: null,
+          recentTransitions: [],
+        },
+        skill: {
+          posture: "none",
+          activeSkillName: null,
+        },
+        approval: {
+          status: "pending",
+          pendingCount: 1,
+          requestId: "req-1",
+          toolCallId: asBrewvaToolCallId("tool-1"),
+          toolName: asBrewvaToolName("shell"),
+          subject: null,
+        },
+        tooling: {
+          openToolCalls: [],
+        },
+        integrity: {
+          status: "healthy",
+          issues: [],
+        },
+        summary: {
+          kind: "blocked",
+          reason: "approval_requested",
+          detail: "Run guarded command",
+        },
+      }),
+    ).toEqual({
+      state: "waiting_approval",
+      reason: "approval_requested",
+      detail: "Run guarded command",
+    });
+
+    expect(
+      deriveSessionStatusSeedFromLifecycleSnapshot({
+        hydration: {
+          status: "ready",
+          issues: [],
+        },
+        execution: {
+          kind: "recovering",
+          reason: "reasoning_revert_resume",
+          detail: null,
+          family: "recovery",
+        },
+        recovery: {
+          mode: "resumable",
+          latestReason: "reasoning_revert_resume",
+          latestStatus: "entered",
+          pendingFamily: "recovery",
+          degradedReason: null,
+          duplicateSideEffectSuppressionCount: 0,
+          latestSourceEventId: "revert-1",
+          latestSourceEventType: "reasoning_revert_recorded",
+          recentTransitions: [],
+        },
+        skill: {
+          posture: "none",
+          activeSkillName: null,
+        },
+        approval: {
+          status: "idle",
+          pendingCount: 0,
+          requestId: null,
+          toolCallId: null,
+          toolName: null,
+          subject: null,
+        },
+        tooling: {
+          openToolCalls: [],
+        },
+        integrity: {
+          status: "healthy",
+          issues: [],
+        },
+        summary: {
+          kind: "recovering",
+          reason: "reasoning_revert_resume",
+          detail: null,
+        },
+      }),
+    ).toEqual({
+      state: "restarting",
+      reason: "reasoning_revert_resume",
+      detail: undefined,
+    });
+
+    expect(
+      deriveSessionStatusSeedFromLifecycleSnapshot({
+        hydration: {
+          status: "ready",
+          issues: [],
+        },
+        execution: {
+          kind: "terminated",
+          reason: "host_closed",
+        },
+        recovery: {
+          mode: "idle",
+          latestReason: null,
+          latestStatus: null,
+          pendingFamily: null,
+          degradedReason: null,
+          duplicateSideEffectSuppressionCount: 0,
+          latestSourceEventId: null,
+          latestSourceEventType: null,
+          recentTransitions: [],
+        },
+        skill: {
+          posture: "none",
+          activeSkillName: null,
+        },
+        approval: {
+          status: "idle",
+          pendingCount: 0,
+          requestId: null,
+          toolCallId: null,
+          toolName: null,
+          subject: null,
+        },
+        tooling: {
+          openToolCalls: [],
+        },
+        integrity: {
+          status: "healthy",
+          issues: [],
+        },
+        summary: {
+          kind: "closed",
+          reason: "host_closed",
+          detail: null,
+        },
+      }),
+    ).toEqual({
+      state: "closed",
+      reason: "host_closed",
     });
   });
 });

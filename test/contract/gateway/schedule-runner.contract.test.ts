@@ -104,6 +104,7 @@ describe("gateway contract: schedule runner", () => {
       listWorkers: () => [],
       querySessionWire: async () => [],
       querySessionContextPressure: async () => undefined,
+      querySessionLifecycle: async () => undefined,
     };
 
     try {
@@ -272,6 +273,7 @@ describe("gateway contract: schedule runner", () => {
       listWorkers: () => [],
       querySessionWire: async () => [],
       querySessionContextPressure: async () => undefined,
+      querySessionLifecycle: async () => undefined,
     };
 
     try {
@@ -338,6 +340,7 @@ describe("gateway contract: schedule runner", () => {
       listWorkers: () => [],
       querySessionWire: async () => [],
       querySessionContextPressure: async () => undefined,
+      querySessionLifecycle: async () => undefined,
     };
 
     try {

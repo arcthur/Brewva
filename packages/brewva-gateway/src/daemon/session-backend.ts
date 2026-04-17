@@ -1,6 +1,7 @@
 import type {
   ContextPressureView,
   ManagedToolMode,
+  SessionLifecycleSnapshot,
   SessionWireFrame,
   ScheduleContinuityMode,
   TaskSpec,
@@ -91,6 +92,7 @@ export interface SessionBackend {
   listWorkers(): SessionWorkerInfo[];
   querySessionWire(sessionId: string): Promise<SessionWireFrame[]>;
   querySessionContextPressure(sessionId: string): Promise<ContextPressureView | undefined>;
+  querySessionLifecycle(sessionId: string): Promise<SessionLifecycleSnapshot | undefined>;
 }
 
 export type SessionBackendCapacityCode = "worker_limit" | "open_queue_full";

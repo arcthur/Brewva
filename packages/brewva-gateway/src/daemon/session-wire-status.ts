@@ -1,5 +1,8 @@
-import type { SessionWireFrame, SessionWireStatusState } from "@brewva/brewva-runtime";
-import { deriveSessionPhaseFromRuntimeFactHistory } from "../session/session-phase-runtime-facts.js";
+import type {
+  SessionLifecycleSnapshot,
+  SessionWireFrame,
+  SessionWireStatusState,
+} from "@brewva/brewva-runtime";
 
 export interface SessionStatusSeed {
   state: SessionWireStatusState;
@@ -17,90 +20,15 @@ export function sameSessionStatusSeed(
   return left.state === right.state && left.reason === right.reason && left.detail === right.detail;
 }
 
-export function deriveSessionStatusSeedFromHistory(
-  sessionId: string,
-  frames: readonly SessionWireFrame[],
-  fallbackState: SessionWireStatusState,
-): SessionStatusSeed {
-  const runtimeFactPhase = deriveSessionPhaseFromRuntimeFactHistory(sessionId, frames);
-  if (runtimeFactPhase.phase.kind === "waiting_approval") {
-    return {
-      state: "waiting_approval",
-      reason: runtimeFactPhase.reason,
-      detail: runtimeFactPhase.detail,
-    };
-  }
-  if (runtimeFactPhase.phase.kind === "recovering") {
-    return {
-      state: "restarting",
-      reason: runtimeFactPhase.reason,
-      detail: runtimeFactPhase.detail,
-    };
-  }
-  if (runtimeFactPhase.phase.kind === "terminated") {
-    return {
-      state: "closed",
-      reason: runtimeFactPhase.reason,
-    };
-  }
-
-  for (let index = frames.length - 1; index >= 0; index -= 1) {
-    const frame = frames[index];
-    if (!frame || frame.sessionId !== sessionId) {
-      continue;
-    }
-    switch (frame.type) {
-      case "session.closed":
-        return {
-          state: "closed",
-          reason: frame.reason,
-        };
-      case "turn.committed":
-        return {
-          state: frame.status === "failed" ? "error" : fallbackState,
-          reason: frame.status === "failed" ? "turn_failed" : undefined,
-        };
-      case "turn.input":
-        return {
-          state: fallbackState === "idle" ? "running" : fallbackState,
-        };
-      default:
-        continue;
-    }
-  }
-
-  return {
-    state: fallbackState,
-  };
-}
-
-export function deriveSessionStatusSeedFromFrame(
+function deriveSessionStatusSeedFromFrameWithFallback(
   frame: SessionWireFrame,
+  fallbackState: SessionWireStatusState,
 ): SessionStatusSeed | null {
-  const runtimeFactPhase = deriveSessionPhaseFromRuntimeFactHistory(frame.sessionId, [frame]);
-  if (runtimeFactPhase.phase.kind === "waiting_approval") {
-    return {
-      state: "waiting_approval",
-      reason: runtimeFactPhase.reason,
-      detail: runtimeFactPhase.detail,
-    };
-  }
-  if (runtimeFactPhase.phase.kind === "recovering") {
-    return {
-      state: "restarting",
-      reason: runtimeFactPhase.reason,
-      detail: runtimeFactPhase.detail,
-    };
-  }
-  if (runtimeFactPhase.phase.kind === "terminated") {
-    return {
-      state: "closed",
-      reason: runtimeFactPhase.reason,
-    };
-  }
-
   switch (frame.type) {
     case "turn.input":
+      return {
+        state: fallbackState === "idle" ? "running" : fallbackState,
+      };
     case "attempt.started":
     case "assistant.delta":
     case "tool.started":
@@ -157,4 +85,64 @@ export function deriveSessionStatusSeedFromFrame(
     default:
       return null;
   }
+}
+
+export function deriveSessionStatusSeedFromHistory(
+  sessionId: string,
+  frames: readonly SessionWireFrame[],
+  fallbackState: SessionWireStatusState,
+): SessionStatusSeed {
+  let current: SessionStatusSeed = {
+    state: fallbackState,
+  };
+
+  for (const frame of frames) {
+    if (!frame || frame.sessionId !== sessionId) {
+      continue;
+    }
+    const next = deriveSessionStatusSeedFromFrameWithFallback(frame, fallbackState);
+    if (next) {
+      current = next;
+    }
+  }
+
+  return current;
+}
+
+export function deriveSessionStatusSeedFromLifecycleSnapshot(
+  snapshot: SessionLifecycleSnapshot,
+): SessionStatusSeed | null {
+  if (snapshot.summary.kind === "blocked" && snapshot.execution.kind === "waiting_approval") {
+    return {
+      state: "waiting_approval",
+      reason: snapshot.summary.reason ?? undefined,
+      detail: snapshot.summary.detail ?? undefined,
+    };
+  }
+
+  if (
+    (snapshot.summary.kind === "recovering" || snapshot.summary.kind === "degraded") &&
+    snapshot.execution.kind === "recovering"
+  ) {
+    return {
+      state: "restarting",
+      reason: snapshot.summary.reason ?? undefined,
+      detail: snapshot.summary.detail ?? undefined,
+    };
+  }
+
+  if (snapshot.summary.kind === "closed") {
+    return {
+      state: "closed",
+      reason: snapshot.summary.reason ?? undefined,
+    };
+  }
+
+  return null;
+}
+
+export function deriveSessionStatusSeedFromFrame(
+  frame: SessionWireFrame,
+): SessionStatusSeed | null {
+  return deriveSessionStatusSeedFromFrameWithFallback(frame, "running");
 }

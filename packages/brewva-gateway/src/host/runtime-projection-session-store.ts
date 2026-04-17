@@ -4,6 +4,7 @@ import {
   REASONING_REVERT_EVENT_TYPE,
   type BrewvaEventRecord,
   type BrewvaRuntime,
+  type SessionLifecycleSnapshot,
   type SessionWireFrame,
 } from "@brewva/brewva-runtime";
 import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
@@ -287,6 +288,10 @@ export class HostedRuntimeTapeSessionStore {
       ),
       lastInjectionScopeId: injectionScopeId,
     };
+  }
+
+  readLifecycle(): SessionLifecycleSnapshot {
+    return this.runtime.inspect.lifecycle.getSnapshot(this.sessionId);
   }
 
   resetLeaf(): void {

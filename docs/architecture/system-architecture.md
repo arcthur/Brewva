@@ -258,6 +258,8 @@ State visibility rule:
   authorization, or recovery semantics
 - visibility-changing state should surface through projection or explicit
   inspection products
+- runtime-owned lifecycle meaning should be composed once and published through
+  a shared inspect surface rather than rediscovered independently by adapters
 - performance-only caches may remain local, but losing them must not widen
   authority or change replayable commitments
 - frontend session replay is an experience-ring read model: `session-wire.v2`
@@ -271,6 +273,12 @@ Hosted recovery note:
   continuation, interruption, and bounded-recovery posture
 - it explains why hosted execution continued or retried; it does not authorize
   effects, approvals, rollback, or replay truth
+- runtime lifecycle aggregate composes hydration, approval, open tool calls,
+  recovery posture, hosted transitions, and terminal receipts into one posture
+  contract for host and gateway consumers
+- host `SessionPhase` and gateway `session.status` are subordinate controller
+  or transport views over that aggregate plus local live concerns; they are not
+  parallel durable semantics
 - hosted tool execution traits may shape scheduler behavior, but they remain a
   control-plane concern rather than a kernel authority descriptor
 - hosted reasoning revert is also a control-plane continuation surface:

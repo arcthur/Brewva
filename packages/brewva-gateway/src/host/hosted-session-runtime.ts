@@ -240,6 +240,7 @@ class HostedSessionRuntimeDriver implements HostedSessionDriver {
       thinkingLevel: options.requestedThinkingLevel,
       customTools: options.customTools,
       ui: options.ui,
+      logger: options.logger,
     });
     return {
       services,

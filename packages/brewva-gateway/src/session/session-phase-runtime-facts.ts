@@ -124,6 +124,8 @@ export function deriveSessionPhaseFromRuntimeFactHistory(
   sessionId: string,
   frames: readonly SessionWireFrame[],
 ): RuntimeFactSessionPhaseProjection {
+  // Compatibility-only host fallback. Lifecycle snapshots are the
+  // authoritative bootstrap source when they can be mapped losslessly.
   let current: RuntimeFactSessionPhaseProjection = {
     phase: { kind: "idle" },
   };

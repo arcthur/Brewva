@@ -9,6 +9,7 @@ import {
   type ContextPressureView,
   type ManagedToolMode,
   type RecoveryWalRecord,
+  type SessionLifecycleSnapshot,
   type SessionWireFrame,
 } from "@brewva/brewva-runtime";
 import {
@@ -618,6 +619,22 @@ export class SessionSupervisor implements SessionBackend {
       limit: typed.limit,
       level: typed.level,
     };
+  }
+
+  async querySessionLifecycle(sessionId: string): Promise<SessionLifecycleSnapshot | undefined> {
+    const handle = this.workers.get(sessionId);
+    if (!handle) {
+      return undefined;
+    }
+    this.touchActivity(handle);
+    const payload = await this.workerRpc.request(handle, {
+      kind: "sessionLifecycle.query",
+      requestId: randomUUID(),
+    });
+    const candidate = payload && typeof payload === "object" ? payload.lifecycle : undefined;
+    return candidate && typeof candidate === "object"
+      ? (candidate as SessionLifecycleSnapshot)
+      : undefined;
   }
 
   private seedWorkerForTest(input: SessionSupervisorTestWorkerInput): void {

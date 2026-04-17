@@ -30,7 +30,9 @@ import type {
 } from "@brewva/brewva-tools";
 import { collectSessionPromptOutput } from "../session/collect-output.js";
 import type { SubscribablePromptSession } from "../session/contracts.js";
+import { resolveSubagentSessionShutdownReason } from "../session/shutdown-receipts.js";
 import { recordSessionTurnTransition } from "../session/turn-transition.js";
+import { recordSessionShutdownIfMissing } from "../utils/runtime.js";
 import type { HostedSubagentBackgroundController } from "./background-controller.js";
 import { writeDetachedSubagentContextManifest } from "./background-protocol.js";
 import { loadHostedDelegationCatalog } from "./catalog.js";
@@ -165,9 +167,26 @@ function buildFailureOutcome(input: {
   };
 }
 
-async function disposeChildSession(session: HostedSubagentSessionResult["session"]): Promise<void> {
+async function disposeChildSession(
+  child: HostedSubagentSessionResult,
+  input: {
+    cancellationReason?: string;
+    timeoutTriggered?: boolean;
+    completionReason: string;
+    source: string;
+  },
+): Promise<void> {
   try {
-    session.dispose();
+    recordSessionShutdownIfMissing(child.runtime, {
+      sessionId: child.session.sessionManager.getSessionId(),
+      reason: resolveSubagentSessionShutdownReason({
+        timeoutTriggered: input.timeoutTriggered,
+        cancellationReason: input.cancellationReason,
+        completionReason: input.completionReason,
+      }),
+      source: input.source,
+    });
+    child.session.dispose();
   } catch {
     // best effort cleanup
   }
@@ -674,7 +693,11 @@ export function createHostedSubagentAdapter(
         if (child?.session.abort) {
           await child.session.abort().catch(() => undefined);
         } else if (child?.session) {
-          await disposeChildSession(child.session);
+          await disposeChildSession(child, {
+            cancellationReason,
+            completionReason: "subagent_run_complete",
+            source: "subagent_orchestrator",
+          });
         }
         await liveRun.outcomePromise.catch(() => undefined);
         return (
@@ -1159,7 +1182,12 @@ export function createHostedSubagentAdapter(
           options.runtime.authority.tools.releaseParallelSlot(input.parentSessionId, runId);
         }
         if (child) {
-          await disposeChildSession(child.session);
+          await disposeChildSession(child, {
+            cancellationReason,
+            timeoutTriggered,
+            completionReason: "subagent_run_complete",
+            source: "subagent_orchestrator",
+          });
         }
         if (isolatedWorkspace) {
           await isolatedWorkspace.dispose();

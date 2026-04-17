@@ -764,11 +764,12 @@ describe("hosted subagent orchestrator", () => {
     const runtime = new BrewvaRuntime({ cwd: workspaceRoot });
     const parentSessionId = "parent-session-background";
     let rejectPendingPrompt: ((error: Error) => void) | undefined;
+    let childRuntime: BrewvaRuntime | undefined;
 
     const adapter = createHostedSubagentAdapter({
       runtime,
       async createChildSession(input: HostedSubagentSessionOptions) {
-        const childRuntime = new BrewvaRuntime({ cwd: input.cwd ?? workspaceRoot });
+        childRuntime = new BrewvaRuntime({ cwd: input.cwd ?? workspaceRoot });
         const childSessionId = "child-background";
         const listeners = new Set<(event: BrewvaPromptSessionEvent) => void>();
 
@@ -856,6 +857,17 @@ describe("hosted subagent orchestrator", () => {
 
     const events = runtime.inspect.events.list(parentSessionId, { type: "subagent_cancelled" });
     expect(events).toHaveLength(1);
+    expect(childRuntime).toBeDefined();
+    const shutdownEvents =
+      childRuntime?.inspect.events.query("child-background", {
+        type: "session_shutdown",
+        last: 1,
+      }) ?? [];
+    expect(shutdownEvents).toHaveLength(1);
+    expect(shutdownEvents[0]?.payload).toMatchObject({
+      reason: "subagent_cancelled_manual_stop",
+      source: "subagent_orchestrator",
+    });
 
     await rm(workspaceRoot, { recursive: true, force: true });
   });

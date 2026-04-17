@@ -10,6 +10,78 @@ managed session lifecycle, and `Pi runtime` is no longer on the
 execution-critical path. `Pi` compatibility remains limited to import/export
 artifacts and reference comparison.
 
+## Runtime-Owned Lifecycle Contract
+
+`runtime.inspect.lifecycle.getSnapshot(sessionId)` is the canonical
+session-posture read model.
+
+It exists to answer a runtime-wide question that domain reducers do not answer
+by themselves: "what state is this session in right now?" The runtime keeps the
+underlying domain reducers independent, then composes them into one aggregate
+lifecycle snapshot.
+
+The stable contract is exported as `SessionLifecycleSnapshot` and is shaped
+around orthogonal axes rather than one flat phase enum:
+
+- `hydration`
+- `execution`
+- `recovery`
+- `skill`
+- `approval`
+- `tooling`
+- `integrity`
+- `summary`
+
+This snapshot is:
+
+- runtime-owned
+- replay-derived
+- read-only
+- not a second truth source
+
+Durable authority remains on tape, receipts, and Recovery WAL. The lifecycle
+snapshot is the unique runtime interpretation of that authority plus approved
+rebuildable helpers such as hydration state, approval state, open tool calls,
+recovery posture, hosted transition state, and session-wire facts.
+
+## Summary Precedence
+
+The aggregate summary surface exists so adapters do not keep inventing their
+own cross-axis posture logic.
+
+Stable precedence:
+
+1. `cold` when hydration is not ready enough to trust aggregate posture
+2. `closed` when the session has a terminal lifecycle receipt
+3. `degraded` when lifecycle integrity is unhealthy or recovery is
+   `diagnostic_only` / degraded
+4. `recovering` when hosted recovery or replay-visible continuation is active
+5. `blocked` when approval wait or skill repair dominates the current posture
+6. `active` when model streaming or tool execution is active
+7. `idle` otherwise
+
+`summary` is therefore a runtime-owned answer to "what posture should adapters
+present right now?", while the per-axis fields carry the precision needed for
+specialized products.
+
+## Adapter And Controller Rule
+
+Gateway and host products are consumers of the lifecycle contract, not parallel
+authorities.
+
+In particular:
+
+- gateway `session.status` is an adapter over runtime lifecycle plus
+  transport-local cache concerns
+- provider-request recovery heuristics and similar policy adapters should read
+  lifecycle posture instead of rescanning raw event history
+- host `SessionPhase` remains a local controller FSM for interaction flow and
+  UI state, but it no longer defines the authoritative meaning of durable
+  session lifecycle
+
+Compatibility fallbacks may still exist during migration, but the stable rule
+is that runtime lifecycle owns aggregate posture semantics.
+
 ## Lifecycle Stages
 
 1. Parse CLI args, resolve mode/input, and apply terminal capability policy
@@ -156,6 +228,11 @@ permanent degradation.
   current wire, live tool frames are explicitly attempt-scoped through
   authoritative tool lifecycle binding, while replay remains committed-state
   only.
+- runtime lifecycle aggregate sits between domain-local rebuildable state and
+  presentation adapters. Hydration folds, approval hydration, recovery posture,
+  hosted transition state, and open tool-call state remain domain-local; the
+  aggregate snapshot composes them into one posture contract for gateway
+  status, host bootstrap, and policy adapters.
 - Gateway public-session lookup is also durable: the gateway records
   `gateway_session_bound` receipts on a control tape so archived replay does
   not depend on process-local binding memory.

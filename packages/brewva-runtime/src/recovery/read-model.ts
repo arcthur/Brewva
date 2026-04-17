@@ -28,6 +28,18 @@ import {
 
 type TransitionStatus = "entered" | "completed" | "failed" | "skipped";
 
+// Keep enough transition history to cover multi-family recovery bursts within a
+// single turn without making lifecycle snapshots unbounded.
+const RECENT_TRANSITIONS_LIMIT = 32;
+
+export interface RecoveryTransitionSnapshot {
+  reason: string;
+  status: TransitionStatus;
+  family: RecoveryPendingFamily | null;
+  sourceEventId: string | null;
+  sourceEventType: string | null;
+}
+
 function readString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
@@ -396,6 +408,9 @@ interface TransitionState {
   latestReason: string | null;
   latestStatus: TransitionStatus | null;
   pendingFamily: RecoveryPendingFamily | null;
+  latestSourceEventId: string | null;
+  latestSourceEventType: string | null;
+  recentTransitions: RecoveryTransitionSnapshot[];
 }
 
 export function deriveTransitionState(events: readonly BrewvaEventRecord[]): TransitionState {
@@ -403,7 +418,12 @@ export function deriveTransitionState(events: readonly BrewvaEventRecord[]): Tra
     latestReason: null,
     latestStatus: null,
     pendingFamily: null,
+    latestSourceEventId: null,
+    latestSourceEventType: null,
+    recentTransitions: [],
   };
+  const recentByKey = new Map<string, RecoveryTransitionSnapshot & { order: number }>();
+  let order = 0;
   for (const event of events) {
     if (event.type !== SESSION_TURN_TRANSITION_EVENT_TYPE) {
       continue;
@@ -415,13 +435,33 @@ export function deriveTransitionState(events: readonly BrewvaEventRecord[]): Tra
     const reason = payload ? readString(payload.reason) : null;
     const status = readTransitionStatus(payload?.status);
     const family = readRecoveryPendingFamily(payload?.family);
+    const sourceEventId = readString(payload?.sourceEventId);
+    const sourceEventType = readString(payload?.sourceEventType);
     if (!reason || !status) {
       continue;
     }
     state.latestReason = reason;
     state.latestStatus = status;
     state.pendingFamily = status === "entered" && family ? family : null;
+    state.latestSourceEventId = sourceEventId;
+    state.latestSourceEventType = sourceEventType;
+    const transition: RecoveryTransitionSnapshot = {
+      reason,
+      status,
+      family,
+      sourceEventId,
+      sourceEventType,
+    };
+    recentByKey.set(
+      `${reason}::${sourceEventId ?? "unknown"}`,
+      Object.assign({ order }, transition),
+    );
+    order += 1;
   }
+  state.recentTransitions = [...recentByKey.values()]
+    .toSorted((left, right) => right.order - left.order)
+    .slice(0, RECENT_TRANSITIONS_LIMIT)
+    .map(({ order: _, ...transition }) => transition);
   return state;
 }
 

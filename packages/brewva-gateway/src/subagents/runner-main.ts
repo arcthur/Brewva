@@ -15,7 +15,10 @@ import type {
   SubagentRunRequest,
 } from "@brewva/brewva-tools";
 import { createHostedSession } from "../host/create-hosted-session.js";
+import type { HostedSessionLogger } from "../host/logger.js";
 import { collectSessionPromptOutput } from "../session/collect-output.js";
+import { resolveSubagentSessionShutdownReason } from "../session/shutdown-receipts.js";
+import { recordSessionShutdownIfMissing } from "../utils/runtime.js";
 import {
   readDetachedSubagentCancelRequest,
   removeDetachedSubagentCancelRequest,
@@ -53,6 +56,20 @@ import {
 function normalizeRelativePath(path: string): string {
   return path.replaceAll("\\", "/");
 }
+
+const hostedSessionLogger: HostedSessionLogger = {
+  warn(message, fields) {
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "warn",
+        message,
+        component: "detached_subagent_runner",
+        ...fields,
+      }),
+    );
+  },
+};
 
 function buildOutcomeArtifactRef(workspaceRoot: string, runId: string): SubagentOutcomeArtifactRef {
   return {
@@ -260,6 +277,7 @@ async function main(): Promise<void> {
       builtinToolNames: executionPlan.builtinToolNames,
       contextProfile: executionPlan.contextProfile,
       routingScopes: normalizeRoutingScopes(spec.routingScopes),
+      logger: hostedSessionLogger,
     });
     childSessionId = asBrewvaSessionId(childSession.session.sessionManager.getSessionId());
 
@@ -620,7 +638,18 @@ async function main(): Promise<void> {
       // best effort abort
     }
     try {
-      childSession?.session.dispose();
+      if (childSession) {
+        recordSessionShutdownIfMissing(childSession.runtime, {
+          sessionId: childSession.session.sessionManager.getSessionId(),
+          reason: resolveSubagentSessionShutdownReason({
+            timeoutTriggered,
+            cancellationReason,
+            completionReason: "subagent_runner_complete",
+          }),
+          source: "subagent_runner_main",
+        });
+        childSession.session.dispose();
+      }
     } catch {
       // best effort dispose
     }

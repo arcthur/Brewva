@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { GatewayDaemon } from "@brewva/brewva-gateway";
 import { patchProcessEnv } from "./global-state.js";
 
+export const GATEWAY_BACKED_CLI_CONTRACT_TIMEOUT_MS = 15_000;
+
 export type GatewayWorkerHarnessConfig = {
   enabled?: boolean;
   watchdog?: {

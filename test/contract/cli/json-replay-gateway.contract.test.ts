@@ -8,7 +8,10 @@ import {
   parseJsonLines,
   requireLatestEventFile,
 } from "../../helpers/events.js";
-import { startGatewayDaemonHarness } from "../../helpers/gateway.js";
+import {
+  GATEWAY_BACKED_CLI_CONTRACT_TIMEOUT_MS,
+  startGatewayDaemonHarness,
+} from "../../helpers/gateway.js";
 import { cleanupTestWorkspace, createTestWorkspace } from "../../helpers/workspace.js";
 
 type ReplayStructuredEvent = {
@@ -32,62 +35,66 @@ function toReplayStructuredEvents(lines: unknown[]): ReplayStructuredEvent[] {
 }
 
 describe("cli contract: gateway-backed json replay", () => {
-  test("gateway-backed print run can be replayed through the persisted json event stream", async () => {
-    const workspace = createTestWorkspace("contract-json-replay-gateway");
-    writeMinimalConfig(workspace);
-    const harness = await startGatewayDaemonHarness({
-      workspace,
-      fakeAssistantText: "SYSTEM_JSON_REPLAY_OK",
-    });
-
-    try {
-      const run = await runCli(
+  test(
+    "gateway-backed print run can be replayed through the persisted json event stream",
+    async () => {
+      const workspace = createTestWorkspace("contract-json-replay-gateway");
+      writeMinimalConfig(workspace);
+      const harness = await startGatewayDaemonHarness({
         workspace,
-        [
+        fakeAssistantText: "SYSTEM_JSON_REPLAY_OK",
+      });
+
+      try {
+        const run = await runCli(
+          workspace,
+          [
+            "--cwd",
+            workspace,
+            "--config",
+            ".brewva/brewva.json",
+            "--backend",
+            "gateway",
+            "--print",
+            "Return a deterministic json response.",
+          ],
+          { env: harness.env },
+        );
+        assertCliSuccess(run, "system-json-run");
+
+        const eventFile = requireLatestEventFile(workspace, "gateway-backed json replay");
+        const persistedEvents = parseEventFile(eventFile, { strict: true });
+        const sessionId = requireNonEmptyString(
+          persistedEvents.find(
+            (event) => typeof event.sessionId === "string" && event.sessionId.trim().length > 0,
+          )?.sessionId,
+          "Expected persisted sessionId for replay.",
+        );
+
+        const replay = await runCli(workspace, [
           "--cwd",
           workspace,
           "--config",
           ".brewva/brewva.json",
-          "--backend",
-          "gateway",
-          "--print",
-          "Return a deterministic json response.",
-        ],
-        { env: harness.env },
-      );
-      assertCliSuccess(run, "system-json-run");
+          "--replay",
+          "--mode",
+          "json",
+          "--session",
+          sessionId,
+        ]);
+        assertCliSuccess(replay, "system-json-replay");
 
-      const eventFile = requireLatestEventFile(workspace, "gateway-backed json replay");
-      const persistedEvents = parseEventFile(eventFile, { strict: true });
-      const sessionId = requireNonEmptyString(
-        persistedEvents.find(
-          (event) => typeof event.sessionId === "string" && event.sessionId.trim().length > 0,
-        )?.sessionId,
-        "Expected persisted sessionId for replay.",
-      );
-
-      const replay = await runCli(workspace, [
-        "--cwd",
-        workspace,
-        "--config",
-        ".brewva/brewva.json",
-        "--replay",
-        "--mode",
-        "json",
-        "--session",
-        sessionId,
-      ]);
-      assertCliSuccess(replay, "system-json-replay");
-
-      const replayEvents = toReplayStructuredEvents(
-        parseJsonLines(replay.stdout, { strict: true }),
-      );
-      expect(replayEvents.length).toBeGreaterThan(0);
-      expect(new Set(replayEvents.map((event) => event.type))).toContain("agent_end");
-      expect(new Set(replayEvents.map((event) => event.sessionId))).toEqual(new Set([sessionId]));
-    } finally {
-      await harness.dispose();
-      cleanupTestWorkspace(workspace);
-    }
-  }, 15_000);
+        const replayEvents = toReplayStructuredEvents(
+          parseJsonLines(replay.stdout, { strict: true }),
+        );
+        expect(replayEvents.length).toBeGreaterThan(0);
+        expect(new Set(replayEvents.map((event) => event.type))).toContain("agent_end");
+        expect(new Set(replayEvents.map((event) => event.sessionId))).toEqual(new Set([sessionId]));
+      } finally {
+        await harness.dispose();
+        cleanupTestWorkspace(workspace);
+      }
+    },
+    GATEWAY_BACKED_CLI_CONTRACT_TIMEOUT_MS,
+  );
 });

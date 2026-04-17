@@ -8,12 +8,14 @@ import {
   type TurnRenderCommittedPayload,
 } from "@brewva/brewva-runtime";
 import { recordRuntimeEvent, resolveRuntimeEventLogPath } from "@brewva/brewva-runtime/internal";
+import type { HostedSessionLogger } from "../host/logger.js";
 import { createRuntimeTurnClockStore } from "../runtime-plugins/runtime-turn-clock.js";
-import { recordAbnormalSessionShutdown } from "../utils/runtime.js";
+import { recordSessionShutdownIfMissing } from "../utils/runtime.js";
 import { SessionPromptCollectionError, collectSessionPromptOutput } from "./collect-output.js";
 import { createGatewaySession, type GatewaySessionResult } from "./create-session.js";
 import { preparePendingSessionReasoningRevertResume } from "./reasoning-revert-recovery.js";
 import { applySchedulePromptTrigger } from "./schedule-trigger.js";
+import { resolveWorkerSessionShutdownReceipt } from "./shutdown-receipts.js";
 import { TaskProgressWatchdog } from "./task-progress-watchdog.js";
 import { recordSessionTurnTransition } from "./turn-transition.js";
 import type { ParentToWorkerMessage, WorkerToParentMessage } from "./worker-protocol.js";
@@ -40,6 +42,12 @@ let workerTestHarness: ResolvedWorkerTestHarness = {
   watchdog: {},
 };
 type WorkerLogLevel = Extract<WorkerToParentMessage, { kind: "log" }>["level"];
+
+const hostedSessionLogger: HostedSessionLogger = {
+  warn(message, fields) {
+    log("warn", message, fields);
+  },
+};
 
 function summarizeFakeAssistantMessage(
   assistantText: string,
@@ -287,14 +295,9 @@ function log(level: WorkerLogLevel, message: string, fields?: Record<string, unk
   });
 }
 
-function shouldRecordAbnormalShutdown(reason: string): boolean {
-  return (
-    reason === "init_failed" ||
-    reason === "parent_disconnected" ||
-    reason === "parent_pid_mismatch" ||
-    reason === "uncaught_exception" ||
-    reason === "unhandled_rejection"
-  );
+function normalizeShutdownReason(reason: string): string {
+  const normalized = reason.trim();
+  return normalized.length > 0 ? normalized : "shutdown";
 }
 
 async function shutdown(exitCode = 0, reason = "shutdown", shutdownError?: unknown): Promise<void> {
@@ -313,19 +316,20 @@ async function shutdown(exitCode = 0, reason = "shutdown", shutdownError?: unkno
   if (sessionResult) {
     const runtime = sessionResult.runtime;
     const agentSessionId = sessionResult.session.sessionManager.getSessionId();
+    const shutdownReason = normalizeShutdownReason(reason);
+    const shutdownReceipt = resolveWorkerSessionShutdownReceipt(shutdownReason);
     unsubscribeSessionWire?.();
     unsubscribeSessionWire = null;
-    if (shouldRecordAbnormalShutdown(reason)) {
-      recordAbnormalSessionShutdown(runtime, {
-        sessionId: agentSessionId,
-        source: reason,
-        error: shutdownError,
-      });
-    }
+    recordSessionShutdownIfMissing(runtime, {
+      sessionId: agentSessionId,
+      reason: shutdownReceipt.reason,
+      source: shutdownReceipt.source,
+      error: shutdownError,
+    });
     const interruptReason =
-      reason === "bridge_timeout"
+      shutdownReason === "bridge_timeout"
         ? ("timeout_interrupt" as const)
-        : reason === "sigterm" || reason === "sigint"
+        : shutdownReason === "sigterm" || shutdownReason === "sigint"
           ? ("signal_interrupt" as const)
           : null;
     const finalizeInterruptTransition = (
@@ -349,7 +353,7 @@ async function shutdown(exitCode = 0, reason = "shutdown", shutdownError?: unkno
         reason: interruptReason,
         status: "entered",
         family: "interrupt",
-        error: reason,
+        error: shutdownReason,
       });
     } else if (interruptReason === "signal_interrupt") {
       recordSessionTurnTransition(runtime, {
@@ -357,7 +361,7 @@ async function shutdown(exitCode = 0, reason = "shutdown", shutdownError?: unkno
         reason: interruptReason,
         status: "entered",
         family: "interrupt",
-        error: reason,
+        error: shutdownReason,
       });
     }
     taskProgressWatchdog?.stop();
@@ -432,6 +436,7 @@ async function handleInit(
       model: message.payload.model,
       agentId: message.payload.agentId,
       managedToolMode: message.payload.managedToolMode,
+      logger: hostedSessionLogger,
     });
     const agentSessionId = sessionResult.session.sessionManager.getSessionId();
     const agentEventLogPath = resolveRuntimeEventLogPath(sessionResult.runtime, agentSessionId);
@@ -788,6 +793,32 @@ async function handleSessionContextPressureQuery(
   });
 }
 
+async function handleSessionLifecycleQuery(
+  message: Extract<ParentToWorkerMessage, { kind: "sessionLifecycle.query" }>,
+): Promise<void> {
+  if (!sessionResult) {
+    send({
+      kind: "result",
+      requestId: message.requestId,
+      ok: true,
+      payload: {
+        lifecycle: undefined,
+      },
+    });
+    return;
+  }
+
+  const agentSessionId = sessionResult.session.sessionManager.getSessionId();
+  send({
+    kind: "result",
+    requestId: message.requestId,
+    ok: true,
+    payload: {
+      lifecycle: sessionResult.runtime.inspect.lifecycle.getSnapshot(agentSessionId),
+    },
+  });
+}
+
 async function handleMessage(raw: unknown): Promise<void> {
   if (!raw || typeof raw !== "object") {
     return;
@@ -832,6 +863,13 @@ async function handleMessage(raw: unknown): Promise<void> {
   if (kind === "sessionContextPressure.query") {
     await handleSessionContextPressureQuery(
       raw as Extract<ParentToWorkerMessage, { kind: "sessionContextPressure.query" }>,
+    );
+    return;
+  }
+
+  if (kind === "sessionLifecycle.query") {
+    await handleSessionLifecycleQuery(
+      raw as Extract<ParentToWorkerMessage, { kind: "sessionLifecycle.query" }>,
     );
     return;
   }

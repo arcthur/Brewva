@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { registerProviderRequestRecovery } from "@brewva/brewva-gateway/runtime-plugins";
 import { armNextPromptOutputBudgetEscalation } from "../../../packages/brewva-gateway/src/session/prompt-recovery-state.js";
+import { recordSessionTurnTransition } from "../../../packages/brewva-gateway/src/session/turn-transition.js";
 import { createMockRuntimePluginApi, invokeHandler } from "../../helpers/runtime-plugin.js";
 import { createRuntimeFixture } from "../../helpers/runtime.js";
 
@@ -11,6 +12,12 @@ describe("provider request recovery", () => {
     const sessionId = "provider-request-recovery-completed";
 
     registerProviderRequestRecovery(api, runtime);
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "output_budget_escalation",
+      status: "entered",
+      model: "openai/gpt-5.4",
+    });
     armNextPromptOutputBudgetEscalation(runtime, {
       sessionId,
       targetMaxTokens: 16_384,
@@ -44,14 +51,25 @@ describe("provider request recovery", () => {
       },
     });
     expect(
-      runtime.inspect.events.queryStructured(sessionId, {
-        type: "session_turn_transition",
-      })[0]?.payload,
-    ).toMatchObject({
-      reason: "output_budget_escalation",
-      status: "completed",
-      model: "openai/gpt-5.4",
-    });
+      runtime.inspect.events
+        .queryStructured(sessionId, {
+          type: "session_turn_transition",
+        })
+        .map((event) => event.payload),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason: "output_budget_escalation",
+          status: "entered",
+          model: "openai/gpt-5.4",
+        }),
+        expect.objectContaining({
+          reason: "output_budget_escalation",
+          status: "completed",
+          model: "openai/gpt-5.4",
+        }),
+      ]),
+    );
   });
 
   test("records skipped escalation when the provider payload has no supported output-budget field", () => {
@@ -60,6 +78,12 @@ describe("provider request recovery", () => {
     const sessionId = "provider-request-recovery-skipped";
 
     registerProviderRequestRecovery(api, runtime);
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "output_budget_escalation",
+      status: "entered",
+      model: "openai/gpt-5.4",
+    });
     armNextPromptOutputBudgetEscalation(runtime, {
       sessionId,
       targetMaxTokens: 16_384,
@@ -84,14 +108,25 @@ describe("provider request recovery", () => {
 
     expect(patched).toBeUndefined();
     expect(
-      runtime.inspect.events.queryStructured(sessionId, {
-        type: "session_turn_transition",
-      })[0]?.payload,
-    ).toMatchObject({
-      reason: "output_budget_escalation",
-      status: "skipped",
-      model: "openai/gpt-5.4",
-    });
+      runtime.inspect.events
+        .queryStructured(sessionId, {
+          type: "session_turn_transition",
+        })
+        .map((event) => event.payload),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason: "output_budget_escalation",
+          status: "entered",
+          model: "openai/gpt-5.4",
+        }),
+        expect.objectContaining({
+          reason: "output_budget_escalation",
+          status: "skipped",
+          model: "openai/gpt-5.4",
+        }),
+      ]),
+    );
   });
 
   test("recognizes supported output-budget fields across top-level and nested payloads", () => {
@@ -100,6 +135,12 @@ describe("provider request recovery", () => {
     const sessionId = "provider-request-recovery-supported-fields";
 
     registerProviderRequestRecovery(api, runtime);
+    recordSessionTurnTransition(runtime, {
+      sessionId,
+      reason: "output_budget_escalation",
+      status: "entered",
+      model: "openai/gpt-5.4",
+    });
     armNextPromptOutputBudgetEscalation(runtime, {
       sessionId,
       targetMaxTokens: 8_192,

@@ -311,19 +311,52 @@ describe("provider request reduction", () => {
     const sessionId = "provider-request-reduction-diagnostic-only";
 
     registerProviderRequestReduction(api, createHostedRuntimePort(runtime));
-    Object.assign(runtime.inspect.recovery, {
-      getPosture() {
+    Object.assign(runtime.inspect.lifecycle, {
+      getSnapshot() {
         return {
-          mode: "diagnostic_only",
-          latestReason: "exact_history_over_budget",
-          latestStatus: null,
-          pendingFamily: null,
-          degradedReason: "exact_history_over_budget",
-          duplicateSideEffectSuppressionCount: 0,
+          hydration: {
+            status: "ready",
+            issues: [],
+          },
+          execution: {
+            kind: "idle",
+          },
+          recovery: {
+            mode: "diagnostic_only",
+            latestReason: "exact_history_over_budget",
+            latestStatus: null,
+            pendingFamily: null,
+            degradedReason: "exact_history_over_budget",
+            duplicateSideEffectSuppressionCount: 0,
+            latestSourceEventId: null,
+            latestSourceEventType: null,
+            recentTransitions: [],
+          },
+          skill: {
+            posture: "none",
+            activeSkillName: null,
+          },
+          approval: {
+            status: "idle",
+            pendingCount: 0,
+            requestId: null,
+            toolCallId: null,
+            toolName: null,
+            subject: null,
+          },
+          tooling: {
+            openToolCalls: [],
+          },
+          integrity: {
+            status: "healthy",
+            issues: [],
+          },
+          summary: {
+            kind: "degraded",
+            reason: "exact_history_over_budget",
+            detail: null,
+          },
         };
-      },
-      getWorkingSet() {
-        return undefined;
       },
     });
 

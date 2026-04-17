@@ -83,6 +83,7 @@ import type {
   SkillRegistryLoadReport,
   SkillRoutingScope,
   SessionHydrationState,
+  SessionLifecycleSnapshot,
   SessionUncleanShutdownDiagnostic,
   SessionCostSummary,
   SessionCompactionCommitInput,
@@ -121,6 +122,9 @@ import type { TaskItemStatus } from "./contracts/index.js";
 import type { TruthFactSeverity, TruthFactStatus, TruthState } from "./contracts/index.js";
 import { SessionCostTracker } from "./cost/tracker.js";
 import {
+  EFFECT_COMMITMENT_APPROVAL_CONSUMED_EVENT_TYPE,
+  EFFECT_COMMITMENT_APPROVAL_DECIDED_EVENT_TYPE,
+  EFFECT_COMMITMENT_APPROVAL_REQUESTED_EVENT_TYPE,
   ITERATION_GUARD_RECORDED_EVENT_TYPE,
   ITERATION_METRIC_OBSERVED_EVENT_TYPE,
   SKILL_REFRESH_RECORDED_EVENT_TYPE,
@@ -154,9 +158,11 @@ import {
   type MetricObservationRecord,
 } from "./iteration/facts.js";
 import { EvidenceLedger } from "./ledger/evidence-ledger.js";
+import { buildSessionLifecycleSnapshot } from "./lifecycle/session-lifecycle-snapshot.js";
 import { ParallelBudgetManager } from "./parallel/budget.js";
 import { ParallelResultStore } from "./parallel/results.js";
 import { ProjectionEngine } from "./projection/engine.js";
+import { deriveOpenToolCallsFromEvents, deriveTransitionState } from "./recovery/read-model.js";
 import {
   createRuntimeCoreDependencies as assembleRuntimeCoreDependencies,
   createRuntimeKernelContext as assembleRuntimeKernelContext,
@@ -264,6 +270,12 @@ function bindMethods<TObject extends object, const TKeys extends readonly (keyof
   }
   return result;
 }
+
+const LIFECYCLE_APPROVAL_CACHE_EVENT_TYPES = new Set<string>([
+  EFFECT_COMMITMENT_APPROVAL_REQUESTED_EVENT_TYPE,
+  EFFECT_COMMITMENT_APPROVAL_DECIDED_EVENT_TYPE,
+  EFFECT_COMMITMENT_APPROVAL_CONSUMED_EVENT_TYPE,
+]);
 
 export interface BrewvaRuntimeIdentity {
   readonly cwd: string;
@@ -573,6 +585,9 @@ interface BrewvaRuntimeMethodGroups {
       dropped: number;
     };
   };
+  lifecycle: {
+    getSnapshot(sessionId: string): SessionLifecycleSnapshot;
+  };
   events: {
     record: RuntimeRecordEvent;
     resolveLogPath(sessionId: string): string;
@@ -766,6 +781,7 @@ export interface BrewvaInspectionPort {
     BrewvaRuntimeMethodGroups["recoveryWal"],
     "listPending" | "getPosture" | "getWorkingSet"
   >;
+  readonly lifecycle: Pick<BrewvaRuntimeMethodGroups["lifecycle"], "getSnapshot">;
   readonly events: Pick<
     BrewvaRuntimeMethodGroups["events"],
     | "query"
@@ -869,6 +885,7 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
   declare private readonly projectionEngine: ProjectionEngine;
 
   private readonly sessionState = new RuntimeSessionStateStore();
+  private readonly sessionLifecycleSnapshotCache = new Map<string, SessionLifecycleSnapshot>();
   private readonly kernel: RuntimeKernelContext;
   declare private readonly contextService: ContextService;
   declare private readonly costService: CostService;
@@ -918,6 +935,9 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
     Object.assign(this, this.createCoreDependencies(options));
     this.kernel = this.createKernelContext(options);
     Object.assign(this, this.createServiceDependencies(options));
+    this.sessionLifecycleService.onClearState((sessionId) => {
+      this.invalidateSessionLifecycleSnapshot(sessionId);
+    });
     Object.assign(this, {
       sessionWireService: new SessionWireService({
         queryStructuredEvents: (sessionId) => this.eventPipeline.queryStructuredEvents(sessionId),
@@ -1103,8 +1123,11 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
         sanitizeInput: (text) => this.sanitizeInput(text),
         observeUsage: (sessionId, usage) =>
           this.contextService.observeContextUsage(sessionId, usage),
-        observePromptStability: (sessionId, input) =>
-          this.contextService.observePromptStability(sessionId, input),
+        observePromptStability: (sessionId, input) => {
+          const observed = this.contextService.observePromptStability(sessionId, input);
+          this.invalidateSessionLifecycleSnapshot(sessionId);
+          return observed;
+        },
         observeTransientReduction: (sessionId, input) =>
           this.contextService.observeTransientReduction(sessionId, input),
         getUsage: (sessionId) => this.contextService.getContextUsage(sessionId),
@@ -1267,7 +1290,7 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
             workspaceRoot: this.workspaceRoot,
             config: this.runtimeConfig.infrastructure.recoveryWal,
             recordEvent: (input: { sessionId: string; type: string; payload?: object }) => {
-              this.eventPipeline.recordEvent({
+              this.recordEvent({
                 sessionId: input.sessionId,
                 type: input.type,
                 payload: input.payload,
@@ -1279,8 +1302,11 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
         },
         compact: () => this.recoveryWalStore.compact(),
       },
+      lifecycle: {
+        getSnapshot: (sessionId) => this.getSessionLifecycleSnapshot(sessionId),
+      },
       events: {
-        record: (input) => this.eventPipeline.recordEvent(input),
+        record: (input) => this.recordEvent(input),
         resolveLogPath: (sessionId) => this.eventStore.getLogPath(sessionId),
         query: (sessionId, query) => this.eventPipeline.queryEvents(sessionId, query),
         queryStructured: (sessionId, query) =>
@@ -1483,6 +1509,7 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
           "getPosture",
           "getWorkingSet",
         ] as const),
+        lifecycle: bindMethods(methodGroups.lifecycle, ["getSnapshot"] as const),
         events: bindMethods(methodGroups.events, [
           "query",
           "queryStructured",
@@ -1578,6 +1605,46 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
     }).workingSet;
   }
 
+  private invalidateSessionLifecycleSnapshot(sessionId: string): void {
+    this.sessionLifecycleSnapshotCache.delete(sessionId);
+  }
+
+  private getSessionLifecycleSnapshot(sessionId: string): SessionLifecycleSnapshot {
+    const cached = this.sessionLifecycleSnapshotCache.get(sessionId);
+    if (cached) {
+      return structuredClone(cached);
+    }
+    this.sessionLifecycleService.ensureHydrated(sessionId);
+    const events = this.eventStore.list(sessionId);
+    const usage = this.contextService.getContextUsage(sessionId);
+    const referenceContextDigest =
+      this.sessionState.getPromptStability(sessionId)?.stablePrefixHash;
+    const recoveryContext = resolveRecoveryContextReadModels(this.kernel, {
+      sessionId,
+      usage,
+      referenceContextDigest,
+    });
+    const transitionState = deriveTransitionState(events);
+    const snapshot = buildSessionLifecycleSnapshot({
+      sessionId,
+      hydration: this.sessionLifecycleService.getHydrationState(sessionId),
+      integrity: this.sessionLifecycleService.getIntegrityStatus(sessionId),
+      recovery: {
+        ...recoveryContext.posture,
+        latestSourceEventId: transitionState.latestSourceEventId,
+        latestSourceEventType: transitionState.latestSourceEventType,
+        recentTransitions: transitionState.recentTransitions,
+      },
+      activeSkillState: this.skillLifecycleService.getActiveSkillState(sessionId),
+      latestSkillFailure: this.skillLifecycleService.getLatestSkillFailure(sessionId),
+      pendingApprovals: this.effectCommitmentDeskService.listPending(sessionId),
+      openToolCalls: deriveOpenToolCallsFromEvents(events),
+      frames: this.sessionWireService.query(sessionId),
+    });
+    this.sessionLifecycleSnapshotCache.set(sessionId, snapshot);
+    return structuredClone(snapshot);
+  }
+
   private getTaskTargetDescriptor(sessionId: string): TaskTargetDescriptor {
     this.sessionLifecycleService.ensureHydrated(sessionId);
     const spec = this.getTaskState(sessionId).spec;
@@ -1603,7 +1670,14 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
   private recordEvent<TPayload extends object>(
     input: RuntimeRecordEventInput<TPayload>,
   ): BrewvaEventRecord | undefined {
-    return this.eventPipeline.recordEvent(input);
+    const recorded = this.eventPipeline.recordEvent(input);
+    if (recorded) {
+      if (LIFECYCLE_APPROVAL_CACHE_EVENT_TYPES.has(recorded.type)) {
+        this.effectCommitmentDeskService.clear(recorded.sessionId);
+      }
+      this.invalidateSessionLifecycleSnapshot(recorded.sessionId);
+    }
+    return recorded;
   }
 
   private refreshSkillsState(input: SkillRefreshInput = {}): SkillRefreshResult {

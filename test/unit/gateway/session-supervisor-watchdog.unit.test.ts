@@ -177,6 +177,26 @@ describe("session supervisor watchdog bridge", () => {
         const stopped = await supervisor.stopSession("watchdog-worker-stop", "test_shutdown");
         expect(stopped).toBe(true);
 
+        const shutdown = await waitForCondition(
+          () => {
+            const observer = new BrewvaRuntime({ cwd: workspace, configPath: TEST_CONFIG_PATH });
+            return observer.inspect.events.query(resolvedAgentSessionId, {
+              type: "session_shutdown",
+              last: 1,
+            })[0];
+          },
+          {
+            timeoutMs: 5_000,
+            intervalMs: 100,
+            message: "expected structured session_shutdown after explicit stop",
+          },
+        );
+
+        expect(shutdown.payload).toMatchObject({
+          reason: "test_shutdown",
+          source: "session_worker_shutdown",
+        });
+
         await sleepMs(3_000);
 
         const observer = new BrewvaRuntime({ cwd: workspace, configPath: TEST_CONFIG_PATH });

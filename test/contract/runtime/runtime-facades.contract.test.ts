@@ -219,9 +219,253 @@ describe("runtime facade coverage", () => {
           degradedReason: expect.stringContaining("active_skill_without_terminal_receipt"),
         }),
       );
+      expect(reloaded.inspect.lifecycle.getSnapshot(sessionId)).toEqual(
+        expect.objectContaining({
+          execution: expect.objectContaining({
+            kind: "tool_executing",
+            toolCallId: "read-1",
+            toolName: "read",
+          }),
+          summary: expect.objectContaining({
+            kind: "degraded",
+          }),
+        }),
+      );
     } finally {
       restoreNow();
     }
+  });
+
+  test("inspect.lifecycle exposes blocked approval posture from durable approval state", () => {
+    const runtime = new BrewvaRuntime({
+      cwd: createTestWorkspace("runtime-facade-lifecycle-approval"),
+      config: createOpsRuntimeConfig(),
+    });
+    const sessionId = "runtime-facade-lifecycle-approval-1";
+
+    runtime.maintain.context.onTurnStart(sessionId, 1);
+    const started = runtime.authority.tools.start({
+      sessionId,
+      toolCallId: "tool-lifecycle-1",
+      toolName: "exec",
+      args: { command: "echo hi" },
+    });
+    expect(started.allowed).toBe(false);
+
+    expect(runtime.inspect.lifecycle.getSnapshot(sessionId)).toEqual(
+      expect.objectContaining({
+        execution: expect.objectContaining({
+          kind: "waiting_approval",
+          requestId: started.effectCommitmentRequestId,
+          toolCallId: "tool-lifecycle-1",
+          toolName: "exec",
+        }),
+        approval: expect.objectContaining({
+          status: "pending",
+          pendingCount: 1,
+          requestId: started.effectCommitmentRequestId,
+          toolCallId: "tool-lifecycle-1",
+          toolName: "exec",
+        }),
+        summary: expect.objectContaining({
+          kind: "blocked",
+          reason: "approval_requested",
+          detail: expect.any(String),
+        }),
+      }),
+    );
+  });
+
+  test("inspect.lifecycle exposes recovery transition source facts for reasoning resume adapters", () => {
+    const runtime = new BrewvaRuntime({
+      cwd: createTestWorkspace("runtime-facade-lifecycle-recovery"),
+      config: createOpsRuntimeConfig(),
+    });
+    const sessionId = "runtime-facade-lifecycle-recovery-1";
+
+    runtime.maintain.context.onTurnStart(sessionId, 8);
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      turn: 8,
+      type: "turn_input_recorded",
+      payload: {
+        turnId: "turn-lifecycle-recovery-1",
+        trigger: "recovery",
+        promptText: "Resume the interrupted attempt",
+      },
+    });
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      turn: 8,
+      type: "session_turn_transition",
+      payload: {
+        reason: "reasoning_revert_resume",
+        status: "entered",
+        sequence: 1,
+        family: "recovery",
+        attempt: 1,
+        sourceEventId: "reasoning-revert-event-1",
+        sourceEventType: "reasoning_revert_recorded",
+        error: null,
+        breakerOpen: false,
+        model: null,
+      },
+    });
+
+    expect(runtime.inspect.lifecycle.getSnapshot(sessionId)).toEqual(
+      expect.objectContaining({
+        execution: expect.objectContaining({
+          kind: "recovering",
+          reason: "reasoning_revert_resume",
+          family: "recovery",
+        }),
+        recovery: expect.objectContaining({
+          latestReason: "reasoning_revert_resume",
+          latestStatus: "entered",
+          pendingFamily: "recovery",
+          latestSourceEventId: "reasoning-revert-event-1",
+          latestSourceEventType: "reasoning_revert_recorded",
+        }),
+        summary: expect.objectContaining({
+          kind: "recovering",
+          reason: "reasoning_revert_resume",
+        }),
+      }),
+    );
+  });
+
+  test("inspect.lifecycle invalidates cached snapshots on new events and returns defensive copies", () => {
+    const runtime = new BrewvaRuntime({
+      cwd: createTestWorkspace("runtime-facade-lifecycle-cache"),
+      config: createOpsRuntimeConfig(),
+    });
+    const sessionId = "runtime-facade-lifecycle-cache-1";
+
+    const initialSnapshot = runtime.inspect.lifecycle.getSnapshot(sessionId);
+    expect(initialSnapshot.execution.kind).toBe("idle");
+
+    initialSnapshot.summary.kind = "closed";
+
+    const cachedSnapshot = runtime.inspect.lifecycle.getSnapshot(sessionId);
+    expect(cachedSnapshot.summary.kind).toBe("idle");
+    expect(cachedSnapshot.execution.kind).toBe("idle");
+
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      turn: 1,
+      type: "tool_execution_start",
+      payload: {
+        toolCallId: "cache-tool-1",
+        toolName: "read",
+      },
+    });
+
+    expect(runtime.inspect.lifecycle.getSnapshot(sessionId)).toEqual(
+      expect.objectContaining({
+        execution: expect.objectContaining({
+          kind: "tool_executing",
+          toolCallId: "cache-tool-1",
+          toolName: "read",
+        }),
+        summary: expect.objectContaining({
+          kind: "degraded",
+        }),
+      }),
+    );
+  });
+
+  test("inspect.lifecycle invalidates cached snapshots on prompt stability changes", () => {
+    const runtime = new BrewvaRuntime({
+      cwd: createTestWorkspace("runtime-facade-lifecycle-prompt-stability-cache"),
+      config: createOpsRuntimeConfig(),
+    });
+    const sessionId = "runtime-facade-lifecycle-prompt-stability-cache-1";
+
+    runtime.authority.session.commitCompaction(sessionId, {
+      compactId: "cmp-lifecycle-prompt-stability-cache",
+      sanitizedSummary: "[CompactSummary]\nKeep the resumable baseline.",
+      summaryDigest: sha256("[CompactSummary]\nKeep the resumable baseline."),
+      sourceTurn: 1,
+      leafEntryId: "leaf-lifecycle-prompt-stability-cache",
+      referenceContextDigest: "prefix-old",
+      fromTokens: 720,
+      toTokens: 260,
+      origin: "extension_api",
+    });
+
+    expect(runtime.inspect.lifecycle.getSnapshot(sessionId)).toEqual(
+      expect.objectContaining({
+        recovery: expect.objectContaining({
+          mode: "idle",
+          degradedReason: null,
+        }),
+        summary: expect.objectContaining({
+          kind: "idle",
+        }),
+      }),
+    );
+
+    runtime.maintain.context.observePromptStability(sessionId, {
+      stablePrefixHash: "prefix-new",
+      dynamicTailHash: "tail-new",
+      turn: 1,
+      timestamp: 1_740_000_000_100,
+    });
+
+    expect(runtime.inspect.lifecycle.getSnapshot(sessionId)).toEqual(
+      expect.objectContaining({
+        recovery: expect.objectContaining({
+          mode: "diagnostic_only",
+          degradedReason: "reference_context_digest_mismatch",
+        }),
+        summary: expect.objectContaining({
+          kind: "degraded",
+          reason: "reference_context_digest_mismatch",
+        }),
+      }),
+    );
+  });
+
+  test("inspect.lifecycle retains more than a dozen recent transitions for recovery adapters", () => {
+    const runtime = new BrewvaRuntime({
+      cwd: createTestWorkspace("runtime-facade-lifecycle-transition-window"),
+      config: createOpsRuntimeConfig(),
+    });
+    const sessionId = "runtime-facade-lifecycle-transition-window-1";
+
+    for (let index = 0; index < 16; index += 1) {
+      recordRuntimeEvent(runtime, {
+        sessionId,
+        turn: 3,
+        type: "session_turn_transition",
+        payload: {
+          reason: "provider_fallback_retry",
+          status: index === 15 ? "entered" : "completed",
+          sequence: index + 1,
+          family: "recovery",
+          attempt: 1,
+          sourceEventId: `transition-source-${index + 1}`,
+          sourceEventType: "tool_result_recorded",
+          error: null,
+          breakerOpen: false,
+          model: null,
+        },
+      });
+    }
+
+    expect(runtime.inspect.lifecycle.getSnapshot(sessionId).recovery.recentTransitions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceEventId: "transition-source-1",
+        }),
+        expect.objectContaining({
+          sourceEventId: "transition-source-16",
+        }),
+      ]),
+    );
+    expect(
+      runtime.inspect.lifecycle.getSnapshot(sessionId).recovery.recentTransitions,
+    ).toHaveLength(16);
   });
 
   test("tool execution terminal receipts clear tool recovery wal rows", () => {

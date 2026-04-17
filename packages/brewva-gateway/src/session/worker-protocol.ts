@@ -1,4 +1,8 @@
-import type { ManagedToolMode, SessionWireFrame } from "@brewva/brewva-runtime";
+import type {
+  ManagedToolMode,
+  SessionLifecycleSnapshot,
+  SessionWireFrame,
+} from "@brewva/brewva-runtime";
 import type { SendPromptTrigger } from "../daemon/session-backend.js";
 
 export type WorkerResultErrorCode = "session_busy";
@@ -49,6 +53,10 @@ export type ParentToWorkerMessage =
   | {
       kind: "sessionContextPressure.query";
       requestId: string;
+    }
+  | {
+      kind: "sessionLifecycle.query";
+      requestId: string;
     };
 
 export type WorkerToParentMessage =
@@ -91,4 +99,12 @@ export type WorkerToParentMessage =
       level: "debug" | "info" | "warn" | "error";
       message: string;
       fields?: Record<string, unknown>;
+    }
+  | {
+      kind: "result";
+      requestId: string;
+      ok: true;
+      payload: {
+        lifecycle: SessionLifecycleSnapshot | undefined;
+      };
     };

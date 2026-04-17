@@ -15,6 +15,7 @@ import {
   type BrewvaToolContext,
   type BrewvaToolUiPort,
 } from "@brewva/brewva-substrate";
+import type { HostedSessionLogger } from "../../../packages/brewva-gateway/src/host/logger.js";
 import { createBrewvaManagedAgentSession } from "../../../packages/brewva-gateway/src/host/managed-agent-session.js";
 import { HostedRuntimeTapeSessionStore } from "../../../packages/brewva-gateway/src/host/runtime-projection-session-store.js";
 import { createHostedTurnPipeline } from "../../../packages/brewva-gateway/src/runtime-plugins/index.js";
@@ -92,7 +93,10 @@ async function createResourceLoader(workspace: string): Promise<BrewvaHostedReso
   });
 }
 
-async function createManagedSessionFixture(testName: string) {
+async function createManagedSessionFixture(
+  testName: string,
+  options?: { logger?: HostedSessionLogger },
+) {
   const workspace = createTestWorkspace(testName);
   const runtime = new BrewvaRuntime({ cwd: workspace });
   const sessionStore = new HostedRuntimeTapeSessionStore(runtime, workspace, `${testName}-session`);
@@ -128,6 +132,7 @@ async function createManagedSessionFixture(testName: string) {
     runtimePlugins: [createHostedTurnPipeline({ runtime, registerTools: false })],
     initialModel: TEST_MODEL,
     initialThinkingLevel: "high" as BrewvaPromptThinkingLevel,
+    logger: options?.logger,
   });
 
   return { workspace, runtime, sessionStore, session };
@@ -787,7 +792,7 @@ describe("managed agent session compaction", () => {
     }
   });
 
-  test("hydrates the initial session phase from runtime fact history on resume", async () => {
+  test("hydrates the initial session phase from lifecycle snapshot on resume", async () => {
     const workspace = createTestWorkspace("managed-agent-session-history-phase");
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionStore = new HostedRuntimeTapeSessionStore(
@@ -820,6 +825,13 @@ describe("managed agent session compaction", () => {
         subject: "run command",
       },
     });
+    (
+      sessionStore as HostedRuntimeTapeSessionStore & {
+        querySessionWire(): never;
+      }
+    ).querySessionWire = () => {
+      throw new Error("managed-agent-session should bootstrap from lifecycle snapshot");
+    };
 
     const observedPhases: string[] = [];
     const plugin: BrewvaHostPluginFactory = (api) => {
@@ -885,7 +897,188 @@ describe("managed agent session compaction", () => {
     }
   });
 
-  test("hydrates recovering phase from runtime fact history on resume", async () => {
+  test("does not warn when lifecycle bootstrap reconciles waiting approval posture", async () => {
+    const originalWarn = console.warn;
+    const warnings: unknown[][] = [];
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args);
+    };
+
+    const workspace = createTestWorkspace("managed-agent-session-history-phase-warning");
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const sessionStore = new HostedRuntimeTapeSessionStore(
+      runtime,
+      workspace,
+      "managed-agent-session-history-phase-warning-session",
+    );
+    sessionStore.appendModelChange(TEST_MODEL.provider, TEST_MODEL.id);
+    sessionStore.appendThinkingLevelChange("high");
+
+    const sessionId = sessionStore.getSessionId();
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      turn: 1,
+      type: "turn_input_recorded",
+      payload: {
+        turnId: "turn-history-warning-1",
+        trigger: "user",
+        promptText: "resume while waiting for approval",
+      },
+    });
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      turn: 1,
+      type: "effect_commitment_approval_requested",
+      payload: {
+        requestId: "approval-history-warning-1",
+        toolName: "exec_command",
+        toolCallId: "tool-history-warning-1",
+        subject: "run command",
+      },
+    });
+    (
+      sessionStore as HostedRuntimeTapeSessionStore & {
+        querySessionWire(): never;
+      }
+    ).querySessionWire = () => {
+      throw new Error("managed-agent-session should bootstrap from lifecycle snapshot");
+    };
+
+    const modelCatalog = createInMemoryModelCatalog();
+    modelCatalog.registerProvider(TEST_MODEL.provider, {
+      baseUrl: TEST_MODEL.baseUrl,
+      apiKey: "test-key",
+      models: [
+        {
+          id: TEST_MODEL.id,
+          name: TEST_MODEL.name,
+          api: TEST_MODEL.api,
+          reasoning: TEST_MODEL.reasoning,
+          input: TEST_MODEL.input,
+          cost: TEST_MODEL.cost,
+          contextWindow: TEST_MODEL.contextWindow,
+          maxTokens: TEST_MODEL.maxTokens,
+        },
+      ],
+    });
+
+    const session = await createBrewvaManagedAgentSession({
+      cwd: workspace,
+      agentDir: join(workspace, ".brewva-agent"),
+      sessionStore,
+      settings: createSettingsStub(),
+      modelCatalog,
+      resourceLoader: await createResourceLoader(workspace),
+      customTools: [],
+      runtimePlugins: [createHostedTurnPipeline({ runtime, registerTools: false })],
+      initialModel: TEST_MODEL,
+      initialThinkingLevel: "high",
+    });
+
+    try {
+      expect(warnings).toEqual([]);
+    } finally {
+      console.warn = originalWarn;
+      session.dispose();
+    }
+  });
+
+  test("hydrates tool execution phase from lifecycle snapshot on resume", async () => {
+    const workspace = createTestWorkspace("managed-agent-session-history-tool-phase");
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const sessionStore = new HostedRuntimeTapeSessionStore(
+      runtime,
+      workspace,
+      "managed-agent-session-history-tool-phase-session",
+    );
+    sessionStore.appendModelChange(TEST_MODEL.provider, TEST_MODEL.id);
+    sessionStore.appendThinkingLevelChange("high");
+
+    const sessionId = sessionStore.getSessionId();
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      turn: 2,
+      type: "turn_input_recorded",
+      payload: {
+        turnId: "turn-history-tool-1",
+        trigger: "user",
+        promptText: "resume while tool execution is still active",
+      },
+    });
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      turn: 2,
+      type: "tool_execution_start",
+      payload: {
+        toolCallId: "tool-history-tool-1",
+        toolName: "read",
+      },
+    });
+    (
+      sessionStore as HostedRuntimeTapeSessionStore & {
+        querySessionWire(): never;
+      }
+    ).querySessionWire = () => {
+      throw new Error(
+        "managed-agent-session should bootstrap tool execution from lifecycle snapshot",
+      );
+    };
+
+    const modelCatalog = createInMemoryModelCatalog();
+    modelCatalog.registerProvider(TEST_MODEL.provider, {
+      baseUrl: TEST_MODEL.baseUrl,
+      apiKey: "test-key",
+      models: [
+        {
+          id: TEST_MODEL.id,
+          name: TEST_MODEL.name,
+          api: TEST_MODEL.api,
+          reasoning: TEST_MODEL.reasoning,
+          input: TEST_MODEL.input,
+          cost: TEST_MODEL.cost,
+          contextWindow: TEST_MODEL.contextWindow,
+          maxTokens: TEST_MODEL.maxTokens,
+        },
+      ],
+    });
+
+    const session = await createBrewvaManagedAgentSession({
+      cwd: workspace,
+      agentDir: join(workspace, ".brewva-agent"),
+      sessionStore,
+      settings: createSettingsStub(),
+      modelCatalog,
+      resourceLoader: await createResourceLoader(workspace),
+      customTools: [],
+      runtimePlugins: [createHostedTurnPipeline({ runtime, registerTools: false })],
+      initialModel: TEST_MODEL,
+      initialThinkingLevel: "high",
+    });
+
+    try {
+      const getSessionPhase = (
+        session as unknown as {
+          getSessionPhase(): {
+            kind: string;
+            toolCallId?: string;
+            toolName?: string;
+            turn?: number;
+          };
+        }
+      ).getSessionPhase.bind(session);
+
+      expect(getSessionPhase()).toEqual({
+        kind: "tool_executing",
+        toolCallId: "tool-history-tool-1",
+        toolName: "read",
+        turn: 2,
+      });
+    } finally {
+      session.dispose();
+    }
+  });
+
+  test("hydrates recovering phase from lifecycle snapshot on resume", async () => {
     const workspace = createTestWorkspace("managed-agent-session-history-recovery-phase");
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionStore = new HostedRuntimeTapeSessionStore(
@@ -924,6 +1117,13 @@ describe("managed agent session compaction", () => {
         model: null,
       },
     });
+    (
+      sessionStore as HostedRuntimeTapeSessionStore & {
+        querySessionWire(): never;
+      }
+    ).querySessionWire = () => {
+      throw new Error("managed-agent-session should bootstrap from lifecycle snapshot");
+    };
 
     const modelCatalog = createInMemoryModelCatalog();
     modelCatalog.registerProvider(TEST_MODEL.provider, {
@@ -968,6 +1168,155 @@ describe("managed agent session compaction", () => {
         recoveryAnchor: "transition:wal_recovery_resume",
         turn: 1,
       });
+    } finally {
+      session.dispose();
+    }
+  });
+
+  test("does not warn when lifecycle bootstrap reconciles recovering posture", async () => {
+    const originalWarn = console.warn;
+    const warnings: unknown[][] = [];
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args);
+    };
+
+    const workspace = createTestWorkspace("managed-agent-session-history-recovery-warning");
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const sessionStore = new HostedRuntimeTapeSessionStore(
+      runtime,
+      workspace,
+      "managed-agent-session-history-recovery-warning-session",
+    );
+    sessionStore.appendModelChange(TEST_MODEL.provider, TEST_MODEL.id);
+    sessionStore.appendThinkingLevelChange("high");
+
+    const sessionId = sessionStore.getSessionId();
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      turn: 1,
+      type: "turn_input_recorded",
+      payload: {
+        turnId: "turn-history-recovery-warning-1",
+        trigger: "recovery",
+        promptText: "resume after worker crash",
+      },
+    });
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      turn: 1,
+      type: "session_turn_transition",
+      payload: {
+        reason: "wal_recovery_resume",
+        status: "entered",
+        sequence: 1,
+        family: "recovery",
+        attempt: 1,
+        sourceEventId: "wal-warning-1",
+        sourceEventType: "recovery_wal_recovery_completed",
+        error: null,
+        breakerOpen: false,
+        model: null,
+      },
+    });
+    (
+      sessionStore as HostedRuntimeTapeSessionStore & {
+        querySessionWire(): never;
+      }
+    ).querySessionWire = () => {
+      throw new Error("managed-agent-session should bootstrap from lifecycle snapshot");
+    };
+
+    const modelCatalog = createInMemoryModelCatalog();
+    modelCatalog.registerProvider(TEST_MODEL.provider, {
+      baseUrl: TEST_MODEL.baseUrl,
+      apiKey: "test-key",
+      models: [
+        {
+          id: TEST_MODEL.id,
+          name: TEST_MODEL.name,
+          api: TEST_MODEL.api,
+          reasoning: TEST_MODEL.reasoning,
+          input: TEST_MODEL.input,
+          cost: TEST_MODEL.cost,
+          contextWindow: TEST_MODEL.contextWindow,
+          maxTokens: TEST_MODEL.maxTokens,
+        },
+      ],
+    });
+
+    const session = await createBrewvaManagedAgentSession({
+      cwd: workspace,
+      agentDir: join(workspace, ".brewva-agent"),
+      sessionStore,
+      settings: createSettingsStub(),
+      modelCatalog,
+      resourceLoader: await createResourceLoader(workspace),
+      customTools: [],
+      runtimePlugins: [createHostedTurnPipeline({ runtime, registerTools: false })],
+      initialModel: TEST_MODEL,
+      initialThinkingLevel: "high",
+    });
+
+    try {
+      expect(warnings).toEqual([]);
+    } finally {
+      console.warn = originalWarn;
+      session.dispose();
+    }
+  });
+
+  test("warns on representable incompatible reconciled phase deltas but preserves compatibility assignment", async () => {
+    const warnings: Array<{ message: string; fields?: Record<string, unknown> }> = [];
+    const logger: HostedSessionLogger = {
+      warn(message, fields) {
+        warnings.push({ message, fields });
+      },
+    };
+
+    const { session } = await createManagedSessionFixture(
+      "managed-agent-session-reconcile-warning-invalid-delta",
+      { logger },
+    );
+
+    try {
+      const sessionInternal = session as unknown as {
+        transitionSessionPhase(event: { type: string; reason?: string }): Promise<void>;
+        reconcileSessionPhase(phase: {
+          kind: string;
+          modelCallId?: string;
+          turn?: number;
+        }): Promise<void>;
+        getSessionPhase(): {
+          kind: string;
+          modelCallId?: string;
+          turn?: number;
+        };
+      };
+
+      await sessionInternal.transitionSessionPhase({
+        type: "terminate",
+        reason: "host_closed",
+      });
+      await sessionInternal.reconcileSessionPhase({
+        kind: "model_streaming",
+        modelCallId: "model-reconcile-warning-1",
+        turn: 3,
+      });
+
+      expect(sessionInternal.getSessionPhase()).toEqual({
+        kind: "model_streaming",
+        modelCallId: "model-reconcile-warning-1",
+        turn: 3,
+      });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]?.message).toBe("managed_agent_session_phase_reconcile_mismatch");
+      expect(warnings[0]?.fields).toEqual(
+        expect.objectContaining({
+          validationEvent: "start_model_stream",
+          previousKind: "terminated",
+          nextKind: "model_streaming",
+        }),
+      );
     } finally {
       session.dispose();
     }

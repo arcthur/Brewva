@@ -180,6 +180,12 @@ breaker rehydration, and post-compaction state inspection depend on it. These
 events stay hosted/experience-ring signals; they do not widen kernel authority
 or replace receipt-bearing runtime facts.
 
+Runtime lifecycle aggregation consumes these receipts as lifecycle-bearing
+facts. Gateway and host adapters should read the aggregate
+`inspect.lifecycle.getSnapshot(...)` posture instead of independently treating
+`session_turn_transition` history as a second authoritative phase machine,
+except for bounded compatibility fallbacks or forensic tooling.
+
 `context_compaction_advisory` is the pre-gate compaction warning surface. Its
 payload carries:
 
@@ -221,6 +227,10 @@ correctness dependency.
 worker process cannot record it itself, gateway reconciliation writes the
 receipt directly to the persisted agent event log path. There is no config- or
 workspace-derived fallback synthesis path.
+
+`session_shutdown` dominates aggregate lifecycle closure. When present, runtime
+lifecycle summary resolves to `closed` even if older transition, approval, or
+open-tool signals remain visible in replay-derived domain state.
 
 `unclean_shutdown_reconciled` is the replay-first diagnostic receipt for a
 session whose durable tape still shows open tool calls, open turns, or an
