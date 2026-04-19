@@ -105,10 +105,8 @@ Boundary rules:
   interactive full-screen execution
 - the first OpenTUI-backed shell standardizes on
   `screenMode: "alternate-screen"`
-- Brewva currently pins `@opentui/core` to `0.1.99`
-- the vendored React reconciler snapshot lives under
-  `packages/brewva-tui/runtime/vendor/opentui-react` and is updated only
-  through an explicit upstream audit
+- Brewva currently pins `@opentui/core` to `0.1.100` and uses
+  `@opentui/solid` as the only interactive renderer binding
 
 ## Substrate Boundary
 

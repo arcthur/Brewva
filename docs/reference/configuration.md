@@ -328,11 +328,9 @@ The interactive shell is implemented through a repo-owned quarantine boundary:
 - Bun/OpenTUI runtime code lives behind the
   `@brewva/brewva-tui/internal-opentui-runtime` seam and loads only after CLI
   mode resolution commits to interactive execution
-- Brewva currently pins `@opentui/core` to `0.1.99`
-- the vendored React reconciler snapshot lives under
-  `packages/brewva-tui/runtime/vendor/opentui-react`
-- that vendored snapshot is updated only through an explicit upstream audit;
-  developer-local linking is not part of the supported release path
+- Brewva currently pins `@opentui/core` to `0.1.100` and uses
+  `@opentui/solid` as the only interactive renderer binding
+- developer-local linking is not part of the supported release path
 
 ## Security Policy Model
 

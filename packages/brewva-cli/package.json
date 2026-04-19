@@ -33,12 +33,11 @@
     "@brewva/brewva-runtime": "workspace:*",
     "@brewva/brewva-substrate": "workspace:*",
     "@brewva/brewva-tui": "workspace:*",
-    "@opentui/core": "^0.1.99",
-    "@opentui/solid": "^0.1.99",
+    "@opentui/core": "0.1.100",
+    "@opentui/solid": "0.1.100",
+    "chalk": "^5.6.2",
     "date-fns": "^4.1.0",
-    "marked": "^18.0.0",
-    "react": "19.2.5",
-    "solid-js": "^1.9.12"
+    "solid-js": "1.9.12"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

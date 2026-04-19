@@ -202,9 +202,8 @@ For subcommand-scoped flags such as `--host`, `--port`, `--state-dir`,
 - Interactive mode uses the OpenTUI shell in `alternate-screen`
 - OpenTUI loads only after CLI mode and terminal capability resolution commit to
   an interactive full-screen path
-- Brewva currently pins `@opentui/core` to `0.1.99`; the vendored React
-  reconciler snapshot lives under
-  `packages/brewva-tui/runtime/vendor/opentui-react`
+- Brewva currently pins `@opentui/core` to `0.1.100` and uses
+  `@opentui/solid` as the only interactive renderer binding
 
 ## Mode and Input Resolution
 

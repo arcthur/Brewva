@@ -13,10 +13,12 @@ import type {
   BrewvaToolUiPort,
 } from "@brewva/brewva-substrate";
 import {
+  createOpenTuiRoot,
   createOpenTuiSolidElement,
   openTuiSolidAct,
   openTuiSolidTestRender,
 } from "@brewva/brewva-tui/internal-opentui-runtime";
+import { createTestRenderer } from "@opentui/core/testing";
 import { BrewvaOpenTuiShell } from "../../../packages/brewva-cli/runtime/opentui-shell-renderer.js";
 import { CliShellController } from "../../../packages/brewva-cli/src/shell/controller.js";
 import type { CliShellSessionBundle } from "../../../packages/brewva-cli/src/shell/types.js";
@@ -153,6 +155,28 @@ function createFakeBundle(
 }
 
 describe("opentui solid shell runtime", () => {
+  test("updates a mounted Solid root instead of stacking duplicate roots", async () => {
+    const testSetup = await createTestRenderer({
+      width: 40,
+      height: 8,
+    });
+    const root = createOpenTuiRoot(testSetup.renderer);
+
+    try {
+      await root.render(createOpenTuiSolidElement("text", null, "first render"));
+      await testSetup.renderOnce();
+      expect(testSetup.captureCharFrame()).toContain("first render");
+
+      await root.render(createOpenTuiSolidElement("text", null, "second render"));
+      await testSetup.renderOnce();
+      const frame = testSetup.captureCharFrame();
+      expect(frame).toContain("second render");
+      expect(frame).not.toContain("first render");
+    } finally {
+      root.unmount();
+    }
+  });
+
   test("renders shell chrome and notifications through the Solid shell", async () => {
     const { bundle } = createFakeBundle({
       seedMessages: [

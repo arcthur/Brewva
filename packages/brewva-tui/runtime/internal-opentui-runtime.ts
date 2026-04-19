@@ -1,6 +1,14 @@
 import { createCliRenderer } from "@opentui/core";
-import { createElement as createSolidElement, testRender as solidTestRender } from "@opentui/solid";
-import React from "react";
+import {
+  createElement as createSolidElement,
+  insert as solidInsert,
+  render as solidRender,
+  spread as solidSpread,
+  testRender as solidTestRender,
+  useKeyboard,
+  useTerminalDimensions,
+} from "@opentui/solid";
+import { createSignal } from "solid-js";
 import type {
   OpenTuiKeyEvent,
   OpenTuiRenderer,
@@ -15,11 +23,6 @@ import type {
   OpenTuiTestRenderOptions,
   OpenTuiTestRenderSetup,
 } from "../src/internal-opentui-runtime.js";
-import { useKeyboard } from "./vendor/opentui-react/src/hooks/use-keyboard.js";
-import { useTerminalDimensions } from "./vendor/opentui-react/src/hooks/use-terminal-dimensions.js";
-import { createElement } from "./vendor/opentui-react/src/index.js";
-import { createRoot } from "./vendor/opentui-react/src/reconciler/renderer.js";
-import { act, testRender } from "./vendor/opentui-react/src/test-utils.js";
 
 const DEFAULT_SCREEN_MODE: OpenTuiScreenMode = "alternate-screen";
 const DEFAULT_KITTY_KEYBOARD_CONFIG = {
@@ -46,13 +49,6 @@ function createCliRendererConfig(
 }
 
 export const OPEN_TUI_RUNTIME_KIND = "bun-runtime";
-export const openTuiReact = {
-  createElement: React.createElement,
-  useEffect: React.useEffect,
-  useMemo: React.useMemo,
-  useState: React.useState,
-  useSyncExternalStore: React.useSyncExternalStore,
-};
 
 export function isOpenTuiRuntimeAvailable(): boolean {
   return true;
@@ -63,7 +59,58 @@ export async function createOpenTuiCliRenderer(): Promise<OpenTuiRenderer> {
 }
 
 export function createOpenTuiRoot(renderer: OpenTuiRenderer): OpenTuiRoot {
-  return createRoot(renderer as Awaited<ReturnType<typeof createCliRenderer>>);
+  let destroyed = false;
+  let mountPromise: Promise<void> | undefined;
+  const rootState: {
+    latestNode?: OpenTuiSolidNode;
+    updateNode?: (node: OpenTuiSolidNode) => void;
+  } = {};
+  const solidRenderer = renderer as Awaited<ReturnType<typeof createCliRenderer>>;
+  const applyLatestNode = () => {
+    const nodeAfterMount = rootState.latestNode;
+    const updater = rootState.updateNode;
+    if (!destroyed && updater && nodeAfterMount) {
+      updater(nodeAfterMount);
+    }
+  };
+
+  return {
+    async render(node: OpenTuiSolidNode): Promise<void> {
+      if (destroyed) {
+        throw new Error("OpenTUI root has already been unmounted.");
+      }
+      rootState.latestNode = node;
+
+      if (rootState.updateNode) {
+        rootState.updateNode(node);
+        return;
+      }
+
+      if (!mountPromise) {
+        const initialNode = node;
+        mountPromise = solidRender(() => {
+          const [currentNode, setCurrentNode] = createSignal<OpenTuiSolidNode>(initialNode);
+          rootState.updateNode = (nextNode) => {
+            setCurrentNode(() => nextNode);
+          };
+          return () => currentNode()();
+        }, solidRenderer);
+      }
+
+      await mountPromise;
+      applyLatestNode();
+    },
+    unmount(): void {
+      if (destroyed) {
+        return;
+      }
+      destroyed = true;
+      rootState.updateNode = undefined;
+      rootState.latestNode = undefined;
+      mountPromise = undefined;
+      renderer.destroy();
+    },
+  };
 }
 
 export function useOpenTuiKeyboard(handler: (event: OpenTuiKeyEvent) => void): void {
@@ -73,7 +120,7 @@ export function useOpenTuiKeyboard(handler: (event: OpenTuiKeyEvent) => void): v
 }
 
 export function useOpenTuiTerminalDimensions(): { width: number; height: number } {
-  return useTerminalDimensions();
+  return useTerminalDimensions()();
 }
 
 function parseTerminalColor(
@@ -183,23 +230,19 @@ export function createOpenTuiElement(
   type: unknown,
   props?: Record<string, unknown> | null,
   ...children: unknown[]
-): React.ReactNode {
-  return createElement(
-    type as Parameters<typeof createElement>[0],
-    props as Parameters<typeof createElement>[1],
-    ...(children as React.ReactNode[]),
-  );
+): OpenTuiSolidNode {
+  return createOpenTuiSolidElement(type, props, ...children);
 }
 
 export async function openTuiAct(callback: () => void | Promise<void>): Promise<void> {
-  await act(callback);
+  await callback();
 }
 
 export async function openTuiTestRender(
-  node: React.ReactNode,
+  node: OpenTuiSolidNode,
   options: OpenTuiTestRenderOptions,
 ): Promise<OpenTuiTestRenderSetup> {
-  return await testRender(node, options);
+  return await solidTestRender(node, options);
 }
 
 export function createOpenTuiSolidElement(
@@ -209,12 +252,28 @@ export function createOpenTuiSolidElement(
 ): OpenTuiSolidNode {
   return () => {
     if (typeof type === "function") {
+      const componentProps: Record<string, unknown> = { ...props };
+      if (children.length === 1) {
+        componentProps.children = children[0];
+      } else if (children.length > 1) {
+        componentProps.children = children;
+      }
       return (type as (props: Record<string, unknown>) => unknown)({
-        ...props,
-        children,
+        ...componentProps,
       });
     }
-    return (createSolidElement as (...args: unknown[]) => unknown)(type, props, ...children);
+    if (typeof type !== "string") {
+      throw new Error("OpenTUI Solid element type must be a component function or intrinsic tag.");
+    }
+
+    const element = createSolidElement(type);
+    if (props) {
+      solidSpread(element, props, false);
+    }
+    for (const child of children) {
+      solidInsert(element, child);
+    }
+    return element;
   };
 }
 
@@ -239,23 +298,23 @@ export async function runOpenTuiSmoke(
       screenMode,
     }),
   );
-  const root = createRoot(renderer);
 
   try {
-    root.render(
-      React.createElement(
-        "box",
-        { style: { padding: 1, flexDirection: "column" } },
-        React.createElement("text", {
-          content: options.label ?? "Brewva OpenTUI smoke",
-          style: { fg: "#8ab4f8" },
-        }),
-      ),
+    await solidRender(
+      () =>
+        createOpenTuiSolidElement(
+          "box",
+          { style: { padding: 1, flexDirection: "column" } },
+          createOpenTuiSolidElement("text", {
+            content: options.label ?? "Brewva OpenTUI smoke",
+            style: { fg: "#8ab4f8" },
+          })(),
+        )(),
+      renderer,
     );
     renderer.requestRender();
     await new Promise((resolve) => setTimeout(resolve, 16));
   } finally {
-    root.unmount();
     renderer.destroy();
   }
 

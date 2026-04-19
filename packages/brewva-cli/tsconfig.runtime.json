@@ -4,6 +4,7 @@
     "rootDir": ".",
     "noEmit": true,
     "jsx": "react-jsx",
+    "jsxImportSource": "@opentui/solid",
     "types": ["node", "bun-types"]
   },
   "references": [{ "path": "../brewva-tui" }],

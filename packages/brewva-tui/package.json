@@ -20,12 +20,10 @@
     }
   },
   "dependencies": {
-    "@opentui/core": "0.1.99",
-    "@opentui/solid": "^0.1.99",
+    "@opentui/core": "0.1.100",
+    "@opentui/solid": "0.1.100",
     "get-east-asian-width": "^1.5.0",
-    "react": "19.2.5",
-    "react-reconciler": "0.33.0",
-    "solid-js": "^1.9.12"
+    "solid-js": "1.9.12"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

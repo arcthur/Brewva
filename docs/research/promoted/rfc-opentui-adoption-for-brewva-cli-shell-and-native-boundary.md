@@ -4,7 +4,7 @@
 
 - Status: `promoted`
 - Owner: cli and distribution maintainers
-- Last reviewed: `2026-04-14`
+- Last reviewed: `2026-04-19`
 - Promotion target:
   - `docs/architecture/system-architecture.md`
   - `docs/reference/commands.md`
@@ -27,8 +27,8 @@ The accepted decision is:
 - OpenTUI owns rendering, editor, viewport, layout, cursor, and selection
   mechanics rather than Brewva-specific operator state
 - the interactive shell runs in `alternate-screen`
-- Brewva pins `@opentui/core` to `0.1.99` and vendors the React reconciler
-  snapshot under `packages/brewva-tui/runtime/vendor/opentui-react`
+- Brewva pins `@opentui/core` to `0.1.100` and uses `@opentui/solid` as the
+  only interactive renderer binding
 - promoted interactive packaging scope now covers `darwin-arm64`, `darwin-x64`,
   `linux-x64` (glibc), `linux-arm64` (glibc), and `windows-x64`, while musl
   builds remain non-interactive

@@ -12,6 +12,67 @@ function resolveHostCompileTarget(): Bun.Build.CompileTarget | null {
   return null;
 }
 
+function compiledHostCanExecute(input: {
+  compileTarget: Bun.Build.CompileTarget;
+  outputDir: string;
+  repoRoot: string;
+  sourceDir: string;
+}): boolean {
+  const entrypoint = join(input.sourceDir, "compiled-runtime-smoke.ts");
+  const outfile = join(
+    input.outputDir,
+    process.platform === "win32" ? "compiled-runtime-smoke.exe" : "compiled-runtime-smoke",
+  );
+
+  writeFileSync(entrypoint, 'console.log("compiled runtime smoke");\n', "utf8");
+
+  const build = Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "build",
+      entrypoint,
+      "--compile",
+      "--target",
+      input.compileTarget,
+      "--outfile",
+      outfile,
+    ],
+    cwd: input.repoRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  expect(build.exitCode).toBe(0);
+
+  const result = Bun.spawnSync([outfile], {
+    cwd: input.repoRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stdout = result.stdout.toString();
+  const stderr = result.stderr.toString();
+  if (result.exitCode === 0 && stdout.includes("compiled runtime smoke")) {
+    return true;
+  }
+
+  if (
+    (result.exitCode === 137 || result.signalCode === "SIGKILL") &&
+    stdout.length === 0 &&
+    stderr.length === 0
+  ) {
+    return false;
+  }
+
+  throw new Error(
+    [
+      "Compiled Bun runtime smoke failed unexpectedly.",
+      `exitCode=${String(result.exitCode)}`,
+      `signalCode=${String(result.signalCode)}`,
+      `stdout=${stdout}`,
+      `stderr=${stderr}`,
+    ].join("\n"),
+  );
+}
+
 describe("search tokenizer contract", () => {
   test("compiled ASCII-only tokenization still fails fast when mandatory jieba asset is absent", async () => {
     const compileTarget = resolveHostCompileTarget();
@@ -32,6 +93,10 @@ describe("search tokenizer contract", () => {
     );
 
     try {
+      if (!compiledHostCanExecute({ compileTarget, outputDir, repoRoot, sourceDir })) {
+        return;
+      }
+
       writeFileSync(
         entrypoint,
         [

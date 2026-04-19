@@ -39,5 +39,11 @@ describe("tui internal runtime contract", () => {
     expect(rootEntrypointSource).not.toContain("bun:ffi");
     expect(internalStubSource).toContain("OpenTUI runtime is only available");
     expect(runtimeEntrypointSource).toContain("@opentui/core");
+    expect(runtimeEntrypointSource).toContain("@opentui/solid");
+    expect(packageJsonSource).not.toContain('"react"');
+    expect(packageJsonSource).not.toContain('"react-reconciler"');
+    expect(internalStubSource).not.toContain('from "react"');
+    expect(runtimeEntrypointSource).not.toContain("opentui-react");
+    expect(runtimeEntrypointSource).not.toContain('from "react"');
   });
 });

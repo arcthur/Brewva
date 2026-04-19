@@ -1,7 +1,6 @@
-import type React from "react";
-
 export type OpenTuiScreenMode = "alternate-screen";
 export type OpenTuiTerminalBackgroundMode = "dark" | "light";
+export type OpenTuiSolidNode = () => unknown;
 
 export interface OpenTuiKeyEvent {
   name: string;
@@ -70,16 +69,8 @@ export interface OpenTuiRenderer {
 }
 
 export interface OpenTuiRoot {
-  render(node: React.ReactNode): void;
+  render(node: OpenTuiSolidNode): void | Promise<void>;
   unmount(): void;
-}
-
-export interface OpenTuiReactRuntime {
-  createElement: typeof React.createElement;
-  useEffect: typeof React.useEffect;
-  useMemo: typeof React.useMemo;
-  useState: typeof React.useState;
-  useSyncExternalStore: typeof React.useSyncExternalStore;
 }
 
 export interface OpenTuiSmokeOptions {
@@ -110,8 +101,6 @@ export interface OpenTuiTestRenderSetup {
   captureCharFrame(): string;
 }
 
-export type OpenTuiSolidNode = () => unknown;
-
 export interface OpenTuiTestRenderOptions {
   width: number;
   height: number;
@@ -126,23 +115,6 @@ function createUnsupportedRuntimeError(): Error {
 }
 
 export const OPEN_TUI_RUNTIME_KIND = "node-stub";
-export const openTuiReact: OpenTuiReactRuntime = {
-  createElement() {
-    throw createUnsupportedRuntimeError();
-  },
-  useEffect() {
-    throw createUnsupportedRuntimeError();
-  },
-  useMemo() {
-    throw createUnsupportedRuntimeError();
-  },
-  useState() {
-    throw createUnsupportedRuntimeError();
-  },
-  useSyncExternalStore() {
-    throw createUnsupportedRuntimeError();
-  },
-};
 
 export function createOpenTuiSolidElement(
   _type: unknown,
@@ -194,7 +166,7 @@ export function createOpenTuiElement(
   _type: unknown,
   _props?: Record<string, unknown> | null,
   ..._children: unknown[]
-): React.ReactNode {
+): OpenTuiSolidNode {
   throw createUnsupportedRuntimeError();
 }
 
@@ -203,7 +175,7 @@ export async function openTuiAct(_callback: () => void | Promise<void>): Promise
 }
 
 export async function openTuiTestRender(
-  _node: React.ReactNode,
+  _node: OpenTuiSolidNode,
   _options: OpenTuiTestRenderOptions,
 ): Promise<OpenTuiTestRenderSetup> {
   throw createUnsupportedRuntimeError();
