@@ -481,22 +481,11 @@ def validate_execution_hints(
     if cost_hint is not None and cost_hint not in COST_HINTS:
         return False, "Field 'execution_hints.cost_hint' must be one of: low | medium | high"
 
-    suggested_chains = hints.get("suggested_chains")
-    if suggested_chains is not None:
-        if not isinstance(suggested_chains, list):
-            return False, "Field 'execution_hints.suggested_chains' must be an array"
-        for index, entry in enumerate(suggested_chains):
-            if not isinstance(entry, dict):
-                return (
-                    False,
-                    f"Field 'execution_hints.suggested_chains[{index}]' must be an object",
-                )
-            ok, message = validate_string_array(entry, "steps")
-            if not ok:
-                return False, message.replace(
-                    "Field 'steps'",
-                    f"Field 'execution_hints.suggested_chains[{index}].steps'",
-                )
+    if "suggested_chains" in hints:
+        return (
+            False,
+            "Field 'execution_hints.suggested_chains' is not supported; move workflow guidance into the skill markdown",
+        )
 
     return True, None
 

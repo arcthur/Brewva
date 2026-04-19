@@ -1,3 +1,4 @@
+import type { SkillReadinessEntry } from "../contracts/skill-readiness.js";
 import type { JsonValue } from "../utils/json.js";
 
 export const WORKFLOW_ARTIFACT_KINDS = [
@@ -69,6 +70,7 @@ export interface WorkflowStatusSnapshot {
   sessionId: string;
   currentWorkspaceRevision?: string;
   posture: WorkflowPosture;
+  skillReadiness: SkillReadinessEntry[];
   artifacts: WorkflowArtifact[];
   pendingWorkerResults: number;
   pendingDelegationOutcomes: number;

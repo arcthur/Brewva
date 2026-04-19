@@ -793,12 +793,6 @@
               "items": {
                 "type": "string"
               }
-            },
-            "suggestedChains": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/SkillSuggestedChain"
-              }
             }
           }
         },
@@ -1026,19 +1020,6 @@
       "additionalProperties": {
         "$ref": "#/definitions/SemanticArtifactSchemaId"
       }
-    },
-    "SkillSuggestedChain": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "steps": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "required": ["steps"]
     },
     "TaskPhase": {
       "type": "string",

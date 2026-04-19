@@ -705,6 +705,11 @@ issues and named blocking consumers where relevant. This keeps warm transitions
 consumer-driven instead of forcing every upstream producer to emit the final
 canonical read model directly.
 
+`skill_load` also renders the target skill's structured readiness. Missing
+`requires` values produce `readiness: blocked` and a missing-input list, but do
+not hard-block loading. The separate `composable_with` lifecycle gate may still
+reject activation when another incompatible skill is already active.
+
 In the generic hosted path, when no skill is active yet and no TaskSpec is
 recorded, the hosted control plane first narrows the turn to bootstrap
 control-plane tools so the next semantic decision is `task_set_spec`. After
@@ -925,6 +930,9 @@ Derived workflow inspection surface.
   `handoffState=pending_parent_turn`; runs already marked `surfaced` and
   same-turn supplemental append attempts do not count as pending delegation
   outcomes on this surface
+- exposes `skillReadiness` entries derived from `requires` and `consumes`,
+  including `blocked`, `available`, and `ready` posture, deterministic score,
+  satisfied inputs, missing required inputs, and source artifact provenance
 - optionally includes recent derived workflow artifacts
 
 This tool is advisory. It does not create a runtime-owned chain planner and it

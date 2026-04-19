@@ -83,6 +83,9 @@ the session and at least one of its `consumes` outputs exists.
 A skill is **consumption-blocked** when any of its `requires` outputs are
 missing.
 
+A skill is **available** when no `requires` output is missing, but no declared
+`consumes` output has materialized.
+
 For semantic-bound artifacts, these checks run against normalized consumed
 outputs rather than raw producer payloads. A target skill may therefore see:
 
@@ -92,9 +95,15 @@ outputs rather than raw producer payloads. A target skill may therefore see:
 
 Runtime exposes the relevant warm-transition data through explicit surfaces:
 
+- `runtime.inspect.skills.getReadiness(sessionId, query?)` exposes structured
+  `blocked` / `available` / `ready` candidate posture and deterministic scores
 - `skill_load` previews `availableConsumedOutputs` for the chosen candidate skill
-- `workflow_status` surfaces derived workflow posture and artifact readiness
+- `workflow_status` surfaces derived workflow posture and `skillReadiness`
 - `runtime.inspect.skills.getConsumedOutputs(sessionId, targetSkillName)` exposes the exact consumed-output materialization for a target skill
+
+Missing `requires` never hard-blocks `skill_load`; the load output renders the
+blocked posture and the missing required inputs. `composable_with` remains a
+separate lifecycle gate for concurrent skill activation.
 
 These surfaces inform the next choice; they do not auto-switch skills.
 
@@ -105,8 +114,9 @@ These surfaces inform the next choice; they do not auto-switch skills.
 When a skill completes via `skill_complete`:
 
 1. Brewva records durable `skill_completed` outputs for that session.
-2. Candidate next skills can inspect matching prior outputs through `skill_load`
-   and `runtime.inspect.skills.getConsumedOutputs(...)`.
+2. Candidate next skills can inspect matching prior outputs through
+   `runtime.inspect.skills.getReadiness(...)`, `skill_load`, and
+   `runtime.inspect.skills.getConsumedOutputs(...)`.
 3. `workflow_status` reflects the derived artifact and posture state, which is
    often a better warm-transition signal than prompt text alone.
 
@@ -187,13 +197,18 @@ is the correct chain.
 
 ## Relationship to `skill-first.ts`
 
+`packages/brewva-runtime/src/context/skill-routing.ts` uses produced skill
+outputs, `requires`, and `consumes` to classify candidates as `blocked`,
+`available`, or `ready`, then ranks non-blocked candidates for the warm
+skill-routing context.
+
 `packages/brewva-gateway/src/runtime-plugins/skill-first.ts` scores skills by
 matching prompt tokens, TaskSpec content, selection examples, phase alignment,
 and path patterns. It runs on hosted turns when no skill is active and may
 produce the `[Brewva Skill-First Policy]` block.
 
-Warm transitions are not handled by a second autonomous recommender. They are
-model-native decisions informed by `workflow_status`, consumed outputs, and the
+Warm transitions remain model-native decisions, but they are informed by
+structured runtime readiness, `workflow_status`, consumed outputs, and the
 current session artifact state.
 
 In practice:

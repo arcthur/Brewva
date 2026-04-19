@@ -1,13 +1,71 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { HostedDelegationStore } from "@brewva/brewva-gateway";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
 import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createWorkflowStatusTool } from "@brewva/brewva-tools";
 import { buildCanonicalReviewReport } from "../../helpers/semantic-artifacts.js";
 import { extractTextContent, mergeContext } from "./tools-flow.helpers.js";
+
+function writeSkill(
+  filePath: string,
+  input: {
+    name: string;
+    outputs?: string[];
+    consumes?: string[];
+    requires?: string[];
+  },
+): void {
+  const outputs = input.outputs ?? [];
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(
+    filePath,
+    [
+      "---",
+      `name: ${input.name}`,
+      `description: ${input.name} skill`,
+      "selection:",
+      "  when_to_use: Use when the task needs the routed test skill.",
+      "  examples: [test skill]",
+      "  phases: [align]",
+      "intent:",
+      `  outputs: [${outputs.join(", ")}]`,
+      ...(outputs.length > 0
+        ? [
+            "  output_contracts:",
+            ...outputs.flatMap((outputName) => [
+              `    ${outputName}:`,
+              "      kind: text",
+              "      min_length: 1",
+            ]),
+          ]
+        : []),
+      "effects:",
+      "  allowed_effects: [workspace_read]",
+      "resources:",
+      "  default_lease:",
+      "    max_tool_calls: 10",
+      "    max_tokens: 10000",
+      "  hard_ceiling:",
+      "    max_tool_calls: 20",
+      "    max_tokens: 20000",
+      "execution_hints:",
+      "  preferred_tools: [read]",
+      "  fallback_tools: []",
+      `consumes: [${(input.consumes ?? []).join(", ")}]`,
+      `requires: [${(input.requires ?? []).join(", ")}]`,
+      "---",
+      `# ${input.name}`,
+      "",
+      "## Intent",
+      "",
+      "Test skill.",
+    ].join("\n"),
+    "utf8",
+  );
+}
 
 function withDelegationStatus(runtime: BrewvaRuntime, store: HostedDelegationStore) {
   const runtimeWithDelegation = Object.create(runtime) as BrewvaRuntime & {
@@ -24,6 +82,68 @@ function withDelegationStatus(runtime: BrewvaRuntime, store: HostedDelegationSto
 }
 
 describe("workflow_status contract", () => {
+  test("surfaces structured skill readiness in text and machine-readable details", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-tools-workflow-status-readiness-"));
+    writeSkill(join(workspace, ".brewva/skills/core/readiness-producer/SKILL.md"), {
+      name: "readiness-producer",
+      outputs: ["design_spec"],
+    });
+    writeSkill(join(workspace, ".brewva/skills/core/readiness-ready/SKILL.md"), {
+      name: "readiness-ready",
+      consumes: ["design_spec"],
+      requires: ["design_spec"],
+    });
+    writeSkill(join(workspace, ".brewva/skills/core/readiness-blocked/SKILL.md"), {
+      name: "readiness-blocked",
+      consumes: ["review_report"],
+      requires: ["missing_plan"],
+    });
+
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const sessionId = "workflow-status-skill-readiness";
+    expect(runtime.authority.skills.activate(sessionId, "readiness-producer").ok).toBe(true);
+    expect(
+      runtime.authority.skills.complete(sessionId, {
+        design_spec: "Readiness should be visible in workflow status.",
+      }).ok,
+    ).toBe(true);
+
+    const tool = createWorkflowStatusTool({ runtime });
+    const result = await tool.execute(
+      "tc-workflow-status-readiness",
+      {},
+      undefined,
+      undefined,
+      mergeContext(sessionId, { cwd: workspace }),
+    );
+
+    const text = extractTextContent(result);
+    expect(text).toContain("skill_readiness:");
+    expect(text).toContain("- readiness-ready: ready");
+    expect(text).toContain("- readiness-blocked: blocked");
+    expect(text).toContain("missing_requires=missing_plan");
+    expect(text).toContain("declared_consumes=review_report");
+    expect(text).toContain("satisfied_consumes=design_spec");
+
+    const details = result.details as
+      | { skillReadiness?: Array<{ name: string; readiness: string; missingRequires: string[] }> }
+      | undefined;
+    expect(details?.skillReadiness).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "readiness-ready",
+          readiness: "ready",
+          missingRequires: [],
+        }),
+        expect.objectContaining({
+          name: "readiness-blocked",
+          readiness: "blocked",
+          missingRequires: ["missing_plan"],
+        }),
+      ]),
+    );
+  });
+
   test("reports stale review and verification after a later write", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-tools-workflow-status-stale-"));
     const runtime = new BrewvaRuntime({ cwd: workspace });

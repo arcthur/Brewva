@@ -147,6 +147,7 @@ None currently.
 - `docs/research/promoted/rfc-skill-compounding-loop-completeness-and-parameterization-model.md`
 - `docs/research/promoted/rfc-skill-contract-precision-and-advisory-artifact-boundaries.md`
 - `docs/research/promoted/rfc-skill-contract-layering-project-context-and-explicit-activation.md`
+- `docs/research/promoted/rfc-skill-metadata-as-runtime-contract-and-routing-substrate.md`
 - `docs/research/promoted/rfc-skill-distribution-refresh-and-catalog-surface.md`
 - `docs/research/promoted/rfc-specialist-subagents-and-adversarial-verification.md`
 - `docs/research/promoted/rfc-tool-search-advisor-and-auto-broadened-discovery.md`

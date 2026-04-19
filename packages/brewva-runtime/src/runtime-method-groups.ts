@@ -70,6 +70,8 @@ import type {
   SkillDocument,
   SkillNormalizedOutputsView,
   SkillOutputValidationResult,
+  SkillReadinessEntry,
+  SkillReadinessQuery,
   SkillRefreshInput,
   SkillRefreshResult,
   SkillRegistryLoadReport,
@@ -170,6 +172,7 @@ export interface BrewvaRuntimeMethodGroups {
       skillName: string,
     ): SkillNormalizedOutputsView | undefined;
     getConsumedOutputs(sessionId: string, targetSkillName: string): SkillConsumedOutputsView;
+    getReadiness(sessionId: string, query?: SkillReadinessQuery): SkillReadinessEntry[];
   };
   proposals: {
     submit(sessionId: string, proposal: EffectCommitmentProposal): DecisionReceipt;
@@ -641,6 +644,8 @@ export function createRuntimeMethodGroups(
         deps.skillLifecycleService.getNormalizedSkillOutputs(sessionId, skillName),
       getConsumedOutputs: (sessionId: string, targetSkillName: string) =>
         deps.skillLifecycleService.getAvailableConsumedOutputs(sessionId, targetSkillName),
+      getReadiness: (sessionId: string, query?: SkillReadinessQuery) =>
+        deps.skillLifecycleService.getSkillReadiness(sessionId, query),
     },
     proposals: {
       submit: (sessionId: string, proposal: EffectCommitmentProposal): DecisionReceipt =>

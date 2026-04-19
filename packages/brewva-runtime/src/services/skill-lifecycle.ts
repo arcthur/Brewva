@@ -11,6 +11,8 @@ import {
   SkillDocument,
   SkillOutputContract,
   SkillOutputValidationResult,
+  type SkillReadinessEntry,
+  type SkillReadinessQuery,
   type SkillRepairBudgetState,
   TaskSpec,
   TaskState,
@@ -25,6 +27,7 @@ import {
   listSkillOutputs,
 } from "../skills/facets.js";
 import { normalizeSkillOutputs } from "../skills/normalization.js";
+import { deriveSkillReadiness } from "../skills/readiness.js";
 import type { SkillRegistry } from "../skills/registry.js";
 import { getSemanticArtifactSchema } from "../skills/semantic-artifact-catalog.js";
 import type { SkillValidationContextBuilder } from "../skills/validation/builders/validation-context-builder.js";
@@ -530,6 +533,14 @@ export class SkillLifecycleService {
 
   getAvailableConsumedOutputs(sessionId: string, targetSkillName: string) {
     return this.validationContextBuilder.getConsumedOutputs(sessionId, targetSkillName);
+  }
+
+  getSkillReadiness(sessionId: string, query?: SkillReadinessQuery): SkillReadinessEntry[] {
+    return deriveSkillReadiness({
+      skills: this.skills.list(),
+      skillOutputs: this.sessionState.getExistingCell(sessionId)?.skillOutputs ?? new Map(),
+      query,
+    });
   }
 
   listProducedOutputKeys(sessionId: string): string[] {

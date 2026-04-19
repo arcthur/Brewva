@@ -21,6 +21,8 @@ function writeSkill(
     outputContracts?: string[];
     semanticBindings?: Record<string, string>;
     consumes?: string[];
+    requires?: string[];
+    composableWith?: string[];
   },
 ): void {
   mkdirSync(dirname(filePath), { recursive: true });
@@ -60,6 +62,8 @@ function writeSkill(
       "  preferred_tools: [read]",
       "  fallback_tools: []",
       `consumes: [${(input.consumes ?? []).join(", ")}]`,
+      `requires: [${(input.requires ?? []).join(", ")}]`,
+      `composable_with: [${(input.composableWith ?? []).join(", ")}]`,
       "---",
       `# ${input.name}`,
       "",
@@ -108,6 +112,77 @@ function buildImpactMap(input: {
 }
 
 describe("skill_complete tool", () => {
+  test("loads a skill with missing required inputs and renders blocked readiness", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-load-readiness-"));
+    writeSkill(join(workspace, ".brewva/skills/core/blocked-consumer/SKILL.md"), {
+      name: "blocked-consumer",
+      outputs: [],
+      consumes: ["design_spec"],
+      requires: ["design_spec"],
+    });
+
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const sessionId = "skill-load-blocked-readiness";
+    const loadTool = createSkillLoadTool({ runtime });
+
+    const result = await loadTool.execute(
+      "tc-load-blocked-readiness",
+      { name: "blocked-consumer" },
+      undefined,
+      undefined,
+      fakeContext(sessionId),
+    );
+
+    const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
+    expect(text).toContain("readiness: blocked");
+    expect(text).toContain("missing required inputs: design_spec");
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("blocked-consumer");
+    expect(
+      (result.details as { skillReadiness?: { readiness?: string } } | undefined)?.skillReadiness,
+    ).toEqual(expect.objectContaining({ readiness: "blocked" }));
+  });
+
+  test("keeps skill_load lifecycle activation gate separate from artifact readiness", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-load-composable-gate-"));
+    writeSkill(join(workspace, ".brewva/skills/core/gate-active/SKILL.md"), {
+      name: "gate-active",
+      outputs: [],
+    });
+    writeSkill(join(workspace, ".brewva/skills/core/gate-next/SKILL.md"), {
+      name: "gate-next",
+      outputs: [],
+      requires: ["design_spec"],
+    });
+
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const sessionId = "skill-load-composable-gate";
+    const loadTool = createSkillLoadTool({ runtime });
+
+    const first = await loadTool.execute(
+      "tc-load-composable-gate-active",
+      { name: "gate-active" },
+      undefined,
+      undefined,
+      fakeContext(sessionId),
+    );
+    expect((first.details as { ok?: boolean } | undefined)?.ok).toBe(true);
+
+    const second = await loadTool.execute(
+      "tc-load-composable-gate-next",
+      { name: "gate-next" },
+      undefined,
+      undefined,
+      fakeContext(sessionId),
+    );
+
+    const text = extractTextContent(second as { content: Array<{ type: string; text?: string }> });
+    expect(text).toContain(
+      "Active skill 'gate-active' must be completed before activating 'gate-next'.",
+    );
+    expect((second.details as { ok?: boolean } | undefined)?.ok).toBe(false);
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("gate-active");
+  });
+
   test("rejects completion when no active skill is loaded", async () => {
     const runtime = createIsolatedRuntime("no-active-skill");
     const sessionId = "skill-complete-no-active-skill";

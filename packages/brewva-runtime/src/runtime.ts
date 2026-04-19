@@ -259,6 +259,7 @@ export interface BrewvaInspectionPort {
     | "getRawOutputs"
     | "getNormalizedOutputs"
     | "getConsumedOutputs"
+    | "getReadiness"
   >;
   readonly proposals: Pick<
     BrewvaRuntimeMethodGroups["proposals"],
@@ -859,6 +860,7 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
           "getRawOutputs",
           "getNormalizedOutputs",
           "getConsumedOutputs",
+          "getReadiness",
         ] as const),
         proposals: bindMethods(methodGroups.proposals, [
           "list",

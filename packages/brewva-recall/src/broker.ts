@@ -494,9 +494,7 @@ export class RecallBroker {
     const limit = Math.max(1, input.limit ?? DEFAULT_MAX_RESULTS);
     const scope = input.scope ?? DEFAULT_SCOPE;
     const state = this.sync();
-    const queryTokens = uniqueStrings(
-      tokenizeSearchText(query, { includeCompoundSubtokens: false }),
-    );
+    const queryTokens = tokenizeSearchText(query, { includeCompoundSubtokens: false });
     const curationById = new Map(state.curation.map((entry) => [entry.stableId, entry]));
     const currentTarget = this.runtime.inspect.task.getTargetDescriptor(input.sessionId);
     const targetRoots =

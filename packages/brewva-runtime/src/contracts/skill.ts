@@ -149,14 +149,9 @@ export interface SkillResourcePolicy {
   hardCeiling?: SkillResourceBudget;
 }
 
-export interface SkillSuggestedChain {
-  steps: string[];
-}
-
 export interface SkillExecutionHints {
   preferredTools?: string[];
   fallbackTools?: string[];
-  suggestedChains?: SkillSuggestedChain[];
   costHint?: SkillCostHint;
 }
 

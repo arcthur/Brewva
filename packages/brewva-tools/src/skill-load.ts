@@ -1,6 +1,7 @@
 import type {
   SkillConsumedOutputsView,
   SkillContract,
+  SkillReadinessEntry,
   SkillResourceSet,
   ToolEffectClass,
 } from "@brewva/brewva-runtime";
@@ -31,6 +32,7 @@ function formatSkillOutput(input: {
   contract: SkillContract;
   resources?: SkillResourceSet;
   availableConsumedOutputs?: SkillConsumedOutputsView;
+  skillReadiness?: SkillReadinessEntry;
 }): string {
   const outputsList = listSkillOutputs(input.contract);
   const outputs = outputsList.length > 0 ? outputsList.join(", ") : "(none)";
@@ -73,8 +75,13 @@ function formatSkillOutput(input: {
     `- output contracts: ${Object.keys(outputContracts).join(", ") || "(none)"}`,
     `- required inputs: ${requires}`,
     `- optional inputs: ${consumes}`,
+    `- readiness: ${input.skillReadiness?.readiness ?? "unknown"}`,
     `- routing scope: ${input.contract.routing?.scope ?? "(not routable)"}`,
   ];
+
+  if (input.skillReadiness && input.skillReadiness.missingRequires.length > 0) {
+    lines.push(`- missing required inputs: ${input.skillReadiness.missingRequires.join(", ")}`);
+  }
 
   if (input.resources) {
     lines.push("");
@@ -145,6 +152,9 @@ export function createSkillLoadTool(options: BrewvaToolOptions): ToolDefinition 
           sessionId,
           params.name,
         );
+        const skillReadiness = runtime.inspect.skills.getReadiness(sessionId, {
+          targetSkillName: params.name,
+        })[0];
 
         return textResult(
           formatSkillOutput({
@@ -155,17 +165,23 @@ export function createSkillLoadTool(options: BrewvaToolOptions): ToolDefinition 
             contract: skill.contract,
             resources: skill.resources,
             availableConsumedOutputs,
+            skillReadiness,
           }),
           {
             ok: true,
             sessionId,
             skill: skill.name,
+            skillReadiness,
           },
         );
       },
     },
     {
-      requiredCapabilities: ["authority.skills.activate", "inspect.skills.getConsumedOutputs"],
+      requiredCapabilities: [
+        "authority.skills.activate",
+        "inspect.skills.getConsumedOutputs",
+        "inspect.skills.getReadiness",
+      ],
     },
   );
 }

@@ -10,7 +10,7 @@
 ## Repo At A Glance
 
 - `Brewva` is a Bun + TypeScript monorepo for an AI-native coding-agent runtime with repo-owned runtime, search, substrate, provider-core, agent-engine, and recall packages.
-- Workspace packages live under `packages/*`; the primary surfaces are `runtime`, `substrate`, `provider-core`, `agent-engine`, `recall`, `deliberation`, `skill-broker`, `channels-telegram`, `ingress`, `tools`, `cli`, and `gateway`.
+- Workspace packages live under `packages/*`; the primary surfaces are `runtime`, `search`, `substrate`, `provider-core`, `agent-engine`, `recall`, `deliberation`, `skill-broker`, `channels-telegram`, `ingress`, `tools`, `cli`, and `gateway`.
 - Distribution surfaces live under `distribution/brewva`, `distribution/brewva-*`, and `distribution/worker`.
 - Support roots: `script/` for build and verification, `docs/` for design/reference material, and `test/` for workspace coverage.
 - `docs/solutions/**` is the canonical repository-native precedent store; for non-trivial planning, debugging, and review, consult it explicitly through `knowledge_search` instead of relying on hidden recall, use `precedent_audit` when refreshing, displacing, or deactivating an existing precedent, and use `precedent_sweep` only for explicit repository-wide maintenance passes.

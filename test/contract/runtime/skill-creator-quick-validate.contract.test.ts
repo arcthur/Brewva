@@ -92,4 +92,59 @@ describe("skill-authoring quick validator", () => {
       rmSync(workspace, { recursive: true, force: true });
     }
   });
+
+  test("rejects structured suggested_chains execution hints", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-quick-validate-suggested-"));
+
+    try {
+      const skillDirectory = join(workspace, "skills/domain/chaincraft");
+      mkdirSync(skillDirectory, { recursive: true });
+      writeFileSync(
+        join(skillDirectory, "SKILL.md"),
+        [
+          "---",
+          "name: chaincraft",
+          "description: Validate removed suggested chains.",
+          "selection:",
+          "  when_to_use: Use when the task needs the routed test skill.",
+          "  examples: [test skill]",
+          "  phases: [align]",
+          "intent:",
+          "  outputs: []",
+          "effects:",
+          "  allowed_effects: [workspace_read]",
+          "resources:",
+          "  default_lease:",
+          "    max_tool_calls: 20",
+          "    max_tokens: 20000",
+          "  hard_ceiling:",
+          "    max_tool_calls: 30",
+          "    max_tokens: 30000",
+          "execution_hints:",
+          "  preferred_tools: [read]",
+          "  fallback_tools: []",
+          "  suggested_chains:",
+          "    - steps: [design, implementation]",
+          "consumes: []",
+          "---",
+          "# chaincraft",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const result = runQuickValidate({
+        scriptPath,
+        cwd: workspace,
+        skillDirectory,
+      });
+
+      expect(result.status).toBe(1);
+      expect(toTextOutput(result.stdout)).toContain(
+        "Field 'execution_hints.suggested_chains' is not supported; move workflow guidance into the skill markdown",
+      );
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });

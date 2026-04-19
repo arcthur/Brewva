@@ -77,6 +77,7 @@ export type BrewvaToolRequiredCapability =
   | "inspect.skills.getConsumedOutputs"
   | "inspect.skills.getLatestFailure"
   | "inspect.skills.getLoadReport"
+  | "inspect.skills.getReadiness"
   | "inspect.skills.list"
   | "inspect.skills.validateOutputs"
   | "inspect.task.getState"

@@ -50,6 +50,7 @@ refresh the pointer summary and `Last reviewed` metadata here.
 - [`rfc-skill-contract-layering-project-context-and-explicit-activation.md`](./rfc-skill-contract-layering-project-context-and-explicit-activation.md)
 - [`rfc-skill-compounding-loop-completeness-and-parameterization-model.md`](./rfc-skill-compounding-loop-completeness-and-parameterization-model.md)
 - [`rfc-skill-contract-precision-and-advisory-artifact-boundaries.md`](./rfc-skill-contract-precision-and-advisory-artifact-boundaries.md)
+- [`rfc-skill-metadata-as-runtime-contract-and-routing-substrate.md`](./rfc-skill-metadata-as-runtime-contract-and-routing-substrate.md)
 - [`rfc-specialist-subagents-and-adversarial-verification.md`](./rfc-specialist-subagents-and-adversarial-verification.md)
 - [`rfc-tool-search-advisor-and-auto-broadened-discovery.md`](./rfc-tool-search-advisor-and-auto-broadened-discovery.md)
 

@@ -724,32 +724,6 @@ function normalizeResourcePolicy(
   };
 }
 
-function parseSuggestedChains(
-  value: unknown,
-  filePath: string,
-): SkillExecutionHints["suggestedChains"] | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!Array.isArray(value)) {
-    failSkillContract(filePath, "execution_hints.suggested_chains must be an array.");
-  }
-  const parsed = value.map((entry, index) => {
-    if (!isRecord(entry)) {
-      failSkillContract(filePath, `execution_hints.suggested_chains[${index}] must be an object.`);
-    }
-    const steps = requireStringArrayField(entry, "steps", filePath);
-    return {
-      steps: normalizeToolListStrict(
-        steps,
-        filePath,
-        `execution_hints.suggested_chains[${index}].steps`,
-      ),
-    };
-  });
-  return parsed.length > 0 ? parsed : undefined;
-}
-
 function normalizeExecutionHints(
   data: Record<string, unknown>,
   category: SkillCategory,
@@ -770,6 +744,12 @@ function normalizeExecutionHints(
       return undefined;
     }
     failSkillContract(filePath, "missing required frontmatter field 'execution_hints'.");
+  }
+  if (Object.prototype.hasOwnProperty.call(hints, "suggested_chains")) {
+    failSkillContract(
+      filePath,
+      "execution_hints.suggested_chains is not supported. Move workflow guidance into the skill markdown.",
+    );
   }
 
   const preferredTools =
@@ -800,7 +780,6 @@ function normalizeExecutionHints(
     fallbackTools: fallbackTools
       ? normalizeToolListStrict(fallbackTools, filePath, "execution_hints.fallback_tools")
       : undefined,
-    suggestedChains: parseSuggestedChains(hints.suggested_chains, filePath),
     costHint,
   };
 }
@@ -1187,7 +1166,6 @@ function mergeExecutionHints(
   return {
     preferredTools,
     fallbackTools,
-    suggestedChains: patch?.suggestedChains ?? base?.suggestedChains,
     costHint: patch?.costHint ?? base?.costHint,
   };
 }
@@ -1419,8 +1397,6 @@ export function mergeOverlayContract(
           ...(overlay.executionHints?.fallbackTools ?? []),
         ]),
       ],
-      suggestedChains:
-        overlay.executionHints?.suggestedChains ?? base.executionHints?.suggestedChains,
       costHint: overlay.executionHints?.costHint ?? base.executionHints?.costHint,
     },
     composableWith: [

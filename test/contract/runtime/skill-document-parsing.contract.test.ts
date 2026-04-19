@@ -457,6 +457,44 @@ describe("skill document parsing", () => {
     expect(merged.composableWith).toEqual(["debugging"]);
   });
 
+  test("rejects structured suggested chains because workflow guidance belongs in markdown", () => {
+    const filePath = createTempSkillDocument(
+      "brewva-skill-suggested-chains-removed-",
+      "skills/core/suggested-chain/SKILL.md",
+      [
+        "---",
+        "name: suggested-chain",
+        "description: suggested chain skill",
+        "selection:",
+        "  when_to_use: Use when the task needs the routed test skill.",
+        "  examples: [test skill]",
+        "intent:",
+        "  outputs: []",
+        "effects:",
+        "  allowed_effects: [workspace_read]",
+        "resources:",
+        "  default_lease:",
+        "    max_tool_calls: 10",
+        "    max_tokens: 10000",
+        "  hard_ceiling:",
+        "    max_tool_calls: 20",
+        "    max_tokens: 20000",
+        "execution_hints:",
+        "  preferred_tools: [read]",
+        "  fallback_tools: []",
+        "  suggested_chains:",
+        "    - steps: [design, implementation]",
+        "consumes: []",
+        "---",
+        "# suggested-chain",
+      ],
+    );
+
+    expect(() => parseSkillDocument(filePath, "core")).toThrow(
+      "execution_hints.suggested_chains is not supported. Move workflow guidance into the skill markdown.",
+    );
+  });
+
   test("overlay parsing leaves legacy dispatch absent and still merges denied effects", () => {
     const filePath = createTempSkillDocument(
       "brewva-skill-overlay-no-dispatch-",

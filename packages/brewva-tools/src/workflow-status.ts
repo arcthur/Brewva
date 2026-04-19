@@ -3,6 +3,7 @@ import {
   coerceTaskStallAdjudicatedPayload,
   deriveWorkflowStatus,
   type BrewvaEventRecord,
+  type SkillReadinessEntry,
   type WorkflowArtifact,
   type WorkflowLaneStatus,
 } from "@brewva/brewva-runtime";
@@ -113,6 +114,15 @@ function renderArtifact(artifact: WorkflowArtifact): string {
   ].join(" | ");
 }
 
+function renderSkillReadinessLine(entry: SkillReadinessEntry): string {
+  const missingRequires =
+    entry.missingRequires.length > 0 ? entry.missingRequires.join(", ") : "none";
+  const declaredConsumes = entry.consumes.length > 0 ? entry.consumes.join(", ") : "none";
+  const satisfiedConsumes =
+    entry.satisfiedConsumes.length > 0 ? entry.satisfiedConsumes.join(", ") : "none";
+  return `- ${entry.name}: ${entry.readiness} score=${entry.score} missing_requires=${missingRequires} declared_consumes=${declaredConsumes} satisfied_consumes=${satisfiedConsumes}`;
+}
+
 function selectArtifactsForDisplay(
   artifacts: readonly WorkflowArtifact[],
   historyLimit: number,
@@ -182,6 +192,7 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
         workflowStatusTool.runtime,
         sessionId,
       );
+      const skillReadiness = workflowStatusTool.runtime.inspect.skills.getReadiness(sessionId);
       const stallAdjudication = readLatestStallAdjudication(events);
       const snapshot = deriveWorkflowStatus({
         sessionId,
@@ -197,6 +208,7 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
         },
         pendingWorkerResults: pendingWorkerResults.length,
         pendingDelegationOutcomes: pendingDelegationOutcomes.length,
+        skillReadiness,
         workspaceRoot: workflowStatusTool.runtime.workspaceRoot,
       });
 
@@ -256,6 +268,20 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
         }`,
         `open_tool_calls: ${openToolCalls.length}`,
       ];
+
+      lines.push("skill_readiness:");
+      if (snapshot.skillReadiness.length === 0) {
+        lines.push("- none");
+      } else {
+        const displayedReadiness = [
+          ...snapshot.skillReadiness.filter((entry) => entry.readiness === "ready").slice(0, 5),
+          ...snapshot.skillReadiness.filter((entry) => entry.readiness === "available").slice(0, 3),
+          ...snapshot.skillReadiness.filter((entry) => entry.readiness === "blocked").slice(0, 3),
+        ];
+        for (const entry of displayedReadiness) {
+          lines.push(renderSkillReadinessLine(entry));
+        }
+      }
 
       if (activeSkillState?.phase === "repair_required" && activeSkillState.repairBudget) {
         lines.push(
@@ -363,6 +389,7 @@ export function createWorkflowStatusTool(options: BrewvaToolOptions): ToolDefini
               summary: result.summary,
             })),
             pendingDelegationOutcomesCount: snapshot.pendingDelegationOutcomes,
+            skillReadiness: snapshot.skillReadiness,
             pendingDelegationOutcomes: pendingDelegationOutcomes.map((run) => ({
               runId: run.runId,
               delegate: run.delegate,

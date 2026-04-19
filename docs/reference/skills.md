@@ -74,10 +74,29 @@ Skill frontmatter supports intent, effect, resource, and execution metadata:
   - optional short summary; defaults to `<name> skill`
 - `intent.outputs/intent.output_contracts/intent.semantic_bindings`
 - `selection.when_to_use/selection.examples/selection.paths/selection.phases`
+- `requires` / `consumes`
+- `composable_with`
 - `effects.allowed_effects/effects.denied_effects`
 - `resources.default_lease/resources.hard_ceiling`
 - `execution_hints.preferred_tools/execution_hints.fallback_tools/execution_hints.cost_hint`
 - resource lists: `references`, `scripts`, `heuristics`, `invariants`
+
+Structured metadata is only strong when runtime or control-plane code consumes
+it directly:
+
+| Metadata family                                      | Contract strength                       | Consumer                                                                                    |
+| ---------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `description` and markdown body                      | descriptive                             | model and operator judgment                                                                 |
+| `selection.*`                                        | routing input                           | gateway cold-start `skill-first` recommendation                                             |
+| `requires` / `consumes`                              | artifact-readiness contract             | runtime skill readiness, `workflow_status`, `skill_load`, skill-routing context             |
+| `composable_with`                                    | lifecycle contract                      | `SkillLifecycleService` activation gate                                                     |
+| `intent.*`                                           | producer and semantic-consumer contract | completion validation, normalization, downstream consumed outputs                           |
+| `effects.*` and `resources.*`                        | authority and budget contract           | tool policy, resource lease, execution boundary                                             |
+| `execution_hints.preferred_tools` / `fallback_tools` | control-plane tool guidance             | `skill_load`, skill index, gateway subagent prompt assembly, gateway tool-surface narrowing |
+| `execution_hints.cost_hint`                          | advisory surfaced metadata              | `skill_load` and skill index; no runtime budget decision unless a consumer is added         |
+
+`execution_hints.suggested_chains` is not supported. Workflow sequencing that
+is not consumed by runtime code belongs in the skill markdown body.
 
 Authoring vs runtime path semantics:
 
@@ -261,7 +280,7 @@ The runtime kernel and the optional control plane have different jobs:
 `skills_index.json` now carries the complete loaded-skill catalog instead of
 only the routable subset. Each entry retains normalized contract metadata,
 including `category`, `routingScope`, `outputs`, `requires`, `consumes`,
-derived `effectLevel`, `allowedEffects`, and the explicit flags and provenance
+`composableWith`, derived `effectLevel`, `allowedEffects`, and the explicit flags and provenance
 fields `routable`, `overlay`, `filePath`, `baseDir`, `sharedContextFiles`,
 `source`, `rootDir`, optional `overlayOrigins`, and authored `selection`.
 Whether a skill participates in routing is now expressed by the entry itself

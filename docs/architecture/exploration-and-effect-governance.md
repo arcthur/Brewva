@@ -176,13 +176,14 @@ path.
 Describes empirical guidance rather than authority:
 
 - preferred tools
-- suggested chains
 - historical priors
 - cost estimates
 - convergence guidance
 
 This information should serve planners, recovery controllers, and future
-orchestrators rather than directly becoming kernel commit conditions.
+orchestrators rather than directly becoming kernel commit conditions. Suggested
+workflow chains belong in skill markdown unless a runtime consumer makes them a
+real contract field.
 
 ## Governance Style
 

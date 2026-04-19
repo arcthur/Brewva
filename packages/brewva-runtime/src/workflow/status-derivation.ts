@@ -1,4 +1,5 @@
 import type { TaskState } from "../contracts/index.js";
+import type { SkillReadinessEntry } from "../contracts/skill-readiness.js";
 import { deriveWorkflowArtifacts, latestArtifactByKind } from "./artifact-derivation.js";
 import { collectCoveredRequiredEvidence } from "./coverage-utils.js";
 import {
@@ -308,6 +309,7 @@ export function deriveWorkflowStatus(input: {
   taskState?: Pick<TaskState, "spec" | "status" | "acceptance">;
   pendingWorkerResults?: number;
   pendingDelegationOutcomes?: number;
+  skillReadiness: readonly SkillReadinessEntry[];
   workspaceRoot?: string;
 }): WorkflowStatusSnapshot {
   const currentWorkspaceRevision = input.workspaceRoot
@@ -553,6 +555,7 @@ export function deriveWorkflowStatus(input: {
     sessionId: input.sessionId,
     currentWorkspaceRevision,
     posture,
+    skillReadiness: [...input.skillReadiness],
     artifacts: artifactsWithShipPosture,
     pendingWorkerResults,
     pendingDelegationOutcomes,

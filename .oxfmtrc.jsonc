@@ -9,6 +9,7 @@
   "ignorePatterns": [
     "distribution/brewva-*/",
     "node_modules/",
+    "packages/**/.tmp/",
     "packages/**/dist/",
     "packages/**/node_modules/",
     "packages/**/runtime-assets/",

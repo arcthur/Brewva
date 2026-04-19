@@ -1,6 +1,7 @@
 node_modules
 bun.lockb
 *.tsbuildinfo
+packages/**/.tmp/
 *.pyc
 dist
 .brewva

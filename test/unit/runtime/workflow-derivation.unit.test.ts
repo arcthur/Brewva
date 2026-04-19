@@ -28,6 +28,7 @@ describe("workflow derivation", () => {
   test("derives discovery, strategy, qa, ship, and retro artifacts from skill outputs", () => {
     const status = deriveWorkflowStatus({
       sessionId: "workflow-expanded-stages",
+      skillReadiness: [],
       events: [
         event({
           id: "evt-discovery",
@@ -271,6 +272,7 @@ describe("workflow derivation", () => {
   test("derives planning assurance metadata from canonical design and QA artifacts", () => {
     const status = deriveWorkflowStatus({
       sessionId: "workflow-planning-assurance",
+      skillReadiness: [],
       events: [
         event({
           id: "evt-strategy",
@@ -384,6 +386,7 @@ describe("workflow derivation", () => {
   test("treats fresh runtime verification as valid required-evidence coverage even without QA artifacts", () => {
     const status = deriveWorkflowStatus({
       sessionId: "workflow-required-evidence-verification",
+      skillReadiness: [],
       events: [
         event({
           id: "evt-design-verification",
@@ -467,6 +470,7 @@ describe("workflow derivation", () => {
   test("marks review and verification stale after a later workspace mutation", () => {
     const status = deriveWorkflowStatus({
       sessionId: "workflow-stale-session",
+      skillReadiness: [],
       events: [
         event({
           id: "evt-review",
@@ -525,6 +529,7 @@ describe("workflow derivation", () => {
   test("keeps missing verification checks as explicit blocked verification debt", () => {
     const status = deriveWorkflowStatus({
       sessionId: "workflow-verification-missing",
+      skillReadiness: [],
       events: [
         event({
           id: "evt-review",
@@ -604,6 +609,7 @@ describe("workflow derivation", () => {
   test("blocks ship posture when worker results are still pending", () => {
     const status = deriveWorkflowStatus({
       sessionId: "workflow-pending-workers",
+      skillReadiness: [],
       pendingWorkerResults: 2,
       events: [
         event({
@@ -649,6 +655,7 @@ describe("workflow derivation", () => {
   test("treats pending worker patch artifacts as pending implementation even without hydrated worker results", () => {
     const status = deriveWorkflowStatus({
       sessionId: "workflow-pending-patch-artifact",
+      skillReadiness: [],
       events: [
         event({
           id: "evt-review-ready",
@@ -768,6 +775,7 @@ describe("workflow derivation", () => {
   test("marks ship artifacts stale when later QA or verification evidence changes ship posture", () => {
     const status = deriveWorkflowStatus({
       sessionId: "workflow-ship-stale",
+      skillReadiness: [],
       events: [
         event({
           id: "evt-review",
@@ -825,6 +833,7 @@ describe("workflow derivation", () => {
   test("derives implementation posture from normalized outputs instead of raw files_changed shape", () => {
     const status = deriveWorkflowStatus({
       sessionId: "workflow-implementation-normalized",
+      skillReadiness: [],
       events: [
         event({
           id: "evt-implementation-invalid",
@@ -865,6 +874,7 @@ describe("workflow derivation", () => {
   test("derives review and QA posture from normalized outputs instead of raw producer shape", () => {
     const status = deriveWorkflowStatus({
       sessionId: "workflow-review-qa-normalized",
+      skillReadiness: [],
       events: [
         event({
           id: "evt-review-invalid",
@@ -937,6 +947,7 @@ describe("workflow derivation", () => {
   test("derives ship posture from normalized outputs instead of raw ship_decision text", () => {
     const status = deriveWorkflowStatus({
       sessionId: "workflow-ship-normalized",
+      skillReadiness: [],
       events: [
         event({
           id: "evt-review-ready",

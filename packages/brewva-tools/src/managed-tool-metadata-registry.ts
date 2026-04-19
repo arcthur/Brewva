@@ -142,7 +142,11 @@ export const MANAGED_BREWVA_TOOL_METADATA_BY_NAME = {
   },
   skill_load: {
     surface: "control_plane",
-    requiredCapabilities: ["authority.skills.activate", "inspect.skills.getConsumedOutputs"],
+    requiredCapabilities: [
+      "authority.skills.activate",
+      "inspect.skills.getConsumedOutputs",
+      "inspect.skills.getReadiness",
+    ],
   },
   tape_handoff: {
     surface: "skill",
@@ -229,6 +233,7 @@ export const MANAGED_BREWVA_TOOL_METADATA_BY_NAME = {
       "inspect.session.listWorkerResults",
       "inspect.skills.getActiveState",
       "inspect.skills.getLatestFailure",
+      "inspect.skills.getReadiness",
       "inspect.task.getState",
     ],
   },

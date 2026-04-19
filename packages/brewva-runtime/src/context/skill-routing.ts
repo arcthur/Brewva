@@ -1,5 +1,6 @@
-import type { SkillDocument, SkillOutputRecord } from "../contracts/index.js";
+import type { SkillOutputRecord, SkillReadinessEntry } from "../contracts/index.js";
 import type { RuntimeSessionStateStore } from "../services/session-state.js";
+import { deriveSkillReadiness } from "../skills/readiness.js";
 import type { SkillRegistry } from "../skills/registry.js";
 import type { ContextSourceProvider } from "./provider.js";
 import { CONTEXT_SOURCES } from "./sources.js";
@@ -7,73 +8,6 @@ import { CONTEXT_SOURCES } from "./sources.js";
 const MAX_CANDIDATES = 5;
 const MAX_COMPLETED_DISPLAY = 6;
 const MAX_OUTPUT_KEYS_DISPLAY = 12;
-
-interface SkillConsumptionProfile {
-  name: string;
-  category: string;
-  requires: readonly string[];
-  consumes: readonly string[];
-  phases: readonly string[];
-}
-
-interface CandidateReadiness {
-  name: string;
-  category: string;
-  readiness: "ready" | "available" | "blocked";
-  satisfiedRequires: readonly string[];
-  satisfiedConsumes: readonly string[];
-  missingRequires: readonly string[];
-  phases: readonly string[];
-}
-
-function extractConsumptionProfile(skill: SkillDocument): SkillConsumptionProfile {
-  return {
-    name: skill.name,
-    category: skill.category,
-    requires: skill.contract.requires ?? [],
-    consumes: skill.contract.consumes ?? [],
-    phases: skill.contract.selection?.phases ?? [],
-  };
-}
-
-function classifyReadiness(
-  profile: SkillConsumptionProfile,
-  producedKeys: ReadonlySet<string>,
-): CandidateReadiness {
-  const satisfiedRequires = profile.requires.filter((key) => producedKeys.has(key));
-  const missingRequires = profile.requires.filter((key) => !producedKeys.has(key));
-  const satisfiedConsumes = profile.consumes.filter((key) => producedKeys.has(key));
-
-  let readiness: CandidateReadiness["readiness"];
-  if (missingRequires.length > 0) {
-    readiness = "blocked";
-  } else if (profile.consumes.length > 0 && satisfiedConsumes.length > 0) {
-    readiness = "ready";
-  } else if (profile.requires.length === 0 && profile.consumes.length === 0) {
-    readiness = "available";
-  } else {
-    readiness = "available";
-  }
-
-  return {
-    name: profile.name,
-    category: profile.category,
-    readiness,
-    satisfiedRequires,
-    satisfiedConsumes,
-    missingRequires,
-    phases: profile.phases,
-  };
-}
-
-function scoreCandidateReadiness(candidate: CandidateReadiness): number {
-  if (candidate.readiness === "blocked") return -1;
-  let score = 0;
-  if (candidate.readiness === "ready") score += 10;
-  score += candidate.satisfiedRequires.length * 3;
-  score += candidate.satisfiedConsumes.length * 2;
-  return score;
-}
 
 function collectProducedOutputKeys(
   skillOutputs: ReadonlyMap<string, SkillOutputRecord>,
@@ -105,7 +39,7 @@ function collectCompletedSkillNames(
 function renderRoutingBlock(input: {
   completedSkills: readonly string[];
   producedOutputKeys: readonly string[];
-  candidates: readonly CandidateReadiness[];
+  candidates: readonly SkillReadinessEntry[];
 }): string {
   const lines = ["[Skill Routing Context]"];
 
@@ -177,26 +111,11 @@ export function createSkillRoutingContextProvider(
 
       const completedSkills = collectCompletedSkillNames(cell.skillOutputs);
       const producedKeys = collectProducedOutputKeys(cell.skillOutputs);
-      const completedSet = new Set(completedSkills);
 
-      const allSkills = deps.skills.list();
-      const candidates: CandidateReadiness[] = [];
-
-      for (const skill of allSkills) {
-        if (completedSet.has(skill.name)) continue;
-        const profile = extractConsumptionProfile(skill);
-        const readiness = classifyReadiness(profile, producedKeys);
-        if (readiness.readiness !== "blocked") {
-          candidates.push(readiness);
-        }
-      }
-
-      candidates.sort((a, b) => {
-        const scoreA = scoreCandidateReadiness(a);
-        const scoreB = scoreCandidateReadiness(b);
-        if (scoreB !== scoreA) return scoreB - scoreA;
-        return a.name.localeCompare(b.name);
-      });
+      const candidates = deriveSkillReadiness({
+        skills: deps.skills.list(),
+        skillOutputs: cell.skillOutputs,
+      }).filter((candidate) => candidate.readiness !== "blocked");
 
       const block = renderRoutingBlock({
         completedSkills,
