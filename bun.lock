@@ -17,6 +17,7 @@
         "@brewva/brewva-provider-core": "workspace:*",
         "@brewva/brewva-recall": "workspace:*",
         "@brewva/brewva-runtime": "workspace:*",
+        "@brewva/brewva-search": "workspace:*",
         "@brewva/brewva-skill-broker": "workspace:*",
         "@brewva/brewva-substrate": "workspace:*",
         "@brewva/brewva-tools": "workspace:*",
@@ -148,6 +149,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@brewva/brewva-runtime": "workspace:*",
+        "@brewva/brewva-search": "workspace:*",
       },
     },
     "packages/brewva-gateway": {
@@ -204,6 +206,7 @@
       "dependencies": {
         "@brewva/brewva-deliberation": "workspace:*",
         "@brewva/brewva-runtime": "workspace:*",
+        "@brewva/brewva-search": "workspace:*",
         "@brewva/brewva-skill-broker": "workspace:*",
         "fuse.js": "^7.3.0",
       },
@@ -212,10 +215,18 @@
       "name": "@brewva/brewva-runtime",
       "version": "0.1.0",
       "dependencies": {
+        "@brewva/brewva-search": "workspace:*",
         "ajv": "^8.18.0",
         "date-fns": "^4.1.0",
         "jsonc-parser": "^3.3.1",
         "yaml": "^2.8.3",
+      },
+    },
+    "packages/brewva-search": {
+      "name": "@brewva/brewva-search",
+      "version": "0.1.0",
+      "dependencies": {
+        "jieba-wasm": "^2.4.0",
       },
     },
     "packages/brewva-skill-broker": {
@@ -224,6 +235,7 @@
       "dependencies": {
         "@brewva/brewva-deliberation": "workspace:*",
         "@brewva/brewva-runtime": "workspace:*",
+        "@brewva/brewva-search": "workspace:*",
       },
     },
     "packages/brewva-substrate": {
@@ -242,6 +254,7 @@
         "@brewva/brewva-deliberation": "workspace:*",
         "@brewva/brewva-recall": "workspace:*",
         "@brewva/brewva-runtime": "workspace:*",
+        "@brewva/brewva-search": "workspace:*",
         "@brewva/brewva-skill-broker": "workspace:*",
         "@brewva/brewva-substrate": "workspace:*",
         "@sinclair/typebox": "^0.34.49",
@@ -427,6 +440,8 @@
     "@brewva/brewva-recall": ["@brewva/brewva-recall@workspace:packages/brewva-recall"],
 
     "@brewva/brewva-runtime": ["@brewva/brewva-runtime@workspace:packages/brewva-runtime"],
+
+    "@brewva/brewva-search": ["@brewva/brewva-search@workspace:packages/brewva-search"],
 
     "@brewva/brewva-skill-broker": ["@brewva/brewva-skill-broker@workspace:packages/brewva-skill-broker"],
 
@@ -975,6 +990,8 @@
     "isexe": ["isexe@2.0.0", "", {}, "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="],
 
     "jackspeak": ["jackspeak@3.4.3", "", { "dependencies": { "@isaacs/cliui": "^8.0.2" }, "optionalDependencies": { "@pkgjs/parseargs": "^0.11.0" } }, "sha512-OGlZQpz2yfahA/Rd1Y8Cd9SIEsqvXkLVoSw/cgwhnhFMDbsQFeZYoJJ7bIZBS9BcamUW96asq/npPWugM+RQBw=="],
+
+    "jieba-wasm": ["jieba-wasm@2.4.0", "", {}, "sha512-ZvQdS+FGifrFXZIXSgOyOgEz+1wdy1P4vSvwe37FVtku9ycSdHTZbHqF5i9tMN1JucoAmeiLBeI6/YaqcGD+KA=="],
 
     "jimp": ["jimp@1.6.0", "", { "dependencies": { "@jimp/core": "1.6.0", "@jimp/diff": "1.6.0", "@jimp/js-bmp": "1.6.0", "@jimp/js-gif": "1.6.0", "@jimp/js-jpeg": "1.6.0", "@jimp/js-png": "1.6.0", "@jimp/js-tiff": "1.6.0", "@jimp/plugin-blit": "1.6.0", "@jimp/plugin-blur": "1.6.0", "@jimp/plugin-circle": "1.6.0", "@jimp/plugin-color": "1.6.0", "@jimp/plugin-contain": "1.6.0", "@jimp/plugin-cover": "1.6.0", "@jimp/plugin-crop": "1.6.0", "@jimp/plugin-displace": "1.6.0", "@jimp/plugin-dither": "1.6.0", "@jimp/plugin-fisheye": "1.6.0", "@jimp/plugin-flip": "1.6.0", "@jimp/plugin-hash": "1.6.0", "@jimp/plugin-mask": "1.6.0", "@jimp/plugin-print": "1.6.0", "@jimp/plugin-quantize": "1.6.0", "@jimp/plugin-resize": "1.6.0", "@jimp/plugin-rotate": "1.6.0", "@jimp/plugin-threshold": "1.6.0", "@jimp/types": "1.6.0", "@jimp/utils": "1.6.0" } }, "sha512-YcwCHw1kiqEeI5xRpDlPPBGL2EOpBKLwO4yIBJcXWHPj5PnA5urGq0jbyhM5KoNpypQ6VboSoxc9D8HyfvngSg=="],
 

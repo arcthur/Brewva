@@ -17,6 +17,7 @@
     "@brewva/brewva-deliberation": "workspace:*",
     "@brewva/brewva-recall": "workspace:*",
     "@brewva/brewva-runtime": "workspace:*",
+    "@brewva/brewva-search": "workspace:*",
     "@brewva/brewva-skill-broker": "workspace:*",
     "@brewva/brewva-substrate": "workspace:*",
     "@sinclair/typebox": "^0.34.49",

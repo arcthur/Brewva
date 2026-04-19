@@ -27,6 +27,7 @@
     "./schema/brewva.schema.json": "./schema/brewva.schema.json"
   },
   "dependencies": {
+    "@brewva/brewva-search": "workspace:*",
     "ajv": "^8.18.0",
     "date-fns": "^4.1.0",
     "jsonc-parser": "^3.3.1",

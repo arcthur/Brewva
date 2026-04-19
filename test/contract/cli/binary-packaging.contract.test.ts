@@ -18,8 +18,11 @@ describe("binary packaging contract", () => {
     expect(rootPackageJsonSource).not.toContain('"@mariozechner/pi-coding-agent"');
     expect(buildScriptSource).toContain('packages", "brewva-cli", "runtime-assets"');
     expect(buildScriptSource).toContain("brewvaConfig");
+    expect(buildScriptSource).toContain("jieba-wasm/web");
+    expect(buildScriptSource).toContain("jieba_rs_wasm_bg.wasm");
     expect(buildScriptSource).not.toContain("piConfig");
     expect(buildScriptSource).not.toContain("@mariozechner/pi-coding-agent");
+    expect(buildScriptSource).not.toContain("jieba-wasm/node");
     expect(buildScriptSource).not.toContain("createRequire(");
 
     expect(existsSync(themePath)).toBe(true);

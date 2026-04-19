@@ -5,7 +5,6 @@ import {
   collectPlaneSessionDigests,
   samePlaneSessionDigests,
   shouldThrottlePlaneRefresh,
-  tokenize,
   uniqueStrings,
 } from "@brewva/brewva-deliberation";
 import {
@@ -22,6 +21,7 @@ import {
   type SkillDocument,
 } from "@brewva/brewva-runtime";
 import { coerceReviewReportArtifact, recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
+import { tokenizeSearchText } from "@brewva/brewva-search";
 import { FileSkillPromotionStore } from "./file-store.js";
 import { isRecord, readString } from "./parse.js";
 import {
@@ -63,7 +63,7 @@ function compactText(value: string, maxChars = 280): string {
 }
 
 function slugify(text: string, fallback = "draft"): string {
-  const normalized = tokenize(text).join("-");
+  const normalized = tokenizeSearchText(text).join("-");
   return normalized.length > 0 ? normalized.slice(0, 64) : fallback;
 }
 
@@ -331,7 +331,7 @@ function extractPromotionCandidates(
       sourceSkillName,
       target.kind,
       target.pathHint.toLowerCase(),
-      tokenize(title).slice(0, 6).join("-"),
+      tokenizeSearchText(title).slice(0, 6).join("-"),
     ].join(":");
     candidates.push({
       signature,
@@ -351,7 +351,11 @@ function extractPromotionCandidates(
       evidence: [buildEvidence(event)],
       sessionIds: [event.sessionId],
       snippets: outputSnippets,
-      tags: uniqueStrings([sourceSkillName, target.kind, ...tokenize(target.pathHint).slice(0, 3)]),
+      tags: uniqueStrings([
+        sourceSkillName,
+        target.kind,
+        ...tokenizeSearchText(target.pathHint).slice(0, 3),
+      ]),
       firstCapturedAt: event.timestamp,
       lastValidatedAt: event.timestamp,
     });
@@ -624,7 +628,7 @@ function shouldInjectDrafts(promptText: string, drafts: readonly SkillPromotionD
   if (drafts.some((draft) => draft.status === "approved")) {
     return true;
   }
-  const tokens = new Set(tokenize(promptText));
+  const tokens = new Set(tokenizeSearchText(promptText));
   for (const token of tokens) {
     if (PROMOTION_TRIGGER_TOKENS.has(token)) {
       return true;

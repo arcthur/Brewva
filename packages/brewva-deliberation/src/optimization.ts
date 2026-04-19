@@ -12,13 +12,13 @@ import {
   type ContextSourceProvider,
   type ScheduleIntentEventPayload,
 } from "@brewva/brewva-runtime";
+import { tokenizeSearchText } from "@brewva/brewva-search";
 import { FileOptimizationContinuityStore } from "./optimization-store.js";
 import {
   clamp,
   collectPlaneSessionDigests,
   getOrCreatePlaneForRuntime,
   reconcileSessionDigestBackedPlaneState,
-  tokenize,
   uniqueStrings,
 } from "./plane-substrate.js";
 import {
@@ -1105,9 +1105,9 @@ export function retrieveOptimizationContinuityArtifacts(input: {
   limit?: number;
 }): OptimizationContinuityRetrieval[] {
   const now = input.now ?? Date.now();
-  const queryTokens = new Set(tokenize(input.promptText));
+  const queryTokens = new Set(tokenizeSearchText(input.promptText));
   const scored = input.state.lineages.map((artifact) => {
-    const haystack = tokenize(
+    const haystack = tokenizeSearchText(
       [
         artifact.loopKey,
         artifact.goalRef,
@@ -1145,7 +1145,7 @@ function shouldInjectOptimizationLineages(
   promptText: string,
   lineages: readonly OptimizationLineageArtifact[],
 ): boolean {
-  const tokens = new Set(tokenize(promptText));
+  const tokens = new Set(tokenizeSearchText(promptText));
   for (const token of tokens) {
     if (OPTIMIZATION_TRIGGER_TOKENS.has(token)) {
       return true;

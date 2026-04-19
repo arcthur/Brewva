@@ -9,7 +9,7 @@
 
 ## Repo At A Glance
 
-- `Brewva` is a Bun + TypeScript monorepo for an AI-native coding-agent runtime with repo-owned runtime, substrate, provider-core, agent-engine, and recall packages.
+- `Brewva` is a Bun + TypeScript monorepo for an AI-native coding-agent runtime with repo-owned runtime, search, substrate, provider-core, agent-engine, and recall packages.
 - Workspace packages live under `packages/*`; the primary surfaces are `runtime`, `substrate`, `provider-core`, `agent-engine`, `recall`, `deliberation`, `skill-broker`, `channels-telegram`, `ingress`, `tools`, `cli`, and `gateway`.
 - Distribution surfaces live under `distribution/brewva`, `distribution/brewva-*`, and `distribution/worker`.
 - Support roots: `script/` for build and verification, `docs/` for design/reference material, and `test/` for workspace coverage.
@@ -25,7 +25,7 @@
 
 ### Workspace Boundaries
 
-- Use workspace package imports across package boundaries. Allowed package entrypoints are `@brewva/brewva-runtime`, `@brewva/brewva-runtime/channels`, the repo-owned implementation escape hatch `@brewva/brewva-runtime/internal`, `@brewva/brewva-substrate`, `@brewva/brewva-agent-engine`, `@brewva/brewva-provider-core`, `@brewva/brewva-recall`, `@brewva/brewva-deliberation`, `@brewva/brewva-skill-broker`, `@brewva/brewva-channels-telegram`, `@brewva/brewva-ingress`, `@brewva/brewva-tools`, `@brewva/brewva-tui`, the Bun-only internal seam `@brewva/brewva-tui/internal-opentui-runtime`, `@brewva/brewva-cli`, the CLI-owned internal seam `@brewva/brewva-cli/internal-shell-runtime`, `@brewva/brewva-gateway`, `@brewva/brewva-gateway/host`, and `@brewva/brewva-gateway/runtime-plugins`.
+- Use workspace package imports across package boundaries. Allowed package entrypoints are `@brewva/brewva-runtime`, `@brewva/brewva-runtime/channels`, the repo-owned implementation escape hatch `@brewva/brewva-runtime/internal`, `@brewva/brewva-search`, `@brewva/brewva-substrate`, `@brewva/brewva-agent-engine`, `@brewva/brewva-provider-core`, `@brewva/brewva-recall`, `@brewva/brewva-deliberation`, `@brewva/brewva-skill-broker`, `@brewva/brewva-channels-telegram`, `@brewva/brewva-ingress`, `@brewva/brewva-tools`, `@brewva/brewva-tui`, the Bun-only internal seam `@brewva/brewva-tui/internal-opentui-runtime`, `@brewva/brewva-cli`, the CLI-owned internal seam `@brewva/brewva-cli/internal-shell-runtime`, `@brewva/brewva-gateway`, `@brewva/brewva-gateway/host`, and `@brewva/brewva-gateway/runtime-plugins`.
 - Do not reintroduce local alias schemes such as `@/...`.
 - Do not mix `src` and `dist` class types at public boundaries.
 - Do not import from `distribution/**` packages inside workspace package code; treat them as release artifacts.
@@ -45,6 +45,7 @@
 - Keep `governancePort` governance-only and do not re-expose removed internal tuning knobs unless they represent a clear user-facing decision boundary.
 - Keep commitment flows replay-first: `effect_commitment` proposals, operator-desk approval events, and explicit resume via `effectCommitmentRequestId` are the source of truth, not process-local approval state.
 - Keep reversible mutation flows receipt-based: `reversible_mutate` must continue producing rollback/journal artifacts and remain recoverable through `runtime.authority.tools.rollbackLastMutation(...)`.
+- Search tokenization is centralized in `@brewva/brewva-search`. Chinese-aware retrieval depends on mandatory `jieba-wasm`; do not add local tokenizers or silent non-jieba fallbacks in recall, tools, skill-broker, deliberation, or runtime search paths.
 
 ### Build Baseline
 
@@ -87,7 +88,7 @@
 - Runtime context and durability: `packages/brewva-runtime/src/context/arena.ts`, `packages/brewva-runtime/src/context/injection-orchestrator.ts`, `packages/brewva-runtime/src/services/context*.ts`, `packages/brewva-runtime/src/channels/recovery-wal*.ts`, `packages/brewva-runtime/src/governance/port.ts`
 - Runtime authorization / rollback / diagnostics: `packages/brewva-runtime/src/services/tool-gate.ts`, `packages/brewva-runtime/src/services/effect-commitment-desk.ts`, `packages/brewva-runtime/src/services/reversible-mutation.ts`, `packages/brewva-runtime/src/services/mutation-rollback.ts`, `packages/brewva-runtime/src/services/task-watchdog.ts`
 - Managed-tool capability boundaries: `packages/brewva-tools/src/runtime-capability-scope.ts`, `packages/brewva-tools/src/managed-tool-metadata-registry.ts`, `packages/brewva-tools/src/utils/runtime-bound-tool.ts`
-- Package entrypoints: `packages/brewva-substrate/src/index.ts`, `packages/brewva-agent-engine/src/index.ts`, `packages/brewva-provider-core/src/index.ts`, `packages/brewva-recall/src/index.ts`, `packages/brewva-deliberation/src/index.ts`, `packages/brewva-skill-broker/src/index.ts`, `packages/brewva-tools/src/index.ts`, `packages/brewva-gateway/src/runtime-plugins/index.ts`, `packages/brewva-gateway/src/channels/host.ts`, `packages/brewva-gateway/src/host/create-hosted-session.ts`, `packages/brewva-gateway/src/subagents`, `packages/brewva-ingress/src/index.ts`, `packages/brewva-cli/src/index.ts`, `packages/brewva-gateway/src`
+- Package entrypoints: `packages/brewva-search/src/index.ts`, `packages/brewva-substrate/src/index.ts`, `packages/brewva-agent-engine/src/index.ts`, `packages/brewva-provider-core/src/index.ts`, `packages/brewva-recall/src/index.ts`, `packages/brewva-deliberation/src/index.ts`, `packages/brewva-skill-broker/src/index.ts`, `packages/brewva-tools/src/index.ts`, `packages/brewva-gateway/src/runtime-plugins/index.ts`, `packages/brewva-gateway/src/channels/host.ts`, `packages/brewva-gateway/src/host/create-hosted-session.ts`, `packages/brewva-gateway/src/subagents`, `packages/brewva-ingress/src/index.ts`, `packages/brewva-cli/src/index.ts`, `packages/brewva-gateway/src`
 - Verification and release tooling: `script/verify-dist.ts`, `script/build-binaries.ts`, `distribution/worker`, `.github/workflows/ci.yml`
 - Reference docs: `docs/index.md`, `docs/architecture/system-architecture.md`, `docs/reference/runtime.md`, `docs/reference/proposal-boundary.md`, `docs/reference/events.md`, `docs/reference/*.md`, `docs/research/README.md`, `docs/solutions/README.md`
 
@@ -100,6 +101,7 @@
 - Presenting repo-owned `@brewva/brewva-runtime/internal` helpers as the default integration surface or stable product contract
 - Passing raw `BrewvaRuntime` into internal-aware tool factories or reintroducing tool-side fallback rediscovery of runtime internals
 - Adding managed-tool runtime calls without updating the repo-owned `requiredCapabilities` metadata and scoped-runtime tests
+- Adding package-local search tokenizers or optional Chinese-tokenizer fallbacks outside `@brewva/brewva-search`
 - Re-exposing removed low-level tuning knobs as public config
 - Editing generated distribution artifacts by hand
 - Skipping `test:dist` for export, CLI, or distribution changes

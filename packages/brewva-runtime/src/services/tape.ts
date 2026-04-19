@@ -1,3 +1,4 @@
+import { normalizeSearchText, tokenizeSearchText } from "@brewva/brewva-search";
 import type {
   BrewvaConfig,
   BrewvaEventQuery,
@@ -64,6 +65,11 @@ interface TapeCheckpointCounterState {
   latestAnchorEventId?: string;
   lastCheckpointEventId?: string;
   processedEventIds: Set<string>;
+}
+
+interface TapeSearchCandidate {
+  match: TapeSearchMatch;
+  score: number;
 }
 
 export class TapeService {
@@ -327,6 +333,27 @@ export class TapeService {
     return `${compact.slice(0, Math.max(1, maxChars - 3))}...`;
   }
 
+  private scoreTapeSearchText(input: {
+    query: string;
+    queryTokens: readonly string[];
+    haystack: string;
+  }): number {
+    const normalizedHaystack = normalizeSearchText(input.haystack);
+    let phraseScore = 0;
+    if (input.query.length > 0 && normalizedHaystack.includes(input.query)) {
+      phraseScore = 2;
+    }
+
+    let tokenScore = 0;
+    if (input.queryTokens.length > 0) {
+      const haystackTokens = new Set(tokenizeSearchText(input.haystack));
+      const matchedTokens = input.queryTokens.filter((token) => haystackTokens.has(token));
+      tokenScore = matchedTokens.length / input.queryTokens.length;
+    }
+
+    return phraseScore + tokenScore;
+  }
+
   private scopeTapeEvents(
     events: BrewvaEventRecord[],
     scope: TapeSearchScope,
@@ -368,25 +395,43 @@ export class TapeService {
       };
     }
 
-    const needle = query.toLowerCase();
-    const matches: TapeSearchMatch[] = [];
+    const normalizedQuery = normalizeSearchText(query);
+    const queryTokens = tokenizeSearchText(query, { includeCompoundSubtokens: false });
+    const candidates: TapeSearchCandidate[] = [];
 
     for (let index = scopedEvents.length - 1; index >= 0; index -= 1) {
-      if (matches.length >= limit) break;
       const event = scopedEvents[index];
       if (!event) continue;
 
       const haystack = this.buildTapeSearchText(event);
-      if (!haystack.toLowerCase().includes(needle)) continue;
+      const score = this.scoreTapeSearchText({
+        query: normalizedQuery,
+        queryTokens,
+        haystack,
+      });
+      if (score <= 0) continue;
 
-      matches.push({
-        eventId: event.id,
-        type: event.type,
-        turn: event.turn,
-        timestamp: event.timestamp,
-        excerpt: this.trimSearchExcerpt(haystack),
+      candidates.push({
+        score,
+        match: {
+          eventId: event.id,
+          type: event.type,
+          turn: event.turn,
+          timestamp: event.timestamp,
+          excerpt: this.trimSearchExcerpt(haystack),
+        },
       });
     }
+
+    const matches = candidates
+      .toSorted((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        return right.match.timestamp - left.match.timestamp;
+      })
+      .slice(0, limit)
+      .map((candidate) => candidate.match);
 
     return {
       query,

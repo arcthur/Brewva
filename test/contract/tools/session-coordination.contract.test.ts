@@ -397,6 +397,53 @@ describe("session coordination tool contracts", () => {
     );
   });
 
+  test("recall_search returns Chinese tape evidence across prior sessions", async () => {
+    const recallWorkspace = mkdtempSync(join(tmpdir(), "brewva-tools-recall-search-cjk-"));
+    const runtime = new BrewvaRuntime({ cwd: recallWorkspace });
+    const priorSessionId = "s12-recall-prior-cjk";
+    const currentSessionId = "s12-recall-current-cjk";
+
+    runtime.maintain.context.onTurnStart(priorSessionId, 1);
+    runtime.authority.task.setSpec(priorSessionId, {
+      schema: "brewva.task.v1",
+      goal: "修复网关数据库连接失败导致启动重试",
+    });
+    recordRuntimeEvent(runtime, {
+      sessionId: priorSessionId,
+      type: "task_event",
+      payload: {
+        schema: "brewva.task.inspect.ledger.v1",
+        kind: "item_added",
+        item: { id: "i-recall-cjk-1", text: "数据库连接被拒绝导致启动失败", status: "todo" },
+      } as Record<string, unknown>,
+    });
+
+    runtime.maintain.context.onTurnStart(currentSessionId, 1);
+    runtime.authority.task.setSpec(currentSessionId, {
+      schema: "brewva.task.v1",
+      goal: "排查数据库启动失败是否已有处理记录",
+    });
+
+    const tools = buildBrewvaTools({
+      runtime: createBundledToolRuntime(runtime),
+      toolNames: ["recall_search"],
+    });
+    const recallSearch = requireTool(tools, "recall_search");
+
+    const result = await recallSearch.execute(
+      "tc-recall-search-cjk",
+      { query: "数据库启动失败", limit: 5 },
+      undefined,
+      undefined,
+      fakeContext(currentSessionId),
+    );
+
+    const text = extractTextContent(result);
+    expect(text).toContain("[RecallSearch]");
+    expect(text).toContain("source_family=tape_evidence");
+    expect(text).toContain(`session_id=${priorSessionId}`);
+  });
+
   test("recall_search can inspect stable ids and surface curation metadata", async () => {
     const recallWorkspace = mkdtempSync(join(tmpdir(), "brewva-tools-recall-inspect-"));
     const runtime = new BrewvaRuntime({ cwd: recallWorkspace });

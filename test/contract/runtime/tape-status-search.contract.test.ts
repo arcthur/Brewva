@@ -79,4 +79,37 @@ describe("tape status and search", () => {
     expect(anchorOnly.matches.length).toBe(1);
     expect(anchorOnly.matches[0]?.type).toBe("anchor");
   });
+
+  test("searchTape uses token overlap for Chinese event text", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-tape-search-cjk-"));
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const sessionId = "tape-search-cjk";
+
+    runtime.authority.events.recordTapeHandoff(sessionId, {
+      name: "phase-a",
+      summary: "数据库连接失败调查",
+      nextSteps: "继续定位启动路径",
+    });
+    runtime.authority.task.addItem(sessionId, { text: "修复数据库连接被拒绝导致启动失败" });
+
+    runtime.authority.events.recordTapeHandoff(sessionId, {
+      name: "phase-b",
+      summary: "缓存刷新完成",
+      nextSteps: "继续验证",
+    });
+    runtime.authority.task.addItem(sessionId, { text: "缓存刷新成功" });
+
+    const allPhases = runtime.inspect.events.searchTape(sessionId, {
+      query: "数据库启动失败",
+      scope: "all_phases",
+    });
+    expect(allPhases.matches.length).toBeGreaterThan(0);
+    expect(allPhases.matches[0]?.excerpt).toContain("数据库");
+
+    const currentPhase = runtime.inspect.events.searchTape(sessionId, {
+      query: "数据库启动失败",
+      scope: "current_phase",
+    });
+    expect(currentPhase.matches).toHaveLength(0);
+  });
 });

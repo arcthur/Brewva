@@ -18,13 +18,13 @@ import {
   type BrewvaInspectionPort,
   type ContextSourceProvider,
 } from "@brewva/brewva-runtime";
+import { tokenizeSearchText } from "@brewva/brewva-search";
 import { FileDeliberationMemoryStore } from "./file-store.js";
 import {
   clamp,
   collectPlaneSessionDigests,
   getOrCreatePlaneForRuntime,
   reconcileSessionDigestBackedPlaneState,
-  tokenize,
   uniqueStrings,
 } from "./plane-substrate.js";
 import {
@@ -982,7 +982,7 @@ export function retrieveDeliberationMemoryArtifacts(input: {
   limit?: number;
 }): DeliberationMemoryRetrieval[] {
   const now = input.now ?? Date.now();
-  const queryTokens = new Set(tokenize(input.promptText));
+  const queryTokens = new Set(tokenizeSearchText(input.promptText));
   const targetRoots = new Set((input.targetRoots ?? []).map((root) => root.trim()).filter(Boolean));
   const perKindCap: Record<DeliberationMemoryArtifact["kind"], number> = {
     repository_strategy_memory: 2,
@@ -992,7 +992,7 @@ export function retrieveDeliberationMemoryArtifacts(input: {
   };
   const scored = input.state.artifacts.map((artifact) => {
     const retention = readRetention(artifact, now);
-    const haystack = tokenize(
+    const haystack = tokenizeSearchText(
       [artifact.title, artifact.summary, artifact.content, artifact.tags.join(" ")].join(" "),
     );
     const haystackSet = new Set(haystack);
@@ -1004,7 +1004,7 @@ export function retrieveDeliberationMemoryArtifacts(input: {
       queryTokens.size === 0
         ? 0.52
         : [...queryTokens].filter((token) =>
-            artifact.tags.some((tag) => tokenize(tag).includes(token)),
+            artifact.tags.some((tag) => tokenizeSearchText(tag).includes(token)),
           ).length / queryTokens.size;
     const scopeWeight = resolveScopeWeight(artifact, queryTokens);
     const artifactRepositoryRoot = getArtifactRepositoryRoot(artifact);

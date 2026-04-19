@@ -1,7 +1,7 @@
 {
-  "name": "@brewva/brewva-recall",
+  "name": "@brewva/brewva-search",
   "version": "0.1.0",
-  "description": "Recall broker, curation state, and repository precedent search for Brewva.",
+  "description": "Shared search normalization and tokenization for Brewva.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,11 +15,7 @@
     }
   },
   "dependencies": {
-    "@brewva/brewva-deliberation": "workspace:*",
-    "@brewva/brewva-runtime": "workspace:*",
-    "@brewva/brewva-search": "workspace:*",
-    "@brewva/brewva-skill-broker": "workspace:*",
-    "fuse.js": "^7.3.0"
+    "jieba-wasm": "^2.4.0"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

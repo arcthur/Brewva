@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "./packages/brewva-search" },
     { "path": "./packages/brewva-runtime" },
     { "path": "./packages/brewva-substrate" },
     { "path": "./packages/brewva-provider-core" },

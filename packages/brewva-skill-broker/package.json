@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@brewva/brewva-deliberation": "workspace:*",
-    "@brewva/brewva-runtime": "workspace:*"
+    "@brewva/brewva-runtime": "workspace:*",
+    "@brewva/brewva-search": "workspace:*"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

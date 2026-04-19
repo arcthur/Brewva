@@ -177,12 +177,13 @@ function main(): void {
 
   const resolveScript = String.raw`
     import { createRequire } from "node:module";
-    import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
+    import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
     import { tmpdir } from "node:os";
-    import { join } from "node:path";
+    import { dirname, join } from "node:path";
     const require = createRequire(import.meta.url);
     const packages = [
       "@brewva/brewva-runtime",
+      "@brewva/brewva-search",
       "@brewva/brewva-channels-telegram",
       "@brewva/brewva-ingress",
       "@brewva/brewva-tools",
@@ -265,13 +266,61 @@ function main(): void {
     const isolatedWorkspace = mkdtempSync(join(tmpdir(), "brewva-dist-workspace-"));
     mkdirSync(join(isolatedWorkspace, ".git"), { recursive: true });
     process.env.BREWVA_CODING_AGENT_DIR = join(isolatedHome, "agent");
-    const { BrewvaRuntime } = await import("@brewva/brewva-runtime");
-    new BrewvaRuntime({ cwd: isolatedWorkspace });
+    const { tokenizeSearchText } = await import("@brewva/brewva-search");
+    const tokenizerTokens = tokenizeSearchText("数据库连接失败");
+    for (const requiredToken of ["数据库", "连接", "失败"]) {
+      if (!tokenizerTokens.includes(requiredToken)) {
+        throw new Error("dist tokenizer smoke failed: missing token " + requiredToken);
+      }
+    }
+    const { BrewvaRuntime, createToolRuntimePort } = await import("@brewva/brewva-runtime");
+    const { createToolRuntimeInternalPort, recordRuntimeEvent } = await import("@brewva/brewva-runtime/internal");
+    const { createOutputSearchTool } = await import("@brewva/brewva-tools");
+    const runtime = new BrewvaRuntime({ cwd: isolatedWorkspace });
     if (!existsSync(join(isolatedHome, "skills", ".system"))) {
       throw new Error("runtime construction smoke failed: system skill root was not installed");
     }
     if (!existsSync(join(isolatedHome, "skills", ".system.marker.json"))) {
       throw new Error("runtime construction smoke failed: system skill marker was not written");
+    }
+    const sessionId = "dist-output-search-cjk";
+    const artifactRef = ".orchestrator/tool-output-artifacts/dist-cjk/100-exec-call.txt";
+    const artifactPath = join(isolatedWorkspace, artifactRef);
+    const artifactText = "服务启动中\n数据库连接被拒绝，连接失败需要重试\n";
+    mkdirSync(dirname(artifactPath), { recursive: true });
+    writeFileSync(artifactPath, artifactText, "utf8");
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      type: "tool_output_artifact_persisted",
+      payload: {
+        toolName: "exec",
+        artifactRef,
+        rawBytes: Buffer.byteLength(artifactText, "utf8"),
+      },
+    });
+    const outputSearchTool = createOutputSearchTool({
+      runtime: {
+        ...createToolRuntimePort(runtime),
+        internal: createToolRuntimeInternalPort(runtime),
+      },
+    });
+    const outputSearchResult = await outputSearchTool.execute(
+      "dist-output-search-cjk",
+      { query: "数据库连接失败", limit: 1 },
+      undefined,
+      undefined,
+      {
+        cwd: isolatedWorkspace,
+        sessionManager: {
+          getSessionId() {
+            return sessionId;
+          },
+        },
+      },
+    );
+    const outputSearchText = outputSearchResult.content.find((item) => item.type === "text")?.text ?? "";
+    if (!outputSearchText.includes("数据库连接") || !outputSearchText.includes("连接失败")) {
+      throw new Error("dist output_search smoke failed: Chinese artifact was not matched");
     }
     console.log(JSON.stringify(resolved));
   `;

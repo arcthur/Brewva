@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { BrewvaInspectionPort, ContextSourceProvider } from "@brewva/brewva-runtime";
 import { CONTEXT_SOURCES } from "@brewva/brewva-runtime";
+import { tokenizeSearchText } from "@brewva/brewva-search";
 import { FileNarrativeMemoryStore } from "./narrative-store.js";
 import {
   NARRATIVE_MEMORY_RECORD_CLASSES,
@@ -16,7 +17,7 @@ import {
   type NarrativeMemoryRetrieval,
   type NarrativeMemoryState,
 } from "./narrative-types.js";
-import { clamp, getOrCreatePlaneForRuntime, tokenize, uniqueStrings } from "./plane-substrate.js";
+import { clamp, getOrCreatePlaneForRuntime, uniqueStrings } from "./plane-substrate.js";
 
 const DEFAULT_MAX_RETRIEVAL = 4;
 const DEFAULT_CONTEXT_RECORDS = 3;
@@ -207,7 +208,7 @@ function computeClassScore(record: NarrativeMemoryRecord): number {
 
 function tokenizeRecord(record: NarrativeMemoryRecord): string[] {
   return uniqueStrings(
-    tokenize(
+    tokenizeSearchText(
       [
         record.class,
         record.applicabilityScope,
@@ -227,7 +228,7 @@ function computeRetrievals(input: {
   targetRoots: readonly string[];
   statuses: readonly NarrativeMemoryRecordStatus[];
 }): NarrativeMemoryRetrieval[] {
-  const queryTokens = uniqueStrings(tokenize(input.query));
+  const queryTokens = uniqueStrings(tokenizeSearchText(input.query));
   if (queryTokens.length === 0) {
     return [];
   }
@@ -458,7 +459,7 @@ export class NarrativeMemoryPlane {
         (["proposed", "active", "promoted"] satisfies readonly NarrativeMemoryRecordStatus[]),
     );
     const candidateTokens = uniqueStrings(
-      tokenize([input.title ?? "", input.content].filter(Boolean).join(" ")),
+      tokenizeSearchText([input.title ?? "", input.content].filter(Boolean).join(" ")),
     );
     if (candidateTokens.length === 0) {
       return [];

@@ -1,4 +1,5 @@
 import { readAgentMemoryProfile } from "@brewva/brewva-runtime";
+import { containsCjk, tokenizeSearchText } from "@brewva/brewva-search";
 import type {
   NarrativeMemoryApplicabilityScope,
   NarrativeMemoryRecord,
@@ -106,20 +107,27 @@ function looksLikePrecedentDocument(text: string): boolean {
 }
 
 function tokenizePolicyText(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]+/g, " ")
-    .split(/\s+/u)
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 3 && !POLICY_STOP_WORDS.has(token));
+  return tokenizeSearchText(text).filter(
+    (token) => (containsCjk(token) || token.length >= 3) && !POLICY_STOP_WORDS.has(token),
+  );
 }
 
 function resolvePolicyPolarity(text: string): "negative" | "neutral" | "positive" {
   const normalized = text.toLowerCase();
-  if (/\b(?:avoid|do not|don't|must not|never|should not)\b/u.test(normalized)) {
+  if (
+    /\b(?:avoid|do not|don't|must not|never|should not)\b/u.test(normalized) ||
+    /(?:\u4e0d\u5e94\u8be5|\u4e0d\u8981|\u4e0d\u80fd|\u7981\u6b62|\u907f\u514d|\u4e0d\u5f97|\u4e0d\u5e94|\u4e0d\u51c6|\u5207\u52ff|\u7edd\u4e0d|\u522b)/u.test(
+      normalized,
+    )
+  ) {
     return "negative";
   }
-  if (/\b(?:always|prefer|please|must|should|keep|show|run|record|use)\b/u.test(normalized)) {
+  if (
+    /\b(?:always|prefer|please|must|should|keep|show|run|record|use)\b/u.test(normalized) ||
+    /(?:\u5fc5\u987b|\u5e94\u8be5|\u5e94\u5f53|\u9700\u8981|\u4f18\u5148|\u4f7f\u7528|\u4fdd\u6301|\u59cb\u7ec8|\u8bf7|\u8fd0\u884c|\u8bb0\u5f55|\u91c7\u7528|\u504f\u597d)/u.test(
+      normalized,
+    )
+  ) {
     return "positive";
   }
   return "neutral";

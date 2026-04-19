@@ -6,6 +6,7 @@
   },
   "references": [
     { "path": "../brewva-runtime" },
+    { "path": "../brewva-search" },
     { "path": "../brewva-deliberation" },
     { "path": "../brewva-skill-broker" }
   ],

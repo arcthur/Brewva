@@ -6,17 +6,23 @@ import {
   PATCH_RECORDED_EVENT_TYPE,
   TOOL_READ_PATH_DISCOVERY_OBSERVED_EVENT_TYPE,
 } from "@brewva/brewva-runtime";
+import { normalizeSearchText } from "@brewva/brewva-search";
 import { buildReadPathDiscoveryObservationPayload } from "../../../packages/brewva-tools/src/read-path-discovery.js";
 import {
   attachSearchIntentPreviewCandidates,
   buildDelimiterInsensitivePattern,
   buildSearchAdvisorSnapshot,
+  normalizeSearchAdvisorQuery,
   registerSearchIntent,
   resetSearchAdvisorStateForTests,
 } from "../../../packages/brewva-tools/src/search-advisor.js";
 import { createBundledToolRuntime, createRuntimeFixture } from "../../helpers/runtime.js";
 
 describe("SearchAdvisor", () => {
+  test("uses the shared search text normalizer for query keys", () => {
+    expect(normalizeSearchAdvisorQuery).toBe(normalizeSearchText);
+  });
+
   test("builds one delimiter-insensitive regex pattern for fallback retries", () => {
     expect(buildDelimiterInsensitivePattern("brewva-runtime")).toBe(
       "b[-_./:\\s]*r[-_./:\\s]*e[-_./:\\s]*w[-_./:\\s]*v[-_./:\\s]*a[-_./:\\s]*r[-_./:\\s]*u[-_./:\\s]*n[-_./:\\s]*t[-_./:\\s]*i[-_./:\\s]*m[-_./:\\s]*e",

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { findKnowledgeDocByRelativePath } from "@brewva/brewva-recall";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
 import { createKnowledgeSearchTool } from "@brewva/brewva-tools";
 import { createTestWorkspace } from "../../helpers/workspace.js";
@@ -18,6 +19,98 @@ function writeKnowledgeDoc(workspace: string, relativePath: string, content: str
 }
 
 describe("knowledge search tool", () => {
+  test("uses Chinese tokenized search fields for repository precedent lookup", async () => {
+    const workspace = createTestWorkspace("knowledge-search-cjk");
+    writeKnowledgeDoc(
+      workspace,
+      "docs/solutions/runtime-errors/database-connection-failure.md",
+      `---
+title: 数据库连接失败启动修复
+status: active
+problem_kind: bugfix
+module: brewva-runtime
+boundaries:
+  - runtime.maintain.recovery
+source_artifacts:
+  - investigation_record
+metadata:
+  owners:
+    - runtime
+tags:
+  - 数据库
+  - 启动失败
+updated_at: 2026-04-19
+---
+
+# 数据库连接失败启动修复
+
+网关启动时数据库连接被拒绝，需要保留重试证据并恢复启动路径。
+`,
+    );
+
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const tool = createKnowledgeSearchTool({ runtime });
+
+    const result = await tool.execute(
+      "tc-knowledge-search-cjk",
+      {
+        query: "数据库启动失败",
+        module: "brewva-runtime",
+      } as never,
+      undefined,
+      undefined,
+      { cwd: workspace } as never,
+    );
+
+    const details = result.details as
+      | {
+          results?: Array<{
+            path: string;
+            sourceType: string;
+            matchReasons: string[];
+          }>;
+        }
+      | undefined;
+
+    expect(details?.results?.[0]).toEqual(
+      expect.objectContaining({
+        path: "docs/solutions/runtime-errors/database-connection-failure.md",
+        sourceType: "solution",
+      }),
+    );
+    expect(details?.results?.[0]?.matchReasons).toContain("search_tokens");
+  });
+
+  test("stores knowledge search tokens as explicit token arrays", () => {
+    const workspace = createTestWorkspace("knowledge-search-token-array");
+    writeKnowledgeDoc(
+      workspace,
+      "docs/solutions/runtime-errors/database-connection-token-array.md",
+      `---
+title: 数据库连接失败启动修复
+status: active
+problem_kind: bugfix
+module: brewva-runtime
+tags:
+  - 数据库
+updated_at: 2026-04-19
+---
+
+# 数据库连接失败启动修复
+
+数据库连接被拒绝时保留恢复证据。
+`,
+    );
+
+    const doc = findKnowledgeDocByRelativePath(
+      [workspace],
+      "docs/solutions/runtime-errors/database-connection-token-array.md",
+    );
+
+    expect(Array.isArray(doc?.searchTokens)).toBe(true);
+    expect(doc?.searchTokens).toEqual(expect.arrayContaining(["数据库", "连接"]));
+  });
+
   test("returns source-typed repository precedents with relevance and authority details", async () => {
     const workspace = createTestWorkspace("knowledge-search");
     writeKnowledgeDoc(

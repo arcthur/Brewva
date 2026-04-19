@@ -201,4 +201,59 @@ describe("recall broker", () => {
       ]),
     );
   });
+
+  test("compound query tokens do not match unrelated query subtokens", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-recall-broker-"));
+    mkdirSync(join(workspace, "packages", "gateway"), { recursive: true });
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const priorSessionId = "recall-broker-compound-prior";
+    const currentSessionId = "recall-broker-compound-current";
+
+    runtime.maintain.context.onTurnStart(priorSessionId, 1);
+    runtime.authority.task.setSpec(priorSessionId, {
+      schema: "brewva.task.v1",
+      goal: "Investigate foo telemetry",
+      targets: {
+        files: ["packages/gateway"],
+      },
+    });
+    const priorEvent = recordRuntimeEvent(runtime, {
+      sessionId: priorSessionId,
+      type: "task_event",
+      payload: {
+        schema: "brewva.task.ledger.v1",
+        kind: "item_added",
+        item: {
+          id: "recall-compound-item",
+          text: "Review foo telemetry wiring",
+          status: "done",
+        },
+      } as Record<string, unknown>,
+    });
+
+    runtime.maintain.context.onTurnStart(currentSessionId, 1);
+    runtime.authority.task.setSpec(currentSessionId, {
+      schema: "brewva.task.v1",
+      goal: "Search for foo-bar telemetry",
+      targets: {
+        files: ["packages/gateway"],
+      },
+    });
+
+    const broker = getOrCreateRecallBroker(runtime);
+    const result = broker.search({
+      sessionId: currentSessionId,
+      query: "foo-bar",
+      limit: 6,
+    });
+
+    expect(result.results).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stableId: `tape:${priorSessionId}:${priorEvent!.id}`,
+          sourceFamily: "tape_evidence",
+        }),
+      ]),
+    );
+  });
 });

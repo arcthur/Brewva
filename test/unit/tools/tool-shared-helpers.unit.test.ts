@@ -13,6 +13,12 @@ describe("tool shared helpers", () => {
     ]);
   });
 
+  test("tokenizeSearchTerms delegates Chinese-aware terms to the shared search tokenizer", () => {
+    expect(tokenizeSearchTerms("中文 recall_search 分词", { minLength: 2 })).toEqual(
+      expect.arrayContaining(["中文", "recall_search", "分词"]),
+    );
+  });
+
   test("walkWorkspaceFiles dedupes symlink loops while preserving .config", () => {
     const workspace = createTestWorkspace("tool-walk");
     mkdirSync(join(workspace, "src"), { recursive: true });

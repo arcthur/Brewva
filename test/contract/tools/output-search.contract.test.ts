@@ -9,6 +9,50 @@ import { createBundledToolRuntime } from "../../helpers/runtime.js";
 import { extractTextContent, mergeContext } from "./tools-flow.helpers.js";
 
 describe("output_search contract", () => {
+  test("finds Chinese snippets from persisted artifacts", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-tools-output-search-cjk-"));
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const sessionId = "s12-output-search-cjk";
+
+    const artifactRef = ".orchestrator/tool-output-artifacts/session-cjk/100-exec-call.txt";
+    const artifactDir = join(workspace, ".orchestrator/tool-output-artifacts/session-cjk");
+    mkdirSync(artifactDir, { recursive: true });
+    const artifactText = [
+      "服务启动中",
+      "数据库连接被拒绝，连接失败需要重试",
+      "重试预算已耗尽",
+    ].join("\n");
+    writeFileSync(join(workspace, artifactRef), artifactText, "utf8");
+
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      type: "tool_output_artifact_persisted",
+      payload: {
+        toolName: "exec",
+        artifactRef,
+        rawBytes: Buffer.byteLength(artifactText, "utf8"),
+      } as Record<string, unknown>,
+    });
+
+    const tool = createOutputSearchTool({ runtime: createBundledToolRuntime(runtime) });
+    const result = await tool.execute(
+      "tc-output-search-cjk",
+      {
+        query: "数据库连接失败",
+        limit: 1,
+      },
+      undefined,
+      undefined,
+      mergeContext(sessionId, { cwd: workspace }),
+    );
+
+    const text = extractTextContent(result);
+    expect(text).toContain("[OutputSearch]");
+    expect(text).toContain("Match layer:");
+    expect(text).toContain("数据库连接");
+    expect(text).toContain("连接失败");
+  });
+
   test("finds snippets from persisted artifacts", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-tools-output-search-"));
     const runtime = new BrewvaRuntime({ cwd: workspace });

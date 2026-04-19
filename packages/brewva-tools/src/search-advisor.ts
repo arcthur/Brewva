@@ -5,6 +5,7 @@ import {
   TOOL_READ_PATH_DISCOVERY_OBSERVED_EVENT_TYPE,
   TOOL_READ_PATH_GATE_ARMED_EVENT_TYPE,
 } from "@brewva/brewva-runtime";
+import { normalizeSearchText } from "@brewva/brewva-search";
 import { LRUCache } from "lru-cache";
 import {
   registerToolRuntimeClearStateListener,
@@ -308,9 +309,7 @@ function attachRuntime(runtime: BrewvaToolRuntime | undefined): void {
   attachedRuntimes.set(runtimeKey, attachmentEpoch);
 }
 
-export function normalizeSearchAdvisorQuery(query: string): string {
-  return query.trim().toLowerCase().replace(/\s+/gu, " ");
-}
+export const normalizeSearchAdvisorQuery = normalizeSearchText;
 
 function buildQueryKey(toolName: SearchToolName, query: string): string | undefined {
   const normalizedQuery = normalizeSearchAdvisorQuery(query);

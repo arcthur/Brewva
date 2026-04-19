@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import solidPlugin from "@opentui/solid/bun-plugin";
 import { $ } from "bun";
 
@@ -76,6 +76,15 @@ const OPEN_TUI_NATIVE_STAGE_ROOT = join(process.cwd(), ".brewva-build-cache", "o
 const BREWVA_THEME_ASSETS_DIR = join(BREWVA_RUNTIME_ASSETS_DIR, "theme");
 const BREWVA_EXPORT_HTML_ASSETS_DIR = join(BREWVA_RUNTIME_ASSETS_DIR, "export-html");
 const PHOTON_WASM_PATH = join(BREWVA_RUNTIME_ASSETS_DIR, "photon_rs_bg.wasm");
+const JIEBA_WASM_PATH = join(
+  dirname(
+    Bun.resolveSync(
+      "jieba-wasm/web",
+      join(process.cwd(), "packages", "brewva-search", "src", "index.ts"),
+    ),
+  ),
+  "jieba_rs_wasm_bg.wasm",
+);
 const BREWVA_CONFIG_SCHEMA_PATH = join(
   process.cwd(),
   "packages",
@@ -106,6 +115,13 @@ function copyDirectory(source: string, target: string): void {
 
 function copyFile(source: string, target: string): void {
   if (!existsSync(source)) return;
+  cpSync(source, target);
+}
+
+function copyRequiredFile(source: string, target: string, label: string): void {
+  if (!existsSync(source)) {
+    throw new Error(`${label} is missing at ${source}`);
+  }
   cpSync(source, target);
 }
 
@@ -221,6 +237,7 @@ This directory contains the packaged runtime assets that ship with \`${packageNa
 
 - \`brewva\` platform binary
 - \`brewva.schema.json\` runtime config schema
+- \`jieba_rs_wasm_bg.wasm\` mandatory Chinese search tokenizer asset
 - \`theme/\` interactive UI assets
 - \`export-html/\` HTML export assets
 - \`skills/\` bundled skill payload for runtime-managed system installation
@@ -265,6 +282,7 @@ function copyRuntimeAssets(outDir: string): void {
   writeFileSync(join(outDir, "package.json"), `${JSON.stringify(runtimePackage, null, 2)}\n`);
   writeFileSync(join(outDir, "README.md"), buildRuntimeReadme(runtimePackage));
   copyFile(PHOTON_WASM_PATH, join(outDir, "photon_rs_bg.wasm"));
+  copyRequiredFile(JIEBA_WASM_PATH, join(outDir, "jieba_rs_wasm_bg.wasm"), "jieba-wasm asset");
   copyFile(BREWVA_CONFIG_SCHEMA_PATH, join(outDir, "brewva.schema.json"));
   copyFile(BREWVA_LICENSE_PATH, join(outDir, "LICENSE"));
   copyDirectory(BREWVA_THEME_ASSETS_DIR, join(outDir, "theme"));

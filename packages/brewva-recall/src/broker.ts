@@ -3,13 +3,13 @@ import {
   getOrCreateDeliberationMemoryPlane,
   getOrCreateNarrativeMemoryPlane,
   getOrCreateOptimizationContinuityPlane,
-  tokenize,
   uniqueStrings,
   type DeliberationMemoryArtifact,
   type NarrativeMemoryRecord,
   type OptimizationLineageArtifact,
 } from "@brewva/brewva-deliberation";
 import type { BrewvaEventRecord, BrewvaInspectionPort } from "@brewva/brewva-runtime";
+import { tokenizeSearchText } from "@brewva/brewva-search";
 import {
   getOrCreateSkillPromotionBroker,
   type SkillPromotionDraft,
@@ -102,7 +102,7 @@ function freshnessFromTimestamp(timestamp: number | undefined): RecallFreshness 
 
 function computeTokenOverlap(queryTokens: readonly string[], text: string): number {
   if (queryTokens.length === 0) return 0;
-  const textTokens = new Set(tokenize(text));
+  const textTokens = new Set(tokenizeSearchText(text));
   let matches = 0;
   for (const token of queryTokens) {
     if (textTokens.has(token)) {
@@ -494,7 +494,9 @@ export class RecallBroker {
     const limit = Math.max(1, input.limit ?? DEFAULT_MAX_RESULTS);
     const scope = input.scope ?? DEFAULT_SCOPE;
     const state = this.sync();
-    const queryTokens = uniqueStrings(tokenize(query));
+    const queryTokens = uniqueStrings(
+      tokenizeSearchText(query, { includeCompoundSubtokens: false }),
+    );
     const curationById = new Map(state.curation.map((entry) => [entry.stableId, entry]));
     const currentTarget = this.runtime.inspect.task.getTargetDescriptor(input.sessionId);
     const targetRoots =

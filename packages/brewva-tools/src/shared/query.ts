@@ -1,3 +1,5 @@
+import { tokenizeSearchText } from "@brewva/brewva-search";
+
 export function tokenizeSearchTerms(
   value: string,
   options: {
@@ -5,15 +7,10 @@ export function tokenizeSearchTerms(
   } = {},
 ): string[] {
   const minLength = Math.max(1, Math.floor(options.minLength ?? 2));
-  return [
-    ...new Set(
-      value
-        .toLowerCase()
-        .split(/[^\p{L}\p{N}_-]+/u)
-        .map((token) => token.trim())
-        .filter((token) => token.length >= minLength),
-    ),
-  ];
+  return tokenizeSearchText(value, {
+    minLength,
+    includeCompoundSubtokens: false,
+  });
 }
 
 export function escapeRegexLiteral(value: string): string {

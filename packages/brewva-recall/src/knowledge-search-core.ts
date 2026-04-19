@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import { parseMarkdownFrontmatter } from "@brewva/brewva-runtime/internal";
+import { tokenizeSearchText } from "@brewva/brewva-search";
 import Fuse from "fuse.js";
 import type { FuseResultMatch } from "fuse.js";
 
@@ -62,6 +63,7 @@ const BOOTSTRAP_SOURCE_TYPES = KNOWLEDGE_SOURCE_TYPES.filter(
 );
 const FUSE_THRESHOLD = 0.4;
 const FUSE_BASE_SCORE = 1_000;
+const TOKEN_OVERLAP_BASE_SCORE = 850;
 const FILTER_ONLY_BASE_SCORE = 100;
 
 export type KnowledgeSourceType = (typeof KNOWLEDGE_SOURCE_TYPES)[number];
@@ -81,6 +83,7 @@ export interface KnowledgeDocRecord {
   sourceType: KnowledgeSourceType;
   title: string;
   body: string;
+  searchTokens: string[];
   excerpt: string;
   status?: string;
   problemKind?: string;
@@ -302,12 +305,25 @@ function loadKnowledgeDocs(searchRoot: string, workspaceRoot: string): LoadedKno
       const problemKind = readTrimmedString(data.problem_kind);
       const updatedAt = readUpdatedAt(data);
       const freshness = resolveFreshnessSignal(updatedAt);
+      const searchTokens = tokenizeSearchText(
+        [
+          title,
+          module ?? "",
+          boundaries.join(" "),
+          tags.join(" "),
+          problemKind ?? "",
+          status ?? "",
+          body,
+          relativePath,
+        ].join(" "),
+      );
       docs.push({
         absolutePath,
         relativePath,
         sourceType: sourceRoot.sourceType,
         title,
         body,
+        searchTokens,
         excerpt: truncate(body, 220),
         status,
         problemKind,
@@ -385,8 +401,7 @@ function mapFuseKeyToReason(
   key: string | number | readonly string[] | undefined,
 ): string | undefined {
   if (Array.isArray(key)) {
-    const joined = key.join(".");
-    return mapFuseKeyToReason(joined);
+    return mapFuseKeyToReason(key[0]);
   }
   switch (key) {
     case "title":
@@ -395,6 +410,8 @@ function mapFuseKeyToReason(
       return "path";
     case "body":
       return "content";
+    case "searchTokens":
+      return "search_tokens";
     case "tags":
       return "tags";
     case "boundaries":
@@ -489,6 +506,30 @@ function buildRankedDoc(input: {
   };
 }
 
+function mergeRankedDocs(left: RankedKnowledgeDoc, right: RankedKnowledgeDoc): RankedKnowledgeDoc {
+  const queryScore = Math.max(left.queryScore, right.queryScore);
+  const filterBoost = Math.max(left.filterBoost, right.filterBoost);
+  return {
+    ...left,
+    queryScore,
+    filterBoost,
+    relevanceScore: queryScore + filterBoost,
+    matchReasons: [...new Set([...left.matchReasons, ...right.matchReasons])].toSorted(),
+  };
+}
+
+function collectTokenOverlap(input: {
+  doc: KnowledgeDocRecord;
+  queryTokens: readonly string[];
+}): number {
+  if (input.queryTokens.length === 0) {
+    return 0;
+  }
+  const docTokens = new Set(input.doc.searchTokens.filter((token) => token.length > 0));
+  const matchedTokens = input.queryTokens.filter((token) => docTokens.has(token));
+  return matchedTokens.length / input.queryTokens.length;
+}
+
 function dedupeScoredDocs(entries: readonly RankedKnowledgeDoc[]): RankedKnowledgeDoc[] {
   return [...new Map(entries.map((entry) => [entry.doc.absolutePath, entry])).values()];
 }
@@ -527,6 +568,7 @@ function createKnowledgeFuse(docs: readonly KnowledgeDocRecord[]): Fuse<Knowledg
       { name: "module", weight: 3.6 },
       { name: "boundaries", weight: 3.4 },
       { name: "tags", weight: 3.2 },
+      { name: "searchTokens", weight: 3.0 },
       { name: "relativePath", weight: 2.6 },
       { name: "problemKind", weight: 1.8 },
       { name: "status", weight: 1.2 },
@@ -580,21 +622,48 @@ function searchDocs(
   }
 
   const fuse = createKnowledgeFuse(filteredDocs);
-  return fuse
-    .search(input.query)
-    .map((entry) =>
-      buildRankedDoc({
-        doc: entry.item,
-        queryIntent: input.queryIntent,
-        queryScore: normalizeScore(entry.score),
-        queryReasons: collectFuseMatchReasons(entry.matches),
-        module: input.module,
-        boundary: input.boundary,
-        tags: input.tags,
-      }),
-    )
-    .toSorted(compareScoredDocs)
-    .slice(0, input.limit);
+  const queryTokens = tokenizeSearchText(input.query, { includeCompoundSubtokens: false });
+  const rankedByPath = new Map<string, RankedKnowledgeDoc>();
+  for (const rankedEntry of fuse.search(input.query).map((fuseEntry) => {
+    const queryReasons = collectFuseMatchReasons(fuseEntry.matches);
+    if (collectTokenOverlap({ doc: fuseEntry.item, queryTokens }) > 0) {
+      queryReasons.add("search_tokens");
+    }
+    return buildRankedDoc({
+      doc: fuseEntry.item,
+      queryIntent: input.queryIntent,
+      queryScore: normalizeScore(fuseEntry.score),
+      queryReasons,
+      module: input.module,
+      boundary: input.boundary,
+      tags: input.tags,
+    });
+  })) {
+    rankedByPath.set(rankedEntry.doc.absolutePath, rankedEntry);
+  }
+
+  for (const doc of filteredDocs) {
+    const overlap = collectTokenOverlap({ doc, queryTokens });
+    if (overlap <= 0) {
+      continue;
+    }
+    const tokenEntry = buildRankedDoc({
+      doc,
+      queryIntent: input.queryIntent,
+      queryScore: Math.round(overlap * TOKEN_OVERLAP_BASE_SCORE),
+      queryReasons: new Set(["search_tokens"]),
+      module: input.module,
+      boundary: input.boundary,
+      tags: input.tags,
+    });
+    const existing = rankedByPath.get(doc.absolutePath);
+    rankedByPath.set(
+      doc.absolutePath,
+      existing ? mergeRankedDocs(existing, tokenEntry) : tokenEntry,
+    );
+  }
+
+  return [...rankedByPath.values()].toSorted(compareScoredDocs).slice(0, input.limit);
 }
 
 function clampLimit(limit: number | undefined): number {

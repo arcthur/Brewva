@@ -70,6 +70,7 @@
     "@brewva/brewva-provider-core": "workspace:*",
     "@brewva/brewva-recall": "workspace:*",
     "@brewva/brewva-runtime": "workspace:*",
+    "@brewva/brewva-search": "workspace:*",
     "@brewva/brewva-skill-broker": "workspace:*",
     "@brewva/brewva-substrate": "workspace:*",
     "@brewva/brewva-tools": "workspace:*",

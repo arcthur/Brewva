@@ -754,6 +754,10 @@ Unified recall surfaces for the new broker-first read path.
 - every result carries stable identity, `source_family`, `scope`,
   `freshness`, provenance fields such as `session_id` or `path`, and any
   available curation snapshot
+- free-text matching uses the shared mandatory `@brewva/brewva-search`
+  tokenizer, so tape evidence, narrative memory, deliberation memory,
+  optimization continuity, promotion drafts, and repository precedents share
+  the same ASCII/code and Chinese token semantics
 - default scope is `user_repository_root`; use `session_local` for current-turn
   or current-session forensics, and treat `workspace_wide` as an explicit
   opt-in rather than the default recall boundary
@@ -775,6 +779,8 @@ Unified recall surfaces for the new broker-first read path.
 
 - it is a session-local tape primitive
 - use it for current-session forensics or phase-local inspection
+- it ranks exact phrase hits above token-overlap hits using the shared search
+  tokenizer; substring-only behavior is not the contract
 - do not treat it as the generic prior-work recall path
 
 ## `narrative_memory`
@@ -805,10 +811,13 @@ Explicit persisted artifact reuse surface.
   expensive commands or rebuilding already-captured evidence
 - exposes `exact`, `partial`, and `fuzzy` match layers plus throttle and cache
   telemetry so callers can judge recall quality explicitly
+- builds exact, partial, and fuzzy token indexes from the shared mandatory
+  search tokenizer, including jieba-backed Chinese segmentation
 - remains session-scoped and read-only; it does not widen filesystem or
   execution authority
 - current implementation keeps `Fuse.js` only as a local line/token candidate
-  matcher inside the layered search pipeline
+  matcher inside the layered search pipeline; source tokenization comes from
+  `@brewva/brewva-search`
 - stable behavior is the layered match contract, confidence gating, artifact
   selection, snippet extraction, and telemetry shape; the library choice is not
   the contract
@@ -828,11 +837,15 @@ Explicit repository-native precedent retrieval surface.
   same authority model without sharing one universal presentation order
 - supports free-text query plus module, boundary, tag, problem-kind, status,
   and source-type filters
+- indexes an additional shared-token search field for Chinese and mixed
+  Chinese/ASCII queries; `match_reasons=search_tokens` means the mandatory
+  tokenizer, not only fuzzy substring matching, contributed to retrieval
 - remains read-only and task-target-root scoped
 - is the preferred proof-of-consult surface before non-trivial planning,
   debugging, or review
 - current implementation keeps `Fuse.js` as a document-level fuzzy candidate
-  scorer across title, module, boundary, tag, path, and body fields
+  scorer, but the contract is source-typed ranking plus tokenized retrieval,
+  not Fuse-specific scoring
 - source typing, authority ranking, query-intent ordering, filter boosts, and
   freshness tie-breaks remain the governing semantics; fuzzy retrieval does not
   become repository precedent authority
