@@ -6,6 +6,57 @@ import {
 } from "../../../packages/brewva-cli/src/shell/transcript.js";
 
 describe("cli transcript model", () => {
+  test("skips hidden assistant draft messages", () => {
+    const hiddenAssistantDraft = {
+      role: "assistant",
+      display: false,
+      stopReason: "stop",
+      content: [{ type: "text", text: "Draft answer that must not be shown." }],
+    };
+
+    expect(
+      buildTranscriptMessageFromMessage(hiddenAssistantDraft, {
+        id: "assistant:hidden",
+      }),
+    ).toBeNull();
+
+    expect(buildSeedTranscriptMessages([hiddenAssistantDraft])).toEqual([]);
+  });
+
+  test("skips hidden custom messages while preserving visible notes", () => {
+    const hiddenContextInjection = {
+      role: "custom",
+      customType: "brewva-context-injection",
+      content: "[TaskLedger]\nstatus.phase=investigate",
+      display: false,
+    };
+
+    expect(
+      buildTranscriptMessageFromMessage(hiddenContextInjection, {
+        id: "custom:hidden",
+      }),
+    ).toBeNull();
+
+    expect(buildSeedTranscriptMessages([hiddenContextInjection])).toEqual([]);
+
+    const visibleNote = buildTranscriptMessageFromMessage(
+      {
+        role: "custom",
+        customType: "note",
+        content: "Operator note",
+        display: true,
+      },
+      {
+        id: "custom:visible",
+      },
+    );
+
+    expect(visibleNote).toMatchObject({
+      role: "custom",
+      parts: [{ type: "text", text: "Operator note" }],
+    });
+  });
+
   test("builds assistant transcript messages with reasoning, markdown text, and grouped tool parts", () => {
     const messages = buildSeedTranscriptMessages([
       {
@@ -109,6 +160,32 @@ describe("cli transcript model", () => {
           partialResult: {
             details: { phase: "partial" },
           },
+        },
+      ],
+    });
+  });
+
+  test("renders failed tool verdicts as error status even when execution returned normally", () => {
+    const messages = upsertToolExecutionIntoTranscriptMessages([], {
+      toolCallId: "tool-skill-complete-1",
+      toolName: "skill_complete",
+      result: {
+        content: [{ type: "text", text: "Skill completion rejected." }],
+        details: {
+          ok: false,
+          verdict: "fail",
+        },
+      },
+      renderMode: "stable",
+    });
+
+    expect(messages[0]).toMatchObject({
+      role: "tool",
+      parts: [
+        {
+          type: "tool",
+          toolName: "skill_complete",
+          status: "error",
         },
       ],
     });

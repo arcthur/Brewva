@@ -50,8 +50,8 @@ bag to every lifecycle adapter.
 Before the provider request, the hosted control plane resolves the current
 TaskSpec-first posture. If no skill is active and no TaskSpec exists, the turn
 stays on the bootstrap tool surface so the next semantic decision is
-`task_set_spec`. If TaskSpec is present and the routed match is strong, the
-visible surface may narrow again so the next semantic decision is explicit
+`task_set_spec`. If TaskSpec is present and a routed skill is retained, the
+visible surface narrows again so the next semantic decision is explicit
 `skill_load`. These posture changes are experience-ring shaping plus durable
 control-plane receipts; they do not create automatic skill activation.
 

@@ -208,7 +208,7 @@ describe("skill_complete tool", () => {
     expect(runtime.inspect.skills.getActive(sessionId)).toBeUndefined();
   });
 
-  test("allows omitted outputs for skills whose contract declares no outputs", async () => {
+  test("requires an explicit outputs object even when a skill declares no outputs", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-complete-empty-"));
     writeSkill(join(workspace, ".brewva/skills/core/noop/SKILL.md"), {
       name: "noop",
@@ -233,7 +233,7 @@ describe("skill_complete tool", () => {
 
     const result = await completeTool.execute(
       "tc-complete",
-      {},
+      { outputs: {} },
       undefined,
       undefined,
       fakeContext(sessionId),
@@ -242,6 +242,130 @@ describe("skill_complete tool", () => {
     const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
     expect(text).toContain("Skill completed");
     expect(runtime.inspect.skills.getActive(sessionId)).toBeUndefined();
+  });
+
+  test("declares outputs as required in the tool input schema", () => {
+    const completeTool = createSkillCompleteTool({
+      runtime: createIsolatedRuntime("schema-required-outputs"),
+      verification: { executeCommands: false },
+    });
+
+    expect((completeTool.parameters as { required?: string[] }).required).toContain("outputs");
+  });
+
+  test("rejects required outputs supplied at the top level instead of under outputs", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-complete-top-level-outputs-"));
+    writeSkill(join(workspace, ".brewva/skills/core/repo-output-contract/SKILL.md"), {
+      name: "repo-output-contract",
+      outputs: ["repository_snapshot", "impact_map", "planning_posture", "unknowns"],
+      outputContracts: [
+        "  repository_snapshot:",
+        "    kind: text",
+        "    min_words: 3",
+        "    min_length: 18",
+        "  impact_map:",
+        "    kind: json",
+        "    min_items: 1",
+        "  planning_posture:",
+        "    kind: enum",
+        "    values: [trivial, moderate, complex, high_risk]",
+        "  unknowns:",
+        "    kind: json",
+        "    min_items: 0",
+      ],
+    });
+
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const sessionId = "skill-complete-top-level-outputs";
+    const loadTool = createSkillLoadTool({ runtime });
+    const completeTool = createSkillCompleteTool({
+      runtime,
+      verification: { executeCommands: false },
+    });
+
+    await loadTool.execute(
+      "tc-load-top-level-outputs",
+      { name: "repo-output-contract" },
+      undefined,
+      undefined,
+      fakeContext(sessionId),
+    );
+
+    const result = await completeTool.execute(
+      "tc-complete-top-level-outputs",
+      {
+        repository_snapshot: "Repository snapshot was incorrectly placed at the top level.",
+        impact_map: [
+          {
+            path: "packages/brewva-tools/src/skill-complete.ts",
+            reason: "Skill completion parses the tool arguments.",
+          },
+        ],
+        planning_posture: "moderate",
+        unknowns: [],
+      },
+      undefined,
+      undefined,
+      fakeContext(sessionId),
+    );
+
+    const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
+    expect(text).toContain("Skill completion rejected.");
+    expect(text).toContain("outputs");
+    expect(text).toContain("Move top-level output fields into `outputs`.");
+    expect((result.details as { invalid?: Array<{ name?: string }> }).invalid).toEqual([
+      expect.objectContaining({ name: "outputs" }),
+    ]);
+    expect(runtime.inspect.skills.getActive(sessionId)?.name).toBe("repo-output-contract");
+  });
+
+  test("rejects top-level output keys before synthesis parameters are considered", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-complete-synthesis-top-level-"));
+    writeSkill(join(workspace, ".brewva/skills/core/repo-output-contract/SKILL.md"), {
+      name: "repo-output-contract",
+      outputs: ["repository_snapshot"],
+      outputContracts: [
+        "  repository_snapshot:",
+        "    kind: text",
+        "    min_words: 3",
+        "    min_length: 18",
+      ],
+    });
+
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const sessionId = "skill-complete-synthesis-top-level";
+    const loadTool = createSkillLoadTool({ runtime });
+    const completeTool = createSkillCompleteTool({
+      runtime,
+      verification: { executeCommands: false },
+    });
+
+    await loadTool.execute(
+      "tc-load-synthesis-top-level",
+      { name: "repo-output-contract" },
+      undefined,
+      undefined,
+      fakeContext(sessionId),
+    );
+
+    const result = await completeTool.execute(
+      "tc-complete-synthesis-top-level",
+      {
+        repository_snapshot: "Repository snapshot was incorrectly placed at the top level.",
+        learningResearch: {
+          query: "repository output contract",
+        },
+      },
+      undefined,
+      undefined,
+      fakeContext(sessionId),
+    );
+
+    const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
+    expect(text).toContain("Move top-level output fields into `outputs`.");
+    expect((result.details as { misplacedOutputKeys?: string[] }).misplacedOutputKeys).toEqual([
+      "repository_snapshot",
+    ]);
   });
 
   test("rejects placeholder outputs for built-in design artifacts", async () => {
@@ -726,6 +850,7 @@ The WAL boundary must keep replay ordering deterministic.
     const result = await completeTool.execute(
       "tc-complete-learning-research",
       {
+        outputs: {},
         learningResearch: {
           query: "wal recovery replay",
           module: "brewva-runtime",
@@ -1179,6 +1304,7 @@ The WAL boundary must keep replay ordering deterministic.
     const result = await completeTool.execute(
       "tc-complete-review-ensemble",
       {
+        outputs: {},
         reviewEnsemble: {
           planningPosture: "trivial",
           precedentQuerySummary:
@@ -1755,6 +1881,7 @@ The WAL boundary must keep replay ordering deterministic.
     const result = await completeTool.execute(
       "tc-complete-review-derived",
       {
+        outputs: {},
         reviewEnsemble: {
           precedentQuerySummary:
             "query_intent=precedent_lookup | query=review disclosure | source_types=auto | search_mode=solution_only",
@@ -2087,6 +2214,7 @@ The WAL boundary must keep replay ordering deterministic.
     const result = await completeTool.execute(
       "tc-complete-review-stale-verification",
       {
+        outputs: {},
         reviewEnsemble: {
           precedentQuerySummary:
             "query_intent=precedent_lookup | query=stale verification evidence | source_types=auto | search_mode=solution_only",
@@ -2312,6 +2440,7 @@ The WAL boundary must keep replay ordering deterministic.
     const result = await completeTool.execute(
       "tc-complete-review-missing-verification-receipt",
       {
+        outputs: {},
         reviewEnsemble: {
           precedentQuerySummary:
             "query_intent=precedent_lookup | query=runtime verification receipt | source_types=auto | search_mode=solution_only",
@@ -2730,6 +2859,7 @@ The WAL boundary must keep replay ordering deterministic.
     const result = await completeTool.execute(
       "tc-complete-review-stale-plan",
       {
+        outputs: {},
         reviewEnsemble: {
           precedentQuerySummary:
             "query_intent=precedent_lookup | query=stale planning evidence review | source_types=auto | search_mode=solution_only",

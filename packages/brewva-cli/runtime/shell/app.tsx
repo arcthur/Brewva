@@ -2,6 +2,7 @@
 
 import type {
   OpenTuiKeyEvent,
+  OpenTuiRenderer,
   OpenTuiScrollBoxHandle,
   OpenTuiTextareaHandle,
 } from "@brewva/brewva-tui/internal-opentui-runtime";
@@ -25,6 +26,11 @@ import { InlineApprovalPrompt, InlineQuestionPrompt } from "./inline-cards.js";
 import { ModalOverlay } from "./overlay.js";
 import { createPalette, DEFAULT_SCROLL_ACCELERATION } from "./palette.js";
 import { PromptPanel, createPromptPartStyle } from "./prompt.js";
+import {
+  copyOpenTuiSelection,
+  copyTextWithShellFeedback,
+  type ClipboardCopy,
+} from "./selection.js";
 import { SidebarPanel } from "./sidebar.js";
 import { ToastStrip } from "./toast.js";
 import { createToolRenderCache, type ToolRenderCache } from "./tool-render.js";
@@ -42,6 +48,8 @@ import {
 export function BrewvaOpenTuiShell(input: {
   controller: CliShellController;
   toolRenderCache?: ToolRenderCache;
+  renderer?: OpenTuiRenderer;
+  copyTextToClipboard?: ClipboardCopy;
 }) {
   const toolRenderCache = input.toolRenderCache ?? createToolRenderCache();
   const state = useShellState(input.controller);
@@ -138,6 +146,34 @@ export function BrewvaOpenTuiShell(input: {
 
   createEffect(() => {
     input.controller.setViewportSize(dimensions().width, dimensions().height);
+  });
+
+  const copySelection = async (): Promise<boolean> =>
+    await copyOpenTuiSelection({
+      renderer: input.renderer,
+      copyText: input.copyTextToClipboard,
+      notifier: input.controller.ui,
+    });
+
+  createEffect(() => {
+    const renderer = input.renderer;
+    if (!renderer?.console) {
+      return;
+    }
+    const handleCopySelection = (text: string): void => {
+      void copyTextWithShellFeedback({
+        text,
+        renderer,
+        copyText: input.copyTextToClipboard,
+        notifier: input.controller.ui,
+      });
+    };
+    renderer.console.onCopySelection = handleCopySelection;
+    onCleanup(() => {
+      if (renderer.console?.onCopySelection === handleCopySelection) {
+        renderer.console.onCopySelection = undefined;
+      }
+    });
   });
 
   createEffect(() => {
@@ -247,6 +283,26 @@ export function BrewvaOpenTuiShell(input: {
   });
 
   useKeyboard((event) => {
+    const key = event as OpenTuiKeyEvent;
+    if (!input.renderer?.getSelection?.()) {
+      return;
+    }
+    if (key.ctrl && key.name.toLowerCase() === "c") {
+      event.preventDefault();
+      event.stopPropagation();
+      void copySelection();
+      return;
+    }
+    if (key.name === "escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      input.renderer.clearSelection?.();
+      return;
+    }
+    input.renderer.clearSelection?.();
+  }, {});
+
+  useKeyboard((event) => {
     const semanticInput = toSemanticInput(event as OpenTuiKeyEvent);
     if (!input.controller.wantsSemanticInput(semanticInput)) {
       return;
@@ -307,7 +363,15 @@ export function BrewvaOpenTuiShell(input: {
   });
 
   return (
-    <box width="100%" height="100%" flexDirection="row" backgroundColor={theme().background}>
+    <box
+      width="100%"
+      height="100%"
+      flexDirection="row"
+      backgroundColor={theme().background}
+      onMouseUp={() => {
+        void copySelection();
+      }}
+    >
       <box
         ref={(node: BoxRenderable) => setCompletionContainer(node)}
         flexGrow={1}

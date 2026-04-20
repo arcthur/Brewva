@@ -5,7 +5,6 @@ import type {
   BrewvaAgentEngineAssistantMessageEvent,
   BrewvaAgentEngineBeforeToolCallContext,
   BrewvaAgentEngineEvent,
-  BrewvaAgentEngineLlmMessage,
   BrewvaAgentEngineMessage,
   BrewvaAgentEngineResolveRequestAuth,
   BrewvaAgentEngineStreamContext,
@@ -20,13 +19,16 @@ import type {
   BrewvaAgentEngineTransport,
   BrewvaAgentEngineStopAfterToolResults,
 } from "./agent-engine-types.js";
+import { convertToLlm } from "./agent-messages.js";
 import {
   prepareToolArguments,
   validateToolArguments,
   type BrewvaValidatedToolArguments,
 } from "./validate-tool-arguments.js";
 
-type BrewvaAgentEventSink = (event: BrewvaAgentEngineEvent) => Promise<void> | void;
+type BrewvaAgentEventSink = (
+  event: BrewvaAgentEngineEvent,
+) => Promise<BrewvaAgentEngineEvent | void> | BrewvaAgentEngineEvent | void;
 
 export interface BrewvaAgentLoopContext {
   systemPrompt: string;
@@ -68,6 +70,7 @@ export interface BrewvaAgentLoopConfig {
   ) => Promise<BrewvaAgentEngineMessage[]>;
   getSteeringMessages?: () => Promise<BrewvaAgentEngineMessage[]>;
   getFollowUpMessages?: () => Promise<BrewvaAgentEngineMessage[]>;
+  getCurrentContext?: () => Pick<BrewvaAgentLoopContext, "systemPrompt" | "tools">;
   resolveRequestAuth?: BrewvaAgentEngineResolveRequestAuth;
   toolExecution?: "parallel" | "sequential";
   shouldStopAfterToolResults?: BrewvaAgentEngineStopAfterToolResults;
@@ -143,13 +146,16 @@ async function runLoop(
       if (pendingMessages.length > 0) {
         for (const message of pendingMessages) {
           await emit({ type: "message_start", message });
-          await emit({ type: "message_end", message });
-          currentContext.messages.push(message);
-          newMessages.push(message);
+          const messageEnd = await emit({ type: "message_end", message });
+          const committedMessage =
+            messageEnd?.type === "message_end" ? messageEnd.message : message;
+          currentContext.messages.push(committedMessage);
+          newMessages.push(committedMessage);
         }
         pendingMessages = [];
       }
 
+      refreshCurrentContext(currentContext, config);
       const message = await streamAssistantResponse(currentContext, config, signal, emit);
       newMessages.push(message);
 
@@ -192,10 +198,21 @@ async function runLoop(
       continue;
     }
 
-    break;
+    await emit({ type: "agent_end", messages: newMessages });
+    return;
   }
+}
 
-  await emit({ type: "agent_end", messages: newMessages });
+function refreshCurrentContext(
+  currentContext: BrewvaAgentLoopContext,
+  config: BrewvaAgentLoopConfig,
+): void {
+  const latest = config.getCurrentContext?.();
+  if (!latest) {
+    return;
+  }
+  currentContext.systemPrompt = latest.systemPrompt;
+  currentContext.tools = [...latest.tools];
 }
 
 async function streamAssistantResponse(
@@ -218,16 +235,18 @@ async function streamAssistantResponse(
     const failure = createFailureAssistantMessage(config.model, requestAuth.error, "error");
     await emit({ type: "message_start", message: { ...failure } });
     context.messages.push(failure);
-    await emit({ type: "message_end", message: failure });
-    return failure;
+    const messageEnd = await emit({ type: "message_end", message: failure });
+    const committedFailure =
+      messageEnd?.type === "message_end" && messageEnd.message.role === "assistant"
+        ? messageEnd.message
+        : failure;
+    context.messages[context.messages.length - 1] = committedFailure;
+    return committedFailure;
   }
 
   const streamContext: BrewvaAgentEngineStreamContext = {
     systemPrompt: context.systemPrompt,
-    messages: messages.filter(
-      (message): message is BrewvaAgentEngineLlmMessage =>
-        message.role === "user" || message.role === "assistant" || message.role === "toolResult",
-    ),
+    messages: convertToLlm(messages),
     tools: context.tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
@@ -270,8 +289,13 @@ async function streamAssistantResponse(
     context.messages.push(finalMessage);
     await emit({ type: "message_start", message: { ...finalMessage } });
   }
-  await emit({ type: "message_end", message: finalMessage });
-  return finalMessage;
+  const messageEnd = await emit({ type: "message_end", message: finalMessage });
+  const committedMessage =
+    messageEnd?.type === "message_end" && messageEnd.message.role === "assistant"
+      ? messageEnd.message
+      : finalMessage;
+  context.messages[context.messages.length - 1] = committedMessage;
+  return committedMessage;
 }
 
 async function handleAssistantStreamEvent(
@@ -555,7 +579,7 @@ async function executePreparedToolCall(
   signal: AbortSignal | undefined,
   emit: BrewvaAgentEventSink,
 ): Promise<ExecutedToolCallOutcome> {
-  const updateEvents: Promise<void>[] = [];
+  const updateEvents: Promise<unknown>[] = [];
   try {
     await emitToolExecutionPhaseChange(
       prepared.toolCall,

@@ -74,7 +74,7 @@ flowchart TD
 7. Accepted turns also materialize durable presentation receipts:
    `turn_input_recorded` when the turn is admitted and
    `turn_render_committed` when the turn reaches a terminal outcome.
-8. When the post-TaskSpec skill match is strong and no skill is active, the
+8. When a post-TaskSpec routed skill is retained and no skill is active, the
    hosted path narrows the default tool surface so the turn resolves to
    `skill_load` before deeper repository work.
 9. `skill_complete` validates required outputs before calling

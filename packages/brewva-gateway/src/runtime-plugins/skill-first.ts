@@ -3,6 +3,7 @@ import {
   listSkillOutputs,
   listSkillPreferredTools,
   type LoadableSkillCategory,
+  type SkillCompletionFailureRecord,
   type SkillContract,
   type TaskPhase,
 } from "@brewva/brewva-runtime";
@@ -56,6 +57,7 @@ export interface SkillFirstRuntimeLike {
     skills: {
       list(): SkillRecommendationCandidate[];
       getActive(sessionId: string): Pick<SkillRecommendationCandidate, "name"> | null | undefined;
+      getLatestFailure?(sessionId: string): SkillCompletionFailureRecord | undefined;
       getLoadReport(): {
         loadedSkills: readonly string[];
         routingEnabled: boolean;
@@ -78,13 +80,22 @@ export interface SkillRecommendation {
   primary: boolean;
 }
 
-export type SkillRecommendationGateMode = "none" | "task_spec_required" | "skill_load_required";
+export type SkillRecommendationGateMode =
+  | "none"
+  | "task_spec_required"
+  | "skill_load_required"
+  | "skill_contract_failed";
 
 export interface SkillRecommendationSet {
   activeSkillName: string | null;
   gateMode: SkillRecommendationGateMode;
   taskSpecReady: boolean;
   recommendations: SkillRecommendation[];
+  failedSkill?: {
+    name: string;
+    missing: string[];
+    invalid: string[];
+  };
 }
 
 export interface SkillRecommendationReceiptPayload {
@@ -98,11 +109,15 @@ export interface SkillRecommendationReceiptPayload {
     primary: boolean;
     reasons: string[];
   }>;
+  failedSkill?: {
+    name: string;
+    missing: string[];
+    invalid: string[];
+  };
 }
 
 const MAX_RECOMMENDATIONS = 3;
 const MIN_RECOMMENDATION_SCORE = 2.6;
-const REQUIRED_RECOMMENDATION_SCORE = 4.2;
 const SCORE_DELTA_WINDOW = 1.6;
 const MAX_REASON_COUNT = 4;
 const ENGLISH_TOKEN_PATTERN = /[a-z0-9]+/g;
@@ -673,6 +688,7 @@ export function buildSkillRecommendationReceiptPayload(
       primary: entry.primary,
       reasons: entry.reasons,
     })),
+    ...(input.failedSkill ? { failedSkill: input.failedSkill } : {}),
   };
 }
 
@@ -702,6 +718,21 @@ export function deriveSkillRecommendations(
       gateMode: "none",
       taskSpecReady,
       recommendations: [],
+    };
+  }
+
+  const latestFailure = runtime.inspect.skills.getLatestFailure?.(input.sessionId);
+  if (latestFailure?.phase === "failed_contract") {
+    return {
+      activeSkillName: null,
+      gateMode: "skill_contract_failed",
+      taskSpecReady,
+      recommendations: [],
+      failedSkill: {
+        name: latestFailure.skillName,
+        missing: latestFailure.missing,
+        invalid: latestFailure.invalid.map((issue) => issue.name),
+      },
     };
   }
 
@@ -763,7 +794,7 @@ export function deriveSkillRecommendations(
 
   return {
     activeSkillName: null,
-    gateMode: top.score >= REQUIRED_RECOMMENDATION_SCORE ? "skill_load_required" : "none",
+    gateMode: "skill_load_required",
     taskSpecReady: true,
     recommendations: retained,
   };
@@ -789,6 +820,24 @@ export function buildSkillFirstPolicyBlock(input: SkillRecommendationSet): strin
       "Before deeper repository reads, searches, execution, or edits, call `task_set_spec` to record the task goal, constraints, targets, and verification intent.",
     );
     lines.push("After `task_set_spec`, Brewva will re-evaluate whether `skill_load` is required.");
+    return lines.join("\n");
+  }
+
+  if (input.gateMode === "skill_contract_failed") {
+    const failedSkill = input.failedSkill;
+    lines.push("The latest active skill contract has failed permanently.");
+    if (failedSkill) {
+      lines.push(`failed_skill: ${failedSkill.name}`);
+      lines.push(
+        `missing_outputs: ${failedSkill.missing.length > 0 ? failedSkill.missing.join(", ") : "none"}`,
+      );
+      lines.push(
+        `invalid_outputs: ${failedSkill.invalid.length > 0 ? failedSkill.invalid.join(", ") : "none"}`,
+      );
+    }
+    lines.push(
+      "Do not load downstream skills or continue repository work until an operator explicitly restarts or repairs the task.",
+    );
     return lines.join("\n");
   }
 

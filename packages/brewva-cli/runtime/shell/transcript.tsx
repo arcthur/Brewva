@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 
 import type { BrewvaToolDefinition } from "@brewva/brewva-substrate";
-import { For, Match, Show, Switch, createMemo } from "solid-js";
+import { For, Index, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js";
 import type {
   CliShellTranscriptMessage,
   CliShellTranscriptPart,
@@ -14,6 +14,7 @@ import {
   type SessionPalette,
 } from "./palette.js";
 import {
+  asRecord,
   formatUnknown,
   inferFiletype,
   readToolDiffText,
@@ -46,6 +47,76 @@ export function TextLineBlock(input: {
       </For>
     </box>
   );
+}
+
+interface TranscriptTextBlock {
+  content: string;
+}
+
+const MARKDOWN_FENCE_PATTERN = /^\s*(```|~~~)/u;
+const MARKDOWN_SECTION_PATTERN = /^\s*(#{1,6}\s+\S|\*\*[^*\n]{1,80}\*\*:?\s*)$/u;
+
+function splitTranscriptTextBlocks(text: string): TranscriptTextBlock[] {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return [];
+  }
+
+  const blocks: TranscriptTextBlock[] = [];
+  let current: string[] = [];
+  let openFence: string | undefined;
+
+  const flush = () => {
+    const content = current.join("\n").trim();
+    if (content.length > 0) {
+      blocks.push({ content });
+    }
+    current = [];
+  };
+
+  for (const line of trimmed.split(/\r?\n/u)) {
+    const fenceMatch = line.match(MARKDOWN_FENCE_PATTERN);
+
+    if (openFence) {
+      current.push(line);
+      if (fenceMatch?.[1] === openFence) {
+        openFence = undefined;
+        flush();
+      }
+      continue;
+    }
+
+    if (line.trim().length === 0) {
+      flush();
+      continue;
+    }
+
+    if (fenceMatch) {
+      flush();
+      openFence = fenceMatch[1];
+      current.push(line);
+      continue;
+    }
+
+    if (current.length > 0 && MARKDOWN_SECTION_PATTERN.test(line)) {
+      flush();
+    }
+
+    current.push(line);
+  }
+
+  flush();
+  return blocks;
+}
+
+function createPersistentStreamingCodePath(isStreaming: () => boolean): () => boolean {
+  const [hasStreamed, setHasStreamed] = createSignal(isStreaming());
+  createEffect(() => {
+    if (isStreaming()) {
+      setHasStreamed(true);
+    }
+  });
+  return () => hasStreamed() || isStreaming();
 }
 
 function InlineTool(input: {
@@ -123,31 +194,35 @@ function TextPartView(input: {
   part: Extract<CliShellTranscriptPart, { type: "text" }>;
   theme: SessionPalette;
 }) {
+  const streaming = createMemo(
+    () => input.message.renderMode === "streaming" || input.part.renderMode === "streaming",
+  );
+  const useStreamingCodePath = createPersistentStreamingCodePath(streaming);
+  const blocks = createMemo(() => splitTranscriptTextBlocks(input.part.text));
   return (
-    <Show when={input.part.text.trim().length > 0}>
-      <box id={`text-${input.part.id}`} paddingLeft={3} marginTop={1} flexShrink={0}>
-        <Show
-          when={input.message.renderMode !== "streaming" && input.part.renderMode !== "streaming"}
-          fallback={
-            <code
-              filetype="markdown"
-              drawUnstyledText={true}
-              streaming={true}
-              syntaxStyle={getTranscriptSyntaxStyle(input.theme)}
-              content={input.part.text.trim()}
-              fg={input.theme.text}
-            />
-          }
-        >
-          <markdown
-            streaming={false}
-            syntaxStyle={getTranscriptSyntaxStyle(input.theme)}
-            content={input.part.text.trim()}
-            conceal={false}
-            fg={input.theme.markdownText}
-            bg={input.theme.background}
-          />
-        </Show>
+    <Show when={blocks().length > 0}>
+      <box
+        id={`text-${input.part.id}`}
+        paddingLeft={3}
+        marginTop={1}
+        flexDirection="column"
+        gap={0}
+        flexShrink={0}
+      >
+        <Index each={blocks()}>
+          {(block, index) => (
+            <box id={`text-${input.part.id}:block:${index}`} marginTop={index === 0 ? 0 : 1}>
+              <code
+                filetype="markdown"
+                drawUnstyledText={!useStreamingCodePath()}
+                streaming={useStreamingCodePath()}
+                syntaxStyle={getTranscriptSyntaxStyle(input.theme)}
+                content={block().content}
+                fg={input.theme.text}
+              />
+            </box>
+          )}
+        </Index>
       </box>
     </Show>
   );
@@ -158,6 +233,8 @@ function ReasoningPartView(input: {
   theme: SessionPalette;
 }) {
   const content = createMemo(() => input.part.text.replace("[REDACTED]", "").trim());
+  const streaming = createMemo(() => input.part.renderMode === "streaming");
+  const useStreamingCodePath = createPersistentStreamingCodePath(streaming);
   return (
     <Show when={content().length > 0}>
       <box
@@ -170,8 +247,8 @@ function ReasoningPartView(input: {
       >
         <code
           filetype="markdown"
-          drawUnstyledText={true}
-          streaming={input.part.renderMode === "streaming"}
+          drawUnstyledText={!useStreamingCodePath()}
+          streaming={useStreamingCodePath()}
           syntaxStyle={getReasoningSyntaxStyle(input.theme)}
           content={`_Thinking:_ ${content()}`}
           fg={input.theme.textMuted}
@@ -335,6 +412,154 @@ function BashToolView(input: { part: CliShellTranscriptToolPart; theme: SessionP
   );
 }
 
+interface SkillLoadSummary {
+  readonly name: string;
+  readonly category?: string;
+  readonly effectLevel?: string;
+  readonly readiness?: string;
+  readonly allowedEffects?: string;
+  readonly deniedEffects?: string;
+  readonly preferredTools?: string;
+  readonly fallbackTools?: string;
+  readonly requiredOutputs?: string;
+  readonly resourceSummary?: string;
+}
+
+function readStringRecordValue(
+  record: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = record?.[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function readSkillLoadTopLevelField(text: string, field: string): string | undefined {
+  const prefix = `${field}:`;
+  for (const line of text.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith(prefix)) {
+      const value = trimmed.slice(prefix.length).trim();
+      return value.length > 0 ? value : undefined;
+    }
+  }
+  return undefined;
+}
+
+function readSkillLoadBulletField(text: string, field: string): string | undefined {
+  const expected = field.toLowerCase();
+  for (const line of text.split(/\r?\n/u)) {
+    const match = line.trim().match(/^-\s*([^:]+):\s*(.*)$/u);
+    if (!match) {
+      continue;
+    }
+    if (match[1]?.trim().toLowerCase() !== expected) {
+      continue;
+    }
+    const value = match[2]?.trim() ?? "";
+    return value.length > 0 ? value : undefined;
+  }
+  return undefined;
+}
+
+function countListValue(value: string | undefined): number | undefined {
+  if (!value || value === "(none)") {
+    return undefined;
+  }
+  const count = value.split(/\s*,\s*/u).filter((item) => item.trim().length > 0).length;
+  return count > 0 ? count : undefined;
+}
+
+function formatSkillLoadResourceSummary(text: string): string | undefined {
+  const resources = [
+    ["references", countListValue(readSkillLoadBulletField(text, "references"))],
+    ["scripts", countListValue(readSkillLoadBulletField(text, "scripts"))],
+    ["heuristics", countListValue(readSkillLoadBulletField(text, "heuristics"))],
+    ["invariants", countListValue(readSkillLoadBulletField(text, "invariants"))],
+  ] as const;
+  const present = resources.flatMap(([label, count]) =>
+    count === undefined ? [] : [`${label} ${count}`],
+  );
+  return present.length > 0 ? present.join(", ") : undefined;
+}
+
+function readSkillLoadSummary(part: CliShellTranscriptToolPart): SkillLoadSummary {
+  const text = readToolResultText(part);
+  const args = asRecord(part.args);
+  const details = asRecord(part.result?.details ?? part.partialResult?.details);
+  const readiness = asRecord(details?.skillReadiness);
+  const titleMatch = text.match(/^# Skill Loaded:\s*(.+)$/mu);
+  return {
+    name:
+      readStringRecordValue(args, "name") ??
+      readStringRecordValue(details, "skill") ??
+      titleMatch?.[1]?.trim() ??
+      "skill",
+    category: readSkillLoadTopLevelField(text, "Category"),
+    effectLevel: readSkillLoadBulletField(text, "effect level"),
+    readiness:
+      readSkillLoadBulletField(text, "readiness") ?? readStringRecordValue(readiness, "readiness"),
+    allowedEffects: readSkillLoadBulletField(text, "allowed effects"),
+    deniedEffects: readSkillLoadBulletField(text, "denied effects"),
+    preferredTools: readSkillLoadBulletField(text, "preferred tools"),
+    fallbackTools: readSkillLoadBulletField(text, "fallback tools"),
+    requiredOutputs: readSkillLoadBulletField(text, "required outputs"),
+    resourceSummary: formatSkillLoadResourceSummary(text),
+  };
+}
+
+function formatSkillLoadTitle(summary: SkillLoadSummary): string {
+  return [`Skill "${summary.name}"`, summary.category, summary.effectLevel, summary.readiness]
+    .filter((value): value is string => Boolean(value))
+    .join(" · ");
+}
+
+function SkillLoadToolView(input: {
+  part: CliShellTranscriptToolPart;
+  theme: SessionPalette;
+  showDetails: boolean;
+}) {
+  const summary = createMemo(() => readSkillLoadSummary(input.part));
+  const title = createMemo(() => formatSkillLoadTitle(summary()));
+  const detailLines = createMemo(() => {
+    const current = summary();
+    return [
+      current.allowedEffects ? `Allowed: ${current.allowedEffects}` : undefined,
+      current.deniedEffects ? `Denied: ${current.deniedEffects}` : undefined,
+      current.preferredTools ? `Preferred tools: ${current.preferredTools}` : undefined,
+      current.fallbackTools ? `Fallback tools: ${current.fallbackTools}` : undefined,
+      current.requiredOutputs ? `Required outputs: ${current.requiredOutputs}` : undefined,
+      current.resourceSummary ? `Resources: ${current.resourceSummary}` : undefined,
+      input.part.status === "completed" ? "Instructions: loaded into context" : undefined,
+    ].filter((line): line is string => Boolean(line));
+  });
+
+  return (
+    <Switch>
+      <Match when={input.showDetails && input.part.status === "completed"}>
+        <BlockTool
+          title={`→ ${title()}`}
+          part={input.part}
+          theme={input.theme}
+          titleColor={input.theme.success}
+        >
+          <TextLineBlock lines={detailLines()} color={input.theme.textMuted} />
+        </BlockTool>
+      </Match>
+      <Match when={true}>
+        <InlineTool
+          icon="→"
+          pending="Loading skill..."
+          complete={input.part.status !== "pending"}
+          text={title()}
+          part={input.part}
+          theme={input.theme}
+          errorText={readToolErrorText(input.part)}
+        />
+      </Match>
+    </Switch>
+  );
+}
+
 function GenericToolView(input: {
   part: CliShellTranscriptToolPart;
   theme: SessionPalette;
@@ -451,6 +676,9 @@ function ToolPartView(input: {
       </Match>
       <Match when={input.part.toolName === "exec_command" || input.part.toolName === "bash"}>
         <BashToolView part={input.part} theme={input.theme} />
+      </Match>
+      <Match when={input.part.toolName === "skill_load"}>
+        <SkillLoadToolView part={input.part} theme={input.theme} showDetails={input.showDetails} />
       </Match>
       <Match when={true}>
         <GenericToolView

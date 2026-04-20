@@ -160,7 +160,7 @@ Current responsibilities:
 - TaskSpec-first routing presentation
   - exposes hosted routing posture through explicit constraint blocks and
     durable receipts such as `skill_recommendation_derived`
-  - keeps pre-skill bootstrap and strong post-TaskSpec `skill_load` guidance
+  - keeps pre-skill bootstrap and retained post-TaskSpec `skill_load` guidance
     visible to the model instead of relying on hidden prompt-only heuristics
   - narrows the visible tool surface without auto-activating skills or
     introducing a second planning state machine

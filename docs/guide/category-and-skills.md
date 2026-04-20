@@ -37,13 +37,13 @@ model how the specialist reasons, decides, asks questions, and hands work off.
 `skills.routing.enabled=false` by default. When routing is enabled,
 `skills.routing.scopes` is the explicit allowlist for auto-routing visibility.
 
-Typical defaults are `core` and `domain`. Operator and meta skills remain
+Typical hosted defaults are `core`, `domain`, and `operator`. Meta skills remain
 loaded but hidden unless scopes explicitly opt in.
 
 Interactive hosted entrypoints may apply
-`routingDefaultScopes=["core", "domain"]`; that default only activates when
-config omitted `skills.routing.enabled`, and it does not replace explicit
-`skills.routing.scopes`.
+`routingDefaultScopes=["core", "domain"]`; that default only
+activates when config omitted `skills.routing.enabled`, and it does not replace
+explicit `skills.routing.scopes`.
 
 Bounded or advisory protocol skills are still gated by routing context and
 required artifacts. For example:

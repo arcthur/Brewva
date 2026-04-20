@@ -20,6 +20,9 @@ export type BrewvaMessageContentPart =
 export interface BrewvaStoredMessageBase {
   role: string;
   timestamp: number;
+  display?: boolean;
+  excludeFromContext?: boolean;
+  details?: unknown;
 }
 
 export interface BrewvaStoredCustomMessage extends BrewvaStoredMessageBase {

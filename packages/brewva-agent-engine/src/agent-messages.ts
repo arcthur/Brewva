@@ -48,11 +48,11 @@ export function bashExecutionToText(msg: BashExecutionMessage): string {
 export function convertToLlm(messages: BrewvaAgentEngineMessage[]): BrewvaAgentEngineLlmMessage[] {
   return messages
     .map((message): BrewvaAgentEngineLlmMessage | undefined => {
+      if (message.excludeFromContext) {
+        return undefined;
+      }
       switch (message.role) {
         case "bashExecution":
-          if (message.excludeFromContext) {
-            return undefined;
-          }
           return {
             role: "user",
             content: [{ type: "text", text: bashExecutionToText(message) }],

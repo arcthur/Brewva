@@ -917,6 +917,58 @@ describe("shell controller", () => {
     controller.dispose();
   });
 
+  test("submitted pasted text expands in the user transcript instead of showing the paste placeholder", async () => {
+    const prompts: string[] = [];
+    const { bundle } = createFakeBundle({
+      promptHandler: async (text) => {
+        prompts.push(text);
+      },
+    });
+
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+
+    const token = "[Pasted ~3 lines]";
+    const text = `review ${token} now`;
+    const pastedText = "line one\nline two\nline three";
+    controller.syncComposerFromEditor(text, text.length, [
+      {
+        id: "text-part-1",
+        type: "text",
+        text: pastedText,
+        source: {
+          text: {
+            start: "review ".length,
+            end: "review ".length + token.length,
+            value: token,
+          },
+        },
+      },
+    ]);
+
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    const submittedText = `review ${pastedText} now`;
+    expect(prompts).toEqual([submittedText]);
+
+    const userMessages = controller.getState().transcript.messages.filter((m) => m.role === "user");
+    expect(userMessages).toHaveLength(1);
+    expect(userMessages[0]?.parts[0]).toMatchObject({ type: "text", text: submittedText });
+
+    controller.dispose();
+  });
+
   test("surfaces semantic input failures as notifications instead of rejecting the key handler", async () => {
     const { bundle } = createFakeBundle({
       promptHandler: async () => {
@@ -1084,6 +1136,59 @@ describe("shell controller", () => {
         },
       ],
     });
+
+    controller.dispose();
+  });
+
+  test("removes a streamed assistant draft when the stable message is hidden", async () => {
+    const fixture = createFakeBundle();
+    const { bundle } = fixture;
+
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+
+    fixture.emitSessionEvent({
+      type: "message_update",
+      message: {
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Draft answer while skill is incomplete." }],
+      },
+      assistantMessageEvent: {
+        type: "content_delta",
+        delta: "Draft answer while skill is incomplete.",
+      },
+    } as unknown as BrewvaPromptSessionEvent);
+
+    expect(controller.getState().transcript.messages).toHaveLength(1);
+    expect(controller.getState().transcript.messages[0]).toMatchObject({
+      role: "assistant",
+      parts: [{ type: "text", text: "Draft answer while skill is incomplete." }],
+    });
+
+    fixture.emitSessionEvent({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        stopReason: "stop",
+        display: false,
+        content: [{ type: "text", text: "Draft answer while skill is incomplete." }],
+        details: {
+          brewvaDraftSuppressed: {
+            reason: "active_skill_incomplete",
+            skillName: "repository-analysis",
+          },
+        },
+      },
+    });
+
+    expect(controller.getState().transcript.messages).toEqual([]);
 
     controller.dispose();
   });

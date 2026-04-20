@@ -685,6 +685,19 @@ function printGatewayCostSummary(input: {
   printCostSummary(replaySessionId, runtime);
 }
 
+function resolveCliSessionCompleteReason(runtime: BrewvaRuntime, sessionId: string): string {
+  const events = runtime.inspect.events.queryStructured(sessionId);
+  const hasInput = events.some((event) => event.type === "input");
+  const hasAgentStart = events.some((event) => event.type === "agent_start");
+  if (!hasInput && !hasAgentStart) {
+    return "cli_session_no_input";
+  }
+  if (hasInput && !hasAgentStart) {
+    return "cli_session_no_agent_run";
+  }
+  return "cli_session_complete";
+}
+
 async function run(): Promise<void> {
   process.title = "brewva";
   if (process.env[BREWVA_SHELL_SMOKE_ENV] === "1") {
@@ -1159,7 +1172,7 @@ async function run(): Promise<void> {
       const sessionId = getSessionId();
       recordSessionShutdownIfMissing(runtime, {
         sessionId,
-        reason: "cli_session_complete",
+        reason: resolveCliSessionCompleteReason(runtime, sessionId),
         source: "cli_embedded_session",
       });
       if (emitJsonBundle) {

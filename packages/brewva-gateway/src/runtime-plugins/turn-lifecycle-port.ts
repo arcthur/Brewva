@@ -9,6 +9,7 @@ import type {
   BrewvaHostSessionCompactEvent as SessionCompactEvent,
   BrewvaHostSessionShutdownEvent as SessionShutdownEvent,
   BrewvaHostSessionStartEvent as SessionStartEvent,
+  BrewvaHostTurnEndEvent as TurnEndEvent,
   BrewvaHostToolResultEvent as ToolResultEvent,
   BrewvaHostToolResultResult,
   BrewvaHostTurnStartEvent as TurnStartEvent,
@@ -42,6 +43,7 @@ export interface TurnLifecyclePort {
     event: ToolResultEvent,
     ctx: ExtensionContext,
   ) => MaybePromise<ToolResultLifecycleResult | undefined>;
+  turnEnd?: (event: TurnEndEvent, ctx: ExtensionContext) => MaybePromise<void | undefined>;
   agentEnd?: (event: AgentEndEvent, ctx: ExtensionContext) => MaybePromise<void | undefined>;
   sessionCompact?: (
     event: SessionCompactEvent,
@@ -203,6 +205,7 @@ export function registerTurnLifecyclePorts(
   const input = collectHandlers(ports, "input");
   const beforeAgentStart = collectHandlers(ports, "beforeAgentStart");
   const toolResult = collectHandlers(ports, "toolResult");
+  const turnEnd = collectHandlers(ports, "turnEnd");
   const agentEnd = collectHandlers(ports, "agentEnd");
   const sessionCompact = collectHandlers(ports, "sessionCompact");
   const sessionShutdown = collectHandlers(ports, "sessionShutdown");
@@ -226,6 +229,9 @@ export function registerTurnLifecyclePorts(
   }
   if (toolResult.length > 0) {
     extensionApi.on("tool_result", (event, ctx) => runToolResultPipeline(toolResult, event, ctx));
+  }
+  if (turnEnd.length > 0) {
+    extensionApi.on("turn_end", (event, ctx) => runSequential(turnEnd, event, ctx));
   }
   if (agentEnd.length > 0) {
     extensionApi.on("agent_end", (event, ctx) => runSequential(agentEnd, event, ctx));

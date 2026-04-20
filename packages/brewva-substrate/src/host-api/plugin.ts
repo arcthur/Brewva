@@ -111,6 +111,8 @@ export interface BrewvaHostCustomMessage {
   details?: unknown;
 }
 
+export type BrewvaHostCustomMessageDelivery = "steer" | "followUp" | "nextTurn" | "transcript";
+
 export interface BrewvaHostSessionStartEvent {
   type: "session_start";
   reason?: "startup" | "reload" | "new" | "resume" | "fork";
@@ -191,9 +193,35 @@ export interface BrewvaHostMessageUpdateEvent {
   assistantMessageEvent: BrewvaPromptAssistantMessageEvent;
 }
 
+export interface BrewvaHostMessageEnvelope {
+  role: string;
+  timestamp?: number;
+  display?: boolean;
+  excludeFromContext?: boolean;
+  details?: unknown;
+  content?: string | readonly unknown[];
+  stopReason?: string;
+  errorMessage?: string;
+  customType?: string;
+  toolCallId?: string;
+  toolName?: string;
+  isError?: boolean;
+  summary?: string;
+}
+
+export interface BrewvaHostMessageVisibilityPatch {
+  display?: boolean;
+  excludeFromContext?: boolean;
+  details?: unknown;
+}
+
 export interface BrewvaHostMessageEndEvent {
   type: "message_end";
-  message: unknown;
+  message: BrewvaHostMessageEnvelope;
+}
+
+export interface BrewvaHostMessageEndResult {
+  visibility?: BrewvaHostMessageVisibilityPatch;
 }
 
 export interface BrewvaHostToolExecutionStartEvent {
@@ -345,9 +373,11 @@ type BrewvaHostPluginHandlerResult<TKey extends keyof BrewvaHostPluginEventMap> 
           ? BrewvaHostToolCallResult | undefined
           : TKey extends "tool_result"
             ? BrewvaHostToolResultResult | undefined
-            : TKey extends "before_provider_request"
-              ? unknown
-              : void | undefined;
+            : TKey extends "message_end"
+              ? BrewvaHostMessageEndResult | void | undefined
+              : TKey extends "before_provider_request"
+                ? unknown
+                : void | undefined;
 
 export interface BrewvaHostPluginApi {
   on<TKey extends keyof BrewvaHostPluginEventMap>(
@@ -361,7 +391,7 @@ export interface BrewvaHostPluginApi {
   registerCommand(name: string, command: BrewvaHostRegisteredCommand): void;
   sendMessage(
     message: BrewvaHostCustomMessage,
-    options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+    options?: { triggerTurn?: boolean; deliverAs?: BrewvaHostCustomMessageDelivery },
   ): void;
   sendUserMessage(
     content: BrewvaPromptContentPart[],

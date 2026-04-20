@@ -90,7 +90,11 @@ class PendingMessageQueue {
 }
 
 class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
-  readonly #listeners = new Set<(event: BrewvaAgentEngineEvent) => Promise<void> | void>();
+  readonly #listeners = new Set<
+    (
+      event: BrewvaAgentEngineEvent,
+    ) => Promise<BrewvaAgentEngineEvent | void> | BrewvaAgentEngineEvent | void
+  >();
   readonly #steeringQueue: PendingMessageQueue;
   readonly #followUpQueue: PendingMessageQueue;
   readonly #streamFn: BrewvaAgentEngineStreamFunction;
@@ -211,7 +215,11 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
     return this.#activeRun?.abortController.signal;
   }
 
-  subscribe(listener: (event: BrewvaAgentEngineEvent) => Promise<void> | void): () => void {
+  subscribe(
+    listener: (
+      event: BrewvaAgentEngineEvent,
+    ) => Promise<BrewvaAgentEngineEvent | void> | BrewvaAgentEngineEvent | void,
+  ): () => void {
     this.#listeners.add(listener);
     return () => {
       this.#listeners.delete(listener);
@@ -307,6 +315,10 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
       transformContext: this.#transformContext,
       getSteeringMessages: async () => this.#steeringQueue.drain(),
       getFollowUpMessages: async () => this.#followUpQueue.drain(),
+      getCurrentContext: () => ({
+        systemPrompt: this.#state.systemPrompt,
+        tools: [...this.#state.tools],
+      }),
       resolveRequestAuth: this.#resolveRequestAuth,
       resolveFile: this.#resolveFile,
       toolExecution: "parallel",
@@ -368,9 +380,11 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
       timestamp: Date.now(),
     } as BrewvaAgentEngineMessage;
     await this.#processEvents({ type: "message_start", message: failureMessage });
-    await this.#processEvents({ type: "message_end", message: failureMessage });
-    await this.#processEvents({ type: "turn_end", message: failureMessage, toolResults: [] });
-    await this.#processEvents({ type: "agent_end", messages: [failureMessage] });
+    const messageEnd = await this.#processEvents({ type: "message_end", message: failureMessage });
+    const committedFailure =
+      messageEnd.type === "message_end" ? messageEnd.message : failureMessage;
+    await this.#processEvents({ type: "turn_end", message: committedFailure, toolResults: [] });
+    await this.#processEvents({ type: "agent_end", messages: [committedFailure] });
   }
 
   #finishRun(): void {
@@ -379,14 +393,22 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
     this.#activeRun = undefined;
   }
 
-  async #processEvents(event: BrewvaAgentEngineEvent): Promise<void> {
-    switch (event.type) {
+  async #processEvents(event: BrewvaAgentEngineEvent): Promise<BrewvaAgentEngineEvent> {
+    let currentEvent = event;
+    for (const listener of this.#listeners) {
+      const result = await listener(currentEvent);
+      if (result && result.type === currentEvent.type) {
+        currentEvent = result;
+      }
+    }
+
+    switch (currentEvent.type) {
       case "message_end":
-        this.#state.messages.push(event.message);
+        this.#state.messages.push(currentEvent.message);
         break;
       case "turn_end":
-        if (event.message.role === "assistant" && event.message.errorMessage) {
-          this.#state.errorMessage = event.message.errorMessage;
+        if (currentEvent.message.role === "assistant" && currentEvent.message.errorMessage) {
+          this.#state.errorMessage = currentEvent.message.errorMessage;
         }
         break;
       case "agent_end":
@@ -395,9 +417,7 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
         break;
     }
 
-    for (const listener of this.#listeners) {
-      await listener(event);
-    }
+    return currentEvent;
   }
 }
 

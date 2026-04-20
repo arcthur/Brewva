@@ -165,6 +165,46 @@ describe("task ledger tool contracts", () => {
     }
   });
 
+  test("task_update_item rejects completed in favor of canonical done", async () => {
+    const { workspace, runtime, taskUpdateItem } = createTaskLedgerToolHarness(
+      "task-ledger-tool-update-item-completed-rejected",
+    );
+
+    try {
+      const sessionId = "task-ledger-tool-update-item-completed-rejected";
+      runtime.authority.task.addItem(sessionId, {
+        id: "item-1",
+        text: "Publish doc fixes",
+        status: "doing",
+      });
+
+      const statusSchema = (
+        taskUpdateItem.parameters as {
+          properties?: {
+            status?: unknown;
+          };
+        }
+      ).properties?.status;
+      expect(readLiteralUnionValues(statusSchema)).not.toContain("completed");
+
+      const result = await taskUpdateItem.execute(
+        "tc-task-update-item-completed-rejected",
+        {
+          id: "item-1",
+          status: "completed",
+        },
+        undefined,
+        undefined,
+        fakeContext(sessionId),
+      );
+
+      expect(extractTextContent(result)).toContain("status must be one of");
+      expect(runtime.inspect.task.getState(sessionId).items[0]?.status).toBe("doing");
+    } finally {
+      cleanupTestWorkspace(workspace);
+    }
+  });
+
   test("task_record_acceptance records operator-visible acceptance state", async () => {
     const { workspace, runtime, taskSetSpec, taskRecordAcceptance } = createTaskLedgerToolHarness(
       "task-ledger-tool-acceptance",

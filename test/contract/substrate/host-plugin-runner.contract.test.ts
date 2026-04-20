@@ -404,6 +404,58 @@ describe("substrate host plugin runner", () => {
     });
   });
 
+  test("chains message_end transforms so lifecycle plugins can hide draft assistant output", async () => {
+    const runner = await createBrewvaHostPluginRunner({
+      plugins: [
+        (api) => {
+          api.on("message_end", async () => ({
+            visibility: {
+              display: false,
+            },
+          }));
+        },
+        (api) => {
+          api.on("message_end", async (event) => ({
+            visibility: {
+              details: {
+                observedDisplay: event.message.display,
+              },
+            },
+          }));
+        },
+      ],
+      actions: {
+        sendMessage: () => undefined,
+        sendUserMessage: () => undefined,
+        getActiveTools: () => [],
+        getAllTools: () => [],
+        setActiveTools: () => undefined,
+        refreshTools: () => undefined,
+      },
+    });
+
+    const result = await runner.emitMessageEnd(
+      {
+        type: "message_end",
+        message: {
+          role: "assistant",
+          stopReason: "stop",
+          content: [{ type: "text", text: "Draft output." }],
+        },
+      },
+      createHostContext(),
+    );
+
+    expect(result).toEqual({
+      visibility: {
+        display: false,
+        details: {
+          observedDisplay: false,
+        },
+      },
+    });
+  });
+
   test("forwards command-side messaging actions through the action port", async () => {
     const sentUsers: Array<{ content: BrewvaPromptContentPart[]; deliverAs?: string }> = [];
 

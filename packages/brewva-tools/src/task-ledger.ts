@@ -25,6 +25,17 @@ function toRuntimeTaskItemStatus(value: unknown): TaskItemStatus | undefined {
     : undefined;
 }
 
+function invalidTaskStatusResult(toolAction: "add" | "update", status: unknown) {
+  return failTextResult(
+    `Task item ${toolAction} rejected (invalid_status). status must be one of pending, in_progress, done, blocked; use done instead of completed.`,
+    {
+      ok: false,
+      error: "invalid_status",
+      status,
+    },
+  );
+}
+
 function toRuntimeTaskAcceptanceStatus(
   value: unknown,
 ): "pending" | "accepted" | "rejected" | undefined {
@@ -146,10 +157,14 @@ export function createTaskLedgerTools(options: BrewvaToolOptions): ToolDefinitio
       }),
       async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
         const sessionId = getSessionId(ctx);
+        const status = toRuntimeTaskItemStatus(params.status);
+        if (params.status !== undefined && status === undefined) {
+          return invalidTaskStatusResult("add", params.status);
+        }
         const result = taskAddItemTool.runtime.authority.task.addItem(sessionId, {
           id: params.id,
           text: params.text,
-          status: toRuntimeTaskItemStatus(params.status),
+          status,
         });
         if (!result.ok) {
           return failTextResult(`Task item rejected (${result.error ?? "unknown_error"}).`, result);
@@ -176,10 +191,14 @@ export function createTaskLedgerTools(options: BrewvaToolOptions): ToolDefinitio
       }),
       async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
         const sessionId = getSessionId(ctx);
+        const status = toRuntimeTaskItemStatus(params.status);
+        if (params.status !== undefined && status === undefined) {
+          return invalidTaskStatusResult("update", params.status);
+        }
         const result = taskUpdateItemTool.runtime.authority.task.updateItem(sessionId, {
           id: params.id,
           text: params.text,
-          status: toRuntimeTaskItemStatus(params.status),
+          status,
         });
         if (!result.ok) {
           return failTextResult(

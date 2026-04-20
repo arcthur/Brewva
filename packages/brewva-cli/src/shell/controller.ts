@@ -48,6 +48,7 @@ import {
   buildCliShellPromptContentParts,
   cloneCliShellPromptParts,
   cloneCliShellPromptStashEntry,
+  expandPromptTextParts,
   promptPartArraysEqual,
   summarizePromptSnapshot,
 } from "./prompt-parts.js";
@@ -104,6 +105,14 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     return undefined;
   }
   return value as Record<string, unknown>;
+}
+
+function toolResultStatus(input: { result?: unknown; isError?: boolean }): "completed" | "error" {
+  if (input.isError === true) {
+    return "error";
+  }
+  const details = asRecord(asRecord(input.result)?.details);
+  return details?.verdict === "fail" ? "error" : "completed";
 }
 
 function normalizeBindingKey(key: string): string {
@@ -852,6 +861,14 @@ export class CliShellController {
     this.replaceTranscriptMessages([...this.#state.transcript.messages, message]);
   }
 
+  private removeTranscriptMessage(id: string): void {
+    const nextMessages = this.#state.transcript.messages.filter((message) => message.id !== id);
+    if (nextMessages.length === this.#state.transcript.messages.length) {
+      return;
+    }
+    this.replaceTranscriptMessages(nextMessages);
+  }
+
   private upsertTranscriptMessage(message: CliShellTranscriptMessage | null): void {
     if (!message) {
       return;
@@ -973,7 +990,7 @@ export class CliShellController {
           toolCallId: toolResult.toolCallId,
           toolName: toolResult.toolName,
           result: toolResult,
-          status: toolResult.isError ? "error" : "completed",
+          status: toolResultStatus({ result: toolResult, isError: toolResult.isError }),
           renderMode: "stable",
           fallbackMessageId: `tool:result:${toolResult.toolCallId}`,
         });
@@ -981,6 +998,13 @@ export class CliShellController {
       }
 
       if (role === "assistant") {
+        if (asRecord(event.message)?.display === false) {
+          if (this.#assistantEntryId) {
+            this.removeTranscriptMessage(this.#assistantEntryId);
+          }
+          this.#assistantEntryId = undefined;
+          return;
+        }
         if (this.#assistantEntryId) {
           this.upsertAssistantTranscriptMessage(event.message, "stable");
           this.#assistantEntryId = undefined;
@@ -1048,7 +1072,7 @@ export class CliShellController {
         toolCallId,
         toolName,
         result: event.result,
-        status: event.isError ? "error" : "completed",
+        status: toolResultStatus({ result: event.result, isError: event.isError === true }),
         renderMode: "stable",
         fallbackMessageId: toolCallId ? `tool:end:${toolCallId}` : undefined,
       });
@@ -1544,7 +1568,7 @@ export class CliShellController {
       buildTextTranscriptMessage({
         id: `user:${Date.now()}`,
         role: "user",
-        text: prompt,
+        text: expandPromptTextParts(promptText, promptParts).trim(),
       }),
     );
     this.dispatch({

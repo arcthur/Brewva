@@ -259,9 +259,9 @@ Skill discovery and deliberation remain separated from kernel commitment:
 
 Routing is disabled by default (`skills.routing.enabled=false`). When enabled,
 `skills.routing.scopes` is the single explicit routing allowlist. Interactive
-front doors may opt into `routingDefaultScopes=["core", "domain"]`; that only
-turns routing on when config omitted `skills.routing.enabled`, and it preserves
-explicit scope lists when they are present.
+front doors may opt into `routingDefaultScopes=["core", "domain"]`;
+that only turns routing on when config omitted `skills.routing.enabled`, and it
+preserves explicit scope lists when they are present.
 
 Interactive hosted turns may still inject a TaskSpec-first skill policy block
 and narrow the pre-skill bootstrap surface after `task_set_spec`, but that

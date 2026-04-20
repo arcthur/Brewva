@@ -17,11 +17,63 @@ import {
   createOpenTuiSolidElement,
   openTuiSolidAct,
   openTuiSolidTestRender,
+  type OpenTuiRenderer,
 } from "@brewva/brewva-tui/internal-opentui-runtime";
 import { createTestRenderer } from "@opentui/core/testing";
 import { BrewvaOpenTuiShell } from "../../../packages/brewva-cli/runtime/opentui-shell-renderer.js";
 import { CliShellController } from "../../../packages/brewva-cli/src/shell/controller.js";
 import type { CliShellSessionBundle } from "../../../packages/brewva-cli/src/shell/types.js";
+
+interface OpenTuiTestRenderableInspector {
+  getChildren(): unknown[];
+}
+
+interface OpenTuiTestRendererInspector {
+  root: {
+    findDescendantById(id: string): OpenTuiTestRenderableInspector | undefined;
+  };
+}
+
+interface FakeOpenTuiSelectionRenderer extends OpenTuiRenderer {
+  console: {
+    onCopySelection?: (text: string) => void | Promise<void>;
+  };
+  getSelection(): { getSelectedText(): string } | null;
+  clearSelection(): void;
+}
+
+function createFakeSelectionRenderer(selectedText = "Selected transcript text"): {
+  renderer: FakeOpenTuiSelectionRenderer;
+  wasCleared(): boolean;
+} {
+  let currentSelectedText = selectedText;
+  let cleared = false;
+  return {
+    renderer: {
+      width: 100,
+      height: 30,
+      console: {},
+      getSelection() {
+        if (!currentSelectedText) {
+          return null;
+        }
+        return {
+          getSelectedText() {
+            return currentSelectedText;
+          },
+        };
+      },
+      clearSelection() {
+        cleared = true;
+        currentSelectedText = "";
+      },
+      destroy() {},
+    },
+    wasCleared() {
+      return cleared;
+    },
+  };
+}
 
 async function waitForRenderedFrame(
   testSetup: Awaited<ReturnType<typeof openTuiSolidTestRender>>,
@@ -355,6 +407,170 @@ describe("opentui solid shell runtime", () => {
     }
   });
 
+  test("renders assistant prose as separate visual transcript blocks", async () => {
+    const { bundle } = createFakeBundle({
+      seedMessages: [
+        {
+          role: "assistant",
+          content:
+            "I checked the Brewva output.\n\n**Changes**\n- Split prose into readable sections.\n- Keep tool output visually separate.\n\n```ts\nconst value = 1;\n\nconsole.log(value);\n```",
+        },
+      ],
+    });
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 100,
+        height: 36,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+
+      const message = controller
+        .getState()
+        .transcript.messages.find((candidate) => candidate.role === "assistant");
+      const textPart = message?.parts.find((part) => part.type === "text");
+      expect(textPart).toBeDefined();
+
+      const rendererInspector = testSetup.renderer as unknown as OpenTuiTestRendererInspector;
+      expect(
+        rendererInspector.root.findDescendantById(`text-${textPart!.id}:block:0`),
+      ).toBeDefined();
+      expect(
+        rendererInspector.root.findDescendantById(`text-${textPart!.id}:block:1`),
+      ).toBeDefined();
+      expect(
+        rendererInspector.root.findDescendantById(`text-${textPart!.id}:block:2`),
+      ).toBeDefined();
+      expect(
+        rendererInspector.root.findDescendantById(`text-${textPart!.id}:block:3`),
+      ).toBeUndefined();
+
+      const frame = testSetup.captureCharFrame();
+      expect(frame).toContain("I checked the Brewva output.");
+      expect(frame).toContain("Changes");
+      expect(frame).toContain("const value = 1;");
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("keeps streamed assistant text on the OpenTUI streaming code path", async () => {
+    const fixture = createFakeBundle();
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 100,
+        height: 30,
+      },
+    );
+
+    try {
+      fixture.emitSessionEvent({
+        type: "message_update",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Streaming text" }],
+          stopReason: "toolUse",
+        },
+      });
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+
+      const message = controller
+        .getState()
+        .transcript.messages.find((candidate) => candidate.role === "assistant");
+      const textPart = message?.parts.find((part) => part.type === "text");
+      expect(textPart).toBeDefined();
+      const rendererInspector = testSetup.renderer as unknown as OpenTuiTestRendererInspector;
+      const textBlock = rendererInspector.root.findDescendantById(`text-${textPart!.id}:block:0`);
+      const streamingRenderable = textBlock?.getChildren()[0] as
+        | {
+            constructor: { name: string };
+            drawUnstyledText?: boolean;
+            streaming?: boolean;
+          }
+        | undefined;
+
+      expect(streamingRenderable?.constructor.name).toBe("CodeRenderable");
+      expect(streamingRenderable?.drawUnstyledText).toBe(false);
+      expect(streamingRenderable?.streaming).toBe(true);
+
+      fixture.emitSessionEvent({
+        type: "message_update",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Streaming text while staying in one block" }],
+          stopReason: "toolUse",
+        },
+      });
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+
+      const updatedTextBlock = rendererInspector.root.findDescendantById(
+        `text-${textPart!.id}:block:0`,
+      );
+      const updatedRenderable = updatedTextBlock?.getChildren()[0];
+      expect(updatedRenderable).toBe(streamingRenderable);
+      expect(
+        (updatedRenderable as { drawUnstyledText?: boolean } | undefined)?.drawUnstyledText,
+      ).toBe(false);
+      expect((updatedRenderable as { streaming?: boolean } | undefined)?.streaming).toBe(true);
+
+      fixture.emitSessionEvent({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Streaming text done" }],
+          stopReason: "endTurn",
+        },
+      });
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+
+      const finalizedTextBlock = rendererInspector.root.findDescendantById(
+        `text-${textPart!.id}:block:0`,
+      );
+      const finalizedRenderable = finalizedTextBlock?.getChildren()[0];
+      expect(finalizedRenderable).toBe(streamingRenderable);
+      expect(
+        (
+          finalizedRenderable as
+            | { constructor?: { name?: string }; streaming?: boolean }
+            | undefined
+        )?.constructor?.name,
+      ).toBe("CodeRenderable");
+      expect((finalizedRenderable as { streaming?: boolean } | undefined)?.streaming).toBe(true);
+      expect(
+        (finalizedRenderable as { drawUnstyledText?: boolean } | undefined)?.drawUnstyledText,
+      ).toBe(false);
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
   test("routes global semantic keybindings through the Solid shell keyboard transport", async () => {
     const { bundle } = createFakeBundle();
     const controller = new CliShellController(bundle, {
@@ -384,6 +600,103 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
 
       expect(controller.getState().overlay.active?.kind).toBe("approval");
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("copies selected OpenTUI text with ctrl+c before semantic key handling", async () => {
+    const { bundle } = createFakeBundle();
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+    const selection = createFakeSelectionRenderer("Selected transcript text");
+    const copiedText: string[] = [];
+
+    await controller.start();
+
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, {
+        controller,
+        renderer: selection.renderer,
+        copyTextToClipboard: async (text: string) => {
+          copiedText.push(text);
+        },
+      }),
+      {
+        width: 100,
+        height: 30,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await openTuiSolidAct(async () => {
+        testSetup.mockInput.pressKey("c", { ctrl: true });
+        await Bun.sleep(0);
+      });
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+
+      expect(copiedText).toEqual(["Selected transcript text"]);
+      expect(selection.wasCleared()).toBe(true);
+      expect(controller.getState().notifications.at(-1)).toMatchObject({
+        level: "info",
+        message: "Copied to clipboard.",
+      });
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("wires OpenTUI console copy-selection actions to the shell clipboard", async () => {
+    const { bundle } = createFakeBundle();
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+    const selection = createFakeSelectionRenderer("");
+    const copiedText: string[] = [];
+
+    await controller.start();
+
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, {
+        controller,
+        renderer: selection.renderer,
+        copyTextToClipboard: async (text: string) => {
+          copiedText.push(text);
+        },
+      }),
+      {
+        width: 100,
+        height: 30,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      expect(selection.renderer.console.onCopySelection).toBeFunction();
+
+      await openTuiSolidAct(async () => {
+        await selection.renderer.console.onCopySelection?.("Console selected text");
+        await Bun.sleep(0);
+      });
+      await testSetup.renderOnce();
+
+      expect(copiedText).toEqual(["Console selected text"]);
+      expect(selection.wasCleared()).toBe(true);
+      expect(controller.getState().notifications.at(-1)).toMatchObject({
+        level: "info",
+        message: "Copied to clipboard.",
+      });
     } finally {
       controller.dispose();
       testSetup.renderer.destroy();
@@ -1367,6 +1680,105 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("$ bun test");
       expect(frame).toContain("1775 pass");
       expect(frame).not.toContain('"command": "bun test"');
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("renders skill_load tools as compact skill summaries instead of dumping markdown", async () => {
+    const skillLoadOutput = [
+      "# Skill Loaded: repository-analysis",
+      "Category: core",
+      "Base directory: /Users/bytedance/new_py/brewva/.brewva/skills/.system/core/repository-analysis",
+      "",
+      "## Contract",
+      "- effect level: read_only",
+      "- allowed effects: workspace_read, runtime_observe",
+      "- denied effects: workspace_write, local_exec",
+      "- preferred tools: read, grep",
+      "- fallback tools: glob, lsp_symbols",
+      "- cost hint: medium",
+      "- default lease: max_tool_calls=60, max_tokens=120000, max_parallel=(unset)",
+      "- hard ceiling: max_tool_calls=120, max_tokens=220000, max_parallel=(unset)",
+      "- required outputs: repository_snapshot, impact_map",
+      "- output contracts: repository_snapshot, impact_map",
+      "- required inputs: (none)",
+      "- optional inputs: (none)",
+      "- readiness: available",
+      "- routing scope: core",
+      "",
+      "## Resources",
+      "- references: /Users/bytedance/new_py/brewva/.brewva/skills/.system/project/shared/critical-rules.md, /Users/bytedance/new_py/brewva/.brewva/skills/.system/project/shared/package-boundaries.md",
+      "- scripts: (none)",
+      "- heuristics: (none)",
+      "- invariants: (none)",
+      "",
+      "## Instructions",
+      "## Project Context: critical-rules",
+      "# Brewva Project Critical Rules",
+      "",
+      "Long markdown body that should not dominate the transcript.",
+    ].join("\n");
+    const { bundle } = createFakeBundle({
+      seedMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool-skill-load-1",
+              name: "skill_load",
+              arguments: { name: "repository-analysis" },
+            },
+          ],
+          stopReason: "toolUse",
+        },
+        {
+          role: "toolResult",
+          toolCallId: "tool-skill-load-1",
+          toolName: "skill_load",
+          content: [{ type: "text", text: skillLoadOutput }],
+          details: {
+            ok: true,
+            skill: "repository-analysis",
+            skillReadiness: { readiness: "available" },
+          },
+          isError: false,
+        },
+      ],
+    });
+
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 120,
+        height: 32,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+      const frame = testSetup.captureCharFrame();
+      expect(frame).toContain('Skill "repository-analysis"');
+      expect(frame).toContain("core");
+      expect(frame).toContain("read_only");
+      expect(frame).toContain("available");
+      expect(frame).toContain("read, grep");
+      expect(frame).toContain("references 2");
+      expect(frame).not.toContain("# Skill Loaded");
+      expect(frame).not.toContain("## Instructions");
+      expect(frame).not.toContain("Brewva Project Critical Rules");
+      expect(frame).not.toContain("Long markdown body");
     } finally {
       controller.dispose();
       testSetup.renderer.destroy();

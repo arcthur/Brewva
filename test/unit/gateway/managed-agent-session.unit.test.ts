@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
 import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
@@ -59,6 +60,50 @@ function createUsage() {
       total: 0,
     },
   };
+}
+
+function writeRoutableSkill(workspace: string): void {
+  const skillDir = join(workspace, ".brewva", "skills", "domain", "runtime-tool-probe");
+  mkdirSync(skillDir, { recursive: true });
+  writeFileSync(
+    join(skillDir, "SKILL.md"),
+    [
+      "---",
+      "name: runtime-tool-probe",
+      "description: Debug runtime and repository behavior.",
+      "selection:",
+      "  when_to_use: Use when investigating runtime, context, skill, or repository behavior.",
+      "  examples:",
+      "    - Inspect runtime and skill behavior.",
+      "  phases:",
+      "    - investigate",
+      "intent:",
+      "  outputs: []",
+      "effects:",
+      "  allowed_effects:",
+      "    - workspace_read",
+      "    - runtime_observe",
+      "resources:",
+      "  default_lease:",
+      "    max_tool_calls: 20",
+      "    max_tokens: 20000",
+      "  hard_ceiling:",
+      "    max_tool_calls: 40",
+      "    max_tokens: 40000",
+      "execution_hints:",
+      "  preferred_tools: [read]",
+      "  fallback_tools: [grep]",
+      "consumes: []",
+      "requires: []",
+      "---",
+      "",
+      "# Runtime Tool Probe",
+      "",
+      "Use this skill to investigate runtime behavior.",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
 }
 
 function createSettingsStub() {
@@ -2057,6 +2102,103 @@ describe("managed agent session compaction", () => {
       );
     } finally {
       session.dispose();
+    }
+  });
+
+  test("runtime plugin tool registration after session initialization reaches the provider turn", async () => {
+    const workspace = createTestWorkspace("managed-agent-session-dynamic-tool-registration");
+    writeRoutableSkill(workspace);
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const sessionStore = new HostedRuntimeTapeSessionStore(
+      runtime,
+      workspace,
+      "managed-agent-session-dynamic-tool-registration-session",
+    );
+    const fauxProvider = registerFauxProvider({
+      api: "managed-session-dynamic-tool-registration-faux",
+      provider: "managed-session-dynamic-tool-registration",
+      models: [
+        {
+          id: "managed-session-dynamic-tool-registration-model",
+          name: "Managed Session Dynamic Tool Registration Model",
+          reasoning: false,
+          input: ["text"],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 128000,
+          maxTokens: 4096,
+        },
+      ],
+    });
+    const model = fauxProvider.getModel();
+    const observedToolNames: string[][] = [];
+
+    try {
+      sessionStore.appendModelChange(model.provider, model.id);
+      sessionStore.appendThinkingLevelChange("off");
+      const modelCatalog = createInMemoryModelCatalog();
+      modelCatalog.registerProvider(model.provider, {
+        baseUrl: model.baseUrl,
+        apiKey: "test-key",
+        models: [
+          {
+            id: model.id,
+            name: model.name,
+            api: model.api,
+            reasoning: model.reasoning,
+            input: model.input,
+            cost: model.cost,
+            contextWindow: model.contextWindow,
+            maxTokens: model.maxTokens,
+          },
+        ],
+      });
+
+      fauxProvider.setResponses([
+        (context) => {
+          observedToolNames.push(context.tools?.map((tool) => tool.name).toSorted() ?? []);
+          return {
+            role: "assistant",
+            content: [{ type: "text", text: "Dynamic tools observed." }],
+            api: model.api,
+            provider: model.provider,
+            model: model.id,
+            usage: createUsage(),
+            stopReason: "stop",
+            timestamp: Date.now(),
+          };
+        },
+      ]);
+
+      const session = await createBrewvaManagedAgentSession({
+        cwd: workspace,
+        agentDir: join(workspace, ".brewva-agent"),
+        sessionStore,
+        settings: createSettingsStub(),
+        modelCatalog,
+        resourceLoader: await createResourceLoader(workspace),
+        customTools: [],
+        runtimePlugins: [createHostedTurnPipeline({ runtime, registerTools: true })],
+        initialModel: model,
+        initialThinkingLevel: "off",
+      });
+
+      try {
+        await session.prompt(
+          textPrompt("Inspect runtime, context, skill, and repository behavior."),
+        );
+        await session.waitForIdle();
+      } finally {
+        session.dispose();
+      }
+
+      expect(observedToolNames[0]).toContain("task_set_spec");
+      expect(observedToolNames[0]).toContain("skill_load");
+      expect(observedToolNames[0]).toContain("workflow_status");
+      expect(observedToolNames[0]).not.toContain("read");
+      expect(observedToolNames[0]).not.toContain("edit");
+      expect(observedToolNames[0]).not.toContain("write");
+    } finally {
+      fauxProvider.unregister();
     }
   });
 });

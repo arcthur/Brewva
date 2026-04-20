@@ -1,5 +1,6 @@
 import { KNOWLEDGE_SOURCE_TYPES } from "@brewva/brewva-recall";
 import {
+  listSkillOutputs,
   PLANNING_EVIDENCE_KEYS,
   REVIEW_CHANGE_CATEGORIES,
   type SkillDocument,
@@ -470,7 +471,7 @@ export function createSkillCompleteTool(options: BrewvaToolOptions): ToolDefinit
         "Verification must pass or be intentionally read-only before completion.",
       ],
       parameters: Type.Object({
-        outputs: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+        outputs: Type.Record(Type.String(), Type.Unknown()),
         learningResearch: Type.Optional(
           Type.Object(
             {
@@ -521,7 +522,7 @@ export function createSkillCompleteTool(options: BrewvaToolOptions): ToolDefinit
       }),
       async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
         const sessionId = getSessionId(ctx);
-        const rawOutputs = isRecord(params.outputs) ? params.outputs : {};
+        const paramsRecord = isRecord(params) ? params : {};
         const learningResearch = isRecord(params.learningResearch)
           ? params.learningResearch
           : undefined;
@@ -542,6 +543,63 @@ export function createSkillCompleteTool(options: BrewvaToolOptions): ToolDefinit
             },
           );
         }
+        const hasOutputsProperty = hasOwn(paramsRecord, "outputs");
+        const outputKeys = listSkillOutputs(activeSkill.contract);
+        const misplacedOutputKeys = outputKeys.filter((key) => hasOwn(paramsRecord, key));
+        if (misplacedOutputKeys.length > 0) {
+          return failTextResult(
+            [
+              "Skill completion rejected. Required skill outputs must be supplied under the `outputs` object.",
+              "Move top-level output fields into `outputs`.",
+            ].join(" "),
+            {
+              ok: false,
+              missing: ["outputs"],
+              invalid: [
+                {
+                  name: "outputs",
+                  reason:
+                    "skill_complete requires an explicit outputs object unless a supported synthesis mode is enabled.",
+                },
+              ],
+              misplacedOutputKeys,
+            },
+          );
+        }
+        if (!hasOutputsProperty) {
+          return failTextResult(
+            [
+              "Skill completion rejected. Required skill outputs must be supplied under the `outputs` object.",
+              "Use `outputs: {}` only for a skill that declares no outputs or when using a supported synthesis mode.",
+            ].join(" "),
+            {
+              ok: false,
+              missing: ["outputs"],
+              invalid: [
+                {
+                  name: "outputs",
+                  reason: "skill_complete requires an explicit outputs object.",
+                },
+              ],
+            },
+          );
+        }
+        if (hasOutputsProperty && !isRecord(params.outputs)) {
+          return failTextResult(
+            "Skill completion rejected. `outputs` must be an object whose keys are the active skill's required outputs.",
+            {
+              ok: false,
+              missing: [],
+              invalid: [
+                {
+                  name: "outputs",
+                  reason: "outputs must be an object.",
+                },
+              ],
+            },
+          );
+        }
+        const rawOutputs = isRecord(params.outputs) ? params.outputs : {};
         let outputs = rawOutputs;
         let learningResearchSynthesis:
           | {

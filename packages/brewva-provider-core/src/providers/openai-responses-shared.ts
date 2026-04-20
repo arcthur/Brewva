@@ -44,6 +44,53 @@ import { transformMessages } from "./transform-messages.js";
 // Utilities
 // =============================================================================
 
+type ResponseReasoningSummaryPart = NonNullable<ResponseReasoningItem["summary"]>[number];
+
+function readReasoningSummaryIndex(event: { summary_index?: unknown }): number | null {
+  return typeof event.summary_index === "number" && Number.isInteger(event.summary_index)
+    ? event.summary_index
+    : null;
+}
+
+function readReasoningSummaryPart(part: unknown): ResponseReasoningSummaryPart | null {
+  if (!part || typeof part !== "object" || Array.isArray(part)) {
+    return null;
+  }
+  if (typeof (part as { text?: unknown }).text !== "string") {
+    return null;
+  }
+  return part as ResponseReasoningSummaryPart;
+}
+
+function ensureReasoningSummaryPart(
+  item: ResponseReasoningItem,
+  event: { part?: unknown; summary_index?: unknown },
+): ResponseReasoningSummaryPart {
+  item.summary = item.summary || [];
+  const index = readReasoningSummaryIndex(event) ?? item.summary.length;
+  const existing = item.summary[index];
+  if (existing) {
+    return existing;
+  }
+
+  const part =
+    readReasoningSummaryPart(event.part) ?? ({ type: "summary_text", text: "" } as const);
+  item.summary[index] = part;
+  return part;
+}
+
+function resolveReasoningSummaryPart(
+  item: ResponseReasoningItem,
+  event: { summary_index?: unknown },
+): ResponseReasoningSummaryPart | null {
+  item.summary = item.summary || [];
+  const index = readReasoningSummaryIndex(event);
+  if (index !== null) {
+    return item.summary[index] ?? ensureReasoningSummaryPart(item, event);
+  }
+  return item.summary[item.summary.length - 1] ?? null;
+}
+
 function encodeTextSignatureV1(id: string, phase?: TextSignatureV1["phase"]): string {
   const payload: TextSignatureV1 = { v: 1, id };
   if (phase) payload.phase = phase;
@@ -358,16 +405,14 @@ export async function processResponsesStream<TApi extends Api>(
       }
     } else if (event.type === "response.reasoning_summary_part.added") {
       if (currentItem && currentItem.type === "reasoning") {
-        currentItem.summary = currentItem.summary || [];
-        currentItem.summary.push(event.part);
+        ensureReasoningSummaryPart(currentItem, event);
       }
     } else if (event.type === "response.reasoning_summary_text.delta") {
       if (currentItem?.type === "reasoning" && currentBlock?.type === "thinking") {
-        currentItem.summary = currentItem.summary || [];
-        const lastPart = currentItem.summary[currentItem.summary.length - 1];
-        if (lastPart) {
+        const part = resolveReasoningSummaryPart(currentItem, event);
+        if (part) {
           currentBlock.thinking += event.delta;
-          lastPart.text += event.delta;
+          part.text += event.delta;
           stream.push({
             type: "thinking_delta",
             contentIndex: blockIndex(),
@@ -378,11 +423,10 @@ export async function processResponsesStream<TApi extends Api>(
       }
     } else if (event.type === "response.reasoning_summary_part.done") {
       if (currentItem?.type === "reasoning" && currentBlock?.type === "thinking") {
-        currentItem.summary = currentItem.summary || [];
-        const lastPart = currentItem.summary[currentItem.summary.length - 1];
-        if (lastPart) {
+        const part = resolveReasoningSummaryPart(currentItem, event);
+        if (part) {
           currentBlock.thinking += "\n\n";
-          lastPart.text += "\n\n";
+          part.text += "\n\n";
           stream.push({
             type: "thinking_delta",
             contentIndex: blockIndex(),

@@ -528,8 +528,8 @@ TaskSpec-first control-plane posture:
 - when no skill is active and no TaskSpec is recorded, the visible surface may
   narrow to bootstrap control-plane tools so the next semantic decision is
   `task_set_spec`
-- once TaskSpec exists, the hosted path may narrow again to a
-  `skill_load_required` posture when the routed match is strong
+- once TaskSpec exists, the hosted path narrows again to a
+  `skill_load_required` posture when a routed skill is retained
 - these posture changes are visible control-plane shaping plus replayable
   receipts such as `skill_recommendation_derived`; they do not activate skills
   automatically and they do not create a runtime-owned planning state machine

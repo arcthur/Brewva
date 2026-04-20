@@ -99,6 +99,15 @@ function normalizeToolResultPayload(
   };
 }
 
+function toolPayloadIndicatesError(
+  payload: CliShellTranscriptToolResultPayload | undefined,
+): boolean {
+  if (!payload) {
+    return false;
+  }
+  return payload.isError === true || asRecord(payload.details)?.verdict === "fail";
+}
+
 function buildTextPart(
   id: string,
   text: string,
@@ -123,6 +132,10 @@ function findToolPart(
     (part): part is CliShellTranscriptToolPart =>
       part.type === "tool" && part.toolCallId === toolCallId,
   );
+}
+
+function shouldDisplayMessage(message: unknown): boolean {
+  return asRecord(message)?.display !== false;
 }
 
 function buildAssistantParts(
@@ -187,6 +200,8 @@ function buildToolFallbackMessage(
   update: CliTranscriptToolExecutionUpdate,
 ): CliShellTranscriptMessage {
   const renderMode = update.renderMode ?? "stable";
+  const partialResult = normalizeToolResultPayload(update.partialResult);
+  const result = normalizeToolResultPayload(update.result);
   return {
     id: update.fallbackMessageId ?? `tool:${update.toolCallId}`,
     role: "tool",
@@ -201,15 +216,15 @@ function buildToolFallbackMessage(
         phase: update.phase,
         status:
           update.status ??
-          (normalizeToolResultPayload(update.result)?.isError === true
+          (toolPayloadIndicatesError(result)
             ? "error"
             : update.result !== undefined
               ? "completed"
               : update.partialResult !== undefined
                 ? "running"
                 : "pending"),
-        partialResult: normalizeToolResultPayload(update.partialResult),
-        result: normalizeToolResultPayload(update.result),
+        partialResult,
+        result,
         renderMode,
       },
     ],
@@ -290,6 +305,9 @@ export function buildTranscriptMessageFromMessage(
 
   switch (role) {
     case "assistant": {
+      if (!shouldDisplayMessage(message)) {
+        return null;
+      }
       const parts = buildAssistantParts(options.id, renderMode, options.previousMessage, message);
       return parts.length > 0
         ? {
@@ -301,8 +319,18 @@ export function buildTranscriptMessageFromMessage(
         : null;
     }
     case "user":
-    case "custom":
     case "system": {
+      return buildTextTranscriptMessage({
+        id: options.id,
+        role,
+        text: extractVisibleTextFromMessage(message),
+        renderMode,
+      });
+    }
+    case "custom": {
+      if (!shouldDisplayMessage(message)) {
+        return null;
+      }
       return buildTextTranscriptMessage({
         id: options.id,
         role,
@@ -362,7 +390,7 @@ export function upsertToolExecutionIntoTranscriptMessages(
     update.result !== undefined ? normalizeToolResultPayload(update.result) : location.part.result;
   const inferredStatus =
     update.status ??
-    (nextResult?.isError === true
+    (toolPayloadIndicatesError(nextResult)
       ? "error"
       : update.result !== undefined
         ? "completed"

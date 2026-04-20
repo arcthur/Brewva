@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { convertResponsesMessages } from "../../../packages/brewva-provider-core/src/providers/openai-responses-shared.js";
+import {
+  convertResponsesMessages,
+  processResponsesStream,
+} from "../../../packages/brewva-provider-core/src/providers/openai-responses-shared.js";
+import { AssistantMessageEventStream } from "../../../packages/brewva-provider-core/src/utils/event-stream.js";
 
 const TEST_MODEL = {
   provider: "openai",
@@ -71,6 +75,105 @@ describe("openai responses prompt file conversion", () => {
             file_data: Buffer.from("export const answer = 42;\n", "utf8").toString("base64"),
           },
         ],
+      },
+    ]);
+  });
+});
+
+describe("openai responses stream processing", () => {
+  test("streams Codex reasoning summary deltas when summary part events omit part payloads", async () => {
+    const output = {
+      role: "assistant",
+      content: [],
+      api: "openai-responses",
+      provider: "openai",
+      model: "gpt-5.4-mini",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: 1,
+    };
+    const stream = new AssistantMessageEventStream();
+    const observed: Array<{ type: string; delta?: string }> = [];
+    const push = stream.push.bind(stream);
+    stream.push = (event) => {
+      observed.push(event);
+      push(event);
+    };
+
+    await processResponsesStream(
+      [
+        {
+          type: "response.created",
+          response: { id: "resp_1" },
+        },
+        {
+          type: "response.output_item.added",
+          item: { id: "rs_1", type: "reasoning", summary: [] },
+        },
+        {
+          type: "response.reasoning_summary_part.added",
+          item_id: "rs_1",
+          summary_index: 0,
+        },
+        {
+          type: "response.reasoning_summary_text.delta",
+          item_id: "rs_1",
+          summary_index: 0,
+          delta: "Step",
+        },
+        {
+          type: "response.reasoning_summary_text.delta",
+          item_id: "rs_1",
+          summary_index: 0,
+          delta: " one",
+        },
+        {
+          type: "response.output_item.done",
+          item: {
+            id: "rs_1",
+            type: "reasoning",
+            summary: [{ type: "summary_text", text: "Step one" }],
+          },
+        },
+        {
+          type: "response.completed",
+          response: {
+            id: "resp_1",
+            status: "completed",
+            usage: {
+              input_tokens: 1,
+              output_tokens: 2,
+              total_tokens: 3,
+              input_tokens_details: { cached_tokens: 0 },
+            },
+          },
+        },
+      ] as never,
+      output as never,
+      stream,
+      TEST_MODEL as never,
+    );
+
+    expect(
+      observed.filter((event) => event.type === "thinking_delta").map((event) => event.delta),
+    ).toEqual(["Step", " one"]);
+    expect(output.content).toMatchObject([
+      {
+        type: "thinking",
+        thinking: "Step one",
       },
     ]);
   });

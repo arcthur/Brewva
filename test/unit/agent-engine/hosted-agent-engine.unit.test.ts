@@ -596,4 +596,238 @@ describe("hosted agent engine", () => {
       ),
     ).toHaveLength(1);
   });
+
+  test("refreshes active tools between provider turns inside the same run", async () => {
+    const toolsSeenByStream: string[][] = [];
+    let engine: ReturnType<typeof createHostedAgentEngine>;
+
+    const streamFn: BrewvaAgentEngineStreamFunction = async (_model, context) => {
+      toolsSeenByStream.push((context.tools ?? []).map((tool) => tool.name));
+      const lastMessage = context.messages[context.messages.length - 1] as
+        | BrewvaAgentEngineLlmMessage
+        | undefined;
+      if (lastMessage?.role === "toolResult") {
+        return createStream(createAssistantMessage([{ type: "text", text: "final" }]));
+      }
+
+      return createStream(
+        createAssistantMessage(
+          [
+            {
+              type: "toolCall",
+              id: "tool-refresh-1",
+              name: "first",
+              arguments: {},
+            },
+          ],
+          "toolUse",
+        ),
+      );
+    };
+
+    const secondTool = {
+      name: "second",
+      label: "Second",
+      description: "Second tool",
+      parameters: Type.Object({}),
+      async execute() {
+        return {
+          content: [{ type: "text" as const, text: "second" }],
+          details: { ok: true },
+        };
+      },
+    };
+    const firstTool = {
+      name: "first",
+      label: "First",
+      description: "First tool",
+      parameters: Type.Object({}),
+      async execute() {
+        engine.setTools([firstTool, secondTool]);
+        return {
+          content: [{ type: "text" as const, text: "first" }],
+          details: { ok: true },
+        };
+      },
+    };
+
+    engine = createHostedAgentEngine({
+      initialModel: TEST_MODEL,
+      initialThinkingLevel: "off",
+      sessionId: "session-refresh-tools",
+      steeringMode: "one-at-a-time",
+      followUpMode: "one-at-a-time",
+      transport: "sse",
+      thinkingBudgets: undefined,
+      maxRetryDelayMs: 1000,
+      beforeToolCall: async () => undefined,
+      afterToolCall: async () => undefined,
+      onPayload: async (payload) => payload,
+      transformContext: async (messages) => messages,
+      resolveRequestAuth: async () => ({ ok: true, apiKey: "tool-key" }),
+      streamFn,
+    });
+
+    engine.setTools([firstTool]);
+
+    await engine.prompt({
+      role: "user",
+      content: [{ type: "text", text: "refresh tools" }],
+      timestamp: Date.now(),
+    });
+
+    expect(toolsSeenByStream).toEqual([["first"], ["first", "second"]]);
+  });
+
+  test("drains follow-up messages queued by turn_end handlers before agent_end", async () => {
+    const events: BrewvaAgentEngineEvent[] = [];
+    let streamCalls = 0;
+
+    const streamFn: BrewvaAgentEngineStreamFunction = async (_model, context) => {
+      streamCalls += 1;
+      const sawGuardFollowUp = context.messages.some(
+        (message) =>
+          message.role === "user" &&
+          message.content.some(
+            (content) =>
+              content.type === "text" && content.text.includes("complete the active skill"),
+          ),
+      );
+      return createStream(
+        createAssistantMessage([
+          { type: "text", text: sawGuardFollowUp ? "guard handled" : "initial stop" },
+        ]),
+      );
+    };
+
+    const engine = createHostedAgentEngine({
+      initialModel: TEST_MODEL,
+      initialThinkingLevel: "off",
+      sessionId: "session-agent-end-follow-up",
+      steeringMode: "one-at-a-time",
+      followUpMode: "one-at-a-time",
+      transport: "sse",
+      thinkingBudgets: undefined,
+      maxRetryDelayMs: 1000,
+      beforeToolCall: async () => undefined,
+      afterToolCall: async () => undefined,
+      onPayload: async (payload) => payload,
+      transformContext: async (messages) => messages,
+      resolveRequestAuth: async () => ({ ok: true, apiKey: "tool-key" }),
+      streamFn,
+    });
+
+    let queuedGuard = false;
+    const unsubscribe = engine.subscribe((event) => {
+      events.push(event);
+      if (event.type === "turn_end" && !queuedGuard) {
+        queuedGuard = true;
+        engine.followUp({
+          role: "custom",
+          customType: "brewva-guard",
+          content: "complete the active skill",
+          display: true,
+          timestamp: Date.now(),
+        });
+      }
+    });
+
+    await engine.prompt({
+      role: "user",
+      content: [{ type: "text", text: "stop early" }],
+      timestamp: Date.now(),
+    });
+
+    unsubscribe();
+
+    expect(streamCalls).toBe(2);
+    expect(engine.hasQueuedMessages()).toBe(false);
+    expect(
+      events.filter(
+        (event): event is Extract<BrewvaAgentEngineEvent, { type: "agent_end" }> =>
+          event.type === "agent_end",
+      ),
+    ).toHaveLength(1);
+  });
+
+  test("applies message_end transforms before storing messages for later provider turns", async () => {
+    const streamContexts: BrewvaAgentEngineLlmMessage[][] = [];
+    let streamCalls = 0;
+
+    const streamFn: BrewvaAgentEngineStreamFunction = async (_model, context) => {
+      streamCalls += 1;
+      streamContexts.push([...context.messages]);
+      return createStream(
+        createAssistantMessage([
+          { type: "text", text: streamCalls === 1 ? "invalid draft summary" : "clean answer" },
+        ]),
+      );
+    };
+
+    const engine = createHostedAgentEngine({
+      initialModel: TEST_MODEL,
+      initialThinkingLevel: "off",
+      sessionId: "session-message-end-transform-context",
+      steeringMode: "one-at-a-time",
+      followUpMode: "one-at-a-time",
+      transport: "sse",
+      thinkingBudgets: undefined,
+      maxRetryDelayMs: 1000,
+      beforeToolCall: async () => undefined,
+      afterToolCall: async () => undefined,
+      onPayload: async (payload) => payload,
+      transformContext: async (messages) => messages,
+      resolveRequestAuth: async () => ({ ok: true, apiKey: "tool-key" }),
+      streamFn,
+    });
+
+    const unsubscribe = engine.subscribe((event) => {
+      if (
+        event.type === "message_end" &&
+        event.message.role === "assistant" &&
+        event.message.content.some(
+          (part) => part.type === "text" && part.text.includes("invalid draft summary"),
+        )
+      ) {
+        return {
+          ...event,
+          message: {
+            ...event.message,
+            display: false,
+            excludeFromContext: true,
+            details: {
+              brewvaDraftSuppressed: {
+                reason: "test_contract",
+              },
+            },
+          },
+        };
+      }
+      return undefined;
+    });
+
+    await engine.prompt({
+      role: "user",
+      content: [{ type: "text", text: "first" }],
+      timestamp: Date.now(),
+    });
+    await engine.prompt({
+      role: "user",
+      content: [{ type: "text", text: "second" }],
+      timestamp: Date.now(),
+    });
+
+    unsubscribe();
+
+    expect(streamContexts).toHaveLength(2);
+    expect(
+      streamContexts[1]?.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content.some(
+            (part) => part.type === "text" && part.text.includes("invalid draft summary"),
+          ),
+      ),
+    ).toBe(false);
+  });
 });

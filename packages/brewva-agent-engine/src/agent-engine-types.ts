@@ -51,6 +51,12 @@ export interface BrewvaAgentEngineFileContent {
   displayText?: string;
 }
 
+export interface BrewvaAgentEngineMessageVisibility {
+  display?: boolean;
+  excludeFromContext?: boolean;
+  details?: unknown;
+}
+
 export interface BrewvaAgentEngineToolCall {
   type: "toolCall";
   id: string;
@@ -76,7 +82,7 @@ export interface BrewvaAgentEngineUsage {
 
 export type BrewvaAgentEngineStopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
 
-export interface BrewvaAgentEngineUserMessage {
+export interface BrewvaAgentEngineUserMessage extends BrewvaAgentEngineMessageVisibility {
   role: "user";
   content: Array<
     BrewvaAgentEngineTextContent | BrewvaAgentEngineImageContent | BrewvaAgentEngineFileContent
@@ -84,7 +90,7 @@ export interface BrewvaAgentEngineUserMessage {
   timestamp: number;
 }
 
-export interface BrewvaAgentEngineAssistantMessage {
+export interface BrewvaAgentEngineAssistantMessage extends BrewvaAgentEngineMessageVisibility {
   role: "assistant";
   content: Array<
     BrewvaAgentEngineTextContent | BrewvaAgentEngineThinkingContent | BrewvaAgentEngineToolCall
@@ -99,7 +105,10 @@ export interface BrewvaAgentEngineAssistantMessage {
   timestamp: number;
 }
 
-export interface BrewvaAgentEngineToolResultMessage<TDetails = unknown> {
+export interface BrewvaAgentEngineToolResultMessage<TDetails = unknown> extends Omit<
+  BrewvaAgentEngineMessageVisibility,
+  "details"
+> {
   role: "toolResult";
   toolCallId: string;
   toolName: string;
@@ -109,7 +118,10 @@ export interface BrewvaAgentEngineToolResultMessage<TDetails = unknown> {
   timestamp: number;
 }
 
-export interface BrewvaAgentEngineCustomMessage<TDetails = unknown> {
+export interface BrewvaAgentEngineCustomMessage<TDetails = unknown> extends Omit<
+  BrewvaAgentEngineMessageVisibility,
+  "display" | "details"
+> {
   role: "custom";
   customType: string;
   content: string | Array<BrewvaAgentEngineTextContent | BrewvaAgentEngineImageContent>;
@@ -118,7 +130,10 @@ export interface BrewvaAgentEngineCustomMessage<TDetails = unknown> {
   timestamp: number;
 }
 
-export interface BrewvaAgentEngineBashExecutionMessage {
+export interface BrewvaAgentEngineBashExecutionMessage extends Omit<
+  BrewvaAgentEngineMessageVisibility,
+  "excludeFromContext"
+> {
   role: "bashExecution";
   command: string;
   output: string;
@@ -130,14 +145,14 @@ export interface BrewvaAgentEngineBashExecutionMessage {
   excludeFromContext?: boolean;
 }
 
-export interface BrewvaAgentEngineBranchSummaryMessage {
+export interface BrewvaAgentEngineBranchSummaryMessage extends BrewvaAgentEngineMessageVisibility {
   role: "branchSummary";
   summary: string;
   fromId: string;
   timestamp: number;
 }
 
-export interface BrewvaAgentEngineCompactionSummaryMessage {
+export interface BrewvaAgentEngineCompactionSummaryMessage extends BrewvaAgentEngineMessageVisibility {
   role: "compactionSummary";
   summary: string;
   tokensBefore: number;
@@ -305,7 +320,11 @@ export interface BrewvaAgentEngine {
     tools: Array<{ name: string }>;
   };
   readonly signal: AbortSignal | undefined;
-  subscribe(listener: (event: BrewvaAgentEngineEvent) => Promise<void> | void): () => void;
+  subscribe(
+    listener: (
+      event: BrewvaAgentEngineEvent,
+    ) => Promise<BrewvaAgentEngineEvent | void> | BrewvaAgentEngineEvent | void,
+  ): () => void;
   prompt(message: BrewvaAgentEngineMessage | BrewvaAgentEngineMessage[]): Promise<void>;
   waitForIdle(): Promise<void>;
   setModel(model: unknown): void;

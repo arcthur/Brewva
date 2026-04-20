@@ -284,8 +284,9 @@ Current interactive protocol is TaskSpec-first:
 - when that re-evaluation changes the routed posture in the same turn, hosted
   telemetry emits a fresh `skill_recommendation_derived` receipt for the new
   posture
-- only a strong post-TaskSpec match narrows the turn again so the next
-  semantic decision is explicit `skill_load`
+- any retained post-TaskSpec recommendation narrows the turn again so the next
+  semantic decision is explicit `skill_load`; confidence affects ranking, not
+  whether the skill boundary may be skipped
 
 Telemetry:
 

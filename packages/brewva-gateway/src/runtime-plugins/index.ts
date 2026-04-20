@@ -163,6 +163,7 @@ function registerHostedPipeline(
 
   runtimePluginApi.on("tool_call", qualityGate.toolCall);
   runtimePluginApi.on("context", contextTransform.context);
+  runtimePluginApi.on("message_end", completionGuard.messageEnd);
   registerProviderRequestReduction(runtimePluginApi, hostedRuntime);
   registerProviderRequestRecovery(runtimePluginApi, runtime);
   registerEventStream(runtimePluginApi, hostedRuntime, turnClock, {
@@ -195,6 +196,8 @@ function registerHostedPipeline(
     },
     narrativeMemory,
     {
+      beforeAgentStart: completionGuard.beforeAgentStart,
+      turnEnd: completionGuard.turnEnd,
       agentEnd: completionGuard.agentEnd,
       sessionShutdown: completionGuard.sessionShutdown,
     },

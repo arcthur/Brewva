@@ -62,9 +62,21 @@ export interface OpenTuiScrollBoxHandle {
   stickyStart?: "bottom" | "top" | "left" | "right";
 }
 
+export interface OpenTuiSelection {
+  getSelectedText(): string;
+}
+
+export interface OpenTuiConsoleHandle {
+  onCopySelection?: (text: string) => void;
+}
+
 export interface OpenTuiRenderer {
   width: number;
   height: number;
+  console?: OpenTuiConsoleHandle;
+  getSelection?(): OpenTuiSelection | null;
+  clearSelection?(): void;
+  copyToClipboardOSC52?(text: string): boolean;
   destroy(): void;
 }
 

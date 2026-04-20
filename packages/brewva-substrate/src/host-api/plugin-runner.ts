@@ -12,8 +12,13 @@ import type {
   BrewvaHostContext,
   BrewvaHostContextEvent,
   BrewvaHostCustomMessage,
+  BrewvaHostCustomMessageDelivery,
   BrewvaHostInputEvent,
   BrewvaHostInputEventResult,
+  BrewvaHostMessageEndEvent,
+  BrewvaHostMessageEndResult,
+  BrewvaHostMessageEnvelope,
+  BrewvaHostMessageVisibilityPatch,
   BrewvaHostPluginApi,
   BrewvaHostPluginEventMap,
   BrewvaHostPluginFactory,
@@ -33,10 +38,36 @@ type HandlerRegistry = {
   [TKey in keyof BrewvaHostPluginEventMap]: PluginHandler<TKey>[];
 };
 
+function applyMessageVisibilityPatch(
+  message: BrewvaHostMessageEnvelope,
+  visibility: BrewvaHostMessageVisibilityPatch,
+): BrewvaHostMessageEnvelope {
+  return {
+    ...message,
+    ...(visibility.display !== undefined ? { display: visibility.display } : {}),
+    ...(visibility.excludeFromContext !== undefined
+      ? { excludeFromContext: visibility.excludeFromContext }
+      : {}),
+    ...(visibility.details !== undefined ? { details: visibility.details } : {}),
+  };
+}
+
+function readMessageVisibility(
+  message: BrewvaHostMessageEnvelope,
+): BrewvaHostMessageVisibilityPatch {
+  return {
+    ...(message.display !== undefined ? { display: message.display } : {}),
+    ...(message.excludeFromContext !== undefined
+      ? { excludeFromContext: message.excludeFromContext }
+      : {}),
+    ...(message.details !== undefined ? { details: message.details } : {}),
+  };
+}
+
 export interface BrewvaHostPluginRunnerActionPort {
   sendMessage(
     message: BrewvaHostCustomMessage,
-    options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+    options?: { triggerTurn?: boolean; deliverAs?: BrewvaHostCustomMessageDelivery },
   ): void;
   sendUserMessage(
     content: BrewvaPromptContentPart[],
@@ -101,6 +132,10 @@ export interface BrewvaHostPluginRunner {
     payload: BrewvaHostToolResultEvent,
     ctx: BrewvaHostContext,
   ): Promise<BrewvaHostToolResultResult | undefined>;
+  emitMessageEnd(
+    payload: BrewvaHostMessageEndEvent,
+    ctx: BrewvaHostContext,
+  ): Promise<BrewvaHostMessageEndResult | undefined>;
 }
 
 function createEmptyHandlerRegistry(): HandlerRegistry {
@@ -330,6 +365,27 @@ export async function createBrewvaHostPluginRunner(
         details: currentDetails,
         isError: currentIsError,
       };
+    },
+    async emitMessageEnd(payload, ctx) {
+      let currentMessage = payload.message;
+      let changed = false;
+
+      for (const handler of handlers.message_end) {
+        const result = (await handler(
+          {
+            ...payload,
+            message: currentMessage,
+          },
+          ctx,
+        )) as BrewvaHostMessageEndResult | undefined;
+        if (!result?.visibility) {
+          continue;
+        }
+        currentMessage = applyMessageVisibilityPatch(currentMessage, result.visibility);
+        changed = true;
+      }
+
+      return changed ? { visibility: readMessageVisibility(currentMessage) } : undefined;
     },
   };
 }

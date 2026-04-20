@@ -713,7 +713,7 @@ reject activation when another incompatible skill is already active.
 In the generic hosted path, when no skill is active yet and no TaskSpec is
 recorded, the hosted control plane first narrows the turn to bootstrap
 control-plane tools so the next semantic decision is `task_set_spec`. After
-TaskSpec is recorded, a strong routed-skill match may narrow the pre-skill
+TaskSpec is recorded, any retained routed-skill match narrows the pre-skill
 surface again so the next semantic decision is `skill_load` rather than ad hoc
 repository work.
 

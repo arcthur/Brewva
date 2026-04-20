@@ -15,6 +15,8 @@ import {
   type BrewvaHostedResourceLoader,
   type BrewvaHostCommandContext,
   type BrewvaHostCustomMessage,
+  type BrewvaHostCustomMessageDelivery,
+  type BrewvaHostMessageVisibilityPatch,
   type BrewvaHostPluginFactory,
   type BrewvaHostPluginRunner,
   type BrewvaManagedPromptSession,
@@ -60,6 +62,20 @@ import {
   type BrewvaAgentEngineTransport,
 } from "./hosted-agent-engine.js";
 import type { HostedSessionLogger } from "./logger.js";
+
+function applyMessageEndTransform(
+  original: BrewvaAgentEngineMessage,
+  visibility: BrewvaHostMessageVisibilityPatch,
+): BrewvaAgentEngineMessage {
+  return {
+    ...original,
+    ...(visibility.display !== undefined ? { display: visibility.display } : {}),
+    ...(visibility.excludeFromContext !== undefined
+      ? { excludeFromContext: visibility.excludeFromContext }
+      : {}),
+    ...(visibility.details !== undefined ? { details: visibility.details } : {}),
+  };
+}
 
 export interface BrewvaManagedAgentSessionSettingsPort {
   getQuietStartup(): boolean;
@@ -742,7 +758,15 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       },
       registrations: {
         registerTool(tool) {
-          toolDefinitions.push(tool);
+          const existingIndex = toolDefinitions.findIndex(
+            (candidate) => candidate.name === tool.name,
+          );
+          if (existingIndex >= 0) {
+            toolDefinitions[existingIndex] = tool;
+          } else {
+            toolDefinitions.push(tool);
+          }
+          session?.registerRuntimePluginTool(tool);
         },
       },
     });
@@ -871,9 +895,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
         );
       }
     }
-    this.#agent.subscribe(async (event) => {
-      await this.handleAgentEvent(event);
-    });
+    this.#agent.subscribe((event) => this.handleAgentEvent(event));
     this.#unsubscribeSessionWire =
       this.sessionManager.subscribeSessionWire?.((frame) => {
         void this.advanceSessionPhaseFromRuntimeFactFrame(frame);
@@ -1134,15 +1156,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     this.#toolPromptGuidelines.clear();
 
     for (const tool of this.#registeredTools) {
-      this.#toolDefinitions.set(tool.name, tool);
-      const promptSnippet = this.normalizePromptSnippet(tool.promptSnippet);
-      if (promptSnippet) {
-        this.#toolPromptSnippets.set(tool.name, promptSnippet);
-      }
-      const guidelines = this.normalizePromptGuidelines(tool.promptGuidelines);
-      if (guidelines.length > 0) {
-        this.#toolPromptGuidelines.set(tool.name, guidelines);
-      }
+      this.indexToolDefinition(tool);
     }
 
     const tools = [...this.#toolDefinitions.values()].map((tool) =>
@@ -1151,6 +1165,36 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     this.#agent.setTools(tools);
     this.#baseSystemPrompt = this.rebuildSystemPrompt();
     this.#agent.setSystemPrompt(this.#baseSystemPrompt);
+  }
+
+  private registerRuntimePluginTool(tool: BrewvaToolDefinition): void {
+    const existingIndex = this.#registeredTools.findIndex(
+      (candidate) => candidate.name === tool.name,
+    );
+    if (existingIndex >= 0) {
+      this.#registeredTools[existingIndex] = tool;
+    } else {
+      this.#registeredTools.push(tool);
+    }
+    this.indexToolDefinition(tool);
+    this.#baseSystemPrompt = this.rebuildSystemPrompt();
+    this.#agent.setSystemPrompt(this.#baseSystemPrompt);
+  }
+
+  private indexToolDefinition(tool: BrewvaToolDefinition): void {
+    this.#toolDefinitions.set(tool.name, tool);
+    const promptSnippet = this.normalizePromptSnippet(tool.promptSnippet);
+    if (promptSnippet) {
+      this.#toolPromptSnippets.set(tool.name, promptSnippet);
+    } else {
+      this.#toolPromptSnippets.delete(tool.name);
+    }
+    const guidelines = this.normalizePromptGuidelines(tool.promptGuidelines);
+    if (guidelines.length > 0) {
+      this.#toolPromptGuidelines.set(tool.name, guidelines);
+    } else {
+      this.#toolPromptGuidelines.delete(tool.name);
+    }
   }
 
   private normalizePromptSnippet(text: string | undefined): string | undefined {
@@ -1291,7 +1335,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
 
   private async sendCustomMessage(
     message: BrewvaHostCustomMessage,
-    options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+    options?: { triggerTurn?: boolean; deliverAs?: BrewvaHostCustomMessageDelivery },
   ): Promise<void> {
     const customMessage: Extract<BrewvaAgentEngineMessage, { role: "custom" }> = {
       role: "custom",
@@ -1304,6 +1348,26 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
 
     if (options?.deliverAs === "nextTurn") {
       this.#pendingNextTurnMessages.push(customMessage);
+      return;
+    }
+
+    if (options?.deliverAs === "transcript") {
+      const transcriptMessage = {
+        ...customMessage,
+        excludeFromContext: true,
+      };
+      const messageStartEvent = { type: "message_start" as const, message: transcriptMessage };
+      const messageEndEvent = { type: "message_end" as const, message: transcriptMessage };
+      const transformedStart = await this.emitPluginEvent(messageStartEvent);
+      const transformedEnd = await this.emitPluginEvent(messageEndEvent);
+      const committedMessage =
+        transformedEnd.type === "message_end" && transformedEnd.message.role === "custom"
+          ? transformedEnd.message
+          : transcriptMessage;
+      this.#agent.appendMessage(committedMessage);
+      this.emitToListeners(transformedStart);
+      this.emitToListeners(transformedEnd);
+      await this.syncContextState();
       return;
     }
 
@@ -1326,15 +1390,20 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       return;
     }
 
-    this.#agent.appendMessage(customMessage);
     const messageStartEvent = { type: "message_start" as const, message: customMessage };
     const messageEndEvent = { type: "message_end" as const, message: customMessage };
     if (this.#runner.hasHandlers("message_end")) {
-      await this.emitPluginEvent(messageStartEvent);
-      this.emitToListeners(messageStartEvent);
-      await this.emitPluginEvent(messageEndEvent);
-      this.emitToListeners(messageEndEvent);
+      const transformedStart = await this.emitPluginEvent(messageStartEvent);
+      const transformedEnd = await this.emitPluginEvent(messageEndEvent);
+      const committedMessage =
+        transformedEnd.type === "message_end" && transformedEnd.message.role === "custom"
+          ? transformedEnd.message
+          : customMessage;
+      this.#agent.appendMessage(committedMessage);
+      this.emitToListeners(transformedStart);
+      this.emitToListeners(transformedEnd);
     } else {
+      this.#agent.appendMessage(customMessage);
       this.sessionManager.appendCustomMessageEntry(
         customMessage.customType,
         customMessage.content,
@@ -1411,20 +1480,24 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     };
   }
 
-  private async handleAgentEvent(event: BrewvaAgentEngineEvent): Promise<void> {
+  private async handleAgentEvent(event: BrewvaAgentEngineEvent): Promise<BrewvaAgentEngineEvent> {
     if (event.type === "message_start" && event.message.role === "user") {
       const userText = this.extractUserMessageText(event.message);
       this.deleteQueuedMessage(userText);
     }
 
     await this.advanceSessionPhaseFromAgentEvent(event);
-    await this.emitPluginEvent(event);
-    this.emitToListeners(event as BrewvaPromptSessionEvent);
+    const eventForListeners = await this.emitPluginEvent(event);
+    this.emitToListeners(eventForListeners as BrewvaPromptSessionEvent);
     await this.syncContextState();
-    if (event.type === "message_end" && event.message.role === "toolResult") {
+    if (
+      eventForListeners.type === "message_end" &&
+      eventForListeners.message.role === "toolResult"
+    ) {
       await this.executeDeferredCompaction();
       await this.syncContextState();
     }
+    return eventForListeners;
   }
 
   private requestCompaction(request?: BrewvaCompactionRequest): void {
@@ -1568,15 +1641,15 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     }
   }
 
-  private async emitPluginEvent(event: BrewvaAgentEngineEvent): Promise<void> {
+  private async emitPluginEvent(event: BrewvaAgentEngineEvent): Promise<BrewvaAgentEngineEvent> {
     const ctx = this.createHostContext();
     switch (event.type) {
       case "agent_start":
         await this.#runner.emit("agent_start", { type: "agent_start" }, ctx);
-        return;
+        return event;
       case "agent_end":
         await this.#runner.emit("agent_end", { type: "agent_end", messages: event.messages }, ctx);
-        return;
+        return event;
       case "turn_start":
         this.#turnIndex += 1;
         this.#turnStartTimestamp = Date.now();
@@ -1589,7 +1662,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
           },
           ctx,
         );
-        return;
+        return event;
       case "turn_end":
         await this.#runner.emit(
           "turn_end",
@@ -1601,14 +1674,14 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
           },
           ctx,
         );
-        return;
+        return event;
       case "message_start":
         await this.#runner.emit(
           "message_start",
           { type: "message_start", message: event.message },
           ctx,
         );
-        return;
+        return event;
       case "message_update":
         await this.#runner.emit(
           "message_update",
@@ -1619,14 +1692,20 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
           },
           ctx,
         );
-        return;
-      case "message_end":
-        await this.#runner.emit(
-          "message_end",
+        return event;
+      case "message_end": {
+        const result = await this.#runner.emitMessageEnd(
           { type: "message_end", message: event.message },
           ctx,
         );
-        return;
+        if (result?.visibility === undefined) {
+          return event;
+        }
+        return {
+          ...event,
+          message: applyMessageEndTransform(event.message, result.visibility),
+        };
+      }
       case "tool_execution_start":
         await this.#runner.emit(
           "tool_execution_start",
@@ -1638,7 +1717,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
           },
           ctx,
         );
-        return;
+        return event;
       case "tool_execution_update":
         await this.#runner.emit(
           "tool_execution_update",
@@ -1651,7 +1730,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
           },
           ctx,
         );
-        return;
+        return event;
       case "tool_execution_end":
         await this.#runner.emit(
           "tool_execution_end",
@@ -1664,7 +1743,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
           },
           ctx,
         );
-        return;
+        return event;
       case "tool_execution_phase_change":
         await this.#runner.emit(
           "tool_execution_phase_change",
@@ -1678,9 +1757,9 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
           },
           ctx,
         );
-        return;
+        return event;
       default:
-        return;
+        return event;
     }
   }
 

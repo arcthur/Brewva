@@ -4,6 +4,7 @@ import {
   type ToolSurfaceRuntime,
 } from "@brewva/brewva-gateway/runtime-plugins";
 import type {
+  SkillCompletionFailureRecord,
   SkillRegistryLoadReport,
   SkillRoutingScope,
   TaskPhase,
@@ -91,6 +92,7 @@ interface ToolSurfaceRuntimeOptions {
   getSkill?: ToolSurfaceRuntime["inspect"]["skills"]["get"];
   listSkills?: ToolSurfaceRuntime["inspect"]["skills"]["list"];
   taskState?: ReturnType<ToolSurfaceRuntime["inspect"]["task"]["getState"]>;
+  latestFailure?: SkillCompletionFailureRecord;
   recordEvent?: ToolSurfaceRuntime["recordEvent"];
   routingScopes?: SkillRoutingScope[];
   routingEnabled?: boolean;
@@ -145,6 +147,7 @@ function createToolSurfaceRuntime(options: ToolSurfaceRuntimeOptions = {}): Tool
   Object.assign(runtime.inspect.skills, {
     list: listSkills,
     getActive: options.getActive ?? (() => undefined),
+    getLatestFailure: () => options.latestFailure,
     get: options.getSkill ?? (() => undefined),
     getLoadReport: buildLoadReport,
   });
@@ -723,6 +726,258 @@ describe("tool surface runtime plugin", () => {
         primary: true,
       }),
     ]);
+  });
+
+  test("task spec recommendations require skill_load even when the score is advisory-strength", async () => {
+    const extensionApi = createMockRuntimePluginApi();
+    registerTools(extensionApi.api, [
+      "read",
+      "edit",
+      "write",
+      "session_compact",
+      "skill_load",
+      "workflow_status",
+      "task_set_spec",
+      "task_view_state",
+      "task_add_item",
+      "task_update_item",
+      "task_record_blocker",
+      "task_resolve_blocker",
+      "knowledge_search",
+      "output_search",
+      "ledger_query",
+    ]);
+
+    let taskState:
+      | {
+          spec?: unknown;
+          status?: {
+            phase?: string;
+          };
+          items?: unknown[];
+          blockers?: unknown[];
+          updatedAt?: unknown;
+        }
+      | undefined;
+    const events: Array<Record<string, unknown>> = [];
+
+    const runtime = createToolSurfaceRuntime({
+      listSkills: () => [
+        createSkillDocument(
+          "repository-analysis",
+          ["workspace_read", "runtime_observe"],
+          ["read", "grep"],
+          {
+            selection: {
+              whenToUse:
+                "Use when the task needs repository orientation, impact analysis, or boundary mapping before design, debugging, review, or execution.",
+              examples: [
+                "Analyze this repository before changing code.",
+                "Map the impacted modules and boundaries for this task.",
+                "Explain which files are likely affected by this request.",
+              ],
+              phases: ["align", "investigate"],
+            },
+          },
+        ),
+        createSkillDocument("design", ["workspace_read", "runtime_observe"], ["read", "grep"], {
+          selection: {
+            whenToUse:
+              "Use when a request needs a bounded design, explicit trade-offs, or an executable plan before code changes.",
+            examples: [
+              "Design the approach before implementing it.",
+              "Compare the viable options for this change.",
+            ],
+            phases: ["align", "investigate"],
+          },
+        }),
+      ],
+      recordEvent: (input: Record<string, unknown>) => {
+        events.push(input);
+        return undefined;
+      },
+    });
+    Object.assign(runtime.inspect.task, {
+      getState: () => taskState,
+    });
+
+    registerToolSurface(extensionApi.api, runtime);
+    await invokeHandlerAsync(
+      extensionApi.handlers,
+      "before_agent_start",
+      {
+        type: "before_agent_start",
+        prompt:
+          "对比项目预期流程，判断这次 brewva 运行是否有问题，特别是 skill load 和 TUI thinking streaming。",
+      },
+      {
+        sessionManager: {
+          getSessionId: () => "tool-surface-advisory-strength-skill",
+        },
+      },
+    );
+
+    taskState = {
+      spec: {
+        goal: "Assess Brewva's current architecture against a staged design order focused on high-risk actions, minimal permissions, lifecycle, context governance, skills/hooks, and later multi-agent/platform expansion; identify what is underdesigned, overweight, or low-yield for final effectiveness.",
+        expectedBehavior:
+          "Produce a repository-aware architectural critique that distinguishes runtime judgment from hardcoded policy and highlights complexity or weakness with concrete evidence.",
+        constraints: [
+          "Read-only investigation",
+          "Use repo guide and local source context",
+          "Do not answer from generic memory alone",
+        ],
+      },
+      status: { phase: "investigate" },
+      items: [],
+      blockers: [],
+      updatedAt: null,
+    };
+
+    const result = await invokeHandlerAsync<{ content?: Array<{ text?: string }> }>(
+      extensionApi.handlers,
+      "tool_result",
+      {
+        type: "tool_result",
+        toolName: "task_set_spec",
+        toolCallId: "tc-task-set-spec-advisory-strength",
+        isError: false,
+        content: [{ type: "text", text: "TaskSpec recorded." }],
+      },
+      {
+        sessionManager: {
+          getSessionId: () => "tool-surface-advisory-strength-skill",
+        },
+      },
+    );
+
+    expect(extensionApi.activeTools).not.toContain("read");
+    expect(extensionApi.activeTools).not.toContain("grep");
+    expect(extensionApi.activeTools).toContain("skill_load");
+    expect(result?.content?.[0]?.text).toContain("[Brewva Skill-First Refresh]");
+    expect(result?.content?.[0]?.text).toContain("primary_skill:");
+    const recommendationEvent = events.findLast(
+      (input) => input.type === "skill_recommendation_derived",
+    ) as { payload?: Record<string, unknown> } | undefined;
+    expect(recommendationEvent?.payload?.gateMode).toBe("skill_load_required");
+  });
+
+  test("failed skill contracts block downstream routing and repository tools", async () => {
+    const extensionApi = createMockRuntimePluginApi();
+    registerTools(extensionApi.api, [
+      "read",
+      "edit",
+      "write",
+      "session_compact",
+      "skill_load",
+      "workflow_status",
+      "task_set_spec",
+      "task_view_state",
+      "ledger_query",
+      "tape_info",
+      "reasoning_checkpoint",
+      "reasoning_revert",
+      "grep",
+      "implementation",
+      "obs_query",
+    ]);
+
+    const events: Array<Record<string, unknown>> = [];
+    const runtime = createToolSurfaceRuntime({
+      latestFailure: {
+        skillName: "repository-analysis",
+        occurredAt: 1,
+        phase: "failed_contract",
+        outputKeys: [],
+        missing: ["repository_snapshot"],
+        invalid: [],
+        expectedOutputs: {},
+        repairBudget: {
+          maxAttempts: 2,
+          usedAttempts: 2,
+          remainingAttempts: 0,
+          maxToolCalls: 6,
+          usedToolCalls: 0,
+          remainingToolCalls: 6,
+          tokenBudget: 12000,
+        },
+      },
+      listSkills: () => [
+        createSkillDocument(
+          "repository-analysis",
+          ["workspace_read", "runtime_observe"],
+          ["read", "grep"],
+          {
+            selection: {
+              whenToUse:
+                "Use when the task needs repository orientation, impact analysis, or boundary mapping before implementation.",
+              examples: ["Analyze this repository before changing code."],
+              phases: ["investigate"],
+            },
+          },
+        ),
+        createSkillDocument("implementation", ["workspace_read", "runtime_observe"], ["edit"], {
+          selection: {
+            whenToUse: "Use when the task has completed planning and is ready for implementation.",
+            examples: ["Implement the selected fix."],
+            phases: ["execute"],
+          },
+        }),
+      ],
+      taskState: {
+        spec: {
+          goal: "Analyze this repository and implement the selected fix.",
+          expectedBehavior: "Use repository evidence before changing code.",
+          constraints: ["Do not continue after a failed skill contract."],
+        },
+        status: { phase: "investigate" },
+        items: [],
+        blockers: [],
+      },
+      recordEvent: (input: Record<string, unknown>) => {
+        events.push(input);
+        return undefined;
+      },
+    });
+
+    registerToolSurface(extensionApi.api, runtime);
+    await invokeHandlerAsync(
+      extensionApi.handlers,
+      "before_agent_start",
+      {
+        type: "before_agent_start",
+        prompt: "Continue with implementation after repository analysis failed.",
+      },
+      {
+        sessionManager: {
+          getSessionId: () => "tool-surface-failed-contract",
+        },
+      },
+    );
+
+    expect(extensionApi.activeTools).not.toContain("read");
+    expect(extensionApi.activeTools).not.toContain("grep");
+    expect(extensionApi.activeTools).not.toContain("edit");
+    expect(extensionApi.activeTools).not.toContain("write");
+    expect(extensionApi.activeTools).not.toContain("skill_load");
+    expect(extensionApi.activeTools).not.toContain("implementation");
+    expect(extensionApi.activeTools).toEqual(
+      expect.arrayContaining([
+        "workflow_status",
+        "task_view_state",
+        "ledger_query",
+        "tape_info",
+        "reasoning_checkpoint",
+        "reasoning_revert",
+        "session_compact",
+      ]),
+    );
+
+    const event = events.find((input) => input.type === "tool_surface_resolved") as
+      | { payload?: Record<string, unknown> }
+      | undefined;
+    expect(event?.payload?.skillGateMode).toBe("skill_contract_failed");
+    expect(event?.payload?.recommendedSkillNames).toEqual([]);
   });
 
   test("task-state mutation re-evaluation reuses a single recommendation pass", async () => {

@@ -70,7 +70,11 @@ class CliInteractiveOpenTuiShellRuntime {
     this.#renderer = await createOpenTuiCliRenderer();
     await render(
       () => (
-        <BrewvaOpenTuiShell controller={this.controller} toolRenderCache={this.#toolRenderCache} />
+        <BrewvaOpenTuiShell
+          controller={this.controller}
+          renderer={this.#renderer}
+          toolRenderCache={this.#toolRenderCache}
+        />
       ),
       this.#renderer as never,
     );

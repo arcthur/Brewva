@@ -7,6 +7,7 @@ import {
   listSkillDeniedEffects,
   listSkillFallbackTools,
   listSkillPreferredTools,
+  type SkillCompletionFailureRecord,
   type SkillDocument,
 } from "@brewva/brewva-runtime";
 import type {
@@ -48,6 +49,15 @@ const PRE_SKILL_CONTROL_PLANE_TOOL_NAMES = [
   "task_update_item",
   "task_record_blocker",
   "task_resolve_blocker",
+] as const;
+const FAILED_CONTRACT_CONTROL_PLANE_TOOL_NAMES = [
+  "workflow_status",
+  "task_view_state",
+  "ledger_query",
+  "tape_info",
+  "reasoning_checkpoint",
+  "reasoning_revert",
+  "session_compact",
 ] as const;
 const BOOTSTRAP_MANAGED_TOOL_NAMES = [
   ...PRE_SKILL_CONTROL_PLANE_TOOL_NAMES,
@@ -104,6 +114,7 @@ export interface ToolSurfaceRuntime {
       list(): ToolSurfaceSkill[];
       getActive(sessionId: string): ToolSurfaceSkill | null | undefined;
       getActiveState(sessionId: string): ToolSurfaceSkillState | undefined;
+      getLatestFailure?(sessionId: string): SkillCompletionFailureRecord | undefined;
       get(name: string): ToolSurfaceSkill | undefined;
       getLoadReport(): {
         loadedSkills: string[];
@@ -381,7 +392,11 @@ function resolveActiveToolNames(input: {
   }
 
   const bootstrapManagedToolNames = new Set<string>(
-    turnPlan.preSkillGateActive ? PRE_SKILL_CONTROL_PLANE_TOOL_NAMES : BOOTSTRAP_MANAGED_TOOL_NAMES,
+    turnPlan.skillGateMode === "skill_contract_failed"
+      ? FAILED_CONTRACT_CONTROL_PLANE_TOOL_NAMES
+      : turnPlan.preSkillGateActive
+        ? PRE_SKILL_CONTROL_PLANE_TOOL_NAMES
+        : BOOTSTRAP_MANAGED_TOOL_NAMES,
   );
   const requestableOperatorManagedToolNames = collectRequestableOperatorManagedToolNames(
     input.runtime,
@@ -390,14 +405,81 @@ function resolveActiveToolNames(input: {
   );
   const allowedRequestedManagedToolNames = turnPlan.hasActiveSkill
     ? new Set<string>(MANAGED_BREWVA_TOOL_NAMES)
-    : turnPlan.preSkillGateActive
-      ? new Set<string>(PRE_SKILL_CONTROL_PLANE_TOOL_NAMES)
-      : new Set<string>([...BOOTSTRAP_MANAGED_TOOL_NAMES, ...requestableOperatorManagedToolNames]);
+    : turnPlan.skillGateMode === "skill_contract_failed"
+      ? new Set<string>(FAILED_CONTRACT_CONTROL_PLANE_TOOL_NAMES)
+      : turnPlan.preSkillGateActive
+        ? new Set<string>(PRE_SKILL_CONTROL_PLANE_TOOL_NAMES)
+        : new Set<string>([
+            ...BOOTSTRAP_MANAGED_TOOL_NAMES,
+            ...requestableOperatorManagedToolNames,
+          ]);
   const requestedActivatedToolNames = resolveRequestedManagedToolNames(
     turnPlan.requestedToolNames,
     knownToolNames,
     allowedRequestedManagedToolNames,
   );
+
+  if (turnPlan.skillGateMode === "skill_contract_failed") {
+    for (const toolName of FAILED_CONTRACT_CONTROL_PLANE_TOOL_NAMES) {
+      if (knownToolNames.has(toolName)) {
+        active.add(toolName);
+      }
+    }
+
+    const activeToolNames = allToolNames.filter((toolName) => active.has(toolName));
+    const baseActiveCount = activeToolNames.filter(
+      (toolName) => getBrewvaToolSurface(toolName) === "base",
+    ).length;
+    const skillActiveCount = activeToolNames.filter(
+      (toolName) => getBrewvaToolSurface(toolName) === "skill",
+    ).length;
+    const controlPlaneActiveCount = activeToolNames.filter(
+      (toolName) => getBrewvaToolSurface(toolName) === "control_plane",
+    ).length;
+    const operatorActiveCount = activeToolNames.filter(
+      (toolName) => getBrewvaToolSurface(toolName) === "operator",
+    ).length;
+    const externalActiveCount = activeToolNames.filter(
+      (toolName) => getBrewvaToolSurface(toolName) === undefined,
+    ).length;
+    const hiddenSkillCount = allToolNames.filter(
+      (toolName) => !active.has(toolName) && getBrewvaToolSurface(toolName) === "skill",
+    ).length;
+    const hiddenControlPlaneCount = allToolNames.filter(
+      (toolName) => !active.has(toolName) && getBrewvaToolSurface(toolName) === "control_plane",
+    ).length;
+    const hiddenOperatorCount = allToolNames.filter(
+      (toolName) => !active.has(toolName) && getBrewvaToolSurface(toolName) === "operator",
+    ).length;
+
+    return {
+      activeToolNames,
+      managedActiveCount: [...active].filter((toolName) => isManagedBrewvaToolName(toolName))
+        .length,
+      requestedToolNames: turnPlan.requestedToolNames.filter((toolName) =>
+        knownToolNames.has(toolName),
+      ),
+      requestedActivatedToolNames,
+      ignoredRequestedToolNames: turnPlan.requestedToolNames
+        .filter((toolName) => knownToolNames.has(toolName))
+        .filter((toolName) => !requestedActivatedToolNames.includes(toolName)),
+      skillNames: turnPlan.skillNames,
+      recommendedSkillNames: turnPlan.recommendedSkillNames,
+      skillGateMode: turnPlan.skillGateMode,
+      taskSpecReady: turnPlan.taskSpecReady,
+      operatorProfile: turnPlan.operatorProfile,
+      repairRequired: false,
+      baseActiveCount,
+      skillActiveCount,
+      controlPlaneActiveCount,
+      operatorActiveCount,
+      externalActiveCount,
+      hiddenSkillCount,
+      hiddenControlPlaneCount,
+      hiddenOperatorCount,
+      recommendationSet: turnPlan.recommendationSet,
+    };
+  }
 
   if (turnPlan.repairRequired) {
     for (const toolName of requestedActivatedToolNames) {
@@ -695,11 +777,16 @@ function registerMissingManagedTools(input: {
   if (!input.dynamicToolDefinitions || input.dynamicToolDefinitions.size === 0) return;
   const namesToEnsure = [
     ...(input.turnPlan.preSkillGateActive
-      ? input.turnPlan.requestedManagedToolNames.filter((toolName) =>
-          PRE_SKILL_CONTROL_PLANE_TOOL_NAMES.includes(
+      ? input.turnPlan.requestedManagedToolNames.filter((toolName) => {
+          if (input.turnPlan.skillGateMode === "skill_contract_failed") {
+            return FAILED_CONTRACT_CONTROL_PLANE_TOOL_NAMES.includes(
+              toolName as (typeof FAILED_CONTRACT_CONTROL_PLANE_TOOL_NAMES)[number],
+            );
+          }
+          return PRE_SKILL_CONTROL_PLANE_TOOL_NAMES.includes(
             toolName as (typeof PRE_SKILL_CONTROL_PLANE_TOOL_NAMES)[number],
-          ),
-        )
+          );
+        })
       : input.turnPlan.requestedManagedToolNames),
     ...(input.turnPlan.preSkillGateActive ? [] : input.turnPlan.skillManagedToolNames),
     ...input.turnPlan.lifecycleManagedToolNames,
