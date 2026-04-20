@@ -39,18 +39,20 @@ Result order remains tape order from oldest to newest.
 
 The central registry contains more than one durability class.
 
-- `durable source of truth`
+- `source_of_truth`
   - event families retained on tape and used for replay, receipts, task/truth
     folding, approval truth, and other authoritative outcomes
-- `rebuildable state`
+- `durable_evidence`
+  - durable audit/control evidence that may explain behavior but does not decide
+    replay truth, approval truth, or recovery truth
+- `rebuildable_signal`
   - derived-state telemetry such as projection refresh signals that may be
     persisted but are not semantic replay inputs
-- `cache`
+- `session_local`
   - live-stream or UX-only surfaces that are not retained on durable tape
 
-`durable transient` does not primarily appear as a runtime event family here.
-That class is represented by Recovery WAL and rollback material outside the event
-registry.
+The broader artifact taxonomy still uses durable transient, rebuildable state,
+and cache. Runtime event type strings use the four exported classes above.
 
 ## Registry Surface
 
@@ -76,11 +78,11 @@ across both files.
 - `projection_ingested`
 - `projection_refreshed`
 
-`projection_ingested` and `projection_refreshed` describe rebuildable-state
+`projection_ingested` and `projection_refreshed` are `rebuildable_signal`
 maintenance. They do not promote projection files into source-of-truth inputs.
-They are still durable events, but tape checkpoint cadence and
-`entriesSinceCheckpoint` pressure counters skip `projection_*`; these events do
-not advance semantic checkpoint pressure on their own.
+Tape checkpoint cadence and `entriesSinceCheckpoint` pressure counters skip
+`projection_*`; these events do not advance semantic checkpoint pressure on
+their own.
 
 `projection_ingested` reports append-only projection-unit maintenance:
 `upsertedUnits` and `resolvedUnits` track rows added to `units.jsonl`, and
@@ -442,8 +444,9 @@ completion, distinct from a generic hosted interruption or process shutdown.
 
 These are control-plane audit receipts for the narrative memory product,
 broker-first recall, and bounded semantic rerank. In structured queries they
-classify as `category=control`, remain non-authoritative, and do not become
-replay inputs for task truth, approval truth, or WAL recovery.
+classify as `category=control`, map to `durable_evidence` or
+`rebuildable_signal` event durability, remain non-authoritative, and do not
+become replay inputs for task truth, approval truth, or WAL recovery.
 
 Recall durability is intentionally split:
 
@@ -458,6 +461,13 @@ are durable evidence events on tape
 - curation aggregates and decayed ranking weights
 
 remain rebuildable state under `.brewva/recall/**`
+
+Broker search ranks results by typed `sourceTier` before score:
+`runtime_evidence`, `repository_precedent`, `promotion_candidate`,
+`advisory_memory`. Runtime evidence only includes allowlisted recovery-relevant
+tape events. `recall_results_surfaced`, `context_*`, `projection_*`, semantic
+rerank telemetry, and routing telemetry are excluded from broker tape search and
+session digest text to avoid recall self-reinforcement.
 
 ### Iteration Facts
 
@@ -755,11 +765,11 @@ The audit-retained core includes:
 - `patch_recorded`
 - schedule lifecycle events
 
-Most of this audit-retained set is the effective `durable source of truth`
-subset of the event registry: the part that replay, restart, and receipt
-linkage depend on. A smaller continuity/diagnostic subset, such as hosted
-compaction warnings and `event_listener_error`, remains audit-retained for
-explainability and hosted recovery continuity without widening authority.
+The registry now exposes explicit durability strings. The replay/receipt subset
+is `source_of_truth`; durable control-plane observations such as `recall_*` are
+`durable_evidence`; projection/context maintenance is `rebuildable_signal`; and
+debug-only retained events are `session_local`. Audit retention alone must not
+be read as authority.
 
 `tool_result_recorded` is the durable outcome event. When present,
 `effectCommitmentRequestId` and `toolCallId` link the result back to the exact

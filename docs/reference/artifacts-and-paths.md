@@ -30,7 +30,10 @@ Unless noted otherwise, the projection paths below describe the default config
 shape (`projection.dir=.orchestrator/projection`,
 `projection.workingFile=working.md`).
 
-- Evidence ledger (`durable source of truth`): `.orchestrator/ledger/evidence.jsonl`
+- Evidence ledger (`durable evidence`, source-adjacent audit): `.orchestrator/ledger/evidence.jsonl`
+  - validates row shape, local ordering, checkpoint metadata, and output hashes
+  - does not provide an immutable cryptographic chain and does not replace tape
+    replay as the recovery authority
 - Event stream (event tape, `durable source of truth`): `.orchestrator/events/sess_<base64url(sessionId)>.jsonl`
   - file name uses a reversible base64url encoding of the UTF-8 `sessionId` to avoid filesystem collisions and preserve the original identifier
   - only `sess_*.jsonl` files are treated as event tape shards; non-prefixed JSONL files in the directory are ignored by the runtime
@@ -44,11 +47,11 @@ shape (`projection.dir=.orchestrator/projection`,
   history-view baseline and they are not receipt authority.
 - Tape checkpoints (`durable source of truth`): `checkpoint` events embedded in the per-session event tape (`.orchestrator/events/sess_<base64url(sessionId)>.jsonl`)
 - Runtime recovery source (`durable source of truth`): event tape replay (`checkpoint + delta`); no standalone runtime session-state snapshot file
-- History-view baseline (`durable source of truth`, receipt-derived): no
+- History-view baseline (`runtime_contract`, receipt-derived view): no
   standalone baseline snapshot file; operator-visible baseline state is rebuilt
   from `session_compact` receipts on the per-session event tape and exposed
   through inspect/context surfaces
-- The baseline therefore stays authority-bearing even though the current
+- The baseline therefore stays runtime-contract context even though the current
   inspect/context view is rebuilt on demand. Its correctness depends on durable
   `session_compact` receipts, not on `.orchestrator/projection/**`.
 - Projection cache is never a recovery precondition; runtime may rebuild it on
@@ -88,6 +91,11 @@ helper material, not session-state durability surfaces in the taxonomy above.
   - rebuildable state only
   - stores session digests, cross-session evidence index, and curation
     aggregates for broker-first recall
+  - broker search results are typed by `sourceTier` and ranked in this order:
+    `runtime_evidence`, `repository_precedent`, `promotion_candidate`,
+    `advisory_memory`
+  - `recall_results_surfaced`, `context_*`, and `projection_*` are excluded
+    from broker tape search and session digest text
   - curation aggregates keep raw signal counts plus time-decayed ranking
     weights; they are rebuilt from durable recall feedback evidence rather than
     acting as source-of-truth memory

@@ -101,6 +101,7 @@ describe("hosted context injection pipeline", () => {
       {
         source: CONTEXT_SOURCES.historyViewBaseline,
         plane: "history_view",
+        authorityTier: "runtime_contract",
         admissionLane: "primary_registry",
         category: "narrative",
         budgetClass: "core",
@@ -115,6 +116,7 @@ describe("hosted context injection pipeline", () => {
       {
         source: CONTEXT_SOURCES.recoveryWorkingSet,
         plane: "working_state",
+        authorityTier: "working_state",
         admissionLane: "primary_registry",
         category: "constraint",
         budgetClass: "working",
@@ -128,6 +130,7 @@ describe("hosted context injection pipeline", () => {
       {
         source: CONTEXT_SOURCES.runtimeStatus,
         plane: "working_state",
+        authorityTier: "runtime_read_model",
         admissionLane: "primary_registry",
         category: "narrative",
         budgetClass: "core",
@@ -216,6 +219,7 @@ describe("hosted context injection pipeline", () => {
       {
         source: CONTEXT_SOURCES.historyViewBaseline,
         plane: "history_view",
+        authorityTier: "runtime_contract",
         admissionLane: "primary_registry",
         category: "narrative",
         budgetClass: "core",
@@ -230,6 +234,7 @@ describe("hosted context injection pipeline", () => {
       {
         source: CONTEXT_SOURCES.runtimeStatus,
         plane: "working_state",
+        authorityTier: "runtime_read_model",
         admissionLane: "primary_registry",
         category: "narrative",
         budgetClass: "core",
@@ -243,6 +248,7 @@ describe("hosted context injection pipeline", () => {
       {
         source: CONTEXT_SOURCES.agentMemory,
         plane: "contract_core",
+        authorityTier: "operator_profile",
         admissionLane: "primary_registry",
         category: "narrative",
         budgetClass: "core",
@@ -256,6 +262,7 @@ describe("hosted context injection pipeline", () => {
       {
         source: "custom.hidden-working",
         plane: "working_state",
+        authorityTier: "working_state",
         admissionLane: "primary_registry",
         category: "diagnostic",
         budgetClass: "working",
@@ -339,6 +346,7 @@ describe("hosted context injection pipeline", () => {
       {
         source: CONTEXT_SOURCES.projectionWorking,
         plane: "working_state",
+        authorityTier: "working_state",
         admissionLane: "primary_registry",
         category: "narrative",
         budgetClass: "working",

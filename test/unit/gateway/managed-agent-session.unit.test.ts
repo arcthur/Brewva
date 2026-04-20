@@ -1753,6 +1753,7 @@ describe("managed agent session compaction", () => {
     runtime.maintain.context.registerProvider({
       source: "brewva.test-context-state",
       plane: "working_state",
+      authorityTier: "working_state",
       admissionLane: "primary_registry",
       category: "narrative",
       budgetClass: "core",
@@ -1982,6 +1983,7 @@ describe("managed agent session compaction", () => {
       runtime.maintain.context.registerProvider({
         source: "brewva.test-plugin-state",
         plane: "working_state",
+        authorityTier: "working_state",
         admissionLane: "primary_registry",
         category: "narrative",
         budgetClass: "core",

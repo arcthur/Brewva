@@ -89,6 +89,7 @@ function createAgentConstitutionProvider(
   return createPrimaryProvider({
     source: CONTEXT_SOURCES.agentConstitution,
     plane: "contract_core",
+    authorityTier: "operator_profile",
     category: "narrative",
     budgetClass: "core",
     collectionOrder: 12,
@@ -132,6 +133,7 @@ function createAgentMemoryProvider(deps: BuiltInContextSourceProviderDeps): Cont
   return createPrimaryProvider({
     source: CONTEXT_SOURCES.agentMemory,
     plane: "contract_core",
+    authorityTier: "operator_profile",
     category: "narrative",
     budgetClass: "core",
     collectionOrder: 13,
@@ -175,6 +177,7 @@ function createIdentityProvider(deps: BuiltInContextSourceProviderDeps): Context
   return createPrimaryProvider({
     source: CONTEXT_SOURCES.identity,
     plane: "contract_core",
+    authorityTier: "operator_profile",
     category: "narrative",
     budgetClass: "core",
     collectionOrder: 10,
@@ -219,6 +222,7 @@ function createRuntimeStatusProvider(
   return createPrimaryProvider({
     source: CONTEXT_SOURCES.runtimeStatus,
     plane: "working_state",
+    authorityTier: "runtime_read_model",
     category: "narrative",
     budgetClass: "core",
     collectionOrder: 20,
@@ -253,6 +257,7 @@ function createHistoryViewBaselineProvider(
   return createPrimaryProvider({
     source: CONTEXT_SOURCES.historyViewBaseline,
     plane: "history_view",
+    authorityTier: "runtime_contract",
     category: "narrative",
     budgetClass: "core",
     collectionOrder: 14,
@@ -285,6 +290,7 @@ function createToolOutputDistilledProvider(
   return createPrimaryProvider({
     source: CONTEXT_SOURCES.toolOutputsDistilled,
     plane: "working_state",
+    authorityTier: "runtime_read_model",
     category: "narrative",
     budgetClass: "working",
     collectionOrder: 30,
@@ -315,6 +321,7 @@ function createTaskStateProvider(deps: BuiltInContextSourceProviderDeps): Contex
   return createPrimaryProvider({
     source: CONTEXT_SOURCES.taskState,
     plane: "working_state",
+    authorityTier: "runtime_contract",
     category: "narrative",
     budgetClass: "core",
     collectionOrder: 40,
@@ -349,6 +356,7 @@ function createRecoveryWorkingSetProvider(
   return createPrimaryProvider({
     source: CONTEXT_SOURCES.recoveryWorkingSet,
     plane: "working_state",
+    authorityTier: "working_state",
     category: "constraint",
     budgetClass: "working",
     collectionOrder: 45,
@@ -380,6 +388,7 @@ function createProjectionWorkingProvider(
   return createPrimaryProvider({
     source: CONTEXT_SOURCES.projectionWorking,
     plane: "working_state",
+    authorityTier: "working_state",
     category: "narrative",
     budgetClass: "working",
     collectionOrder: 50,

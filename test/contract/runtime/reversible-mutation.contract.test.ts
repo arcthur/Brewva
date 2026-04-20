@@ -10,7 +10,7 @@ function createWorkspace(): string {
 }
 
 describe("reversible mutation receipts", () => {
-  test("task mutations stay audit-only and do not emit rollback receipts", () => {
+  test("task mutations stay non-rollbackable and do not emit rollback receipts", () => {
     const workspace = createWorkspace();
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const sessionId = `reversible-task-${crypto.randomUUID()}`;

@@ -24,31 +24,53 @@ export interface CompactSessionResult {
   checkpointId: string;
 }
 
+interface ParsedLedgerRows {
+  rows: EvidenceLedgerRow[];
+  malformedLines: number[];
+}
+
 function summarizeText(input: string, maxLen = 200): string {
   const normalized = input.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLen) return normalized;
   return `${normalized.slice(0, maxLen - 3)}...`;
 }
 
-function parseRows(path: string): EvidenceLedgerRow[] {
-  if (!existsSync(path)) return [];
+function parseRows(path: string): ParsedLedgerRows {
+  if (!existsSync(path)) {
+    return { rows: [], malformedLines: [] };
+  }
   const lines = readFileSync(path, "utf8")
     .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
+    .map((line, index) => ({ line: line.trim(), lineNumber: index + 1 }))
+    .filter((entry) => entry.line.length > 0);
 
   const rows: EvidenceLedgerRow[] = [];
-  for (const line of lines) {
+  const malformedLines: number[] = [];
+  for (const { line, lineNumber } of lines) {
     try {
-      const row = JSON.parse(line) as EvidenceLedgerRow;
-      if (row && typeof row.id === "string") {
-        rows.push(row);
+      const row = JSON.parse(line) as unknown;
+      if (row && typeof row === "object" && "id" in row && typeof row.id === "string") {
+        rows.push(row as EvidenceLedgerRow);
+      } else {
+        malformedLines.push(lineNumber);
       }
     } catch {
-      continue;
+      malformedLines.push(lineNumber);
     }
   }
-  return rows;
+  return { rows, malformedLines };
+}
+
+function readRows(path: string): EvidenceLedgerRow[] {
+  return parseRows(path).rows;
+}
+
+function parseSessionRows(path: string, sessionId: string): ParsedLedgerRows {
+  const parsed = parseRows(path);
+  return {
+    rows: parsed.rows.filter((row) => row.sessionId === sessionId),
+    malformedLines: parsed.malformedLines,
+  };
 }
 
 export class EvidenceLedger {
@@ -114,7 +136,7 @@ export class EvidenceLedger {
     options: CompactSessionOptions,
   ): CompactSessionResult | undefined {
     const keepLast = Math.max(1, Math.trunc(options.keepLast));
-    const allRows = parseRows(this.filePath);
+    const allRows = readRows(this.filePath);
     if (allRows.length === 0) return undefined;
 
     const sessionRows: EvidenceLedgerRow[] = [];
@@ -203,7 +225,7 @@ export class EvidenceLedger {
   }
 
   list(sessionId?: string): EvidenceLedgerRow[] {
-    const rows = parseRows(this.filePath);
+    const rows = readRows(this.filePath);
     if (!sessionId) return rows;
     return rows.filter((row) => row.sessionId === sessionId);
   }
@@ -234,7 +256,14 @@ export class EvidenceLedger {
   }
 
   verifyIntegrity(sessionId: string): { valid: boolean; reason?: string } {
-    const rows = this.list(sessionId);
+    const parsed = parseSessionRows(this.filePath, sessionId);
+    if (parsed.malformedLines.length > 0) {
+      return {
+        valid: false,
+        reason: `ledger_row_malformed_json:${parsed.malformedLines[0]}`,
+      };
+    }
+    const rows = parsed.rows;
     let previousTimestamp = 0;
     let seenCheckpoint = false;
 

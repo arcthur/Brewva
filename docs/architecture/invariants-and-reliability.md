@@ -10,7 +10,9 @@ contract.
 ## 1) Evidence Integrity Invariant
 
 - Every persisted tool outcome must produce a ledger entry or an explicit failure record.
-- Ledger chain verification must remain valid for each session.
+- Ledger row-level verification must remain valid for each session. The ledger
+  validates row shape, local ordering, checkpoint metadata, and output hashes;
+  it does not claim an immutable cryptographic chain.
 
 Relevant implementation:
 
@@ -142,6 +144,84 @@ Relevant implementation:
 - `packages/brewva-runtime/src/projection/store.ts`
 - `packages/brewva-runtime/src/runtime.ts`
 - `packages/brewva-tools/src/task-ledger.ts`
+
+## Context Authority And Recall Ranking Model
+
+Context governance is three-axis, not a single trust ladder:
+
+- durability says whether a surface is final truth, crash/rollback material,
+  rebuildable state, or cache
+- `ContextAuthorityTier` says how an injected context source should be treated
+  when it conflicts with another source
+- recall `sourceTier` says how broker results rank inside advisory recall
+
+The axes must stay separate from prompt-sanitization `SourceTrustTier`; trusted
+formatting does not make a source authoritative.
+
+### Durable Runtime Surfaces
+
+| Surface         | Durability role                     | Recovery role                                        |
+| --------------- | ----------------------------------- | ---------------------------------------------------- |
+| Event tape      | durable source of truth             | replay and receipt linkage                           |
+| Recovery WAL    | durable transient recovery material | turn/tool crash recovery                             |
+| Evidence ledger | durable evidence / source-adjacent  | audit queries and row-level output hash verification |
+| Projection      | rebuildable state                   | working view rebuilt from tape/workspace state       |
+
+**Evidence ledger vs. tape fold**: the replay engine folds tape events for
+recovery correctness. The evidence ledger stores local row-coherent audit
+evidence for tool outcomes. Ledger and tape should agree, but the ledger is not
+an immutable cryptographic chain and is not a substitute for replay truth.
+
+### Injected Context Sources
+
+| Context source                  | authorityTier      | selectionPriority | Budget class           |
+| ------------------------------- | ------------------ | ----------------- | ---------------------- |
+| `brewva.identity`               | operator_profile   | 10                | core                   |
+| `brewva.agent-constitution`     | operator_profile   | 12                | core                   |
+| `brewva.agent-memory`           | operator_profile   | 13                | core                   |
+| `brewva.history-view-baseline`  | runtime_contract   | 14                | core (non-truncatable) |
+| `brewva.runtime-status`         | runtime_read_model | 20                | core                   |
+| `brewva.tool-outputs-distilled` | runtime_read_model | 30                | working                |
+| `brewva.task-state`             | runtime_contract   | 40                | core                   |
+| `brewva.recovery-working-set`   | working_state      | 45                | working                |
+| `brewva.projection-working`     | working_state      | 50                | working                |
+
+Agent identity, constitution, and memory are operator-authored profile inputs.
+They are not deterministically rebuilt from event tape and must not be described
+as derived runtime truth.
+
+### Advisory Recall Sources
+
+Advisory sources are injected only within the `recall` budget class, are
+truncatable, and must not be continuity-critical. Rendered machine-generated
+advisory content carries `verify_before_applying: yes`.
+
+| Context source                   | selectionPriority | Notes                               |
+| -------------------------------- | ----------------- | ----------------------------------- |
+| `brewva.recall-broker`           | 14                | Targeted mixed-source retrieval     |
+| `brewva.skill-routing`           | 15                | Session-state routing hints         |
+| `brewva.narrative-memory`        | 42                | Machine-inferred lessons            |
+| `brewva.deliberation-memory`     | 44                | Machine-inferred decision artifacts |
+| `brewva.optimization-continuity` | 46                | Session optimization lineage        |
+| `brewva.skill-promotion-drafts`  | 48                | Reviewable promotion candidates     |
+
+Recall broker results then rank by `sourceTier` before score:
+`runtime_evidence`, `repository_precedent`, `promotion_candidate`,
+`advisory_memory`. Tape search only indexes an allowlist of recovery-relevant
+events; `recall_results_surfaced`, `context_*`, and `projection_*` are durable
+evidence or rebuildable signals, not searchable recall evidence.
+
+Relevant implementation:
+
+- `packages/brewva-runtime/src/context/sources.ts`
+- `packages/brewva-runtime/src/context/provider.ts`
+- `packages/brewva-runtime/src/context/arena.ts`
+- `packages/brewva-recall/src/context-provider.ts`
+- `packages/brewva-recall/src/broker.ts`
+- `packages/brewva-deliberation/src/narrative.ts`
+- `packages/brewva-deliberation/src/memory.ts`
+- `packages/brewva-deliberation/src/optimization.ts`
+- `packages/brewva-skill-broker/src/broker.ts`
 
 ## Failure Modes and Containment
 

@@ -1,13 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getOrCreateNarrativeMemoryPlane } from "@brewva/brewva-deliberation";
 import {
   createRecallContextProvider,
   getOrCreateRecallBroker,
   RECALL_CURATION_HALFLIFE_DAYS,
 } from "@brewva/brewva-recall";
-import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import {
+  BrewvaRuntime,
+  CONTEXT_INJECTED_EVENT_TYPE,
+  PROJECTION_REFRESHED_EVENT_TYPE,
+  RECALL_RESULTS_SURFACED_EVENT_TYPE,
+} from "@brewva/brewva-runtime";
 import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 
 describe("recall broker", () => {
@@ -68,6 +74,142 @@ describe("recall broker", () => {
 
     const broker = getOrCreateRecallBroker(runtime);
     expect(broker.sync().curation).toHaveLength(0);
+  });
+
+  test("excludes recall, context, and projection signals from searchable tape evidence", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-recall-broker-"));
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const priorSessionId = "recall-broker-noise-prior";
+    const currentSessionId = "recall-broker-noise-current";
+
+    recordRuntimeEvent(runtime, {
+      sessionId: priorSessionId,
+      type: RECALL_RESULTS_SURFACED_EVENT_TYPE,
+      payload: {
+        source: "context_provider",
+        stableIds: ["poisoned gateway recall marker"],
+      } as Record<string, unknown>,
+    });
+    recordRuntimeEvent(runtime, {
+      sessionId: priorSessionId,
+      type: CONTEXT_INJECTED_EVENT_TYPE,
+      payload: {
+        source: "brewva.recall-broker",
+        text: "poisoned gateway context marker",
+      } as Record<string, unknown>,
+    });
+    recordRuntimeEvent(runtime, {
+      sessionId: priorSessionId,
+      type: PROJECTION_REFRESHED_EVENT_TYPE,
+      payload: {
+        summary: "poisoned gateway projection marker",
+      } as Record<string, unknown>,
+    });
+
+    const broker = getOrCreateRecallBroker(runtime);
+    const digest = broker.sync().sessionDigests.find((entry) => entry.sessionId === priorSessionId);
+    expect(digest).toBeUndefined();
+
+    const result = broker.search({
+      sessionId: currentSessionId,
+      query: "poisoned gateway marker",
+      scope: "workspace_wide",
+      limit: 6,
+    });
+
+    expect(result.results).toHaveLength(0);
+  });
+
+  test("ranks runtime evidence and repository precedents ahead of advisory memory", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-recall-broker-"));
+    mkdirSync(join(workspace, "packages", "gateway"), { recursive: true });
+    mkdirSync(join(workspace, "docs", "solutions", "gateway"), { recursive: true });
+    writeFileSync(
+      join(workspace, "docs", "solutions", "gateway", "authority-ranking.md"),
+      [
+        "---",
+        "title: Authority ranking precedent",
+        "tags: [gateway, authority]",
+        "---",
+        "# Authority ranking precedent",
+        "Gamma authority ranking precedent keeps repository guidance above advisory memory.",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const priorSessionId = "recall-broker-ranking-prior";
+    const currentSessionId = "recall-broker-ranking-current";
+    runtime.maintain.context.onTurnStart(priorSessionId, 1);
+    runtime.authority.task.setSpec(priorSessionId, {
+      schema: "brewva.task.v1",
+      goal: "Gamma authority ranking runtime evidence",
+      targets: {
+        files: ["packages/gateway"],
+      },
+    });
+    recordRuntimeEvent(runtime, {
+      sessionId: priorSessionId,
+      type: "task_event",
+      payload: {
+        schema: "brewva.task.ledger.v1",
+        kind: "item_added",
+        item: {
+          id: "recall-ranking-item",
+          text: "Gamma authority ranking runtime evidence",
+          status: "done",
+        },
+      } as Record<string, unknown>,
+    });
+
+    getOrCreateNarrativeMemoryPlane(runtime).addRecord({
+      class: "project_context_note",
+      title: "Gamma authority ranking advisory memory",
+      summary: "Gamma authority ranking advisory memory",
+      content: "Gamma authority ranking advisory memory should not outrank repository precedent.",
+      applicabilityScope: "repository",
+      confidenceScore: 1,
+      status: "active",
+      retrievalCount: 0,
+      provenance: {
+        source: "passive_extraction",
+        actor: "assistant",
+        sessionId: priorSessionId,
+        targetRoots: [join(workspace, "packages", "gateway")],
+      },
+      evidence: [
+        {
+          kind: "input_excerpt",
+          summary: "Gamma authority ranking advisory memory",
+          sessionId: priorSessionId,
+          timestamp: 1_000,
+        },
+      ],
+    });
+
+    runtime.maintain.context.onTurnStart(currentSessionId, 1);
+    runtime.authority.task.setSpec(currentSessionId, {
+      schema: "brewva.task.v1",
+      goal: "Gamma authority ranking lookup",
+      targets: {
+        files: ["packages/gateway"],
+      },
+    });
+
+    const result = getOrCreateRecallBroker(runtime).search({
+      sessionId: currentSessionId,
+      query: "Gamma authority ranking",
+      limit: 6,
+    });
+    const sourceTierOrder = result.results.map((entry) => entry.sourceTier);
+
+    expect(sourceTierOrder.indexOf("runtime_evidence")).toBeGreaterThanOrEqual(0);
+    expect(sourceTierOrder.indexOf("repository_precedent")).toBeGreaterThan(
+      sourceTierOrder.indexOf("runtime_evidence"),
+    );
+    expect(sourceTierOrder.indexOf("advisory_memory")).toBeGreaterThan(
+      sourceTierOrder.indexOf("repository_precedent"),
+    );
   });
 
   test("curation aggregates are time-decayed and inspectable by stable id", () => {
@@ -137,6 +279,7 @@ describe("recall broker", () => {
       expect.objectContaining({
         stableId,
         sourceFamily: "tape_evidence",
+        sourceTier: "runtime_evidence",
         curation: expect.objectContaining({
           helpfulSignals: 1,
         }),
@@ -197,6 +340,7 @@ describe("recall broker", () => {
         expect.objectContaining({
           stableId: `tape:${priorSessionId}:${priorEvent!.id}`,
           sourceFamily: "tape_evidence",
+          sourceTier: "runtime_evidence",
         }),
       ]),
     );

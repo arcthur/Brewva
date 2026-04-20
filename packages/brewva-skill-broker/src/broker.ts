@@ -645,6 +645,7 @@ function renderContextDraft(draft: SkillPromotionDraft): string {
     `target: ${draft.target.kind} -> ${draft.target.pathHint}`,
     `confidence: ${draft.confidenceScore.toFixed(2)}`,
     `repeat_count: ${draft.repeatCount}`,
+    "verify_before_applying: yes",
     `summary: ${draft.summary}`,
     `rationale: ${draft.rationale}`,
   ].join("\n");
@@ -1040,11 +1041,12 @@ export function createSkillPromotionContextProvider(input: {
   return {
     source: CONTEXT_SOURCES.skillPromotionDrafts,
     plane: "advisory_recall",
+    authorityTier: "advisory_recall",
     admissionLane: "primary_registry",
     category: "narrative",
     budgetClass: "recall",
-    collectionOrder: 16,
-    selectionPriority: 16,
+    collectionOrder: 48,
+    selectionPriority: 48,
     readsFrom: ["skillPromotion.cachedDrafts"],
     continuityCritical: false,
     profileSelectable: true,

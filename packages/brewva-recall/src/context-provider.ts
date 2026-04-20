@@ -14,6 +14,7 @@ function renderRecallContextEntry(entry: RecallSearchEntry): string {
   return [
     `[Recall:${entry.sourceFamily}:${entry.stableId}]`,
     `title: ${entry.title}`,
+    `source_tier: ${entry.sourceTier}`,
     `scope: ${entry.scope}`,
     `freshness: ${entry.freshness}`,
     entry.sessionId ? `session_id: ${entry.sessionId}` : null,
@@ -34,11 +35,12 @@ export function createRecallContextProvider(input: {
   return {
     source: CONTEXT_SOURCES.recallBroker,
     plane: "advisory_recall",
+    authorityTier: "advisory_recall",
     admissionLane: "primary_registry",
     category: "narrative",
     budgetClass: "recall",
-    collectionOrder: 48,
-    selectionPriority: 48,
+    collectionOrder: 14,
+    selectionPriority: 14,
     readsFrom: ["recallBroker.search"],
     continuityCritical: false,
     profileSelectable: true,
@@ -57,6 +59,7 @@ export function createRecallContextProvider(input: {
       recordRuntimeEvent(input.runtime, {
         sessionId: providerInput.sessionId,
         type: RECALL_RESULTS_SURFACED_EVENT_TYPE,
+        skipTapeCheckpoint: true,
         payload: {
           source: "context_provider",
           scope: search.scope,

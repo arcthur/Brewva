@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { uniqueStrings } from "@brewva/brewva-deliberation";
 import type { BrewvaEventQuery, BrewvaEventRecord } from "@brewva/brewva-runtime";
+import { isRecallSearchableTapeEvent } from "./evidence-events.js";
 import type { RecallSessionDigest } from "./types.js";
 
 interface RecallEventsPort {
@@ -173,6 +174,7 @@ export function collectRecallSessionDigests(
     }
     const digestSnippets = uniqueStrings(
       sessionEvents
+        .filter((event) => isRecallSearchableTapeEvent(event))
         .map((event) => extractEventSummary(event))
         .filter((entry): entry is string => typeof entry === "string" && entry.length > 0),
     ).slice(0, 20);
@@ -185,6 +187,10 @@ export function collectRecallSessionDigests(
     );
     const targetRoots = normalizeRoots(descriptor.roots ?? fallbackRoots, primaryRoot);
     const repositoryRoot = resolve(input.workspaceRoot);
+    const digestText = compactText([taskGoal, ...digestSnippets].filter(Boolean).join(" "), 2_400);
+    if (!digestText) {
+      continue;
+    }
     digests.push({
       sessionId,
       eventCount: sessionEvents.length,
@@ -193,7 +199,7 @@ export function collectRecallSessionDigests(
       primaryRoot,
       targetRoots,
       taskGoal,
-      digestText: compactText([taskGoal, ...digestSnippets].filter(Boolean).join(" "), 2_400),
+      digestText,
     });
   }
   return digests.toSorted((left, right) => right.lastEventAt - left.lastEventAt);

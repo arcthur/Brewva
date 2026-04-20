@@ -94,6 +94,7 @@ export function createSkillRoutingContextProvider(
   return {
     source: CONTEXT_SOURCES.skillRouting,
     plane: "advisory_recall",
+    authorityTier: "advisory_recall",
     admissionLane: "primary_registry",
     category: "narrative",
     budgetClass: "recall",

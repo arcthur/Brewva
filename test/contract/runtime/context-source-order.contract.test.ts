@@ -2,6 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  createDeliberationMemoryContextProvider,
+  createNarrativeMemoryContextProvider,
+  createOptimizationContinuityContextProvider,
+} from "@brewva/brewva-deliberation";
+import { createRecallContextProvider } from "@brewva/brewva-recall";
+import {
   BrewvaRuntime,
   CONTEXT_SOURCES,
   DEFAULT_BREWVA_CONFIG,
@@ -10,6 +16,7 @@ import {
   type ContextSourceProvider,
 } from "@brewva/brewva-runtime";
 import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
+import { createSkillPromotionContextProvider } from "@brewva/brewva-skill-broker";
 import { setStaticContextInjectionBudget } from "../../fixtures/config.js";
 import { buildCanonicalReviewReport } from "../../helpers/semantic-artifacts.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
@@ -66,6 +73,7 @@ function registerCustomContextProvider(runtime: BrewvaRuntime): void {
   const provider: ContextSourceProvider = {
     source: "brewva.custom-operator-note",
     plane: "working_state",
+    authorityTier: "working_state",
     admissionLane: "primary_registry",
     category: "constraint",
     budgetClass: "core",
@@ -90,6 +98,7 @@ function expectedBaseProviders() {
     {
       source: CONTEXT_SOURCES.identity,
       plane: "contract_core",
+      authorityTier: "operator_profile",
       admissionLane: "primary_registry",
       category: "narrative",
       budgetClass: "core",
@@ -103,6 +112,7 @@ function expectedBaseProviders() {
     {
       source: CONTEXT_SOURCES.agentConstitution,
       plane: "contract_core",
+      authorityTier: "operator_profile",
       admissionLane: "primary_registry",
       category: "narrative",
       budgetClass: "core",
@@ -116,6 +126,7 @@ function expectedBaseProviders() {
     {
       source: CONTEXT_SOURCES.agentMemory,
       plane: "contract_core",
+      authorityTier: "operator_profile",
       admissionLane: "primary_registry",
       category: "narrative",
       budgetClass: "core",
@@ -129,6 +140,7 @@ function expectedBaseProviders() {
     {
       source: CONTEXT_SOURCES.historyViewBaseline,
       plane: "history_view",
+      authorityTier: "runtime_contract",
       admissionLane: "primary_registry",
       category: "narrative",
       budgetClass: "core",
@@ -143,6 +155,7 @@ function expectedBaseProviders() {
     {
       source: CONTEXT_SOURCES.skillRouting,
       plane: "advisory_recall",
+      authorityTier: "advisory_recall",
       admissionLane: "primary_registry",
       category: "narrative",
       budgetClass: "recall",
@@ -156,6 +169,7 @@ function expectedBaseProviders() {
     {
       source: CONTEXT_SOURCES.runtimeStatus,
       plane: "working_state",
+      authorityTier: "runtime_read_model",
       admissionLane: "primary_registry",
       category: "narrative",
       budgetClass: "core",
@@ -169,6 +183,7 @@ function expectedBaseProviders() {
     {
       source: CONTEXT_SOURCES.taskState,
       plane: "working_state",
+      authorityTier: "runtime_contract",
       admissionLane: "primary_registry",
       category: "narrative",
       budgetClass: "core",
@@ -182,6 +197,7 @@ function expectedBaseProviders() {
     {
       source: CONTEXT_SOURCES.recoveryWorkingSet,
       plane: "working_state",
+      authorityTier: "working_state",
       admissionLane: "primary_registry",
       category: "constraint",
       budgetClass: "working",
@@ -195,6 +211,7 @@ function expectedBaseProviders() {
     {
       source: CONTEXT_SOURCES.projectionWorking,
       plane: "working_state",
+      authorityTier: "working_state",
       admissionLane: "primary_registry",
       category: "narrative",
       budgetClass: "working",
@@ -319,6 +336,7 @@ describe("context source order integration", () => {
     ).toEqual({
       source: "brewva.custom-operator-note",
       plane: "working_state",
+      authorityTier: "working_state",
       admissionLane: "primary_registry",
       category: "constraint",
       budgetClass: "core",
@@ -366,6 +384,7 @@ describe("context source order integration", () => {
       {
         source: CONTEXT_SOURCES.toolOutputsDistilled,
         plane: "working_state",
+        authorityTier: "runtime_read_model",
         admissionLane: "primary_registry",
         category: "narrative",
         budgetClass: "working",
@@ -380,5 +399,84 @@ describe("context source order integration", () => {
     ] satisfies ContextSourceProviderDescriptor[];
 
     expect(summarizeProviders(runtime)).toEqual(expectedProviders);
+  });
+
+  test("keeps advisory recall providers on recall budget and truncatable preservation", () => {
+    const runtime = new BrewvaRuntime({
+      cwd: createContextOrderWorkspace("advisory-provider-contract"),
+      config: createConfig(),
+      agentId: "default",
+    });
+    const advisoryProviders = [
+      createRecallContextProvider({ runtime }),
+      createNarrativeMemoryContextProvider({ runtime }),
+      createDeliberationMemoryContextProvider({ runtime }),
+      createOptimizationContinuityContextProvider({ runtime }),
+      createSkillPromotionContextProvider({ runtime }),
+    ];
+
+    expect(
+      advisoryProviders.map((provider) => ({
+        source: provider.source,
+        authorityTier: provider.authorityTier,
+        plane: provider.plane,
+        budgetClass: provider.budgetClass,
+        preservationPolicy: provider.preservationPolicy,
+        continuityCritical: provider.continuityCritical,
+        collectionOrder: provider.collectionOrder,
+        selectionPriority: provider.selectionPriority,
+      })),
+    ).toEqual([
+      {
+        source: CONTEXT_SOURCES.recallBroker,
+        authorityTier: "advisory_recall",
+        plane: "advisory_recall",
+        budgetClass: "recall",
+        preservationPolicy: "truncatable",
+        continuityCritical: false,
+        collectionOrder: 14,
+        selectionPriority: 14,
+      },
+      {
+        source: CONTEXT_SOURCES.narrativeMemory,
+        authorityTier: "advisory_recall",
+        plane: "advisory_recall",
+        budgetClass: "recall",
+        preservationPolicy: "truncatable",
+        continuityCritical: false,
+        collectionOrder: 42,
+        selectionPriority: 42,
+      },
+      {
+        source: CONTEXT_SOURCES.deliberationMemory,
+        authorityTier: "advisory_recall",
+        plane: "advisory_recall",
+        budgetClass: "recall",
+        preservationPolicy: "truncatable",
+        continuityCritical: false,
+        collectionOrder: 44,
+        selectionPriority: 44,
+      },
+      {
+        source: CONTEXT_SOURCES.optimizationContinuity,
+        authorityTier: "advisory_recall",
+        plane: "advisory_recall",
+        budgetClass: "recall",
+        preservationPolicy: "truncatable",
+        continuityCritical: false,
+        collectionOrder: 46,
+        selectionPriority: 46,
+      },
+      {
+        source: CONTEXT_SOURCES.skillPromotionDrafts,
+        authorityTier: "advisory_recall",
+        plane: "advisory_recall",
+        budgetClass: "recall",
+        preservationPolicy: "truncatable",
+        continuityCritical: false,
+        collectionOrder: 48,
+        selectionPriority: 48,
+      },
+    ]);
   });
 });

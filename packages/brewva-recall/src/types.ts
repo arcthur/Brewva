@@ -1,4 +1,4 @@
-export const RECALL_BROKER_STATE_SCHEMA = "brewva.recall.broker.v3" as const;
+export const RECALL_BROKER_STATE_SCHEMA = "brewva.recall.broker.v4" as const;
 export const RECALL_CURATION_HALFLIFE_DAYS = 45;
 
 export const RECALL_SOURCE_FAMILIES = [
@@ -16,6 +16,13 @@ export const RECALL_SCOPE_VALUES = [
   "workspace_wide",
 ] as const;
 
+export const RECALL_SOURCE_TIERS = [
+  "runtime_evidence",
+  "repository_precedent",
+  "promotion_candidate",
+  "advisory_memory",
+] as const;
+
 export const RECALL_CURATION_SIGNAL_VALUES = [
   "helpful",
   "stale",
@@ -28,6 +35,7 @@ export const RECALL_FRESHNESS_VALUES = ["fresh", "aging", "stale", "unknown"] as
 
 export type RecallSourceFamily = (typeof RECALL_SOURCE_FAMILIES)[number];
 export type RecallScope = (typeof RECALL_SCOPE_VALUES)[number];
+export type RecallSourceTier = (typeof RECALL_SOURCE_TIERS)[number];
 export type RecallCurationSignal = (typeof RECALL_CURATION_SIGNAL_VALUES)[number];
 export type RecallFreshness = (typeof RECALL_FRESHNESS_VALUES)[number];
 
@@ -93,6 +101,7 @@ export interface RecallBrokerState {
 export interface RecallSearchEntry {
   stableId: string;
   sourceFamily: RecallSourceFamily;
+  sourceTier: RecallSourceTier;
   scope: RecallScope;
   score: number;
   title: string;

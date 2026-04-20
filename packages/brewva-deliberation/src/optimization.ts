@@ -1160,6 +1160,7 @@ function renderContextLineage(lineage: OptimizationLineageArtifact): string {
     `lineage_id: ${lineage.id}`,
     `loop_key: ${lineage.loopKey}`,
     `status: ${lineage.status}`,
+    "verify_before_applying: yes",
   ];
   if (lineage.goal) {
     lines.push(`goal: ${lineage.goal}`);
@@ -1359,11 +1360,12 @@ export function createOptimizationContinuityContextProvider(input: {
   return {
     source: CONTEXT_SOURCES.optimizationContinuity,
     plane: "advisory_recall",
+    authorityTier: "advisory_recall",
     admissionLane: "primary_registry",
     category: "narrative",
     budgetClass: "recall",
-    collectionOrder: 19,
-    selectionPriority: 19,
+    collectionOrder: 46,
+    selectionPriority: 46,
     readsFrom: ["optimizationContinuity.retrieve"],
     continuityCritical: false,
     profileSelectable: true,

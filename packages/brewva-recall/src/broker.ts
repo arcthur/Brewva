@@ -14,6 +14,7 @@ import {
   getOrCreateSkillPromotionBroker,
   type SkillPromotionDraft,
 } from "@brewva/brewva-skill-broker";
+import { isRecallSearchableTapeEvent } from "./evidence-events.js";
 import {
   executeKnowledgeSearch,
   findKnowledgeDocByRelativePath,
@@ -29,6 +30,7 @@ import {
   type RecallInspectResult,
   type RecallFreshness,
   type RecallScope,
+  type RecallSourceTier,
   type RecallCurationSnapshot,
   type RecallSearchEntry,
   type RecallSearchResult,
@@ -39,6 +41,12 @@ const DEFAULT_MAX_RESULTS = 6;
 const DEFAULT_MAX_TAPE_SESSIONS = 6;
 const DEFAULT_SCOPE: RecallScope = "user_repository_root";
 const RECALL_CURATION_HALFLIFE_MS = RECALL_CURATION_HALFLIFE_DAYS * 24 * 60 * 60 * 1000;
+const RECALL_SOURCE_TIER_RANK: Record<RecallSourceTier, number> = {
+  runtime_evidence: 0,
+  repository_precedent: 1,
+  promotion_candidate: 2,
+  advisory_memory: 3,
+};
 
 interface RecallBrokerEventsPort extends Pick<
   BrewvaInspectionPort["events"],
@@ -317,6 +325,18 @@ function buildCurationSnapshot(
   };
 }
 
+function compareRecallSearchEntries(left: RecallSearchEntry, right: RecallSearchEntry): number {
+  const tierDelta =
+    RECALL_SOURCE_TIER_RANK[left.sourceTier] - RECALL_SOURCE_TIER_RANK[right.sourceTier];
+  if (tierDelta !== 0) {
+    return tierDelta;
+  }
+  if (right.score !== left.score) {
+    return right.score - left.score;
+  }
+  return left.stableId.localeCompare(right.stableId);
+}
+
 function mapNarrativeRecord(
   record: NarrativeMemoryRecord,
   score: number,
@@ -326,6 +346,7 @@ function mapNarrativeRecord(
   return {
     stableId: `narrative:${record.id}`,
     sourceFamily: "narrative_memory",
+    sourceTier: "advisory_memory",
     scope,
     score,
     title: record.title,
@@ -346,6 +367,7 @@ function mapDeliberationArtifact(
   return {
     stableId: `deliberation:${artifact.id}`,
     sourceFamily: "deliberation_memory",
+    sourceTier: "advisory_memory",
     scope,
     score,
     title: artifact.title,
@@ -366,6 +388,7 @@ function mapOptimizationLineage(
   return {
     stableId: `optimization:${artifact.id}`,
     sourceFamily: "optimization_continuity",
+    sourceTier: "advisory_memory",
     scope,
     score,
     title: artifact.goal ?? artifact.loopKey,
@@ -390,6 +413,7 @@ function mapPromotionDraft(
   return {
     stableId: `promotion:${draft.id}`,
     sourceFamily: "promotion_draft",
+    sourceTier: "promotion_candidate",
     scope,
     score: score + draft.confidenceScore * 0.25 + Math.min(0.12, draft.repeatCount * 0.04),
     title: draft.title,
@@ -410,6 +434,7 @@ function mapKnowledgeDoc(
   return {
     stableId: `precedent:${doc.relativePath}`,
     sourceFamily: "repository_precedent",
+    sourceTier: "repository_precedent",
     scope,
     score,
     title: doc.title,
@@ -443,11 +468,9 @@ export class RecallBroker {
     this.store = new FileRecallBrokerStore(runtime.workspaceRoot);
     runtime.inspect.events.subscribe((event) => {
       if (
-        event.type.startsWith("task_") ||
-        event.type.startsWith("truth_") ||
-        event.type.startsWith("skill_") ||
+        isRecallSearchableTapeEvent(event) ||
         event.type.startsWith("recall_") ||
-        event.type === "tool_result_recorded"
+        event.type.startsWith("skill_promotion_")
       ) {
         this.dirty = true;
       }
@@ -577,9 +600,7 @@ export class RecallBroker {
       query,
       scope,
       results: this.applyCuration(results, curationById)
-        .toSorted(
-          (left, right) => right.score - left.score || left.stableId.localeCompare(right.stableId),
-        )
+        .toSorted(compareRecallSearchEntries)
         .slice(0, limit),
     };
   }
@@ -613,7 +634,7 @@ export class RecallBroker {
       requestedStableIds,
       unresolvedStableIds,
       results: this.applyCuration(resolvedResults, curationById).toSorted(
-        (left, right) => right.score - left.score || left.stableId.localeCompare(right.stableId),
+        compareRecallSearchEntries,
       ),
     };
   }
@@ -643,12 +664,14 @@ export class RecallBroker {
     const results: RecallSearchEntry[] = [];
     for (const digest of rankedDigests) {
       for (const event of this.runtime.inspect.events.list(digest.sessionId)) {
+        if (!isRecallSearchableTapeEvent(event)) continue;
         const text = extractEventSearchText(event);
         const overlap = computeTokenOverlap(queryTokens, text);
         if (overlap <= 0) continue;
         results.push({
           stableId: `tape:${digest.sessionId}:${event.id}`,
           sourceFamily: "tape_evidence",
+          sourceTier: "runtime_evidence",
           scope,
           score:
             overlap +
@@ -752,13 +775,13 @@ export class RecallBroker {
       const record = getOrCreateNarrativeMemoryPlane(this.runtime).getRecord(
         stableId.slice("narrative:".length),
       );
-      return record ? mapNarrativeRecord(record, 0.4, ["stable_id"]) : undefined;
+      return record ? mapNarrativeRecord(record, 0.4, ["stable_id"], scope) : undefined;
     }
     if (stableId.startsWith("deliberation:")) {
       const artifact = getOrCreateDeliberationMemoryPlane(this.runtime).getArtifact(
         stableId.slice("deliberation:".length),
       );
-      return artifact ? mapDeliberationArtifact(artifact, 0.4, ["stable_id"]) : undefined;
+      return artifact ? mapDeliberationArtifact(artifact, 0.4, ["stable_id"], scope) : undefined;
     }
     if (stableId.startsWith("optimization:")) {
       const lineage = getOrCreateOptimizationContinuityPlane(this.runtime).getLineage(
@@ -778,6 +801,7 @@ export class RecallBroker {
         lineage,
         0.4,
         uniqueStrings([lineage.status, lineage.loopKey, "stable_id"]).slice(0, 4),
+        scope,
       );
     }
     if (stableId.startsWith("promotion:")) {
@@ -797,6 +821,7 @@ export class RecallBroker {
       return {
         stableId: `promotion:${draft.id}`,
         sourceFamily: "promotion_draft",
+        sourceTier: "promotion_candidate",
         scope,
         score: 0.4,
         title: draft.title,
@@ -812,7 +837,7 @@ export class RecallBroker {
         [this.runtime.workspaceRoot],
         stableId.slice("precedent:".length),
       );
-      return doc ? mapKnowledgeDoc(doc, 0.4, ["stable_id"]) : undefined;
+      return doc ? mapKnowledgeDoc(doc, 0.4, ["stable_id"], scope) : undefined;
     }
     return undefined;
   }
@@ -839,10 +864,14 @@ export class RecallBroker {
     if (!event) {
       return undefined;
     }
+    if (!isRecallSearchableTapeEvent(event)) {
+      return undefined;
+    }
     const text = extractEventSearchText(event);
     return {
       stableId,
       sourceFamily: "tape_evidence",
+      sourceTier: "runtime_evidence",
       scope,
       score: 0.4,
       title: renderEventTitle(event),

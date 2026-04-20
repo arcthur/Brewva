@@ -11,6 +11,12 @@ export type ContextDependencyPlane =
 export type ContextAdmissionLane = "primary_registry";
 export type ContextReadDependencyId = string;
 export type ContextPreservationPolicy = "truncatable" | "non_truncatable";
+export type ContextAuthorityTier =
+  | "operator_profile"
+  | "runtime_contract"
+  | "runtime_read_model"
+  | "working_state"
+  | "advisory_recall";
 
 export interface ContextSourceProviderRegistration extends Omit<
   RegisterContextInjectionInput,
@@ -34,6 +40,7 @@ export interface ContextSourceProviderInput {
 export interface ContextSourceProvider {
   readonly source: string;
   readonly plane: ContextDependencyPlane;
+  readonly authorityTier: ContextAuthorityTier;
   readonly admissionLane: ContextAdmissionLane;
   readonly category: ContextInjectionCategory;
   readonly budgetClass: ContextInjectionBudgetClass;
@@ -50,6 +57,7 @@ export interface ContextSourceProvider {
 export interface ContextSourceProviderDescriptor {
   readonly source: string;
   readonly plane: ContextDependencyPlane;
+  readonly authorityTier: ContextAuthorityTier;
   readonly admissionLane: ContextAdmissionLane;
   readonly category: ContextInjectionCategory;
   readonly budgetClass: ContextInjectionBudgetClass;
@@ -140,6 +148,7 @@ export class ContextSourceProviderRegistry {
     return {
       source: provider.source,
       plane: provider.plane,
+      authorityTier: provider.authorityTier,
       admissionLane: provider.admissionLane,
       category: provider.category,
       budgetClass: provider.budgetClass,
@@ -160,6 +169,31 @@ export class ContextSourceProviderRegistry {
       throw new Error(
         `Context source provider admission lane must be primary_registry: ${provider.source}`,
       );
+    }
+    if (!this.isAuthorityTier(provider.authorityTier)) {
+      throw new Error(`Context source provider authorityTier is invalid: ${provider.source}`);
+    }
+    if (provider.authorityTier === "advisory_recall") {
+      if (provider.plane !== "advisory_recall") {
+        throw new Error(
+          `Advisory context source providers must use advisory_recall plane: ${provider.source}`,
+        );
+      }
+      if (provider.budgetClass !== "recall") {
+        throw new Error(
+          `Advisory context source providers must use recall budget: ${provider.source}`,
+        );
+      }
+      if (provider.preservationPolicy !== "truncatable") {
+        throw new Error(
+          `Advisory context source providers must be truncatable: ${provider.source}`,
+        );
+      }
+      if (provider.continuityCritical) {
+        throw new Error(
+          `Advisory context source providers cannot be continuity critical: ${provider.source}`,
+        );
+      }
     }
     if (!Array.isArray(provider.readsFrom)) {
       throw new Error(`Context source provider readsFrom must be an array: ${provider.source}`);
@@ -189,5 +223,15 @@ export class ContextSourceProviderRegistry {
       throw new Error(`Context source provider source must be trimmed: ${source}`);
     }
     return normalized;
+  }
+
+  private isAuthorityTier(value: unknown): value is ContextAuthorityTier {
+    return (
+      value === "operator_profile" ||
+      value === "runtime_contract" ||
+      value === "runtime_read_model" ||
+      value === "working_state" ||
+      value === "advisory_recall"
+    );
   }
 }

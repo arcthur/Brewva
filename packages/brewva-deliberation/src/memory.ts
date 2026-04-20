@@ -1060,6 +1060,7 @@ function renderContextEntry(artifact: DeliberationMemoryArtifact): string {
     `confidence: ${artifact.confidenceScore.toFixed(2)}`,
     retention ? `retention: ${retention.band} (${retention.retentionScore.toFixed(2)})` : "",
     `evidence_sessions: ${artifact.sessionIds.length}`,
+    "verify_before_applying: yes",
     artifact.content,
   ]
     .filter((line) => line.length > 0)
@@ -1263,11 +1264,12 @@ export function createDeliberationMemoryContextProvider(input: {
   return {
     source: CONTEXT_SOURCES.deliberationMemory,
     plane: "advisory_recall",
+    authorityTier: "advisory_recall",
     admissionLane: "primary_registry",
     category: "narrative",
     budgetClass: "recall",
-    collectionOrder: 17,
-    selectionPriority: 17,
+    collectionOrder: 44,
+    selectionPriority: 44,
     readsFrom: ["deliberationMemory.retrieve"],
     continuityCritical: false,
     profileSelectable: true,

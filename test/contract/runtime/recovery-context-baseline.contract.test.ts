@@ -45,6 +45,7 @@ describe("recovery context baseline integration", () => {
         expect.objectContaining({
           source: CONTEXT_SOURCES.historyViewBaseline,
           plane: "history_view",
+          authorityTier: "runtime_contract",
           admissionLane: "primary_registry",
           category: "narrative",
           budgetClass: "core",
@@ -59,6 +60,7 @@ describe("recovery context baseline integration", () => {
         expect.objectContaining({
           source: CONTEXT_SOURCES.recoveryWorkingSet,
           plane: "working_state",
+          authorityTier: "working_state",
           admissionLane: "primary_registry",
           category: "constraint",
           budgetClass: "working",
@@ -88,6 +90,7 @@ describe("recovery context baseline integration", () => {
     runtime.maintain.context.registerProvider({
       source: CONTEXT_SOURCES.historyViewBaseline,
       plane: "history_view",
+      authorityTier: "runtime_contract",
       admissionLane: "primary_registry",
       category: "narrative",
       budgetClass: "core",

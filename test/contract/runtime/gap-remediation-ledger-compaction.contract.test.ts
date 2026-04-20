@@ -67,7 +67,7 @@ describe("Gap remediation: ledger compaction and redaction", () => {
     expect(ledgerText.includes("AKIA1234567890ABCDEF")).toBe(false);
   });
 
-  test("tolerates invalid JSON lines in persisted ledger file", async () => {
+  test("flags invalid JSON lines in persisted ledger integrity checks", async () => {
     const workspace = createWorkspace("ledger-bad-lines");
     writeConfig(workspace, createConfig({}));
 
@@ -88,6 +88,9 @@ describe("Gap remediation: ledger compaction and redaction", () => {
     expect(rows[0]?.tool).toBe("read");
 
     const integrity = runtime.inspect.ledger.verifyIntegrity(sessionId);
-    expect(integrity.valid).toBe(true);
+    expect(integrity).toEqual({
+      valid: false,
+      reason: "ledger_row_malformed_json:2",
+    });
   });
 });

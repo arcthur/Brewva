@@ -41,13 +41,16 @@ describe("runtime event registry", () => {
       ),
     ).toBe(true);
 
-    expect(getBrewvaEventDurabilityClass("turn_input_recorded")).toBe("authority-bearing");
+    expect(getBrewvaEventDurabilityClass("turn_input_recorded")).toBe("source_of_truth");
     expect(getBrewvaEventDurabilityClass("effect_commitment_approval_requested")).toBe(
-      "authority-bearing",
+      "source_of_truth",
     );
-    expect(getBrewvaEventDurabilityClass("projection_refreshed")).toBe("audit-only");
-    expect(getBrewvaEventDurabilityClass("skill_recommendation_derived")).toBe("audit-only");
-    expect(getBrewvaEventDurabilityClass("tool_parallel_read")).toBe("session-local");
+    expect(getBrewvaEventDurabilityClass("recall_results_surfaced")).toBe("durable_evidence");
+    expect(getBrewvaEventDurabilityClass("projection_refreshed")).toBe("rebuildable_signal");
+    expect(getBrewvaEventDurabilityClass("skill_recommendation_derived")).toBe(
+      "rebuildable_signal",
+    );
+    expect(getBrewvaEventDurabilityClass("tool_parallel_read")).toBe("session_local");
     expect(getBrewvaEventDurabilityClass("not_a_runtime_event")).toBeUndefined();
   });
 });

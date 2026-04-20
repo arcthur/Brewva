@@ -377,12 +377,14 @@ describe("session coordination tool contracts", () => {
     const text = extractTextContent(result);
     expect(text).toContain("[RecallSearch]");
     expect(text).toContain("source_family=tape_evidence");
+    expect(text).toContain("source_tier=runtime_evidence");
     expect(text).toContain(`session_id=${priorSessionId}`);
 
     const details = result.details as
       | {
           results?: Array<{
             sourceFamily?: string;
+            sourceTier?: string;
             sessionId?: string | null;
           }>;
         }
@@ -391,6 +393,7 @@ describe("session coordination tool contracts", () => {
       expect.arrayContaining([
         expect.objectContaining({
           sourceFamily: "tape_evidence",
+          sourceTier: "runtime_evidence",
           sessionId: priorSessionId,
         }),
       ]),

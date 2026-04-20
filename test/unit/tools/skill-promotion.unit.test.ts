@@ -156,6 +156,9 @@ describe("skill promotion tool", () => {
     });
     expect(afterListEntries).toHaveLength(1);
     expect(afterListEntries[0]?.id).toBe(draftId);
+    expect(afterListEntries[0]?.content).toContain("verify_before_applying: yes");
+    expect(provider.selectionPriority).toBe(48);
+    expect(provider.collectionOrder).toBe(48);
 
     await tool.execute(
       "tc-skill-promotion-provider-promote",

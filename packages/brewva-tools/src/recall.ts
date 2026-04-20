@@ -68,6 +68,7 @@ function renderRecallEntry(entry: RecallSearchEntry): string {
   const header = [
     `- score=${entry.score.toFixed(3)}`,
     `source_family=${entry.sourceFamily}`,
+    `source_tier=${entry.sourceTier}`,
     `scope=${entry.scope}`,
     `freshness=${entry.freshness}`,
     `stable_id=${entry.stableId}`,
@@ -188,6 +189,7 @@ export function createRecallSearchTool(options: BrewvaToolOptions): ToolDefiniti
             results: search.results.map((entry) => ({
               stableId: entry.stableId,
               sourceFamily: entry.sourceFamily,
+              sourceTier: entry.sourceTier,
               scope: entry.scope,
               freshness: entry.freshness,
               title: entry.title,
@@ -249,6 +251,7 @@ export function createRecallSearchTool(options: BrewvaToolOptions): ToolDefiniti
           results: inspection.results.map((entry) => ({
             stableId: entry.stableId,
             sourceFamily: entry.sourceFamily,
+            sourceTier: entry.sourceTier,
             scope: entry.scope,
             freshness: entry.freshness,
             title: entry.title,
