@@ -158,6 +158,9 @@ function memoryWrite(
 }
 
 function controlStateMutation(): ToolActionPolicy {
+  // recoveryPolicy is declaration-of-intent metadata. "forward_correction" signals that
+  // recovery happens by issuing a corrective forward action, not by rolling back a patch.
+  // Enforcement is handled by the commitment spine, not by this policy field directly.
   return buildPolicy({
     actionClass: "control_state_mutation",
     riskLevel: "medium",
@@ -201,6 +204,9 @@ function localExecEffectful(
 }
 
 function localExecReadonly(): ToolActionPolicy {
+  // maxAdmission is intentionally "ask" until the command-policy grammar and physical
+  // sandbox posture are implemented. When the safety gate is lifted, maxAdmission must
+  // be relaxed to "allow" in lockstep — the ceiling and the gate travel together.
   return buildPolicy({
     actionClass: "local_exec_readonly",
     riskLevel: "medium",
@@ -283,9 +289,7 @@ const TOOL_ACTION_POLICY_BY_CLASS: Record<ToolActionClass, ToolActionPolicy> = {
 const NARRATIVE_MEMORY_READ_ACTIONS = new Set(["list", "show", "retrieve", "stats"]);
 const NARRATIVE_MEMORY_MEMORY_WRITE_ACTIONS = new Set(["remember", "review", "archive", "forget"]);
 
-const NARRATIVE_MEMORY_DEFAULT_POLICY = memoryWrite({
-  effectClasses: ["runtime_observe", "memory_write", "workspace_write"],
-});
+const NARRATIVE_MEMORY_DEFAULT_POLICY = memoryWrite();
 const NARRATIVE_MEMORY_READ_POLICY = runtimeObserve("low");
 const NARRATIVE_MEMORY_MEMORY_WRITE_POLICY = memoryWrite();
 const NARRATIVE_MEMORY_PROMOTE_POLICY = memoryWrite({
@@ -691,10 +695,34 @@ function resolveActionPolicyWithoutCustom(
       source: "exact",
     };
   }
-  const hinted = TOOL_NAME_ACTION_POLICY_HINTS.find((entry) => entry.match.test(normalized));
-  if (hinted) {
+  // Collect all matching hints and pick the most restrictive one by admission rank.
+  // Hint resolution intentionally floors admission at "ask" — hints should never
+  // auto-allow tools that weren't explicitly registered. Per the RFC: "missing exact
+  // action policy fails closed"; hints are best-effort name-pattern classification
+  // and must not relax the admission floor below operator approval.
+  const matchedHints = TOOL_NAME_ACTION_POLICY_HINTS.filter((entry) =>
+    entry.match.test(normalized),
+  );
+  if (matchedHints.length > 0) {
+    const mostRestrictive = matchedHints.reduce((best, current) =>
+      compareToolAdmission(current.policy.defaultAdmission, best.policy.defaultAdmission) > 0
+        ? current
+        : best,
+    );
+    const hintAdmission: ToolAdmissionBehavior =
+      compareToolAdmission(mostRestrictive.policy.defaultAdmission, "ask") < 0
+        ? "ask"
+        : mostRestrictive.policy.defaultAdmission;
+    const hintMaxAdmission: ToolAdmissionBehavior =
+      compareToolAdmission(mostRestrictive.policy.maxAdmission, "ask") < 0
+        ? "ask"
+        : mostRestrictive.policy.maxAdmission;
     return {
-      policy: validateToolActionPolicy(normalized, hinted.policy),
+      policy: validateToolActionPolicy(normalized, {
+        ...mostRestrictive.policy,
+        defaultAdmission: hintAdmission,
+        maxAdmission: hintMaxAdmission,
+      }),
       source: "hint",
     };
   }
