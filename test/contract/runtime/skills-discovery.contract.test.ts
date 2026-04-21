@@ -6,25 +6,36 @@ import { DEFAULT_BREWVA_CONFIG, BrewvaRuntime } from "@brewva/brewva-runtime";
 import { discoverSkillRegistryRoots } from "@brewva/brewva-runtime/internal";
 import { requireDefined } from "../../helpers/assertions.js";
 
-function writeSkill(filePath: string, input: { name: string }): void {
+function writeSkill(
+  filePath: string,
+  input: {
+    name: string;
+    selection?: "default" | "examples_only" | false;
+    executionHints?: boolean;
+  },
+): void {
   mkdirSync(dirname(filePath), { recursive: true });
   const normalizedPath = filePath.replace(/\\/g, "/");
   const routedCategory = ["/core/", "/domain/", "/operator/", "/meta/"].find((segment) =>
     normalizedPath.includes(segment),
   );
+  const selectionMode = input.selection ?? "default";
   writeFileSync(
     filePath,
     [
       "---",
       `name: ${input.name}`,
       `description: ${input.name} skill`,
-      ...(routedCategory
+      ...(routedCategory && selectionMode === "default"
         ? [
             "selection:",
             "  when_to_use: Use when the task needs the routed test skill.",
             "  examples: [test skill]",
             "  phases: [align]",
           ]
+        : []),
+      ...(routedCategory && selectionMode === "examples_only"
+        ? ["selection:", "  examples: [test skill]"]
         : []),
       "intent:",
       "  outputs: []",
@@ -37,9 +48,9 @@ function writeSkill(filePath: string, input: { name: string }): void {
       "  hard_ceiling:",
       "    max_tool_calls: 10",
       "    max_tokens: 10000",
-      "execution_hints:",
-      "  preferred_tools: [read]",
-      "  fallback_tools: []",
+      ...(input.executionHints
+        ? ["execution_hints:", "  preferred_tools: [read]", "  fallback_tools: []"]
+        : []),
       "consumes: []",
       "---",
       `# ${input.name}`,
@@ -77,7 +88,9 @@ function writeSkill(filePath: string, input: { name: string }): void {
 describe("skill discovery and loading", () => {
   test("installs bundled system skills and writes a versioned index for clean workspaces", () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-system-root-"));
-    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const config = structuredClone(DEFAULT_BREWVA_CONFIG);
+    config.skills.routing.enabled = true;
+    const runtime = new BrewvaRuntime({ cwd: workspace, config });
 
     const report = runtime.inspect.skills.getLoadReport();
     expect(report.roots.some((entry) => entry.source === "system_root")).toBe(true);
@@ -89,7 +102,7 @@ describe("skill discovery and loading", () => {
       roots?: Array<{ source?: string }>;
       skills?: Array<{ source?: string; rootDir?: string }>;
     };
-    expect(index.schemaVersion).toBe(1);
+    expect(index.schemaVersion).toBe(2);
     expect(index.roots?.some((entry) => entry.source === "system_root")).toBe(true);
     expect(index.skills?.length).toBeGreaterThan(0);
     expect(
@@ -105,7 +118,9 @@ describe("skill discovery and loading", () => {
       name: "commitcraft",
     });
 
-    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const config = structuredClone(DEFAULT_BREWVA_CONFIG);
+    config.skills.routing.enabled = true;
+    const runtime = new BrewvaRuntime({ cwd: workspace, config });
     requireDefined(runtime.inspect.skills.get("commitcraft"), "expected commitcraft skill to load");
 
     const roots = discoverSkillRegistryRoots({
@@ -221,7 +236,9 @@ describe("skill discovery and loading", () => {
       name: "ops-helper",
     });
 
-    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const config = structuredClone(DEFAULT_BREWVA_CONFIG);
+    config.skills.routing.enabled = true;
+    const runtime = new BrewvaRuntime({ cwd: workspace, config });
     requireDefined(runtime.inspect.skills.get("ops-helper"), "expected ops-helper skill to load");
 
     const report = runtime.inspect.skills.getLoadReport();
@@ -247,7 +264,7 @@ describe("skill discovery and loading", () => {
     expect(index.summary?.loadedSkills).toBeGreaterThanOrEqual(1);
     expect(index.summary?.hiddenSkills).toBeGreaterThanOrEqual(1);
     expect(index.summary?.overlaySkills).toBeGreaterThanOrEqual(0);
-    expect(index.schemaVersion).toBe(1);
+    expect(index.schemaVersion).toBe(2);
     expect(index.skills?.some((entry) => entry.name === "ops-helper")).toBe(true);
     expect(index.skills?.find((entry) => entry.name === "ops-helper")).toMatchObject({
       name: "ops-helper",
@@ -271,15 +288,68 @@ describe("skill discovery and loading", () => {
     expect(report.routableSkills).toContain("ops-helper");
   });
 
-  test("applies project overlays and shared context to an existing skill", () => {
+  test("routing scope does not make a skill routable without selection signals", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-scope-without-selection-"));
+    writeSkill(join(workspace, ".brewva/skills/core/hidden-helper/SKILL.md"), {
+      name: "hidden-helper",
+      selection: false,
+    });
+
+    const config = structuredClone(DEFAULT_BREWVA_CONFIG);
+    config.skills.routing.enabled = true;
+    const runtime = new BrewvaRuntime({ cwd: workspace, config });
+    const report = runtime.inspect.skills.getLoadReport();
+    expect(report.hiddenSkills).toContain("hidden-helper");
+    expect(report.routableSkills).not.toContain("hidden-helper");
+
+    const index = JSON.parse(
+      readFileSync(join(workspace, ".brewva", "skills_index.json"), "utf8"),
+    ) as {
+      skills?: Array<{ name?: string; routable?: boolean; routingScope?: string }>;
+    };
+    expect(index.skills?.find((entry) => entry.name === "hidden-helper")).toMatchObject({
+      name: "hidden-helper",
+      routingScope: "core",
+      routable: false,
+    });
+  });
+
+  test("examples-only selection makes an allowed-scope skill routable", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-examples-only-routable-"));
+    writeSkill(join(workspace, ".brewva/skills/core/examples-only/SKILL.md"), {
+      name: "examples-only",
+      selection: "examples_only",
+    });
+
+    const config = structuredClone(DEFAULT_BREWVA_CONFIG);
+    config.skills.routing.enabled = true;
+    const runtime = new BrewvaRuntime({ cwd: workspace, config });
+    const report = runtime.inspect.skills.getLoadReport();
+    expect(report.routableSkills).toContain("examples-only");
+  });
+
+  test("applies project overlays and project guidance to an existing skill", () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-overlay-"));
-    const sharedContextPath = join(workspace, ".brewva/skills/project/shared/project-rules.md");
+    const projectGuidancePath = join(workspace, ".brewva/skills/project/shared/project-rules.md");
     const overlayPath = join(workspace, ".brewva/skills/project/overlays/foo/SKILL.md");
     writeSkill(join(workspace, ".brewva/skills/core/foo/SKILL.md"), {
       name: "foo",
     });
     mkdirSync(join(workspace, ".brewva/skills/project/shared"), { recursive: true });
-    writeFileSync(sharedContextPath, "# Project Rules\n\n- keep it deterministic\n", "utf8");
+    writeFileSync(
+      projectGuidancePath,
+      [
+        "---",
+        "strength: invariant",
+        "scope: project-rules",
+        "---",
+        "",
+        "# Project Rules",
+        "",
+        "- keep it deterministic",
+      ].join("\n"),
+      "utf8",
+    );
     mkdirSync(join(workspace, ".brewva/skills/project/overlays/foo"), { recursive: true });
     writeFileSync(
       overlayPath,
@@ -328,10 +398,107 @@ describe("skill discovery and loading", () => {
 
     const runtime = new BrewvaRuntime({ cwd: workspace });
     const skill = requireDefined(runtime.inspect.skills.get("foo"), "expected foo skill to load");
-    expect(skill.markdown).toContain("Project Context: project-rules");
+    expect(skill.markdown).toContain("Project Guidance: project-rules");
+    expect(skill.markdown).toContain("Metadata: strength=invariant; scope=project-rules");
+    expect(skill.markdown).not.toContain("strength: invariant");
     expect(skill.overlayFiles).toContain(resolve(overlayPath));
-    expect(skill.sharedContextFiles).toContain(resolve(sharedContextPath));
+    expect(skill.projectGuidance).toContainEqual({
+      filePath: resolve(projectGuidancePath),
+      strength: "invariant",
+      scope: "project-rules",
+    });
     expect(skill.contract.resources?.defaultLease?.maxToolCalls).toBe(5);
+  });
+
+  test("applies shared project guidance to final skills without requiring overlays", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-shared-guidance-"));
+    const projectGuidancePath = join(workspace, ".brewva/skills/project/shared/project-rules.md");
+    writeSkill(join(workspace, ".brewva/skills/core/foo/SKILL.md"), {
+      name: "foo",
+    });
+    mkdirSync(dirname(projectGuidancePath), { recursive: true });
+    writeFileSync(
+      projectGuidancePath,
+      [
+        "---",
+        "strength: preference",
+        "scope: project-rules",
+        "---",
+        "# Project Rules",
+        "",
+        "## Trigger",
+        "",
+        "- shared guidance must not become routing prose",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const skill = requireDefined(runtime.inspect.skills.get("foo"), "expected foo skill to load");
+    expect(skill.overlayFiles).toEqual([]);
+    expect(skill.markdown).toContain("Project Guidance: project-rules");
+    expect(skill.markdown).toContain("### Trigger");
+    expect(skill.markdown.match(/^## Trigger$/gm)).toHaveLength(1);
+    expect(skill.resources.references).toContain(resolve(projectGuidancePath));
+    expect(skill.projectGuidance).toContainEqual({
+      filePath: resolve(projectGuidancePath),
+      strength: "preference",
+      scope: "project-rules",
+    });
+
+    const index = JSON.parse(
+      readFileSync(join(workspace, ".brewva", "skills_index.json"), "utf8"),
+    ) as {
+      skills?: Array<{
+        name?: string;
+        projectGuidance?: Array<{ filePath?: string; strength?: string; scope?: string }>;
+      }>;
+    };
+    expect(index.skills?.find((entry) => entry.name === "foo")?.projectGuidance).toContainEqual({
+      filePath: resolve(projectGuidancePath),
+      strength: "preference",
+      scope: "project-rules",
+    });
+  });
+
+  test("project guidance frontmatter is required and limited to metadata fields", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-project-guidance-invalid-"));
+    const projectGuidancePath = join(workspace, ".brewva/skills/project/shared/project-rules.md");
+    const overlayPath = join(workspace, ".brewva/skills/project/overlays/foo/SKILL.md");
+    writeSkill(join(workspace, ".brewva/skills/core/foo/SKILL.md"), {
+      name: "foo",
+    });
+    mkdirSync(dirname(projectGuidancePath), { recursive: true });
+    writeFileSync(
+      projectGuidancePath,
+      [
+        "---",
+        "strength: invariant",
+        "scope: project-rules",
+        "tools: [exec]",
+        "---",
+        "# Project Rules",
+      ].join("\n"),
+      "utf8",
+    );
+    mkdirSync(dirname(overlayPath), { recursive: true });
+    writeFileSync(
+      overlayPath,
+      [
+        "---",
+        "resources:",
+        "  default_lease:",
+        "    max_tool_calls: 5",
+        "    max_tokens: 8000",
+        "---",
+        "# Foo Overlay",
+      ].join("\n"),
+      "utf8",
+    );
+
+    expect(() => new BrewvaRuntime({ cwd: workspace })).toThrow(
+      "frontmatter contains unsupported field(s): tools",
+    );
   });
 
   test("project overlays can specialize a bundled system skill while preserving system provenance", () => {
@@ -467,7 +634,19 @@ describe("skill discovery and loading", () => {
     });
 
     mkdirSync(dirname(projectSharedPath), { recursive: true });
-    writeFileSync(projectSharedPath, "# Project Rules\n\n- project shared context\n", "utf8");
+    writeFileSync(
+      projectSharedPath,
+      [
+        "---",
+        "strength: invariant",
+        "scope: project-rules",
+        "---",
+        "# Project Rules",
+        "",
+        "- project guidance",
+      ].join("\n"),
+      "utf8",
+    );
 
     mkdirSync(dirname(projectOverlayPath), { recursive: true });
     writeFileSync(
@@ -488,7 +667,19 @@ describe("skill discovery and loading", () => {
     );
 
     mkdirSync(dirname(externalSharedPath), { recursive: true });
-    writeFileSync(externalSharedPath, "# External Rules\n\n- external shared context\n", "utf8");
+    writeFileSync(
+      externalSharedPath,
+      [
+        "---",
+        "strength: preference",
+        "scope: external-rules",
+        "---",
+        "# External Rules",
+        "",
+        "- external project guidance",
+      ].join("\n"),
+      "utf8",
+    );
 
     mkdirSync(dirname(externalOverlayPath), { recursive: true });
     writeFileSync(
@@ -520,8 +711,8 @@ describe("skill discovery and loading", () => {
       resolve(projectOverlayPath),
       resolve(externalOverlayPath),
     ]);
-    expect(skill?.markdown.match(/## Project Context: project-rules/g)).toHaveLength(1);
-    expect(skill?.markdown.match(/## Project Context: external-rules/g)).toHaveLength(1);
+    expect(skill?.markdown.match(/## Project Guidance: project-rules/g)).toHaveLength(1);
+    expect(skill?.markdown.match(/## Project Guidance: external-rules/g)).toHaveLength(1);
     expect(skill?.contract.resources?.defaultLease?.maxToolCalls).toBe(5);
     expect(skill?.contract.executionHints?.preferredTools).toContain("recall_search");
     expect(skill?.contract.effects?.deniedEffects).toContain("local_exec");
@@ -579,7 +770,11 @@ describe("skill discovery and loading", () => {
     );
     writeFileSync(baseReferencePath, "# base\n", "utf8");
     writeFileSync(baseScriptPath, "print('base')\n", "utf8");
-    writeFileSync(projectSharedPath, "# shared\n", "utf8");
+    writeFileSync(
+      projectSharedPath,
+      ["---", "strength: lookup", "scope: project", "---", "# shared"].join("\n"),
+      "utf8",
+    );
     writeFileSync(projectScriptPath, "#!/usr/bin/env bash\nexit 0\n", "utf8");
 
     writeFileSync(
@@ -668,7 +863,11 @@ describe("skill discovery and loading", () => {
     );
     writeFileSync(baseReferencePath, "# base\n", "utf8");
     writeFileSync(baseScriptPath, "print('base')\n", "utf8");
-    writeFileSync(sharedPath, "# shared\n", "utf8");
+    writeFileSync(
+      sharedPath,
+      ["---", "strength: lookup", "scope: project", "---", "# shared"].join("\n"),
+      "utf8",
+    );
     writeFileSync(scriptPath, "#!/usr/bin/env bash\nexit 0\n", "utf8");
 
     writeFileSync(

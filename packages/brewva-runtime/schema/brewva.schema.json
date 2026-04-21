@@ -346,13 +346,13 @@
                   "type": "string"
                 },
                 "intentId": {
-                  "type": "string"
+                  "$ref": "#/definitions/BrewvaIntentId"
                 },
                 "maxRuns": {
                   "type": "number"
                 },
                 "parentSessionId": {
-                  "type": "string"
+                  "$ref": "#/definitions/BrewvaSessionId"
                 },
                 "reason": {
                   "type": "string"
@@ -389,6 +389,9 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "actionAdmissionOverrides": {
+              "$ref": "#/definitions/ToolActionAdmissionOverrides"
+            },
             "boundaryPolicy": {
               "type": "object",
               "additionalProperties": false,
@@ -593,29 +596,6 @@
             },
             "sanitizeContext": {
               "type": "boolean"
-            },
-            "actionAdmissionOverrides": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string",
-                "enum": ["allow", "ask", "deny"]
-              },
-              "propertyNames": {
-                "enum": [
-                  "workspace_read",
-                  "runtime_observe",
-                  "workspace_patch",
-                  "memory_write",
-                  "control_state_mutation",
-                  "budget_mutation",
-                  "local_exec_readonly",
-                  "local_exec_effectful",
-                  "external_side_effect",
-                  "schedule_mutation",
-                  "delegation",
-                  "credential_access"
-                ]
-              }
             }
           }
         },
@@ -716,6 +696,18 @@
           }
         }
       }
+    },
+    "BrewvaIdentifier<\"BrewvaIntentId\">": {
+      "type": "string"
+    },
+    "BrewvaIdentifier<\"BrewvaSessionId\">": {
+      "type": "string"
+    },
+    "BrewvaIntentId": {
+      "$ref": "#/definitions/BrewvaIdentifier%3C%22BrewvaIntentId%22%3E"
+    },
+    "BrewvaSessionId": {
+      "$ref": "#/definitions/BrewvaIdentifier%3C%22BrewvaSessionId%22%3E"
     },
     "SecurityEnforcementMode": {
       "type": "string",
@@ -1055,6 +1047,52 @@
         "blocked",
         "done"
       ]
+    },
+    "ToolActionAdmissionOverrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "budget_mutation": {
+          "$ref": "#/definitions/ToolAdmissionBehavior"
+        },
+        "control_state_mutation": {
+          "$ref": "#/definitions/ToolAdmissionBehavior"
+        },
+        "credential_access": {
+          "$ref": "#/definitions/ToolAdmissionBehavior"
+        },
+        "delegation": {
+          "$ref": "#/definitions/ToolAdmissionBehavior"
+        },
+        "external_side_effect": {
+          "$ref": "#/definitions/ToolAdmissionBehavior"
+        },
+        "local_exec_effectful": {
+          "$ref": "#/definitions/ToolAdmissionBehavior"
+        },
+        "local_exec_readonly": {
+          "$ref": "#/definitions/ToolAdmissionBehavior"
+        },
+        "memory_write": {
+          "$ref": "#/definitions/ToolAdmissionBehavior"
+        },
+        "runtime_observe": {
+          "$ref": "#/definitions/ToolAdmissionBehavior"
+        },
+        "schedule_mutation": {
+          "$ref": "#/definitions/ToolAdmissionBehavior"
+        },
+        "workspace_patch": {
+          "$ref": "#/definitions/ToolAdmissionBehavior"
+        },
+        "workspace_read": {
+          "$ref": "#/definitions/ToolAdmissionBehavior"
+        }
+      }
+    },
+    "ToolAdmissionBehavior": {
+      "type": "string",
+      "enum": ["allow", "ask", "deny"]
     },
     "ToolEffectClass": {
       "type": "string",

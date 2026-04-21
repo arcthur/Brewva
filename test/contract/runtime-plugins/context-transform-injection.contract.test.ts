@@ -177,7 +177,7 @@ describe("context transform injection contract", () => {
         heuristics: [],
         invariants: [],
       },
-      sharedContextFiles: [],
+      projectGuidance: [],
       overlayFiles: [],
     };
     const runtime = createRuntimeFixture({

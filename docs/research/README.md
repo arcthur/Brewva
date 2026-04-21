@@ -54,6 +54,20 @@ Once a note is accepted, either:
 - Source anchors (code and docs paths)
 - Validation signals (tests, metrics, or operational checks)
 - Promotion criteria and destination docs
+- `Surface Budget` when the note changes an authored field, required field,
+  author-facing concept, inspect artifact, routing/control-plane decision point,
+  plugin/hook surface, config key, persisted format, or public CLI/API surface
+
+`Surface Budget` must include numeric before/after counts for:
+
+- required authored fields
+- optional authored fields
+- author-facing concepts
+- inspect surfaces
+- routing/control-plane decision points
+
+If a note is not surface-affecting, say so explicitly instead of omitting the
+section.
 
 Promoted and archived notes retain the same metadata for traceability, but they
 may be much shorter once the stable contract is carried elsewhere.
@@ -63,13 +77,24 @@ may be much shorter once the stable contract is carried elsewhere.
 1. Track open questions and hypotheses in a focused active note under
    `docs/research/active/`.
 2. Validate with code changes, tests, and operational evidence.
-3. Promote accepted decisions into stable docs:
+3. For surface-affecting notes, require runtime/gateway maintainer review of
+   the `Surface Budget` before promotion. The reviewer must check field counts
+   before/after, inspect surfaces before/after, and decision points
+   before/after against the changed code and stable docs.
+4. Promote accepted decisions into stable docs:
    - `docs/architecture/` for design/invariant decisions
    - `docs/reference/` for public contracts
    - `docs/journeys/operator/` for operator workflows
    - `docs/journeys/internal/` for cross-package review flows
-4. Move the research note to `promoted/` as a concise pointer or to `archive/`
+5. Move the research note to `promoted/` as a concise pointer or to `archive/`
    as a historical record.
+
+Surface-affecting promotion has a default numeric gate: net required authored fields,
+net author-facing concepts, and net routing/control-plane decision points must be
+non-positive. Positive deltas require an explicit debt owner,
+why the increase is unavoidable, and a dated re-evaluation trigger. Optional
+field and inspect-surface increases require the same exception when they create
+new authoring work or new operator interpretation work.
 
 ## Governance Loop
 
@@ -153,6 +178,7 @@ None currently.
 - `docs/research/promoted/rfc-skill-metadata-as-runtime-contract-and-routing-substrate.md`
 - `docs/research/promoted/rfc-skill-first-plugin-and-promotion-governance.md`
 - `docs/research/promoted/rfc-skill-distribution-refresh-and-catalog-surface.md`
+- `docs/research/promoted/rfc-skill-surface-compression-and-project-guidance-boundaries.md`
 - `docs/research/promoted/rfc-specialist-subagents-and-adversarial-verification.md`
 - `docs/research/promoted/rfc-tool-search-advisor-and-auto-broadened-discovery.md`
 - `docs/research/promoted/rfc-workflow-artifacts-and-posture-control-plane.md`

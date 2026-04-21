@@ -29,7 +29,7 @@ function collectSkillNames(root: string, relativeDirs: string[]): string[] {
   return names.toSorted();
 }
 
-function collectSharedContextNames(root: string): string[] {
+function collectProjectGuidanceNames(root: string): string[] {
   const sharedDir = join(root, "project/shared");
   try {
     return readdirSync(sharedDir, { withFileTypes: true })
@@ -51,10 +51,10 @@ describe("docs/guide skills coverage", () => {
       "meta",
       "project/overlays",
     ]);
-    const sharedNames = collectSharedContextNames(resolve(repoRoot, "skills"));
+    const projectGuidanceNames = collectProjectGuidanceNames(resolve(repoRoot, "skills"));
     const markdown = readFileSync(resolve(repoRoot, "docs/guide/features.md"), "utf-8");
 
-    const missing = [...names, ...sharedNames].filter((name) => {
+    const missing = [...names, ...projectGuidanceNames].filter((name) => {
       return !markdown.includes(`\`${name}\``) && !markdown.includes(`**${name}**`);
     });
 

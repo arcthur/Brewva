@@ -36,11 +36,18 @@ Brewva uses three cooperating mechanisms. None works alone.
 Skill-first recommendation handles cold starts (first skill selection).
 Artifact-aware transition surfaces handle warm transitions (next skill after
 completion).
-Selection metadata is the data substrate for both.
+Selection metadata is the data substrate for cold-start recommendation. A
+directory-derived `routing.scope` is only scope provenance; it is not sufficient
+for routability. A skill is routable only when routing is enabled, its scope is
+included in `skills.routing.scopes`, and `selection` declares at least one of
+`when_to_use`, `examples`, `paths`, or `phases`.
+
+There is no authored `routable` field. `skills_index.json` exposes generated
+`routable` state for inspection only.
 
 ## Phase Lifecycle
 
-Every task moves through phases. Skills declare which phases they serve via
+Every task moves through phases. Skills may declare which phases they serve via
 `selection.phases` in their frontmatter.
 
 ```
@@ -202,10 +209,11 @@ outputs, `requires`, and `consumes` to classify candidates as `blocked`,
 `available`, or `ready`, then ranks non-blocked candidates for the warm
 skill-routing context.
 
-`packages/brewva-gateway/src/runtime-plugins/skill-first.ts` scores skills by
-matching prompt tokens, TaskSpec content, selection examples, phase alignment,
-and path patterns. It runs on hosted turns when no skill is active and may
-produce the `[Brewva Skill-First Policy]` block.
+`packages/brewva-gateway/src/runtime-plugins/skill-first.ts` scores only the
+routable names reported by the runtime load report. It matches prompt tokens,
+TaskSpec content, optional `selection.when_to_use`, selection examples, phase
+alignment, and path patterns. It runs on hosted turns when no skill is active
+and may produce the `[Brewva Skill-First Policy]` block.
 
 Warm transitions remain model-native decisions, but they are informed by
 structured runtime readiness, `workflow_status`, consumed outputs, and the

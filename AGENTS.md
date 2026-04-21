@@ -2,106 +2,53 @@
 
 ## Purpose
 
-- This file is the repository-specific operating guide for agents working in `brewva/`.
-- Keep it short, current, and action-oriented. If the repo state and this guide diverge, update this guide in the same change or call out the drift explicitly.
-- Use it as a map, not as the full source of truth. Long-form design detail belongs in `docs/**`; code and tests remain authoritative.
-- Priority order: `Hard Invariants` -> `Workflow Gates` -> `Verification` -> `Where to Look`.
+- This file is the short repository map for agents working in `brewva/`.
+- Keep it current and action-oriented. Long-form project rules live in `skills/project/shared/*.md`; design detail lives in `docs/**`; code and tests remain authoritative.
+- Priority order: hard invariants, workflow gates, verification, then lookup.
 
 ## Repo At A Glance
 
-- `Brewva` is a Bun + TypeScript monorepo for an AI-native coding-agent runtime with repo-owned runtime, search, substrate, provider-core, agent-engine, and recall packages.
-- Workspace packages live under `packages/*`; the primary surfaces are `runtime`, `search`, `substrate`, `provider-core`, `agent-engine`, `recall`, `deliberation`, `skill-broker`, `channels-telegram`, `ingress`, `tools`, `cli`, and `gateway`.
-- Distribution surfaces live under `distribution/brewva`, `distribution/brewva-*`, and `distribution/worker`.
-- Support roots: `script/` for build and verification, `docs/` for design/reference material, and `test/` for workspace coverage.
-- `docs/solutions/**` is the canonical repository-native precedent store; for non-trivial planning, debugging, and review, consult it explicitly through `knowledge_search` instead of relying on hidden recall, use `precedent_audit` when refreshing, displacing, or deactivating an existing precedent, and use `precedent_sweep` only for explicit repository-wide maintenance passes.
+- `Brewva` is a Bun + TypeScript monorepo for an AI-native coding-agent runtime.
+- Workspace packages live under `packages/*`; primary surfaces include `runtime`, `search`, `substrate`, `provider-core`, `agent-engine`, `recall`, `deliberation`, `skill-broker`, `channels-telegram`, `ingress`, `tools`, `cli`, and `gateway`.
+- Release artifacts live under `distribution/brewva`, `distribution/brewva-*`, and `distribution/worker`.
+- Support roots: `script/` for build and verification, `docs/` for design/reference material, `test/` for workspace coverage, and `docs/solutions/**` for repository-native precedent.
+- Project guidance is authored in `skills/project/shared/*.md` with metadata-only `strength` and `scope` frontmatter. It is context/provenance metadata, not runtime authority.
 
 ## Hard Invariants
 
-### Branding and Packaging
+- Preserve the user-facing `brewva` command, help surface, launcher metadata, and distribution smoke checks.
+- Keep `BrewvaRuntime` semantic-surface based: `runtime.authority`, `runtime.inspect`, and `runtime.maintain`.
+- Do not reintroduce a mixed top-level implementation surface.
+- Keep workspace imports on package entrypoints; do not reintroduce local alias schemes or cross-package relative imports.
+- Keep public root exports narrow. Repo-owned implementation seams stay under documented internal entrypoints.
+- Keep managed tools capability-scoped and fail-closed when a runtime capability is undeclared.
+- Keep runtime execution receipt-based, replay-first, and recoverable through existing WAL/event/proposal boundaries.
+- Keep search tokenization centralized in `@brewva/brewva-search`; do not add package-local tokenizers or silent Chinese-tokenizer fallbacks.
+- Use Bun for build and test. Baseline: Bun `1.3.12`, Node `^20.19.0 || >=22.12.0`, ESM, strict TypeScript.
+- Detailed invariant context is in `skills/project/shared/critical-rules.md`, `skills/project/shared/package-boundaries.md`, and `skills/project/shared/anti-patterns.md`.
 
-- The user-facing command is `brewva`.
-- Help text, examples, process titles, launcher metadata, and packaging output must stay aligned with `brewva`.
-- Dist smoke checks must continue validating the `brewva` help banner.
+## Workflow Trigger Index
 
-### Workspace Boundaries
-
-- Use workspace package imports across package boundaries. Allowed package entrypoints are `@brewva/brewva-runtime`, `@brewva/brewva-runtime/channels`, the repo-owned implementation escape hatch `@brewva/brewva-runtime/internal`, `@brewva/brewva-search`, `@brewva/brewva-substrate`, `@brewva/brewva-agent-engine`, `@brewva/brewva-provider-core`, `@brewva/brewva-recall`, `@brewva/brewva-deliberation`, `@brewva/brewva-skill-broker`, `@brewva/brewva-channels-telegram`, `@brewva/brewva-ingress`, `@brewva/brewva-tools`, `@brewva/brewva-tui`, the Bun-only internal seam `@brewva/brewva-tui/internal-opentui-runtime`, `@brewva/brewva-cli`, the CLI-owned internal seam `@brewva/brewva-cli/internal-shell-runtime`, `@brewva/brewva-gateway`, `@brewva/brewva-gateway/host`, and `@brewva/brewva-gateway/runtime-plugins`.
-- Do not reintroduce local alias schemes such as `@/...`.
-- Do not mix `src` and `dist` class types at public boundaries.
-- Do not import from `distribution/**` packages inside workspace package code; treat them as release artifacts.
-
-### Runtime Contract
-
-- `BrewvaRuntime` stays semantic-surface based. Keep the public API organized around `runtime.authority`, `runtime.inspect`, and `runtime.maintain`; do not widen it back into a mixed top-level implementation surface.
-- Caller ports are role-specific views over the same semantic contract: hosted gets all three surfaces, tools get the tool semantic port shape, and operators get `inspect + limited maintain`.
-- Repo-owned managed tools must declare every runtime capability they use. Execution must pass through the capability-scoped managed-tool runtime facade; undeclared `authority.*`, `inspect.*`, and `internal.*` calls must fail closed instead of falling through to the wider port.
-- Repo-owned managed-tool bundles that need runtime-owned telemetry, credential resolution, or supplemental-injection hooks must compose `BrewvaToolRuntimePort` with explicit injected `internal` hooks. Do not rediscover raw `BrewvaRuntime` internals from tool code.
-- Raw WAL mutation and raw event append stay out of the public root runtime contract. Use `createSchedulerIngressPort(...)` and `recordRuntimeEvent(...)` / `createRuntimeInternalEventAppendPort(...)` only where repo-owned implementation wiring genuinely requires them.
-- Keep `@brewva/brewva-runtime` root exports narrow: stable contracts, runtime construction, semantic port types, governance helpers, and stable vocabularies. Service/store/tracker/engine classes belong under `@brewva/brewva-runtime/internal`, not the root entrypoint.
-- Integration direction is async-first; do not add parallel sync facade APIs.
-- Preserve the current security, event-level, and fail-fast config semantics described in `packages/brewva-runtime/src/contracts/index.ts`, `packages/brewva-runtime/src/security/mode.ts`, and `docs/reference/configuration.md`.
-- Preserve the current runtime execution shape: shared invocation spine first, then execution boundary policy (`safe`, `effectful`), then receipt-bearing effect authorization or rollback.
-- Preserve the current context model: deterministic single-path injection, explicit context source labels, working-only projection, explicit workflow inspection surfaces, and WAL-based turn durability/recovery.
-- Keep `governancePort` governance-only and do not re-expose removed internal tuning knobs unless they represent a clear user-facing decision boundary.
-- Keep commitment flows replay-first: `effect_commitment` proposals, operator-desk approval events, and explicit resume via `effectCommitmentRequestId` are the source of truth, not process-local approval state.
-- Keep reversible mutation flows receipt-based: `reversible_mutate` must continue producing rollback/journal artifacts and remain recoverable through `runtime.authority.tools.rollbackLastMutation(...)`.
-- Search tokenization is centralized in `@brewva/brewva-search`. Chinese-aware retrieval depends on mandatory `jieba-wasm`; do not add local tokenizers or silent non-jieba fallbacks in recall, tools, skill-broker, deliberation, or runtime search paths.
-
-### Build Baseline
-
-- Build and test with Bun, not npm or yarn. Baseline is Bun `1.3.12`, Node `^20.19.0 || >=22.12.0`, ESM, strict TypeScript, and a root `tsconfig.json` that continues covering `packages/*` and `script/`.
-
-## Workflow Gates
-
-- If a task matches multiple gates, run the union of required checks.
-- If a named helper workflow is unavailable, do the equivalent manual steps and report that fallback.
-- Helper workflows:
-  - `$implementation-strategy`: record compatibility boundary, migration or rollback posture, affected public or persisted surfaces, and validation scope before editing
-  - `$exec-plan`: keep a short milestone plan with statuses
-  - `$code-change-verification`: `bun run check && bun test`
-  - `$docs-verification`: `bun run test:docs` plus `bun run format:docs:check` when Markdown formatting changed
-  - `$dist-safety-gate`: `bun run test:dist`
-  - `$binary-packaging-verification`: `bun run build:binaries` plus a built `brewva --help` smoke test
-  - `$pi-docs-sync`: read relevant Pi docs and linked references first
-- Mandatory triggers:
-  - Runtime public APIs, exported package surfaces, config schema or default semantics, persisted formats, WAL recovery semantics, wire protocols, or user-facing CLI behavior: run `$implementation-strategy` before writing code
-  - Multi-step, cross-package, refactor-heavy, or long-running work: maintain `$exec-plan`
-  - Changes under `packages/**`, `test/**`, `script/**`, `package.json`, `tsconfig*.json`, `bunfig.toml`, or `.github/workflows/**`: run `$code-change-verification`
-  - Changes under `docs/**`, `README.md`, or `test/docs/**`: run `$docs-verification`
-  - Changes to exports, CLI, or distribution surfaces, including `packages/brewva-cli/**`, `distribution/**`, `script/verify-dist.ts`, or package export maps: run `$dist-safety-gate`
-  - Changes to launcher or binary packaging behavior, including `script/build-binaries.ts` or `distribution/**` packaging metadata: run `$binary-packaging-verification`
-  - Pi-specific tasks covering SDK, extensions, themes, skills, prompt templates, TUI, keybindings, providers, models, or packages: run `$pi-docs-sync` first
-  - Pure meta-guidance edits such as `AGENTS.md` or skill docs with no code, config, or runtime impact may skip code and docs verification unless explicitly requested
+- Public runtime APIs, exported package surfaces, config schema/default semantics, persisted formats, WAL recovery, wire protocols, or user-facing CLI behavior: use `$implementation-strategy`.
+- Multi-step, cross-package, refactor-heavy, or long-running work: use `$exec-plan`.
+- Changes under `packages/**`, `test/**`, `script/**`, `package.json`, `tsconfig*.json`, `bunfig.toml`, or `.github/workflows/**`: run `$code-change-verification`.
+- Changes under `docs/**`, `README.md`, or `test/docs/**`: run `$docs-verification`.
+- Export, CLI, or distribution-surface changes: run `$dist-safety-gate`.
+- Launcher or binary packaging behavior changes: run `$binary-packaging-verification`.
+- Pi-specific tasks covering SDK, extensions, themes, skills, prompt templates, TUI, keybindings, providers, models, or packages: run `$pi-docs-sync`.
+- Detailed workflow gate definitions and commands are in `skills/project/shared/workflow-gates.md`.
 
 ## Verification
 
 - Default quality stack: `bun run check` and `bun test`.
-- Docs stack: `bun run test:docs`; add `bun run format:docs:check` for Markdown formatting changes, including `README.md`.
+- Docs stack: `bun run test:docs`; add `bun run format:docs:check` when Markdown formatting changed.
 - Dist safety gate: `bun run test:dist`.
-- Binary packaging verification: `bun run build:binaries` and smoke `./distribution/brewva-linux-x64/bin/brewva --help | head -n 1`.
-- Release-facing changes must keep the command/help surface `brewva`-consistent.
+- Binary packaging verification: `bun run build:binaries` and `./distribution/brewva-linux-x64/bin/brewva --help | head -n 1`.
 
 ## Where To Look
 
-- Runtime API and contracts: `packages/brewva-runtime/src/runtime.ts`, `packages/brewva-runtime/src/contracts/index.ts`
-- Runtime config and semantics: `packages/brewva-runtime/src/config/defaults.ts`, `packages/brewva-runtime/src/config/normalize.ts`, `packages/brewva-runtime/src/security/mode.ts`, `packages/brewva-runtime/src/services/event-pipeline.ts`
-- Runtime context and durability: `packages/brewva-runtime/src/context/arena.ts`, `packages/brewva-runtime/src/context/injection-orchestrator.ts`, `packages/brewva-runtime/src/services/context*.ts`, `packages/brewva-runtime/src/channels/recovery-wal*.ts`, `packages/brewva-runtime/src/governance/port.ts`
-- Runtime authorization / rollback / diagnostics: `packages/brewva-runtime/src/services/tool-gate.ts`, `packages/brewva-runtime/src/services/effect-commitment-desk.ts`, `packages/brewva-runtime/src/services/reversible-mutation.ts`, `packages/brewva-runtime/src/services/mutation-rollback.ts`, `packages/brewva-runtime/src/services/task-watchdog.ts`
-- Managed-tool capability boundaries: `packages/brewva-tools/src/runtime-capability-scope.ts`, `packages/brewva-tools/src/managed-tool-metadata-registry.ts`, `packages/brewva-tools/src/utils/runtime-bound-tool.ts`
-- Package entrypoints: `packages/brewva-search/src/index.ts`, `packages/brewva-substrate/src/index.ts`, `packages/brewva-agent-engine/src/index.ts`, `packages/brewva-provider-core/src/index.ts`, `packages/brewva-recall/src/index.ts`, `packages/brewva-deliberation/src/index.ts`, `packages/brewva-skill-broker/src/index.ts`, `packages/brewva-tools/src/index.ts`, `packages/brewva-gateway/src/runtime-plugins/index.ts`, `packages/brewva-gateway/src/channels/host.ts`, `packages/brewva-gateway/src/host/create-hosted-session.ts`, `packages/brewva-gateway/src/subagents`, `packages/brewva-ingress/src/index.ts`, `packages/brewva-cli/src/index.ts`, `packages/brewva-gateway/src`
-- Verification and release tooling: `script/verify-dist.ts`, `script/build-binaries.ts`, `distribution/worker`, `.github/workflows/ci.yml`
-- Reference docs: `docs/index.md`, `docs/architecture/system-architecture.md`, `docs/reference/runtime.md`, `docs/reference/proposal-boundary.md`, `docs/reference/events.md`, `docs/reference/*.md`, `docs/research/README.md`, `docs/solutions/README.md`
-
-## Anti-Patterns
-
-- Cross-package relative imports such as `../../packages/...`
-- Reintroducing alias-based import models
-- `as any`, `@ts-ignore`, or `@ts-expect-error` quick fixes
-- Reintroducing a mixed top-level runtime implementation surface or bypassing semantic root surfaces
-- Presenting repo-owned `@brewva/brewva-runtime/internal` helpers as the default integration surface or stable product contract
-- Passing raw `BrewvaRuntime` into internal-aware tool factories or reintroducing tool-side fallback rediscovery of runtime internals
-- Adding managed-tool runtime calls without updating the repo-owned `requiredCapabilities` metadata and scoped-runtime tests
-- Adding package-local search tokenizers or optional Chinese-tokenizer fallbacks outside `@brewva/brewva-search`
-- Re-exposing removed low-level tuning knobs as public config
-- Editing generated distribution artifacts by hand
-- Skipping `test:dist` for export, CLI, or distribution changes
+- Runtime API and contracts: `packages/brewva-runtime/src/runtime.ts`, `packages/brewva-runtime/src/contracts/index.ts`.
+- Runtime skills: `packages/brewva-runtime/src/skills/contract.ts`, `packages/brewva-runtime/src/skills/registry.ts`.
+- Gateway skill routing and plugins: `packages/brewva-gateway/src/runtime-plugins/skill-first.ts`, `packages/brewva-gateway/src/runtime-plugins/local-hook-port.ts`.
+- Managed tool capabilities: `packages/brewva-tools/src/managed-tool-metadata-registry.ts`, `packages/brewva-tools/src/utils/runtime-bound-tool.ts`.
+- Expanded lookup map: `skills/project/shared/source-map.md`.

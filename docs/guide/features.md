@@ -167,8 +167,8 @@ Authoring layout still uses the four directory families:
 - operator: replay, runtime, and git-operations oriented surfaces
 - meta: skill-authoring and self-improvement surfaces
 
-Project overlays and shared project context tighten behavior without creating a
-second public catalog.
+Project overlays tighten skill-specific behavior. Shared project guidance adds
+repo-local context/provenance without creating a second public catalog.
 
 Delegated workers are a separate control-plane surface from skills. The stable
 public specialist set is `advisor`, `qa`, and `patch-worker`; internal review
@@ -227,12 +227,15 @@ Project overlays:
 - `review`
 - `runtime-forensics`
 
-Shared project context:
+Shared project guidance:
 
+- `anti-patterns`
 - `critical-rules`
 - `migration-priority-matrix`
 - `package-boundaries`
 - `runtime-artifacts`
+- `source-map`
+- `workflow-gates`
 
 ## Related Docs
 

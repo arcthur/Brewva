@@ -730,7 +730,6 @@ function normalizeResourcePolicy(
 
 function normalizeExecutionHints(
   data: Record<string, unknown>,
-  category: SkillCategory,
   filePath: string,
 ): SkillExecutionHints | undefined {
   if (Object.prototype.hasOwnProperty.call(data, "tools")) {
@@ -744,10 +743,7 @@ function normalizeExecutionHints(
   }
   const hints = readOptionalRecordField(data, "execution_hints", filePath);
   if (!hints) {
-    if (category === "overlay") {
-      return undefined;
-    }
-    failSkillContract(filePath, "missing required frontmatter field 'execution_hints'.");
+    return undefined;
   }
   if (Object.prototype.hasOwnProperty.call(hints, "suggested_chains")) {
     failSkillContract(
@@ -755,18 +751,18 @@ function normalizeExecutionHints(
       "execution_hints.suggested_chains is not supported. Move workflow guidance into the skill markdown.",
     );
   }
+  assertAllowedKeys(
+    hints,
+    ["preferred_tools", "fallback_tools", "cost_hint"],
+    filePath,
+    "execution_hints",
+  );
 
-  const preferredTools =
-    category === "overlay"
-      ? readNullableStringArrayField(hints, "preferred_tools", filePath)
-      : requireStringArrayField(hints, "preferred_tools", filePath);
-  const fallbackTools =
-    category === "overlay"
-      ? readNullableStringArrayField(hints, "fallback_tools", filePath)
-      : requireStringArrayField(hints, "fallback_tools", filePath);
+  const preferredTools = readNullableStringArrayField(hints, "preferred_tools", filePath);
+  const fallbackTools = readNullableStringArrayField(hints, "fallback_tools", filePath);
   const costHint = (() => {
     if (!Object.prototype.hasOwnProperty.call(hints, "cost_hint")) {
-      return category === "overlay" ? undefined : "medium";
+      return undefined;
     }
     if (hints.cost_hint === "low" || hints.cost_hint === "medium" || hints.cost_hint === "high") {
       return hints.cost_hint;
@@ -776,16 +772,23 @@ function normalizeExecutionHints(
       "execution_hints.cost_hint must be one of: low | medium | high.",
     );
   })();
+  const normalizedPreferredTools = preferredTools
+    ? normalizeToolListStrict(preferredTools, filePath, "execution_hints.preferred_tools")
+    : undefined;
+  const normalizedFallbackTools = fallbackTools
+    ? normalizeToolListStrict(fallbackTools, filePath, "execution_hints.fallback_tools")
+    : undefined;
+  const normalizedHints = {
+    ...(normalizedPreferredTools && normalizedPreferredTools.length > 0
+      ? { preferredTools: normalizedPreferredTools }
+      : {}),
+    ...(normalizedFallbackTools && normalizedFallbackTools.length > 0
+      ? { fallbackTools: normalizedFallbackTools }
+      : {}),
+    ...(costHint ? { costHint } : {}),
+  } satisfies SkillExecutionHints;
 
-  return {
-    preferredTools: preferredTools
-      ? normalizeToolListStrict(preferredTools, filePath, "execution_hints.preferred_tools")
-      : undefined,
-    fallbackTools: fallbackTools
-      ? normalizeToolListStrict(fallbackTools, filePath, "execution_hints.fallback_tools")
-      : undefined,
-    costHint,
-  };
+  return Object.keys(normalizedHints).length > 0 ? normalizedHints : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -921,13 +924,7 @@ function normalizeSelectionPolicy(
   }
 
   if (!Object.prototype.hasOwnProperty.call(data, "selection")) {
-    if (category === "overlay") {
-      return undefined;
-    }
-    failSkillContract(
-      filePath,
-      "frontmatter field 'selection' is required for core/domain/operator/meta skills.",
-    );
+    return undefined;
   }
 
   const selection = requireRecordField(data, "selection", filePath);
@@ -954,12 +951,6 @@ function normalizeSelectionPolicy(
     "selection",
   );
 
-  if (category !== "overlay" && !whenToUse) {
-    failSkillContract(
-      filePath,
-      "selection.when_to_use is required for core/domain/operator/meta skills.",
-    );
-  }
   if (!whenToUse && examples.length === 0 && paths.length === 0 && (phases?.length ?? 0) === 0) {
     failSkillContract(
       filePath,
@@ -1167,11 +1158,35 @@ function mergeExecutionHints(
       ? [...fallbackBase].filter((tool) => patch.fallbackTools?.includes(tool))
       : [...patch.fallbackTools]
     : [...fallbackBase];
-  return {
-    preferredTools,
-    fallbackTools,
-    costHint: patch?.costHint ?? base?.costHint,
-  };
+  const costHint = patch?.costHint ?? base?.costHint;
+  const merged = {
+    ...(preferredTools.length > 0 ? { preferredTools } : {}),
+    ...(fallbackTools.length > 0 ? { fallbackTools } : {}),
+    ...(costHint ? { costHint } : {}),
+  } satisfies SkillExecutionHints;
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function mergeOverlayExecutionHints(
+  base: SkillExecutionHints | undefined,
+  overlay: SkillContractOverride["executionHints"] | undefined,
+): SkillExecutionHints | undefined {
+  if (!base && !overlay) {
+    return undefined;
+  }
+  const preferredTools = [
+    ...new Set([...(base?.preferredTools ?? []), ...(overlay?.preferredTools ?? [])]),
+  ];
+  const fallbackTools = [
+    ...new Set([...(base?.fallbackTools ?? []), ...(overlay?.fallbackTools ?? [])]),
+  ];
+  const costHint = overlay?.costHint ?? base?.costHint;
+  const merged = {
+    ...(preferredTools.length > 0 ? { preferredTools } : {}),
+    ...(fallbackTools.length > 0 ? { fallbackTools } : {}),
+    ...(costHint ? { costHint } : {}),
+  } satisfies SkillExecutionHints;
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 function mergeRoutingPolicy(
@@ -1194,9 +1209,6 @@ function mergeSelectionPolicy(
     return undefined;
   }
   const whenToUse = patch?.whenToUse ?? base?.whenToUse;
-  if (!whenToUse) {
-    return undefined;
-  }
   const examples =
     patch?.examples !== undefined
       ? [...new Set([...(base?.examples ?? []), ...patch.examples])]
@@ -1209,12 +1221,13 @@ function mergeSelectionPolicy(
     patch?.phases !== undefined
       ? [...new Set([...(base?.phases ?? []), ...patch.phases])]
       : base?.phases;
-  return {
-    whenToUse,
+  const merged = {
+    ...(whenToUse ? { whenToUse } : {}),
     ...(examples && examples.length > 0 ? { examples } : {}),
     ...(paths && paths.length > 0 ? { paths } : {}),
     ...(phases && phases.length > 0 ? { phases } : {}),
-  };
+  } satisfies SkillSelectionPolicy;
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 function normalizeContract(
@@ -1265,7 +1278,7 @@ function normalizeContract(
       intent: normalizeIntentContract(data, category, filePath),
       effects: normalizeEffectsContract(data, category, filePath),
       resources: normalizeResourcePolicy(data, category, filePath),
-      executionHints: normalizeExecutionHints(data, category, filePath),
+      executionHints: normalizeExecutionHints(data, filePath),
       composableWith,
       consumes,
       requires,
@@ -1287,7 +1300,7 @@ function normalizeContract(
     intent: normalizeIntentContract(data, category, filePath),
     effects: normalizeEffectsContract(data, category, filePath),
     resources: normalizeResourcePolicy(data, category, filePath),
-    executionHints: normalizeExecutionHints(data, category, filePath),
+    executionHints: normalizeExecutionHints(data, filePath),
     composableWith,
     consumes,
     requires,
@@ -1388,21 +1401,7 @@ export function mergeOverlayContract(
     },
     effects: mergeEffectsContract(base.effects, overlay.effects),
     resources,
-    executionHints: {
-      preferredTools: [
-        ...new Set([
-          ...(base.executionHints?.preferredTools ?? []),
-          ...(overlay.executionHints?.preferredTools ?? []),
-        ]),
-      ],
-      fallbackTools: [
-        ...new Set([
-          ...(base.executionHints?.fallbackTools ?? []),
-          ...(overlay.executionHints?.fallbackTools ?? []),
-        ]),
-      ],
-      costHint: overlay.executionHints?.costHint ?? base.executionHints?.costHint,
-    },
+    executionHints: mergeOverlayExecutionHints(base.executionHints, overlay.executionHints),
     composableWith: [
       ...new Set([...(base.composableWith ?? []), ...(overlay.composableWith ?? [])]),
     ],
@@ -1475,7 +1474,7 @@ export function parseSkillDocument(filePath: string, category: SkillCategory): P
       markdown: body.trim(),
       contract,
       resources,
-      sharedContextFiles: [],
+      projectGuidance: [],
       overlayFiles: [],
     };
   }
@@ -1490,7 +1489,7 @@ export function parseSkillDocument(filePath: string, category: SkillCategory): P
     markdown: body.trim(),
     contract,
     resources,
-    sharedContextFiles: [],
+    projectGuidance: [],
     overlayFiles: [],
   };
 }

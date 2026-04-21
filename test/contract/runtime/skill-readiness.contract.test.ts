@@ -99,7 +99,7 @@ function buildReadinessSkill(input: {
       heuristics: [],
       invariants: [],
     },
-    sharedContextFiles: [],
+    projectGuidance: [],
     overlayFiles: [],
     contract: {
       name: input.name,

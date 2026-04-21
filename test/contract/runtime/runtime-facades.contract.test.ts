@@ -751,7 +751,7 @@ describe("runtime facade coverage", () => {
     const writtenIndex = JSON.parse(readFileSync(refreshed.indexPath, "utf8")) as {
       schemaVersion?: number;
     };
-    expect(writtenIndex.schemaVersion).toBe(1);
+    expect(writtenIndex.schemaVersion).toBe(2);
 
     expect(
       runtime.inspect.events.query(sessionId, { type: "skill_refresh_recorded" })[0]?.payload,

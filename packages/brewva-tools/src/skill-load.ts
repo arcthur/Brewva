@@ -30,6 +30,7 @@ function formatSkillOutput(input: {
   baseDir: string;
   markdown: string;
   contract: SkillContract;
+  routable: boolean;
   resources?: SkillResourceSet;
   availableConsumedOutputs?: SkillConsumedOutputsView;
   skillReadiness?: SkillReadinessEntry;
@@ -76,7 +77,8 @@ function formatSkillOutput(input: {
     `- required inputs: ${requires}`,
     `- optional inputs: ${consumes}`,
     `- readiness: ${input.skillReadiness?.readiness ?? "unknown"}`,
-    `- routing scope: ${input.contract.routing?.scope ?? "(not routable)"}`,
+    `- routing scope: ${input.contract.routing?.scope ?? "(none)"}`,
+    `- routable: ${input.routable ? "yes" : "no"}`,
   ];
 
   if (input.skillReadiness && input.skillReadiness.missingRequires.length > 0) {
@@ -147,6 +149,7 @@ export function createSkillLoadTool(options: BrewvaToolOptions): ToolDefinition 
           });
         }
         const skill = result.skill;
+        const loadReport = runtime.inspect.skills.getLoadReport();
 
         const availableConsumedOutputs = runtime.inspect.skills.getConsumedOutputs(
           sessionId,
@@ -163,6 +166,7 @@ export function createSkillLoadTool(options: BrewvaToolOptions): ToolDefinition 
             baseDir: skill.baseDir,
             markdown: skill.markdown,
             contract: skill.contract,
+            routable: loadReport.routableSkills.includes(skill.name),
             resources: skill.resources,
             availableConsumedOutputs,
             skillReadiness,
@@ -179,6 +183,7 @@ export function createSkillLoadTool(options: BrewvaToolOptions): ToolDefinition 
     {
       requiredCapabilities: [
         "authority.skills.activate",
+        "inspect.skills.getLoadReport",
         "inspect.skills.getConsumedOutputs",
         "inspect.skills.getReadiness",
       ],

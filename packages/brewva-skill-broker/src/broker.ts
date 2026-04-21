@@ -709,8 +709,6 @@ resources:
   hard_ceiling:
     max_tool_calls: 80
     max_tokens: 140000
-execution_hints:
-  preferred_tools: []
 consumes: []
 requires: []
 ---

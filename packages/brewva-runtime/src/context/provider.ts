@@ -338,6 +338,9 @@ export class ContextSourceProviderRegistry {
         `Context source provider must be created with defineContextSourceProvider: ${provider.source}`,
       );
     }
+    // Defense-in-depth for JavaScript callers or tests that copy the private
+    // symbol brand onto a hand-authored provider object. Keep validating the
+    // normalized fields after the brand check instead of trusting the object.
     if (provider.admissionLane !== "primary_registry") {
       throw new Error(
         `Context source provider admission lane must be primary_registry: ${provider.source}`,
@@ -456,6 +459,11 @@ export class ContextSourceProviderRegistry {
         return;
       }
       if (provider.authorityTier === "working_state") {
+        // A working-state source may be continuity-critical because minimal
+        // recovery profiles intentionally retain sources such as
+        // brewva.recovery-working-set. Unlike runtime-contract and
+        // runtime-read-model working sources, this tier represents current
+        // working continuity rather than a stable contract/read-model plane.
         if (provider.budgetClass !== "working") {
           throw new Error(
             `Working-state context source provider must use working budget: ${provider.source}`,

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 describe("project overlay contracts", () => {
-  it("keeps the Brewva review overlay wired to shared context and DoD tooling", () => {
+  it("keeps the Brewva review overlay wired to project guidance and DoD tooling", () => {
     const repoRoot = resolve(import.meta.dirname, "../../..");
     const markdown = readFileSync(
       resolve(repoRoot, "skills/project/overlays/review/SKILL.md"),

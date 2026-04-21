@@ -18,7 +18,7 @@ Use executable evidence as the default proof model. Prefer reproducible commands
 - **Read-mostly owners** (`design`, `review`, `repository-analysis`, `runtime-forensics`, `structured-extraction`):
   - use command-backed evidence when available.
   - do not edit files directly; emit `TOOL_BRIDGE` handoff when proof requires executable tooling.
-- **Project overlays and shared context** (`skills/project/overlays/*`, `skills/project/shared/*`):
+- **Project overlays and shared project guidance** (`skills/project/overlays/*`, `skills/project/shared/*`):
   - tighten evidence expectations for the base owner.
   - do not become separate execution owners.
 

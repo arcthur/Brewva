@@ -57,6 +57,7 @@ EFFECT_CLASSES = {
     "memory_write",
 }
 COST_HINTS = {"low", "medium", "high"}
+PROJECT_GUIDANCE_STRENGTHS = {"invariant", "workflow_gate", "preference", "lookup"}
 VERIFICATION_LEVELS = {"quick", "standard", "strict"}
 SEMANTIC_ARTIFACT_SCHEMA_IDS = {
     "planning.design_spec.v2",
@@ -458,20 +459,28 @@ def validate_resources(
 def validate_execution_hints(
     frontmatter: dict[str, object], skill_dir: Path
 ) -> tuple[bool, str | None]:
-    overlay = is_overlay_skill(skill_dir)
     hints = frontmatter.get("execution_hints")
     if hints is None:
-        if overlay:
-            return True, None
-        return False, "Missing 'execution_hints' in frontmatter"
+        return True, None
     if not isinstance(hints, dict):
         return False, "Field 'execution_hints' must be an object"
+
+    allowed_keys = {"preferred_tools", "fallback_tools", "cost_hint"}
+    unexpected_keys = set(hints.keys()) - allowed_keys
+    if "suggested_chains" in hints:
+        return (
+            False,
+            "Field 'execution_hints.suggested_chains' is not supported; move workflow guidance into the skill markdown",
+        )
+    if unexpected_keys:
+        return False, (
+            "Unexpected key(s) in 'execution_hints': "
+            + ", ".join(sorted(unexpected_keys))
+        )
 
     for key in ("preferred_tools", "fallback_tools"):
         value = hints.get(key)
         if value is None:
-            if not overlay:
-                return False, f"Missing 'execution_hints.{key}' in frontmatter"
             continue
         ok, message = validate_string_array_value(value, f"execution_hints.{key}")
         if not ok:
@@ -480,12 +489,6 @@ def validate_execution_hints(
     cost_hint = hints.get("cost_hint")
     if cost_hint is not None and cost_hint not in COST_HINTS:
         return False, "Field 'execution_hints.cost_hint' must be one of: low | medium | high"
-
-    if "suggested_chains" in hints:
-        return (
-            False,
-            "Field 'execution_hints.suggested_chains' is not supported; move workflow guidance into the skill markdown",
-        )
 
     return True, None
 
@@ -503,9 +506,7 @@ def validate_selection(
         return True, None
 
     if selection is None:
-        if overlay:
-            return True, None
-        return False, "Missing 'selection' in frontmatter"
+        return True, None
 
     if not isinstance(selection, dict):
         return False, "Field 'selection' must be an object"
@@ -525,8 +526,6 @@ def validate_selection(
     if when_to_use is not None:
         if not isinstance(when_to_use, str) or not when_to_use.strip():
             return False, "Field 'selection.when_to_use' must be a non-empty string"
-    elif not overlay:
-        return False, "Missing 'selection.when_to_use' in frontmatter"
 
     for key in ("examples", "paths", "phases"):
         if key not in selection:
@@ -555,6 +554,56 @@ def validate_selection(
         )
 
     return True, None
+
+
+def is_project_guidance_file(path: Path) -> bool:
+    resolved = path.resolve()
+    return (
+        resolved.is_file()
+        and resolved.suffix == ".md"
+        and len(resolved.parts) >= 3
+        and resolved.parts[-3:-1] == ("project", "shared")
+    )
+
+
+def validate_project_guidance(path: Path) -> tuple[bool, str]:
+    content = path.read_text(encoding="utf8").replace("\r\n", "\n")
+    if content.startswith("\ufeff"):
+        content = content[1:]
+    if not re.match(r"^---[ \t]*\n", content):
+        return False, "No project guidance metadata frontmatter found"
+
+    match = re.match(r"^---[ \t]*\n(.*?)\n---[ \t]*(?:\n|$)", content, re.DOTALL)
+    if not match:
+        return False, "Invalid project guidance frontmatter format"
+
+    try:
+        frontmatter = yaml.safe_load(match.group(1))
+    except yaml.YAMLError as exc:
+        return False, f"Invalid YAML in project guidance frontmatter: {exc}"
+    if not isinstance(frontmatter, dict):
+        return False, "Project guidance frontmatter must be a YAML dictionary"
+
+    allowed_keys = {"strength", "scope"}
+    unexpected_keys = set(frontmatter.keys()) - allowed_keys
+    if unexpected_keys:
+        return False, (
+            "Unexpected key(s) in project guidance frontmatter: "
+            + ", ".join(sorted(unexpected_keys))
+        )
+
+    strength = frontmatter.get("strength")
+    if strength not in PROJECT_GUIDANCE_STRENGTHS:
+        return False, (
+            "Field 'strength' must be one of: "
+            + " | ".join(sorted(PROJECT_GUIDANCE_STRENGTHS))
+        )
+
+    scope = frontmatter.get("scope")
+    if not isinstance(scope, str) or not scope.strip():
+        return False, "Field 'scope' must be a non-empty string"
+
+    return True, "Project guidance is valid!"
 
 
 def validate_routing(
@@ -740,6 +789,8 @@ def validate_file_references(
 def validate_skill(skill_path: str | Path) -> tuple[bool, str]:
     """Basic validation of a latest-generation skill directory."""
     skill_dir = Path(skill_path)
+    if is_project_guidance_file(skill_dir):
+        return validate_project_guidance(skill_dir)
     skill_md = skill_dir / "SKILL.md"
     if not skill_md.exists():
         return False, "SKILL.md not found"

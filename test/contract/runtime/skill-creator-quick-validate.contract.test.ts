@@ -35,6 +35,140 @@ describe("skill-authoring quick validator", () => {
     expect(toTextOutput(result.stdout)).toContain("Skill is valid!");
   });
 
+  test("accepts compressed skills without selection or execution hints", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-quick-validate-compressed-"));
+
+    try {
+      const skillDirectory = join(workspace, "skills/internal/compressed");
+      mkdirSync(skillDirectory, { recursive: true });
+      writeFileSync(
+        join(skillDirectory, "SKILL.md"),
+        [
+          "---",
+          "name: compressed",
+          "description: Validate compressed authoring surface.",
+          "intent:",
+          "  outputs: []",
+          "effects:",
+          "  allowed_effects: [workspace_read]",
+          "resources:",
+          "  default_lease:",
+          "    max_tool_calls: 20",
+          "    max_tokens: 20000",
+          "  hard_ceiling:",
+          "    max_tool_calls: 30",
+          "    max_tokens: 30000",
+          "consumes: []",
+          "---",
+          "# compressed",
+          "",
+          "## Intent",
+          "",
+          "Validate compressed skills.",
+          "",
+          "## Trigger",
+          "",
+          "Use for tests.",
+          "",
+          "## Workflow",
+          "",
+          "### Step 1",
+          "",
+          "Validate.",
+          "",
+          "## Stop Conditions",
+          "",
+          "- none",
+          "",
+          "## Anti-Patterns",
+          "",
+          "- none",
+          "",
+          "## Example",
+          "",
+          "Input: test",
+          "Context: compressed validation",
+          "Expected: validator accepts omitted advisory fields",
+          "Observed: skill has required hard contract fields",
+          "Result: authoring surface stays minimal",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const result = runQuickValidate({
+        scriptPath,
+        cwd: workspace,
+        skillDirectory,
+      });
+
+      expect(result.status).toBe(0);
+      expect(toTextOutput(result.stdout)).toContain("Skill is valid!");
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects project guidance frontmatter beyond strength and scope", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-guidance-quick-validate-invalid-"));
+
+    try {
+      const guidancePath = join(workspace, "skills/project/shared/project-rules.md");
+      mkdirSync(join(workspace, "skills/project/shared"), { recursive: true });
+      writeFileSync(
+        guidancePath,
+        [
+          "---",
+          "strength: invariant",
+          "scope: project-rules",
+          "tools: [exec]",
+          "---",
+          "# Project Rules",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const result = runQuickValidate({
+        scriptPath,
+        cwd: workspace,
+        skillDirectory: guidancePath,
+      });
+
+      expect(result.status).toBe(1);
+      expect(toTextOutput(result.stdout)).toContain(
+        "Unexpected key(s) in project guidance frontmatter: tools",
+      );
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  test("accepts project guidance frontmatter with CRLF and BOM like the runtime parser", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-guidance-quick-validate-crlf-"));
+
+    try {
+      const guidancePath = join(workspace, "skills/project/shared/project-rules.md");
+      mkdirSync(join(workspace, "skills/project/shared"), { recursive: true });
+      writeFileSync(
+        guidancePath,
+        ["\uFEFF---", "strength: lookup", "scope: project-rules", "---", "# Project Rules"].join(
+          "\r\n",
+        ),
+        "utf8",
+      );
+
+      const result = runQuickValidate({
+        scriptPath,
+        cwd: workspace,
+        skillDirectory: guidancePath,
+      });
+
+      expect(result.status).toBe(0);
+      expect(toTextOutput(result.stdout)).toContain("Project guidance is valid!");
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   test("rejects malformed item_contract payloads", () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-quick-validate-"));
 

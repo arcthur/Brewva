@@ -1,3 +1,8 @@
+---
+strength: invariant
+scope: package-boundaries
+---
+
 # Package Boundaries and Invariants
 
 ## Workspace Topology

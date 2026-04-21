@@ -83,7 +83,7 @@ function installRuntimeForensicsSkill(runtime: ReturnType<typeof createRuntimeFi
       routableSkills: [skill.name],
       hiddenSkills: [],
       overlaySkills: [],
-      sharedContextFiles: [],
+      projectGuidance: [],
       categories: {
         core: [],
         domain: [skill.name],

@@ -23,6 +23,7 @@ function writeSkill(
     consumes?: string[];
     requires?: string[];
     composableWith?: string[];
+    executionHints?: boolean;
   },
 ): void {
   mkdirSync(dirname(filePath), { recursive: true });
@@ -58,9 +59,9 @@ function writeSkill(
       "  hard_ceiling:",
       "    max_tool_calls: 20",
       "    max_tokens: 20000",
-      "execution_hints:",
-      "  preferred_tools: [read]",
-      "  fallback_tools: []",
+      ...(input.executionHints === false
+        ? []
+        : ["execution_hints:", "  preferred_tools: [read]", "  fallback_tools: []"]),
       `consumes: [${(input.consumes ?? []).join(", ")}]`,
       `requires: [${(input.requires ?? []).join(", ")}]`,
       `composable_with: [${(input.composableWith ?? []).join(", ")}]`,
@@ -112,6 +113,35 @@ function buildImpactMap(input: {
 }
 
 describe("skill_complete tool", () => {
+  test("skill_load separates routing scope and routability while defaulting omitted tool guidance", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-load-compressed-guidance-"));
+    writeSkill(join(workspace, ".brewva/skills/core/compressed/SKILL.md"), {
+      name: "compressed",
+      outputs: [],
+      executionHints: false,
+    });
+
+    const config = structuredClone(DEFAULT_BREWVA_CONFIG);
+    config.skills.routing.enabled = true;
+    const runtime = new BrewvaRuntime({ cwd: workspace, config });
+    const loadTool = createSkillLoadTool({ runtime });
+
+    const result = await loadTool.execute(
+      "tc-compressed-guidance",
+      { name: "compressed" },
+      undefined,
+      undefined,
+      fakeContext("skill-load-compressed-guidance"),
+    );
+
+    const text = extractTextContent(result as { content: Array<{ type: string; text?: string }> });
+    expect(text).toContain("- preferred tools: (none)");
+    expect(text).toContain("- fallback tools: (none)");
+    expect(text).toContain("- cost hint: medium");
+    expect(text).toContain("- routing scope: core");
+    expect(text).toContain("- routable: yes");
+  });
+
   test("loads a skill with missing required inputs and renders blocked readiness", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-skill-load-readiness-"));
     writeSkill(join(workspace, ".brewva/skills/core/blocked-consumer/SKILL.md"), {

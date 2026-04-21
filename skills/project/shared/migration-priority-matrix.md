@@ -1,3 +1,8 @@
+---
+strength: preference
+scope: migration-priority
+---
+
 # Governance Priority Matrix
 
 ## P0
@@ -8,7 +13,7 @@
 
 ## P1
 
-- harden overlay semantics and shared project context
+- harden overlay semantics and shared project guidance
 - keep artifact contracts stable across skills
 - improve replay and projection integrity
 

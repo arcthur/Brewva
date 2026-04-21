@@ -9,6 +9,14 @@ export type SkillRoutingScope = "core" | "domain" | "operator" | "meta";
 export type SkillCostHint = "low" | "medium" | "high";
 export type SkillEffectLevel = "read_only" | "execute" | "mutation";
 export type SkillRootSource = "system_root" | "global_root" | "project_root" | "config_root";
+export type ProjectGuidanceStrength = "invariant" | "workflow_gate" | "preference" | "lookup";
+
+export interface ProjectGuidanceEntry {
+  filePath: string;
+  strength: ProjectGuidanceStrength;
+  scope: string;
+}
+
 export const SEMANTIC_ARTIFACT_SCHEMA_IDS = [
   "planning.design_spec.v2",
   "planning.execution_plan.v2",
@@ -68,7 +76,7 @@ export interface SkillRegistryLoadReport {
   routableSkills: string[];
   hiddenSkills: string[];
   overlaySkills: string[];
-  sharedContextFiles: string[];
+  projectGuidance: ProjectGuidanceEntry[];
   categories: Partial<Record<LoadableSkillCategory, string[]>>;
 }
 
@@ -77,7 +85,7 @@ export interface SkillRoutingPolicy {
 }
 
 export interface SkillSelectionPolicy {
-  whenToUse: string;
+  whenToUse?: string;
   examples?: string[];
   paths?: string[];
   phases?: TaskPhase[];
@@ -211,7 +219,7 @@ interface BaseSkillDocument<TCategory extends SkillCategory, TContract> {
   markdown: string;
   contract: TContract;
   resources: SkillResourceSet;
-  sharedContextFiles: string[];
+  projectGuidance: ProjectGuidanceEntry[];
   overlayFiles: string[];
 }
 
@@ -248,7 +256,7 @@ export interface SkillsIndexEntry {
   effectLevel: SkillEffectLevel;
   routable: boolean;
   overlay: boolean;
-  sharedContextFiles: string[];
+  projectGuidance: ProjectGuidanceEntry[];
   routingScope?: SkillRoutingScope;
   selection?: SkillSelectionPolicy;
   source: SkillRootSource;
@@ -257,7 +265,7 @@ export interface SkillsIndexEntry {
 }
 
 export interface SkillsIndexFile {
-  schemaVersion: 1;
+  schemaVersion: 2;
   generatedAt: string;
   roots: SkillRegistryRoot[];
   routing: {

@@ -45,7 +45,8 @@ describe("skill-authoring init script default paths", () => {
       expect(existsSync(join(skillPath, "assets/example_asset.txt"))).toBe(true);
       const skillText = readFileSync(join(skillPath, "SKILL.md"), "utf8");
       expect(skillText).toContain("intent:");
-      expect(skillText).toContain("execution_hints:");
+      expect(skillText).not.toContain("execution_hints:");
+      expect(skillText).not.toContain("selection:");
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
@@ -93,7 +94,8 @@ describe("skill-authoring init script default paths", () => {
       expect(existsSync(join(globalSkillPath, "SKILL.md"))).toBe(true);
       const skillText = readFileSync(join(globalSkillPath, "SKILL.md"), "utf8");
       expect(skillText).toContain("intent:");
-      expect(skillText).toContain("execution_hints:");
+      expect(skillText).not.toContain("execution_hints:");
+      expect(skillText).not.toContain("selection:");
       expect(existsSync(join(workspace, ".brewva/skills/domain", skillName))).toBe(false);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
@@ -115,7 +117,8 @@ describe("skill-authoring init script default paths", () => {
       expect(existsSync(join(explicitPath, "SKILL.md"))).toBe(true);
       const skillText = readFileSync(join(explicitPath, "SKILL.md"), "utf8");
       expect(skillText).toContain("intent:");
-      expect(skillText).toContain("execution_hints:");
+      expect(skillText).not.toContain("execution_hints:");
+      expect(skillText).not.toContain("selection:");
       expect(existsSync(join(workspace, ".brewva/skills/domain", skillName))).toBe(false);
     } finally {
       rmSync(workspace, { recursive: true, force: true });

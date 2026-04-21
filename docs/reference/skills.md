@@ -19,7 +19,7 @@ Skill taxonomy is now split by role:
 
 - public routable skills: routable semantic territory
 - runtime/control-plane workflow semantics: not public skills
-- project overlays: project-specific tightening, execution guidance, and shared-context augmentation
+- project overlays: project-specific tightening, execution guidance, and project-guidance augmentation
 - operator/meta skills: loaded, but usually not exposed through the routable index
 
 This keeps lifecycle choreography out of the public catalog.
@@ -73,12 +73,12 @@ Skill frontmatter supports intent, effect, resource, and execution metadata:
 - `description`
   - optional short summary; defaults to `<name> skill`
 - `intent.outputs/intent.output_contracts/intent.semantic_bindings`
-- `selection.when_to_use/selection.examples/selection.paths/selection.phases`
+- optional `selection.when_to_use/selection.examples/selection.paths/selection.phases`
 - `requires` / `consumes`
 - `composable_with`
 - `effects.allowed_effects/effects.denied_effects`
 - `resources.default_lease/resources.hard_ceiling`
-- `execution_hints.preferred_tools/execution_hints.fallback_tools/execution_hints.cost_hint`
+- optional `execution_hints.preferred_tools/execution_hints.fallback_tools/execution_hints.cost_hint`
 - resource lists: `references`, `scripts`, `heuristics`, `invariants`
 
 Structured metadata is only strong when runtime or control-plane code consumes
@@ -94,6 +94,16 @@ it directly:
 | `effects.*` and `resources.*`                        | authority and budget contract           | tool policy, resource lease, execution boundary                                             |
 | `execution_hints.preferred_tools` / `fallback_tools` | control-plane tool guidance             | `skill_load`, skill index, gateway subagent prompt assembly, gateway tool-surface narrowing |
 | `execution_hints.cost_hint`                          | advisory surfaced metadata              | `skill_load` and skill index; no runtime budget decision unless a consumer is added         |
+
+`selection` is optional. When present, it must declare at least one signal:
+`when_to_use`, `examples`, `paths`, or `phases`. A skill with a directory-derived
+`routing.scope` but no `selection` signals is loaded and inspectable but not
+routable. There is no authored `routable` field.
+
+`execution_hints` is optional. When present, each child field is optional.
+Empty `preferred_tools: []` and `fallback_tools: []` normalize away. If no
+`cost_hint` is authored, `skill_load` and the generated index display the
+default cost hint as `medium`; that default is not an authored contract field.
 
 `execution_hints.suggested_chains` is not supported. Workflow sequencing that
 is not consumed by runtime code belongs in the skill markdown body.
@@ -114,7 +124,6 @@ hardcoding per-skill routing heuristics in the gateway. Current authored fields
 are:
 
 - `selection.when_to_use`
-  - required for loadable `core` / `domain` / `operator` / `meta` skills
   - concise natural-language intent statement for when the skill should own the task
 - `selection.examples`
   - optional task or user-utterance examples that make the selection intent concrete
@@ -125,9 +134,9 @@ are:
   - vocabulary is closed and aligned to runtime `TaskPhase`:
     `align`, `investigate`, `execute`, `verify`, `ready_for_acceptance`, `blocked`, `done`
 
-Operator and meta skills still need `selection` because they remain loadable
-catalog entries and may be exposed when routing scopes explicitly include their
-categories.
+Operator and meta skills may omit `selection` when they are inspect-only. They
+become routable only when routing is enabled, their directory-derived scope is
+included, and `selection` carries at least one signal.
 
 Runtime compiles internal selection features from authored `selection`,
 `description`, and markdown trigger text at load time. Authors do not maintain a
@@ -189,6 +198,8 @@ Directory layout derives category and routing scope:
 - `skills/project/overlays/*` -> overlay only, not routable
 
 `tier` and `category` frontmatter are rejected. Category is directory-derived.
+Routing scope is also directory-derived, but scope alone does not make a skill
+routable.
 
 Non-overlay skill names must be globally unique across all loaded roots and
 categories. Same-name specialization belongs in `skills/project/overlays/*`,
@@ -277,16 +288,20 @@ The runtime kernel and the optional control plane have different jobs:
 - control plane: optional candidate generation, selection assistance,
   delegation, artifact presentation, and model-assisted judging
 
-`skills_index.json` now carries the complete loaded-skill catalog instead of
+`skills_index.json` carries the complete loaded-skill catalog instead of
 only the routable subset. Each entry retains normalized contract metadata,
 including `category`, `routingScope`, `outputs`, `requires`, `consumes`,
 `composableWith`, derived `effectLevel`, `allowedEffects`, and the explicit flags and provenance
-fields `routable`, `overlay`, `filePath`, `baseDir`, `sharedContextFiles`,
+fields `routable`, `overlay`, `filePath`, `baseDir`, `projectGuidance`,
 `source`, `rootDir`, optional `overlayOrigins`, and authored `selection`.
 Whether a skill participates in routing is now expressed by the entry itself
 instead of by presence or absence in the file.
 
-`skills_index.json` is a versioned inspect artifact (`schemaVersion=1`), not a
+`routable` is a generated inspect property derived from routing enablement,
+allowed routing scopes, and authored `selection` signals. Authors never write a
+`routable` field.
+
+`skills_index.json` is a versioned inspect artifact (`schemaVersion=2`), not a
 durable source of truth. Runtime may rebuild it at startup or through explicit
 `runtime.maintain.skills.refresh(...)`.
 
@@ -571,17 +586,37 @@ Overlays merge onto the base skill contract with project semantics:
 - multiple overlays apply in deterministic root load order; within one root,
   overlay files are applied in lexical path order, and later overlays only
   tighten or replace fields according to the merge contract
-- shared project context is prepended in root load order and each discovered
-  shared-context document is attached at most once per final loaded skill,
-  even when multiple same-name overlays merge across roots
 
-Config-layer `skills.overrides` remain tightening-only. Shared project context is
-prepended from:
+Shared project guidance is applied independently of overlays. Runtime prepends
+guidance in root load order and attaches each discovered project-guidance
+document at most once per final loaded skill, even when multiple same-name
+overlays merge across roots.
 
+Config-layer `skills.overrides` remain tightening-only. Project guidance is
+metadata-only Markdown under `skills/project/shared/*.md`. Each file must start
+with exactly:
+
+```yaml
+---
+strength: invariant | workflow_gate | preference | lookup
+scope: non-empty-string
+---
+```
+
+The `strength` and `scope` values are provenance/context labels only. They do
+not affect routing, tool authorization, provider payloads, tool results,
+replay, or persisted truth. Runtime strips this frontmatter before injecting
+the Markdown body and exposes the labels through `projectGuidance`.
+
+Shared project guidance currently includes:
+
+- `anti-patterns`
 - `critical-rules`
 - `migration-priority-matrix`
 - `package-boundaries`
 - `runtime-artifacts`
+- `source-map`
+- `workflow-gates`
 
 ## Storage Convention
 
@@ -608,8 +643,8 @@ Current root provenance values are:
 - `config_root`
   - explicit extra roots from `skills.roots`
 
-There is still no second authored catalog plane. `SKILL.md` remains the single
-runtime-authoritative file for behavior, selection, outputs, effect policy,
-resource ceilings, and execution hints. Display-only metadata such as icons,
-card labels, or suggested prompts does not have an authored catalog file in the
-current contract.
+There is still no second runtime-authoritative rules plane. `SKILL.md` remains
+the authoritative file for skill behavior, selection, outputs, effect policy,
+resource ceilings, and optional execution hints. Project guidance is a lighter
+context surface for repo-local invariants, workflow gates, preferences, and
+lookup maps; it is not policy authority.

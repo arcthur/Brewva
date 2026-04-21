@@ -29,7 +29,7 @@ function collectSkillNames(root: string, relativeDirs: string[]): string[] {
   return names.toSorted();
 }
 
-function collectSharedContextNames(root: string): string[] {
+function collectProjectGuidanceNames(root: string): string[] {
   const sharedDir = join(root, "project/shared");
   try {
     return readdirSync(sharedDir, { withFileTypes: true })
@@ -51,10 +51,10 @@ describe("docs/reference skills coverage", () => {
       "meta",
       "project/overlays",
     ]);
-    const sharedNames = collectSharedContextNames(resolve(repoRoot, "skills"));
+    const projectGuidanceNames = collectProjectGuidanceNames(resolve(repoRoot, "skills"));
     const markdown = readFileSync(resolve(repoRoot, "docs/reference/skills.md"), "utf-8");
 
-    const missing = [...skillNames, ...sharedNames].filter(
+    const missing = [...skillNames, ...projectGuidanceNames].filter(
       (name) => !markdown.includes(`\`${name}\``),
     );
 

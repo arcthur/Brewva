@@ -123,7 +123,14 @@ function createToolSurfaceRuntime(options: ToolSurfaceRuntimeOptions = {}): Tool
     const routableSkills = skills
       .filter((skill) => {
         const scope = skill.contract.routing?.scope;
-        return typeof scope === "string" && routingScopes.includes(scope);
+        const selection = skill.contract.selection;
+        const hasSelectionSignal = Boolean(
+          selection?.whenToUse ||
+          (selection?.examples?.length ?? 0) > 0 ||
+          (selection?.paths?.length ?? 0) > 0 ||
+          (selection?.phases?.length ?? 0) > 0,
+        );
+        return typeof scope === "string" && routingScopes.includes(scope) && hasSelectionSignal;
       })
       .map((skill) => skill.name);
     return {
@@ -134,7 +141,7 @@ function createToolSurfaceRuntime(options: ToolSurfaceRuntimeOptions = {}): Tool
       routableSkills,
       hiddenSkills: loadedSkills.filter((name) => !routableSkills.includes(name)),
       overlaySkills: [],
-      sharedContextFiles: [],
+      projectGuidance: [],
       categories: {
         core: [],
         domain: [],

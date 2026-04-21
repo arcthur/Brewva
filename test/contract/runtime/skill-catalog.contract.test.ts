@@ -110,17 +110,21 @@ describe("repository catalog contracts", () => {
     }
   });
 
-  test("all loadable routed skills declare explicit selection policy", () => {
+  test("all routable built-in skills declare at least one selection signal", () => {
     const runtime = createCleanRuntime();
     const missing = runtime.inspect.skills.list().flatMap((skill) => {
-      if (!skill.contract.routing?.scope) {
+      if (!runtime.inspect.skills.getLoadReport().routableSkills.includes(skill.name)) {
         return [];
       }
-      if (!skill.contract.selection?.whenToUse) {
-        return [`${skill.name}:when_to_use`];
-      }
-      if ((skill.contract.selection.examples?.length ?? 0) === 0) {
-        return [`${skill.name}:examples`];
+      const selection = skill.contract.selection;
+      const hasSignal = Boolean(
+        selection?.whenToUse ||
+        (selection?.examples?.length ?? 0) > 0 ||
+        (selection?.paths?.length ?? 0) > 0 ||
+        (selection?.phases?.length ?? 0) > 0,
+      );
+      if (!hasSignal) {
+        return [`${skill.name}:selection`];
       }
       return [];
     });

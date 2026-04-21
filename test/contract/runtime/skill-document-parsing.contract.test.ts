@@ -3,8 +3,11 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
+  getSkillCostHint,
   getSkillOutputContracts,
+  listSkillFallbackTools,
   listSkillOutputs,
+  listSkillPreferredTools,
   mergeOverlayContract,
   parseSkillDocument,
 } from "@brewva/brewva-runtime";
@@ -281,6 +284,169 @@ describe("skill document parsing", () => {
       paths: ["packages/brewva-runtime"],
       phases: ["investigate", "verify"],
     });
+  });
+
+  test("parses loadable skills without selection or execution hints", () => {
+    const filePath = createTempSkillDocument(
+      "brewva-skill-compressed-non-routable-",
+      "skills/core/inspect-only/SKILL.md",
+      [
+        "---",
+        "name: inspect-only",
+        "description: inspect-only skill",
+        "intent:",
+        "  outputs: []",
+        "effects:",
+        "  allowed_effects: [workspace_read]",
+        "resources:",
+        "  default_lease:",
+        "    max_tool_calls: 10",
+        "    max_tokens: 10000",
+        "  hard_ceiling:",
+        "    max_tool_calls: 20",
+        "    max_tokens: 20000",
+        "consumes: []",
+        "---",
+        "# inspect-only",
+      ],
+    );
+
+    const parsed = parseSkillDocument(filePath, "core");
+    expect(parsed.contract.selection).toBeUndefined();
+    expect(parsed.contract.executionHints).toBeUndefined();
+    expect(getSkillCostHint(parsed.contract)).toBe("medium");
+  });
+
+  test("parses examples-only selection as a routing signal", () => {
+    const filePath = createTempSkillDocument(
+      "brewva-skill-examples-only-selection-",
+      "skills/core/examples-only/SKILL.md",
+      [
+        "---",
+        "name: examples-only",
+        "description: examples-only skill",
+        "selection:",
+        "  examples: [review a pull request, inspect a diff]",
+        "intent:",
+        "  outputs: []",
+        "effects:",
+        "  allowed_effects: [workspace_read]",
+        "resources:",
+        "  default_lease:",
+        "    max_tool_calls: 10",
+        "    max_tokens: 10000",
+        "  hard_ceiling:",
+        "    max_tool_calls: 20",
+        "    max_tokens: 20000",
+        "consumes: []",
+        "---",
+        "# examples-only",
+      ],
+    );
+
+    expect(parseSkillDocument(filePath, "core").contract.selection).toEqual({
+      examples: ["review a pull request", "inspect a diff"],
+    });
+  });
+
+  test("rejects empty selection objects", () => {
+    const filePath = createTempSkillDocument(
+      "brewva-skill-empty-selection-",
+      "skills/core/empty-selection/SKILL.md",
+      [
+        "---",
+        "name: empty-selection",
+        "description: empty selection skill",
+        "selection: {}",
+        "intent:",
+        "  outputs: []",
+        "effects:",
+        "  allowed_effects: [workspace_read]",
+        "resources:",
+        "  default_lease:",
+        "    max_tool_calls: 10",
+        "    max_tokens: 10000",
+        "  hard_ceiling:",
+        "    max_tool_calls: 20",
+        "    max_tokens: 20000",
+        "consumes: []",
+        "---",
+        "# empty-selection",
+      ],
+    );
+
+    expect(() => parseSkillDocument(filePath, "core")).toThrow(
+      "selection must declare at least one",
+    );
+  });
+
+  test("normalizes empty execution tool arrays away", () => {
+    const filePath = createTempSkillDocument(
+      "brewva-skill-empty-execution-hints-",
+      "skills/core/empty-hints/SKILL.md",
+      [
+        "---",
+        "name: empty-hints",
+        "description: empty hints skill",
+        ...MINIMAL_SELECTION_LINES,
+        "intent:",
+        "  outputs: []",
+        "effects:",
+        "  allowed_effects: [workspace_read]",
+        "resources:",
+        "  default_lease:",
+        "    max_tool_calls: 10",
+        "    max_tokens: 10000",
+        "  hard_ceiling:",
+        "    max_tool_calls: 20",
+        "    max_tokens: 20000",
+        "execution_hints:",
+        "  preferred_tools: []",
+        "  fallback_tools: []",
+        "consumes: []",
+        "---",
+        "# empty-hints",
+      ],
+    );
+
+    const parsed = parseSkillDocument(filePath, "core");
+    expect(parsed.contract.executionHints).toBeUndefined();
+    expect(listSkillPreferredTools(parsed.contract)).toEqual([]);
+    expect(listSkillFallbackTools(parsed.contract)).toEqual([]);
+  });
+
+  test("parses partial execution hints", () => {
+    const filePath = createTempSkillDocument(
+      "brewva-skill-partial-execution-hints-",
+      "skills/core/partial-hints/SKILL.md",
+      [
+        "---",
+        "name: partial-hints",
+        "description: partial hints skill",
+        ...MINIMAL_SELECTION_LINES,
+        "intent:",
+        "  outputs: []",
+        "effects:",
+        "  allowed_effects: [workspace_read]",
+        "resources:",
+        "  default_lease:",
+        "    max_tool_calls: 10",
+        "    max_tokens: 10000",
+        "  hard_ceiling:",
+        "    max_tool_calls: 20",
+        "    max_tokens: 20000",
+        "execution_hints:",
+        "  cost_hint: high",
+        "consumes: []",
+        "---",
+        "# partial-hints",
+      ],
+    );
+
+    const parsed = parseSkillDocument(filePath, "core");
+    expect(parsed.contract.executionHints).toEqual({ costHint: "high" });
+    expect(listSkillPreferredTools(parsed.contract)).toEqual([]);
+    expect(listSkillFallbackTools(parsed.contract)).toEqual([]);
   });
 
   test("rejects camelCase selection.whenToUse metadata", () => {

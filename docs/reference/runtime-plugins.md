@@ -94,6 +94,12 @@ Current factory option surface:
 details, and error posture. The snapshot is advisory input only; returning or
 mutating local hook data cannot rewrite the model-visible tool result.
 
+Project guidance under `skills/project/shared/*.md` is even narrower than local
+hooks. Its `strength` and `scope` frontmatter are parsed only as context
+provenance labels. Project guidance cannot add routing candidates, grant or
+deny tool authority, rewrite provider payloads, rewrite tool results, or
+change replay semantics.
+
 When `runtime` is omitted, `createHostedTurnPipeline(...)` also accepts
 inherited `BrewvaRuntimeOptions` for runtime construction:
 
@@ -305,6 +311,7 @@ Resolution inputs:
 - current skill execution hints
 - current TaskSpec state
 - routing scopes
+- generated routability from the runtime load report
 - explicit `$tool_name` requests
 
 This updates only the visible surface. Runtime policy still decides whether a
@@ -312,7 +319,7 @@ tool call is actually allowed.
 
 Current interactive protocol is TaskSpec-first:
 
-- when no skill is active, no TaskSpec is recorded yet, and routable skills are
+- when no skill is active, no TaskSpec is recorded yet, and generated routable skills are
   available, the hosted path narrows the turn to the pre-skill bootstrap
   surface (`task_set_spec`, `task_view_state`, `workflow_status`, and related
   control-plane tools)

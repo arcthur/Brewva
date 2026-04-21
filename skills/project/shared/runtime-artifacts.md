@@ -1,3 +1,8 @@
+---
+strength: lookup
+scope: runtime-artifacts
+---
+
 # Brewva Runtime Artifacts
 
 Primary artifact families:

@@ -72,7 +72,7 @@ Current front-door defaults:
 `skills.overrides` are runtime config tightenings only. They can reduce
 budgets, refine execution hints, and narrow effect authorization, but they
 do not add new authority. Use project overlays for project-specific execution
-hints and shared-context augmentation.
+hints and project-guidance augmentation.
 
 There is no longer a public `skills.selector.*` config surface. Candidate
 selection assistance, judging, and any optional path helpers belong to
@@ -93,14 +93,15 @@ explicit disable. Hard `routingScopes` overrides or direct `skill_load` usage
 can still activate skills.
 
 When routing is enabled, `skills.routing.scopes` is the explicit scope allowlist
-used by skill discovery and external deliberation layers. Operator/meta skills
-may still be loaded while remaining hidden from standard recommendation
-surfaces.
+used by skill discovery and external deliberation layers. Scope is not by itself
+routability: a loadable skill must also declare at least one `selection` signal.
+Operator/meta skills may still be loaded while remaining hidden from standard
+recommendation surfaces.
 
 Skill discovery accepts either:
 
 - a root containing `skills/<category>/...`
-- a direct skill root containing `core/`, `domain/`, `operator/`, `meta/`, or `internal/`, plus optional `project/` for shared context and overlays
+- a direct skill root containing `core/`, `domain/`, `operator/`, `meta/`, or `internal/`, plus optional `project/` for project guidance and overlays
 
 Built-in bundled skills are installed by runtime into the Brewva system skill
 root (`<globalRoot>/skills/.system`) and then loaded as `source=system_root`.
@@ -108,10 +109,14 @@ They are no longer discovered by walking module or executable ancestors.
 Mutable user-global additions remain under `<globalRoot>/skills`, while
 workspace-local skills remain under `<workspaceRoot>/.brewva/skills`.
 
-Project-specific shared context and overlays are discovered from:
+Project-specific guidance and overlays are discovered from:
 
 - `skills/project/shared/*.md`
 - `skills/project/overlays/<skill>/SKILL.md`
+
+Each shared guidance file must declare metadata-only `strength` and `scope`
+frontmatter. That metadata is used for provenance labels only; it does not
+grant tool authority, alter routing, or change replay semantics.
 
 ### `verification`
 

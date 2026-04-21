@@ -11,6 +11,48 @@ fi
 
 status=0
 count=0
+guidance_count=0
+
+validate_project_guidance() {
+  local file="$1"
+  guidance_count=$((guidance_count + 1))
+
+  local failures=()
+  if ! sed -n '1p' "${file}" | grep -Eq '^---[[:space:]]*$'; then
+    failures+=("frontmatter")
+  fi
+  if ! awk 'NR > 1 && /^---[[:space:]]*$/ { found = 1; exit } END { exit found ? 0 : 1 }' "${file}"; then
+    failures+=("closing_frontmatter")
+  fi
+
+  local metadata
+  metadata="$(awk 'NR == 1 { next } /^---[[:space:]]*$/ { exit } { print }' "${file}")"
+
+  if ! printf '%s\n' "${metadata}" | grep -Eq '^strength: (invariant|workflow_gate|preference|lookup)$'; then
+    failures+=("strength")
+  fi
+  if ! printf '%s\n' "${metadata}" | grep -Eq '^scope: [^[:space:]].*$'; then
+    failures+=("scope")
+  fi
+
+  if printf '%s\n' "${metadata}" | grep -Evq '^(strength|scope):|^[[:space:]]*$|^[[:space:]]*#'; then
+    failures+=("unsupported_frontmatter_field")
+  fi
+
+  if [ "${#failures[@]}" -gt 0 ]; then
+    status=1
+    printf 'FAIL %s\n' "${file}"
+    printf '  invalid project guidance metadata: %s\n' "${failures[*]}"
+  else
+    printf 'PASS %s (project guidance)\n' "${file}"
+  fi
+}
+
+if [ -d "${root}/project/shared" ]; then
+  while IFS= read -r file; do
+    validate_project_guidance "${file}"
+  done < <(find "${root}/project/shared" -maxdepth 1 -type f -name '*.md' | sort)
+fi
 
 while IFS= read -r file; do
   count=$((count + 1))
@@ -38,10 +80,6 @@ while IFS= read -r file; do
 
   if ! grep -Eq '^resources:' "${file}"; then
     missing+=("resources_field")
-  fi
-
-  if ! grep -Eq '^execution_hints:' "${file}"; then
-    missing+=("execution_hints_field")
   fi
 
   if ! grep -Eq '^## (The Iron Law|Intent)' "${file}"; then
@@ -84,6 +122,12 @@ while IFS= read -r file; do
 
   # Overlays are delta documents — skip v2-specific checks
   if [ "${is_overlay}" = true ]; then
+    if grep -Eiq '^(## )?(Hard Invariants|Workflow Gates|Build Baseline|Where To Look|Verification)$' "${file}"; then
+      status=1
+      printf 'FAIL %s\n' "${file}"
+      printf '  overlay leak: global repo guidance belongs in skills/project/shared/*.md\n'
+      continue
+    fi
     if [ "${#missing[@]}" -gt 0 ]; then
       # For overlays, only fail on truly missing structural sections
       overlay_missing=()
@@ -148,6 +192,7 @@ while IFS= read -r file; do
 done < <(find "${root}" -type f -name 'SKILL.md' | sort)
 
 echo "checked=${count}"
+echo "project_guidance_checked=${guidance_count}"
 
 if [ "${status}" -ne 0 ]; then
   echo "result=fail"

@@ -30,9 +30,6 @@ resources:
   hard_ceiling:
     max_tool_calls: 60
     max_tokens: 120000
-execution_hints:
-  preferred_tools: [read]
-  fallback_tools: [grep]
 consumes: []
 requires: []
 ---

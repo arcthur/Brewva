@@ -14,6 +14,8 @@ import { resolveGlobalBrewvaRootDir, resolveProjectBrewvaRootDir } from "../conf
 import type {
   BrewvaConfig,
   LoadableSkillCategory,
+  ProjectGuidanceEntry,
+  ProjectGuidanceStrength,
   SkillDocument,
   SkillIndexOrigin,
   SkillRegistryLoadReport,
@@ -22,6 +24,7 @@ import type {
   SkillsIndexFile,
   SkillsIndexEntry,
 } from "../contracts/index.js";
+import { parseMarkdownFrontmatter } from "../markdown/frontmatter.js";
 import {
   createEmptySkillResources,
   mergeOverlayContract,
@@ -47,8 +50,14 @@ const LOADABLE_SKILL_CATEGORIES: LoadableSkillCategory[] = [
   "internal",
 ];
 
-interface SharedContextEntry {
-  filePath: string;
+const PROJECT_GUIDANCE_STRENGTHS: ProjectGuidanceStrength[] = [
+  "invariant",
+  "workflow_gate",
+  "preference",
+  "lookup",
+];
+
+interface ProjectGuidanceSource extends ProjectGuidanceEntry {
   markdown: string;
 }
 
@@ -63,6 +72,28 @@ function cloneSkillRegistryRoot(entry: SkillRegistryRoot): SkillRegistryRoot {
     skillDir: entry.skillDir,
     source: entry.source,
   };
+}
+
+function cloneProjectGuidanceEntry(entry: ProjectGuidanceEntry): ProjectGuidanceEntry {
+  return {
+    filePath: entry.filePath,
+    strength: entry.strength,
+    scope: entry.scope,
+  };
+}
+
+function cloneProjectGuidanceEntries(
+  entries: readonly ProjectGuidanceEntry[],
+): ProjectGuidanceEntry[] {
+  return entries.map(cloneProjectGuidanceEntry);
+}
+
+function uniqueProjectGuidanceEntries(
+  entries: readonly ProjectGuidanceEntry[],
+): ProjectGuidanceEntry[] {
+  return [
+    ...new Map(entries.map((entry) => [entry.filePath, cloneProjectGuidanceEntry(entry)])).values(),
+  ].toSorted((left, right) => left.filePath.localeCompare(right.filePath));
 }
 
 function isDirectory(path: string): boolean {
@@ -301,11 +332,86 @@ function resolveSkillResources(
   };
 }
 
-function renderSharedContext(entries: SharedContextEntry[]): string {
+function hasSelectionSignals(
+  selection: SkillDocument["contract"]["selection"] | undefined,
+): boolean {
+  if (!selection) return false;
+  return Boolean(
+    selection.whenToUse ||
+    (selection.examples?.length ?? 0) > 0 ||
+    (selection.paths?.length ?? 0) > 0 ||
+    (selection.phases?.length ?? 0) > 0,
+  );
+}
+
+function failProjectGuidance(filePath: string, message: string): never {
+  throw new Error(`[project_guidance] ${filePath}: ${message}`);
+}
+
+function isProjectGuidanceStrength(value: unknown): value is ProjectGuidanceStrength {
+  return (
+    typeof value === "string" && (PROJECT_GUIDANCE_STRENGTHS as readonly string[]).includes(value)
+  );
+}
+
+function parseProjectGuidanceFile(filePath: string): ProjectGuidanceSource {
+  const raw = readFileSync(filePath, "utf8");
+  let parsed: ReturnType<typeof parseMarkdownFrontmatter>;
+  try {
+    parsed = parseMarkdownFrontmatter(raw);
+  } catch (error) {
+    failProjectGuidance(filePath, error instanceof Error ? error.message : String(error));
+  }
+  if (!parsed.hasFrontmatter) {
+    failProjectGuidance(filePath, "missing required metadata frontmatter.");
+  }
+  const allowedKeys = new Set(["strength", "scope"]);
+  const unexpected = Object.keys(parsed.data).filter((key) => !allowedKeys.has(key));
+  if (unexpected.length > 0) {
+    failProjectGuidance(
+      filePath,
+      `frontmatter contains unsupported field(s): ${unexpected.join(", ")}.`,
+    );
+  }
+  if (!isProjectGuidanceStrength(parsed.data.strength)) {
+    failProjectGuidance(
+      filePath,
+      `frontmatter.strength must be one of: ${PROJECT_GUIDANCE_STRENGTHS.join(" | ")}.`,
+    );
+  }
+  if (typeof parsed.data.scope !== "string" || parsed.data.scope.trim().length === 0) {
+    failProjectGuidance(filePath, "frontmatter.scope must be a non-empty string.");
+  }
+  return {
+    filePath,
+    strength: parsed.data.strength,
+    scope: parsed.data.scope.trim(),
+    markdown: parsed.body.trim(),
+  };
+}
+
+function demoteProjectGuidanceHeadings(markdown: string): string {
+  return markdown
+    .split("\n")
+    .map((line) => {
+      const match = /^(#{1,6})(\s+.*)$/.exec(line);
+      if (!match) {
+        return line;
+      }
+      const marker = match[1] ?? "";
+      const suffix = match[2] ?? "";
+      const nextLevel = Math.min(6, Math.max(3, marker.length + 1));
+      return `${"#".repeat(nextLevel)}${suffix}`;
+    })
+    .join("\n");
+}
+
+function renderProjectGuidance(entries: ProjectGuidanceSource[]): string {
   if (entries.length === 0) return "";
   const sections = entries.map((entry) => {
     const title = basename(entry.filePath).replace(/\.md$/i, "");
-    return `## Project Context: ${title}\n\n${entry.markdown.trim()}`;
+    const markdown = demoteProjectGuidanceHeadings(entry.markdown.trim());
+    return `## Project Guidance: ${title}\n\nMetadata: strength=${entry.strength}; scope=${entry.scope}\n\n${markdown}`;
   });
   return joinMarkdownSections(sections);
 }
@@ -319,7 +425,7 @@ function cloneLoadReport(report: SkillRegistryLoadReport): SkillRegistryLoadRepo
     routableSkills: [...report.routableSkills],
     hiddenSkills: [...report.hiddenSkills],
     overlaySkills: [...report.overlaySkills],
-    sharedContextFiles: [...report.sharedContextFiles],
+    projectGuidance: cloneProjectGuidanceEntries(report.projectGuidance),
     categories: Object.fromEntries(
       Object.entries(report.categories).map(([key, value]) => [key, [...(value ?? [])]]),
     ) as SkillRegistryLoadReport["categories"],
@@ -345,11 +451,11 @@ export class SkillRegistry {
     routableSkills: [],
     hiddenSkills: [],
     overlaySkills: [],
-    sharedContextFiles: [],
+    projectGuidance: [],
     categories: {},
   };
   private skills = new Map<string, SkillDocument>();
-  private sharedContextEntries: SharedContextEntry[] = [];
+  private projectGuidanceEntries: ProjectGuidanceSource[] = [];
   private skillOrigins = new Map<string, LoadedSkillOrigin>();
   private baseMarkdownBySkill = new Map<string, string>();
   private overlayMarkdownsBySkill = new Map<string, string[]>();
@@ -362,7 +468,7 @@ export class SkillRegistry {
 
   load(): void {
     this.skills.clear();
-    this.sharedContextEntries = [];
+    this.projectGuidanceEntries = [];
     this.skillOrigins.clear();
     this.baseMarkdownBySkill.clear();
     this.overlayMarkdownsBySkill.clear();
@@ -389,6 +495,7 @@ export class SkillRegistry {
       skill.contract = tightenContract(skill.contract, override);
     }
 
+    this.applyProjectGuidance();
     this.lastLoadReport = this.buildLoadReport();
   }
 
@@ -435,11 +542,13 @@ export class SkillRegistry {
           effectLevel: resolveSkillEffectLevel(skill.contract),
           routable: this.isRoutable(skill),
           overlay: skill.overlayFiles.length > 0,
-          sharedContextFiles: [...skill.sharedContextFiles],
+          projectGuidance: cloneProjectGuidanceEntries(skill.projectGuidance),
           routingScope: skill.contract.routing?.scope,
           selection: skill.contract.selection
             ? {
-                whenToUse: skill.contract.selection.whenToUse,
+                ...(skill.contract.selection.whenToUse
+                  ? { whenToUse: skill.contract.selection.whenToUse }
+                  : {}),
                 ...(skill.contract.selection.examples
                   ? { examples: [...skill.contract.selection.examples] }
                   : {}),
@@ -467,7 +576,7 @@ export class SkillRegistry {
     }
     const indexEntries = this.buildIndex();
     const payload: SkillsIndexFile = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       generatedAt: formatISO(Date.now()),
       roots: this.getLoadedRoots(),
       routing: {
@@ -490,7 +599,8 @@ export class SkillRegistry {
     if (!this.config.skills.routing.enabled) return false;
     const scope = skill.contract.routing?.scope;
     if (!scope) return false;
-    return this.config.skills.routing.scopes.includes(scope);
+    if (!this.config.skills.routing.scopes.includes(scope)) return false;
+    return hasSelectionSignals(skill.contract.selection);
   }
 
   private buildLoadReport(): SkillRegistryLoadReport {
@@ -529,9 +639,7 @@ export class SkillRegistry {
       routableSkills: [...new Set(routableSkills)].toSorted((a, b) => a.localeCompare(b)),
       hiddenSkills: [...new Set(hiddenSkills)].toSorted((a, b) => a.localeCompare(b)),
       overlaySkills: [...new Set(overlaySkills)].toSorted((a, b) => a.localeCompare(b)),
-      sharedContextFiles: [
-        ...new Set(this.sharedContextEntries.map((entry) => entry.filePath)),
-      ].toSorted((a, b) => a.localeCompare(b)),
+      projectGuidance: uniqueProjectGuidanceEntries(this.projectGuidanceEntries),
       categories,
     };
   }
@@ -542,9 +650,9 @@ export class SkillRegistry {
       this.loadCategory(category, join(skillDir, category), root);
     }
 
-    const sharedEntries = this.loadSharedContext(join(skillDir, "project", "shared"));
-    if (sharedEntries.length > 0) {
-      this.sharedContextEntries.push(...sharedEntries);
+    const projectGuidanceEntries = this.loadProjectGuidance(join(skillDir, "project", "shared"));
+    if (projectGuidanceEntries.length > 0) {
+      this.projectGuidanceEntries.push(...projectGuidanceEntries);
     }
     this.loadOverlays(join(skillDir, "project", "overlays"), root);
   }
@@ -584,11 +692,8 @@ export class SkillRegistry {
     }
   }
 
-  private loadSharedContext(dir: string): SharedContextEntry[] {
-    return listMarkdownFiles(dir).map((filePath) => ({
-      filePath,
-      markdown: readFileSync(filePath, "utf8").trim(),
-    }));
+  private loadProjectGuidance(dir: string): ProjectGuidanceSource[] {
+    return listMarkdownFiles(dir).map((filePath) => parseProjectGuidanceFile(filePath));
   }
 
   private loadOverlays(dir: string, root: SkillRegistryRoot): void {
@@ -617,37 +722,47 @@ export class SkillRegistry {
       overlayMarkdowns.push(overlay.markdown);
       this.overlayMarkdownsBySkill.set(overlay.name, overlayMarkdowns);
 
-      const sharedMarkdown = renderSharedContext(this.sharedContextEntries);
-      const mergedMarkdown = joinMarkdownSections([
-        sharedMarkdown,
-        baseMarkdown,
-        ...overlayMarkdowns,
-      ]);
-      const mergedResources = mergeSkillResources(
-        mergeSkillResources(baseSkill.resources, resolvedOverlayResources),
-        {
-          ...createEmptySkillResources(),
-          references: this.sharedContextEntries.map((entry) => entry.filePath),
-        },
-      );
+      const mergedMarkdown = joinMarkdownSections([baseMarkdown, ...overlayMarkdowns]);
+      const mergedResources = mergeSkillResources(baseSkill.resources, resolvedOverlayResources);
 
       this.skills.set(overlay.name, {
         ...baseSkill,
         markdown: mergedMarkdown,
         contract: mergeOverlayContract(baseSkill.contract, overlay.contract),
         resources: mergedResources,
-        sharedContextFiles: [
-          ...new Set([
-            ...baseSkill.sharedContextFiles,
-            ...this.sharedContextEntries.map((entry) => entry.filePath),
-          ]),
-        ],
         overlayFiles: [...new Set([...baseSkill.overlayFiles, filePath])],
       });
       origin.overlays.push({
         filePath,
         source: root.source,
         rootDir: root.rootDir,
+      });
+    }
+  }
+
+  private applyProjectGuidance(): void {
+    if (this.projectGuidanceEntries.length === 0) {
+      return;
+    }
+    const projectGuidanceMarkdown = renderProjectGuidance(this.projectGuidanceEntries);
+    const guidanceResources = {
+      ...createEmptySkillResources(),
+      references: this.projectGuidanceEntries.map((entry) => entry.filePath),
+    };
+    const projectGuidance = uniqueProjectGuidanceEntries(this.projectGuidanceEntries);
+
+    for (const [name, skill] of this.skills.entries()) {
+      const baseMarkdown = this.baseMarkdownBySkill.get(name) ?? skill.markdown;
+      const overlayMarkdowns = this.overlayMarkdownsBySkill.get(name) ?? [];
+      this.skills.set(name, {
+        ...skill,
+        markdown: joinMarkdownSections([
+          projectGuidanceMarkdown,
+          baseMarkdown,
+          ...overlayMarkdowns,
+        ]),
+        resources: mergeSkillResources(skill.resources, guidanceResources),
+        projectGuidance,
       });
     }
   }

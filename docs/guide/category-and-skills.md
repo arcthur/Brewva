@@ -12,7 +12,7 @@ inventory. For the authoritative skill list and contract details, use
 - Operator skills: `skills/operator`
 - Meta skills: `skills/meta`
 - Reserved internal skills: `skills/internal`
-- Shared project context: `skills/project/shared`
+- Shared project guidance: `skills/project/shared`
 - Project overlays: `skills/project/overlays`
 
 Category is directory-derived. The catalog does not use a separate lifecycle
@@ -24,7 +24,7 @@ The important distinction is semantic:
 
 - public skill: routable capability boundary
 - runtime or control-plane workflow semantics: not public skills
-- project overlay: project-specific tightening plus shared context
+- project overlay: project-specific tightening plus project guidance
 - operator and meta skills: loaded catalog entries, usually hidden from default
   routing scopes
 
@@ -35,7 +35,10 @@ model how the specialist reasons, decides, asks questions, and hands work off.
 ## Routing Scopes
 
 `skills.routing.enabled=false` by default. When routing is enabled,
-`skills.routing.scopes` is the explicit allowlist for auto-routing visibility.
+`skills.routing.scopes` is the explicit allowlist for routing visibility, but
+scope is not enough by itself. A skill must also declare at least one
+`selection` signal (`when_to_use`, `examples`, `paths`, or `phases`) to appear
+as routable.
 
 Typical hosted defaults are `core`, `domain`, and `operator`. Meta skills remain
 loaded but hidden unless scopes explicitly opt in.
@@ -69,7 +72,11 @@ At a high level, the families map like this:
   `self-improve`
 
 Project overlays specialize a subset of public skills for this repository.
-Shared project context is injected centrally from `skills/project/shared`.
+Shared project guidance is injected centrally from `skills/project/shared`.
+
+The current shared guidance files are `anti-patterns`, `critical-rules`,
+`migration-priority-matrix`, `package-boundaries`, `runtime-artifacts`,
+`source-map`, and `workflow-gates`.
 
 Use `docs/reference/skills.md` when you need the exact current inventory rather
 than examples.
@@ -78,12 +85,19 @@ than examples.
 
 Project overlays do not create new semantic territory. They:
 
-- add project-specific execution hints and shared context
+- add project-specific execution hints and skill-specific tightening
 - tighten allowed and denied effects, resource ceilings, and routing
   constraints
 - keep base outputs and consumes unless the overlay explicitly replaces them
-- prepend shared project context from `skills/project/shared` in root order,
-  with each shared document injected at most once per final loaded skill
+
+Runtime prepends shared project guidance from `skills/project/shared` to final
+loaded skills in root order, with each shared document injected at most once per
+skill. This happens independently of whether a skill has a project overlay.
+
+Shared project guidance files must use metadata-only frontmatter with
+`strength` and `scope`. Runtime strips that frontmatter before injection and
+uses it only for provenance labels; it does not grant or deny tool authority,
+change routing, alter provider payloads, mutate tool results, or affect replay.
 
 This keeps project knowledge centralized without turning every project into a
 new catalog of public super-skills.

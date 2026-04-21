@@ -226,6 +226,30 @@ Boundary rules:
 - composer policy blocks remain presentation artifacts; they do not widen
   runtime authority or create a second source taxonomy
 
+## Skill And Project Guidance Boundary
+
+Skill contracts remain the runtime-facing authoring surface for lifecycle,
+artifact, authority, budget, readiness, and completion semantics. Routing is
+derived from two conditions: the skill must be in an enabled routing scope, and
+it must declare at least one `selection.*` signal. There is no authored
+`routable` field.
+
+Project guidance is a different surface. `skills/project/shared/*.md` carries
+repo-local context with metadata-only `strength` and `scope` labels. Those
+labels are provenance tags for inspection and model-visible context. They do
+not route skills, grant or deny tool authority, change active tool surfaces,
+rewrite provider payloads, mutate tool results, or become replay truth.
+
+Architectural interpretation:
+
+- `selection.*` is routing substrate
+- `execution_hints.*` is optional tool guidance
+- project guidance is context/provenance metadata plus Markdown prose
+- overlays may tighten a specific skill, but they must not become the fallback
+  home for global project rules
+- local hooks remain the code-level observe/recommend/block lane and should not
+  absorb normal repo-local preference authoring
+
 ## Adjacent Repository Fitness Plane
 
 Brewva's architecture is centered on the `runtime commitment plane`.
