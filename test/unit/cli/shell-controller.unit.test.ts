@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  BrewvaRuntime,
   asBrewvaSessionId,
   asBrewvaToolCallId,
   asBrewvaToolName,
@@ -39,6 +40,30 @@ function createFakeBundle(
       lastEventAt: Date.now(),
     },
   ];
+  const runtime = new BrewvaRuntime({
+    cwd: mkdtempSync(join(tmpdir(), "brewva-shell-controller-")),
+  });
+  Object.assign(runtime.authority.proposals, {
+    decideEffectCommitment(_sessionId: string, requestId: string, input: unknown) {
+      approvalDecisions.push({ requestId, input });
+    },
+  });
+  Object.assign(runtime.inspect.proposals, {
+    listPendingEffectCommitments() {
+      return [];
+    },
+  });
+  Object.assign(runtime.inspect.events, {
+    listReplaySessions() {
+      return replaySessions;
+    },
+  });
+  const querySessionWire = runtime.inspect.sessionWire.query.bind(runtime.inspect.sessionWire);
+  Object.assign(runtime.inspect.sessionWire, {
+    query(targetSessionId: string) {
+      return options.sessionWireBySessionId?.[targetSessionId] ?? querySessionWire(targetSessionId);
+    },
+  });
 
   const session = {
     model: {
@@ -77,48 +102,7 @@ function createFakeBundle(
   const bundle = {
     session,
     toolDefinitions: new Map(),
-    runtime: {
-      authority: {
-        proposals: {
-          decideEffectCommitment(_sessionId: string, requestId: string, input: unknown) {
-            approvalDecisions.push({ requestId, input });
-          },
-        },
-      },
-      inspect: {
-        proposals: {
-          listPendingEffectCommitments() {
-            return [];
-          },
-        },
-        events: {
-          query() {
-            return [];
-          },
-          queryStructured() {
-            return [];
-          },
-          subscribe() {
-            return () => {};
-          },
-          listReplaySessions() {
-            return replaySessions;
-          },
-        },
-        reasoning: {
-          getActiveState() {
-            return {
-              latestRevert: null,
-            };
-          },
-        },
-        sessionWire: {
-          query(targetSessionId: string) {
-            return options.sessionWireBySessionId?.[targetSessionId] ?? [];
-          },
-        },
-      },
-    },
+    runtime,
   } as unknown as CliShellSessionBundle;
 
   return {

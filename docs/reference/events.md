@@ -276,22 +276,37 @@ frontend-visible `turnId` to the tape turn index used by later hosted recovery,
 approval, and delegation receipts. Its payload includes:
 
 - `turnId`
-- `trigger`
+- `trigger` (`user`, `schedule`, `heartbeat`, `channel`, `recovery`, or
+  `subagent`)
 - `promptText`
+
+The canonical hosted turn envelope records this receipt for every production
+accepted hosted prompt turn. Entry adapters should not write this receipt
+directly.
 
 `turn_render_committed` is the durable terminal presentation receipt for an
 accepted turn. Its payload includes:
 
 - `turnId`
 - `attemptId`
-- `status`
+- `status` (`completed`, `failed`, or `cancelled`)
 - `assistantText`
 - `toolOutputs`
+
+Approval `suspended` is not a terminal render status. Suspended turns keep the
+accepted-input receipt and rely on approval receipts plus session-wire frames to
+represent the waiting state.
 
 Together, `turn_input_recorded` and `turn_render_committed` are the durable
 receipts that feed `runtime.inspect.sessionWire`. Replay derives final
 frontend-visible turn text and tool summaries from these receipts, not from raw
 message deltas or standalone tool-result transport frames.
+
+These turn receipts, `session_turn_transition`, approval receipts, and schedule
+warning receipts are the durable diagnostic projection for hosted turn
+envelopes. No separate durable envelope-diagnostics event is part of the
+contract. Process-local envelope and loop diagnostics may explain a fresh
+gateway result, but they are not replay truth and are not a second event family.
 
 ### Tool, Verification, Mutation, And Recovery
 

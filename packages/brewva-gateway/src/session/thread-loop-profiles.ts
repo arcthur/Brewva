@@ -22,7 +22,6 @@ const PROFILE_BY_NAME: Record<ThreadLoopProfileName, ThreadLoopProfile> = {
     allowsProviderFallbackRecovery: true,
     allowsSubagentDelivery: false,
     requiresRecoveryWalReplay: false,
-    recordsTurnReceipts: false,
     settlesForegroundCompaction: true,
   },
   print: {
@@ -33,7 +32,6 @@ const PROFILE_BY_NAME: Record<ThreadLoopProfileName, ThreadLoopProfile> = {
     allowsProviderFallbackRecovery: true,
     allowsSubagentDelivery: false,
     requiresRecoveryWalReplay: false,
-    recordsTurnReceipts: false,
     settlesForegroundCompaction: true,
   },
   channel: {
@@ -44,7 +42,6 @@ const PROFILE_BY_NAME: Record<ThreadLoopProfileName, ThreadLoopProfile> = {
     allowsProviderFallbackRecovery: true,
     allowsSubagentDelivery: false,
     requiresRecoveryWalReplay: false,
-    recordsTurnReceipts: false,
     settlesForegroundCompaction: true,
   },
   scheduled: {
@@ -55,7 +52,6 @@ const PROFILE_BY_NAME: Record<ThreadLoopProfileName, ThreadLoopProfile> = {
     allowsProviderFallbackRecovery: true,
     allowsSubagentDelivery: false,
     requiresRecoveryWalReplay: false,
-    recordsTurnReceipts: true,
     settlesForegroundCompaction: true,
   },
   heartbeat: {
@@ -66,7 +62,6 @@ const PROFILE_BY_NAME: Record<ThreadLoopProfileName, ThreadLoopProfile> = {
     allowsProviderFallbackRecovery: true,
     allowsSubagentDelivery: false,
     requiresRecoveryWalReplay: false,
-    recordsTurnReceipts: true,
     settlesForegroundCompaction: true,
   },
   wal_recovery: {
@@ -77,7 +72,6 @@ const PROFILE_BY_NAME: Record<ThreadLoopProfileName, ThreadLoopProfile> = {
     allowsProviderFallbackRecovery: true,
     allowsSubagentDelivery: false,
     requiresRecoveryWalReplay: true,
-    recordsTurnReceipts: true,
     settlesForegroundCompaction: true,
   },
   subagent: {
@@ -88,7 +82,6 @@ const PROFILE_BY_NAME: Record<ThreadLoopProfileName, ThreadLoopProfile> = {
     allowsProviderFallbackRecovery: false,
     allowsSubagentDelivery: true,
     requiresRecoveryWalReplay: false,
-    recordsTurnReceipts: false,
     settlesForegroundCompaction: true,
   },
 };

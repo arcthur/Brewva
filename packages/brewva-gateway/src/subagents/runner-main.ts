@@ -16,9 +16,8 @@ import type {
 } from "@brewva/brewva-tools";
 import { createHostedSession } from "../host/create-hosted-session.js";
 import type { HostedSessionLogger } from "../host/logger.js";
-import { runHostedThreadLoop } from "../session/hosted-thread-loop.js";
 import { resolveSubagentSessionShutdownReason } from "../session/shutdown-receipts.js";
-import { resolveThreadLoopProfile } from "../session/thread-loop-profiles.js";
+import { runHostedTurnEnvelope } from "../session/turn-envelope.js";
 import { recordSessionShutdownIfMissing } from "../utils/runtime.js";
 import {
   readDetachedSubagentCancelRequest,
@@ -30,8 +29,8 @@ import {
   writeDetachedSubagentOutcome,
 } from "./background-protocol.js";
 import { HostedDelegationStore, buildDelegationLifecyclePayload } from "./delegation-store.js";
+import { prepareSubagentEntry } from "./entry.js";
 import { createDelegationModelRoutingContextFromAgentDir } from "./model-routing.js";
-import { buildDelegationPrompt } from "./prompt.js";
 import {
   aggregateChildCost,
   buildPatchArtifactRefs,
@@ -336,37 +335,22 @@ async function main(): Promise<void> {
       timeout.unref?.();
     }
 
-    const delegatedSkill = targetRecord.skillName;
-    const childOwnsSkill = delegatedSkill && targetRecord.resultMode !== "consult";
-    const skillDocument = delegatedSkill
-      ? parentRuntime.inspect.skills.get(delegatedSkill)
-      : undefined;
-    if (delegatedSkill && !skillDocument) {
-      throw new Error(`unknown_skill:${delegatedSkill}`);
-    }
-    if (childOwnsSkill) {
-      const activation = childSession.runtime.authority.skills.activate(
-        childSessionId,
-        delegatedSkill,
-      );
-      if (!activation.ok) {
-        throw new Error(`subagent_entry_skill_failed:${activation.reason}`);
-      }
-    }
-
-    const prompt = buildDelegationPrompt({
+    const preparedEntry = prepareSubagentEntry({
+      parentRuntime,
+      childRuntime: childSession.runtime,
+      childSessionId,
       target: targetRecord,
       delegate: spec.delegate,
       packet,
       promptOverride: executionPlan.prompt,
-      skill: skillDocument,
     });
-    const output = await runHostedThreadLoop({
+    const { delegatedSkill, childOwnsSkill, prompt } = preparedEntry;
+    const output = await runHostedTurnEnvelope({
       session: childSession.session,
       prompt,
-      profile: resolveThreadLoopProfile({ source: "subagent" }),
       runtime: childSession.runtime,
       sessionId: childSessionId,
+      source: "subagent",
     });
     if (output.status !== "completed") {
       throw new Error(`subagent_thread_loop_${output.status}`);
@@ -401,7 +385,7 @@ async function main(): Promise<void> {
             structuredOutcome.skillOutputs ?? {},
           )
         : undefined;
-    if (childOwnsSkill && skillValidation && !skillValidation.ok) {
+    if (childOwnsSkill && delegatedSkill && skillValidation && !skillValidation.ok) {
       recordRuntimeEvent(parentRuntime, {
         sessionId: spec.parentSessionId,
         type: "subagent_skill_output_validation_failed",

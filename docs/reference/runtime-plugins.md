@@ -194,6 +194,18 @@ contracts.
   `beforeAgentStart`, `toolResult`, `agentEnd`, `sessionCompact`, and
   `sessionShutdown`
 
+Hosted prompt acceptance and terminalization sit one layer above this runtime
+plugin pipeline. Production gateway, CLI, channel, schedule/heartbeat, WAL
+recovery, and subagent prompt turns enter through
+`packages/brewva-gateway/src/session/turn-envelope.ts`, which owns profile
+resolution, input receipts, schedule-trigger inheritance, WAL resume
+transitions, terminal render receipts, and suspended-vs-terminal result
+mapping. `HostedThreadLoop` remains the attempt/continuation/recovery body, and
+runtime plugins remain lifecycle and tool integration points inside that body.
+Envelope diagnostics are not runtime-plugin events; durable explanation comes
+from turn receipts, hosted transition receipts, approval receipts, and schedule
+warning receipts.
+
 Implementation anchors:
 
 - `packages/brewva-gateway/src/runtime-plugins/index.ts`

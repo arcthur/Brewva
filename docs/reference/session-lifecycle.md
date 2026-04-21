@@ -100,17 +100,30 @@ is that runtime lifecycle owns aggregate posture semantics.
 3. Register lifecycle handlers through the canonical hosted pipeline (`packages/brewva-gateway/src/runtime-plugins/index.ts`)
    - `managedToolMode=runtime_plugin`: register managed Brewva tools through the runtime plugin API
    - `managedToolMode=direct`: provide managed Brewva tools directly from the host
-4. Resolve the hosted thread-loop profile and run the gateway-internal
-   `HostedThreadLoop`
+4. Enter the canonical hosted turn envelope
+   (`packages/brewva-gateway/src/session/turn-envelope.ts`)
+   - entrypoints construct a session and semantic turn request; they do not
+     reimplement profile resolution, turn-id/runtime-turn binding,
+     schedule-trigger prelude, WAL resume transitions, or terminal render
+     receipts
+   - every production accepted hosted prompt turn records
+     `turn_input_recorded`
+   - `turn_render_committed` is recorded only for terminal
+     `completed | failed | cancelled` outcomes; approval `suspended` turns
+     remain represented by the input receipt plus approval/session-wire frames
+   - envelope diagnostics stay process-local; replay and operator forensics use
+     turn receipts, approval receipts, schedule warning receipts, and
+     `session_turn_transition` rather than a separate durable diagnostics event
+5. The envelope runs the gateway-internal `HostedThreadLoop`
    - `interactive` and `print` keep schedule trigger and Recovery WAL replay out
      of the ordinary human fast path
    - `scheduled`, `heartbeat`, `wal_recovery`, `channel`, and `subagent`
      profiles opt into the control-plane features their entrypoint needs
    - the low-level agent loop still owns model streaming, tool calls, steering,
-     follow-up messages, request authorization, and context transformation
-5. Materialize durable turn receipts (`turn_input_recorded`,
-   `turn_render_committed`), expose derived session wire replay through the
-   runtime-owned session-wire compiler surface, and dispose session resources
+     follow-up messages, request authorization, context transformation,
+     compaction/reasoning recovery, and process-local loop diagnostics
+6. Expose derived session wire replay through the runtime-owned session-wire
+   compiler surface and dispose session resources
 
 ## Mode-Specific Paths
 
@@ -136,7 +149,8 @@ is that runtime lifecycle owns aggregate posture semantics.
   the runtime plugin package; wiring details live in
   `docs/reference/runtime-plugins.md`
 - Channel gateway (`--channel`): run adapter bridge loop; bind conversations to scopes, then scopes to agent sessions, and dispatch inbound turns serially per scope
-  through the `channel` hosted-loop profile
+  through the canonical hosted turn envelope using the `channel` hosted-loop
+  profile
 
 ## Durability Boundaries
 

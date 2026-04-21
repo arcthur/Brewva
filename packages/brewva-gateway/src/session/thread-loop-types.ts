@@ -34,7 +34,6 @@ export interface ThreadLoopProfile {
   readonly allowsProviderFallbackRecovery: boolean;
   readonly allowsSubagentDelivery: boolean;
   readonly requiresRecoveryWalReplay: boolean;
-  readonly recordsTurnReceipts: boolean;
   readonly settlesForegroundCompaction: boolean;
 }
 
@@ -141,6 +140,42 @@ export interface ThreadLoopDiagnosticView {
   readonly lastDecision?: ThreadLoopDecision["action"];
 }
 
+function createInitialCompactionState(): ThreadLoopCompactionState {
+  return {
+    requestedGeneration: 0,
+    completedGeneration: 0,
+    foregroundOwner: false,
+  };
+}
+
+export function createMinimalThreadLoopDiagnostic(input: {
+  readonly sessionId: string;
+  readonly turnId?: string;
+  readonly profile: ThreadLoopProfile | ThreadLoopProfileName;
+  readonly attemptSequence?: number;
+  readonly compactAttempts?: number;
+  readonly recoveryHistory?: readonly ThreadLoopRecoveryHistoryEntry[];
+  readonly compaction?: ThreadLoopCompactionState;
+  readonly transition?: HostedTransitionSnapshot;
+  readonly lastDecision?: ThreadLoopDecision["action"];
+}): ThreadLoopDiagnosticView {
+  const diagnostic: ThreadLoopDiagnosticView = {
+    sessionId: input.sessionId,
+    turnId: input.turnId,
+    profile: typeof input.profile === "string" ? input.profile : input.profile.name,
+    attemptSequence: input.attemptSequence ?? 1,
+    compactAttempts: input.compactAttempts ?? 0,
+    recoveryHistory: input.recoveryHistory ?? [],
+    compaction: input.compaction ?? createInitialCompactionState(),
+  };
+
+  return {
+    ...diagnostic,
+    ...(input.transition ? { transition: input.transition } : {}),
+    ...(input.lastDecision ? { lastDecision: input.lastDecision } : {}),
+  };
+}
+
 export function createInitialThreadLoopState(input: {
   sessionId: string;
   turnId?: string;
@@ -159,11 +194,7 @@ export function createInitialThreadLoopState(input: {
     compactAttempts: 0,
     recoveryHistory: [],
     operatorVisibleCheckpoint: input.operatorVisibleCheckpoint,
-    compaction: {
-      requestedGeneration: 0,
-      completedGeneration: 0,
-      foregroundOwner: false,
-    },
+    compaction: createInitialCompactionState(),
   };
 }
 

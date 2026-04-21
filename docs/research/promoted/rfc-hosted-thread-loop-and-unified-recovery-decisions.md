@@ -23,9 +23,9 @@ The accepted decision is:
 - `packages/brewva-agent-engine/src/agent-loop.ts` remains the low-level
   model/tool primitive for streaming, tool calls, steering, follow-up messages,
   request authorization, and context transformation.
-- hosted entrypoints resolve explicit profiles before running the loop:
-  `interactive`, `print`, `channel`, `scheduled`, `heartbeat`, `wal_recovery`,
-  or `subagent`.
+- hosted entrypoints enter the canonical hosted turn envelope, which resolves
+  explicit profiles before running the loop: `interactive`, `print`,
+  `channel`, `scheduled`, `heartbeat`, `wal_recovery`, or `subagent`.
 - hosted recovery decisions use one turn-local `ThreadLoopState` projection and
   a small `ThreadLoopDecision` union.
 - `HostedTurnTransitionCoordinator` remains event-derived transition, breaker,
@@ -33,6 +33,9 @@ The accepted decision is:
 - runtime/kernel mechanisms remain authoritative for effect approval, rollback,
   Recovery WAL, receipts, and replay-visible history rewrites.
 - `ThreadLoopState` and diagnostics stay gateway internal and sanitized.
+- Detailed recovery history stays process-local. Durable recovery explanation is
+  the bounded transition receipt stream plus authority receipts, not a verbose
+  serialized copy of loop-local recovery state.
 
 ## Stable References
 
@@ -53,6 +56,7 @@ Implemented files:
 - `packages/brewva-gateway/src/session/compaction-generation-coordinator.ts`
 - `packages/brewva-gateway/src/session/hosted-prompt-attempt.ts`
 - `packages/brewva-gateway/src/session/error-classification.ts`
+- `packages/brewva-gateway/src/session/turn-envelope.ts`
 - `packages/brewva-gateway/src/host/run-hosted-prompt-turn.ts`
 
 Routed entrypoints:
@@ -83,16 +87,20 @@ Strengths:
 - active compaction no longer completes an empty turn as success; the resolver
   can return `compact_resume_stream`, and the loop dispatches the resume prompt
   through the normal attempt path
-- embedded CLI and TUI prompt paths enter the hosted loop through
-  `runHostedPromptTurn(...)` for ordinary non-streaming interactive and print
-  prompts
+- embedded CLI and TUI prompt paths enter the canonical hosted turn envelope
+  through `runHostedPromptTurn(...)` for ordinary non-streaming interactive and
+  print prompts
 - every decision in the union is produced and handled by the loop
 - reasoning-revert resume is represented as `revert_then_stream`
 - deterministic compaction settlement is separate from compact-resume dispatch
 - provider fallback and max-output breaker/failure paths abort remaining
   policies explicitly
 - subagent turns use a profile that disables provider fallback recovery
+- production entrypoints no longer resolve profiles or call
+  `HostedThreadLoop` directly; they enter the canonical hosted turn envelope
 - diagnostics omit prompt text and provider payloads
+- detailed recovery history is not promoted into durable transition payloads;
+  durable transition payloads stay bounded to replayable reason/status facts
 
 Boundary assessment:
 
@@ -102,8 +110,8 @@ Boundary assessment:
 - no compatibility adapter for the old prompt recovery helper
 - no `session.prompt` monkey-patch lifecycle
 - `ManagedAgentSession.prompt(...)` remains acceptable as a session-facing API
-  and streaming follow-up surface, but new hosted entrypoints should choose a
-  profile and enter `HostedThreadLoop`
+  and streaming follow-up surface, but new hosted prompt entrypoints should
+  enter `runHostedTurnEnvelope(...)`
 
 Residual risks are maintainability risks:
 
@@ -112,8 +120,8 @@ Residual risks are maintainability risks:
   adding another nested loop
 - `compaction-recovery.ts` remains large; it no longer monkey-patches prompt
   dispatch, but policy execution can be split later if responsibilities drift
-- future CLI/TUI entrypoints should be guarded by tests or import-boundary
-  checks so they do not bypass `runHostedPromptTurn(...)`
+- future hosted entrypoints should be guarded by tests or import-boundary
+  checks so they do not bypass `runHostedTurnEnvelope(...)`
 
 ## Promoted Contract Checklist
 
@@ -128,12 +136,16 @@ Residual risks are maintainability risks:
       coordinator and no prompt monkey-patch.
 - [x] Fast-path profiles are explicit and covered by tests.
 - [x] Existing durability contracts remain intact:
-  - receipts remain authoritative where profiles require them
+  - turn receipts remain authoritative and are owned by the canonical hosted
+    turn envelope
   - Recovery WAL remains authoritative for in-flight replay
   - `session_compact` remains the replay-visible history rewrite authority
   - transition snapshots remain rebuildable from events
 - [x] Stable architecture, reference, and journey docs carry the accepted
       hosted-loop contract.
+- [x] Detailed recovery history durable projection decision is closed:
+      process-local diagnostics stay process-local, while durable recovery
+      explanation uses transition and authority receipts.
 
 ## Non-Goals
 
@@ -143,12 +155,11 @@ Residual risks are maintainability risks:
 - Adding a second durable history rewrite authority.
 - Making ordinary fast paths skip effect governance.
 - Introducing cross-agent saga or compensation semantics.
+- Adding verbose loop-local recovery diagnostics to durable transition payloads.
 
-## Remaining Backlog
+## Closed Implementation Posture
 
-- Decide whether detailed recovery history should ever become durable transition
-  payload data rather than process-local diagnostics.
-- Add static import or architecture tests if future entrypoints make prompt
-  bypass regression likely.
-- Split large internal files only if responsibility drift appears; do not split
-  preemptively just to hide the hosted-loop owner.
+This RFC has no remaining implementation backlog. Static import and
+receipt-writer boundary tests remain ordinary maintenance when new hosted
+entrypoints are added. Large internal files should be split only when
+responsibility drift appears, not as unfinished loop architecture.

@@ -153,7 +153,8 @@ function readTurnInputRecordedPayload(
     payload.trigger === "schedule" ||
     payload.trigger === "heartbeat" ||
     payload.trigger === "channel" ||
-    payload.trigger === "recovery"
+    payload.trigger === "recovery" ||
+    payload.trigger === "subagent"
       ? payload.trigger
       : undefined;
   const promptText = typeof payload.promptText === "string" ? payload.promptText : undefined;

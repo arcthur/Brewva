@@ -263,6 +263,11 @@ describe("hosted subagent orchestrator", () => {
             async prompt() {
               for (const listener of listeners) {
                 listener({
+                  type: "tool_execution_start",
+                  toolCallId: "tc-first-attempt",
+                  toolName: "read",
+                } as BrewvaPromptSessionEvent);
+                listener({
                   type: "tool_execution_end",
                   toolCallId: "tc-first-attempt",
                   toolName: "read",
@@ -289,6 +294,11 @@ describe("hosted subagent orchestrator", () => {
               });
 
               for (const listener of listeners) {
+                listener({
+                  type: "tool_execution_start",
+                  toolCallId: "tc-second-attempt",
+                  toolName: "read",
+                } as BrewvaPromptSessionEvent);
                 listener({
                   type: "tool_execution_end",
                   toolCallId: "tc-second-attempt",

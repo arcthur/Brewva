@@ -91,7 +91,7 @@ async function runCliTurn(
   prompt: string,
   options: {
     printText: boolean;
-    runtime?: BrewvaRuntime;
+    runtime: BrewvaRuntime;
   },
 ): Promise<string> {
   let emittedText = "";
@@ -140,12 +140,16 @@ async function runCliTurn(
   });
 
   try {
+    const sessionId = session.sessionManager?.getSessionId?.()?.trim();
+    if (!sessionId) {
+      throw new Error("cli_print_session_missing_session_id");
+    }
     const output = await runHostedPromptTurn({
       session,
       parts: [{ type: "text", text: prompt }],
       source: "print",
       runtime: options.runtime,
-      sessionId: session.sessionManager?.getSessionId?.(),
+      sessionId,
     });
     if (output.status === "failed") {
       throw output.error instanceof Error ? output.error : new Error(String(output.error));
@@ -214,7 +218,7 @@ export async function runCliPrintSession(
   options: {
     mode: CliPrintMode;
     initialMessage?: string;
-    runtime?: BrewvaRuntime;
+    runtime: BrewvaRuntime;
   },
 ): Promise<void> {
   if (typeof options.initialMessage !== "string" || options.initialMessage.trim().length === 0) {

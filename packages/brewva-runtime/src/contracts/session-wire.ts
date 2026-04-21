@@ -5,7 +5,13 @@ export const SESSION_WIRE_SCHEMA = "brewva.session-wire.v2" as const;
 
 export type SessionWireSource = "replay" | "live";
 export type SessionWireDurability = "durable" | "cache";
-export type SessionWireTurnTrigger = "user" | "schedule" | "heartbeat" | "channel" | "recovery";
+export type SessionWireTurnTrigger =
+  | "user"
+  | "schedule"
+  | "heartbeat"
+  | "channel"
+  | "recovery"
+  | "subagent";
 export type SessionWireAttemptReason =
   | "initial"
   | "output_budget_escalation"

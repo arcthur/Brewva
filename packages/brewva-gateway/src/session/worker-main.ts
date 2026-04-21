@@ -1,22 +1,14 @@
-import {
-  SCHEDULE_TRIGGER_APPLY_WARNING_EVENT_TYPE,
-  type ContextPressureView,
-  TURN_INPUT_RECORDED_EVENT_TYPE,
-  TURN_RENDER_COMMITTED_EVENT_TYPE,
-  type SessionWireFrame,
-  type TurnInputRecordedPayload,
-  type TurnRenderCommittedPayload,
-} from "@brewva/brewva-runtime";
+import { type ContextPressureView, type SessionWireFrame } from "@brewva/brewva-runtime";
 import { recordRuntimeEvent, resolveRuntimeEventLogPath } from "@brewva/brewva-runtime/internal";
 import type { HostedSessionLogger } from "../host/logger.js";
 import { createRuntimeTurnClockStore } from "../runtime-plugins/runtime-turn-clock.js";
 import { recordSessionShutdownIfMissing } from "../utils/runtime.js";
 import { createGatewaySession, type GatewaySessionResult } from "./create-session.js";
-import { runHostedThreadLoop } from "./hosted-thread-loop.js";
-import { applySchedulePromptTrigger } from "./schedule-trigger.js";
+import { createSessionWireRelayGate } from "./session-wire-relay-gate.js";
 import { resolveWorkerSessionShutdownReceipt } from "./shutdown-receipts.js";
 import { TaskProgressWatchdog } from "./task-progress-watchdog.js";
-import { resolveThreadLoopProfile } from "./thread-loop-profiles.js";
+import { createMinimalThreadLoopDiagnostic } from "./thread-loop-types.js";
+import { runHostedTurnEnvelope, type HostedTurnEnvelopeLoopResult } from "./turn-envelope.js";
 import { recordSessionTurnTransition } from "./turn-transition.js";
 import type { ParentToWorkerMessage, WorkerToParentMessage } from "./worker-protocol.js";
 import { resolveWorkerTestHarness, type ResolvedWorkerTestHarness } from "./worker-test-harness.js";
@@ -36,6 +28,7 @@ let shuttingDown = false;
 let activeTurnId: string | null = null;
 let pendingUserCancellationTurnId: string | null = null;
 let unsubscribeSessionWire: (() => void) | null = null;
+const sessionWireRelayGate = createSessionWireRelayGate();
 const workerTurnClock = createRuntimeTurnClockStore();
 let workerTestHarness: ResolvedWorkerTestHarness = {
   enabled: false,
@@ -155,85 +148,6 @@ function recordFakeTurnLifecycle(
   });
 }
 
-function resolveNextRuntimeTurn(agentSessionId: string): number {
-  if (!sessionResult) {
-    return 0;
-  }
-  return sessionResult.runtime.inspect.events.query(agentSessionId, {
-    type: "turn_start",
-  }).length;
-}
-
-function resolveTurnTrigger(input: {
-  source?: "gateway" | "heartbeat" | "schedule";
-  walReplayId?: string;
-}): TurnInputRecordedPayload["trigger"] {
-  if (typeof input.walReplayId === "string" && input.walReplayId.trim().length > 0) {
-    return "recovery";
-  }
-  if (input.source === "heartbeat") {
-    return "heartbeat";
-  }
-  if (input.source === "schedule") {
-    return "schedule";
-  }
-  return "user";
-}
-
-function recordTurnInputReceipt(input: {
-  agentSessionId: string;
-  turnId: string;
-  prompt: string;
-  runtimeTurn: number;
-  source?: "gateway" | "heartbeat" | "schedule";
-  walReplayId?: string;
-}): void {
-  if (!sessionResult) {
-    return;
-  }
-  const payload: TurnInputRecordedPayload = {
-    turnId: input.turnId,
-    trigger: resolveTurnTrigger({
-      source: input.source,
-      walReplayId: input.walReplayId,
-    }),
-    promptText: input.prompt,
-  };
-  recordRuntimeEvent(sessionResult.runtime, {
-    sessionId: input.agentSessionId,
-    turn: input.runtimeTurn,
-    type: TURN_INPUT_RECORDED_EVENT_TYPE,
-    payload,
-  });
-}
-
-function recordTurnCommittedReceipt(input: {
-  agentSessionId: string;
-  turnId: string;
-  runtimeTurn: number;
-  attemptId: string;
-  status: TurnRenderCommittedPayload["status"];
-  assistantText: string;
-  toolOutputs: TurnRenderCommittedPayload["toolOutputs"];
-}): void {
-  if (!sessionResult) {
-    return;
-  }
-  const payload: TurnRenderCommittedPayload = {
-    turnId: input.turnId,
-    attemptId: input.attemptId,
-    status: input.status,
-    assistantText: input.assistantText,
-    toolOutputs: input.toolOutputs,
-  };
-  recordRuntimeEvent(sessionResult.runtime, {
-    sessionId: input.agentSessionId,
-    turn: input.runtimeTurn,
-    type: TURN_RENDER_COMMITTED_EVENT_TYPE,
-    payload,
-  });
-}
-
 function send(message: WorkerToParentMessage): void {
   if (typeof process.send !== "function") {
     return;
@@ -318,14 +232,14 @@ async function shutdown(exitCode = 0, reason = "shutdown", shutdownError?: unkno
     const agentSessionId = sessionResult.session.sessionManager.getSessionId();
     const shutdownReason = normalizeShutdownReason(reason);
     const shutdownReceipt = resolveWorkerSessionShutdownReceipt(shutdownReason);
-    unsubscribeSessionWire?.();
-    unsubscribeSessionWire = null;
     recordSessionShutdownIfMissing(runtime, {
       sessionId: agentSessionId,
       reason: shutdownReceipt.reason,
       source: shutdownReceipt.source,
       error: shutdownError,
     });
+    unsubscribeSessionWire?.();
+    unsubscribeSessionWire = null;
     const interruptReason =
       shutdownReason === "bridge_timeout"
         ? ("timeout_interrupt" as const)
@@ -460,10 +374,12 @@ async function handleInit(
     unsubscribeSessionWire = sessionResult.runtime.inspect.sessionWire.subscribe(
       agentSessionId,
       (frame) => {
+        if (sessionWireRelayGate.isPaused()) {
+          return;
+        }
         sendSessionWireFrame(requestedSessionId, frame);
       },
     );
-
     send({
       kind: "ready",
       requestId: message.requestId,
@@ -553,174 +469,52 @@ async function runTurn(input: {
     activeTurnId = null;
     return;
   }
-  const runtimeTurn = resolveNextRuntimeTurn(input.agentSessionId);
-  recordTurnInputReceipt({
-    agentSessionId: input.agentSessionId,
-    turnId: input.turnId,
-    prompt: input.prompt,
-    runtimeTurn,
-    source: input.source,
-    walReplayId: input.walReplayId,
-  });
-  const profile = resolveThreadLoopProfile({
-    source: input.source,
-    triggerKind: input.trigger?.kind,
-    walReplayId: input.walReplayId,
-  });
-
+  const releaseSessionWireRelay = sessionWireRelayGate.pause();
   try {
-    if (profile.allowsScheduleTrigger && input.trigger?.kind === "schedule") {
-      const appliedTrigger = applySchedulePromptTrigger(
-        sessionResult.runtime,
-        input.agentSessionId,
-        input.trigger,
-      );
-      if (input.trigger.activeSkillName && !appliedTrigger.skillApplied) {
-        recordRuntimeEvent(sessionResult.runtime, {
-          sessionId: input.agentSessionId,
-          type: SCHEDULE_TRIGGER_APPLY_WARNING_EVENT_TYPE,
-          payload: {
-            warning: "skill_activation_failed",
-            skillName: input.trigger.activeSkillName,
-            continuityMode: input.trigger.continuityMode,
-            reason: appliedTrigger.skillActivationReason ?? "unknown",
-          },
-        });
-      }
-    }
-    if (profile.requiresRecoveryWalReplay) {
-      recordSessionTurnTransition(sessionResult.runtime, {
-        sessionId: input.agentSessionId,
-        turn: runtimeTurn,
-        reason: "wal_recovery_resume",
-        status: "entered",
-        family: "recovery",
-        sourceEventId: input.walReplayId,
-        sourceEventType: "recovery_wal_recovery_completed",
-      });
-    }
     const fakeAssistantText = workerTestHarness.fakeAssistantText;
-    if (fakeAssistantText) {
-      recordFakeTurnLifecycle(input.agentSessionId, input.turnId, fakeAssistantText);
-      if (profile.requiresRecoveryWalReplay) {
-        recordSessionTurnTransition(sessionResult.runtime, {
-          sessionId: input.agentSessionId,
-          turn: runtimeTurn,
-          reason: "wal_recovery_resume",
-          status: "completed",
-          family: "recovery",
-          sourceEventId: input.walReplayId,
-          sourceEventType: "recovery_wal_recovery_completed",
-        });
-      }
-      recordTurnCommittedReceipt({
-        agentSessionId: input.agentSessionId,
-        turnId: input.turnId,
-        runtimeTurn,
-        attemptId: "attempt-1",
-        status: "completed",
-        assistantText: fakeAssistantText,
-        toolOutputs: [],
-      });
-      return;
-    }
-    const output = await runHostedThreadLoop({
+    await runHostedTurnEnvelope({
       session: sessionResult.session,
-      prompt: input.prompt,
-      profile,
       runtime: sessionResult.runtime,
       sessionId: input.agentSessionId,
+      prompt: input.prompt,
       turnId: input.turnId,
-      runtimeTurn,
+      source: input.source ?? "gateway",
+      trigger: input.trigger,
+      walReplayId: input.walReplayId,
       onFrame: (frame) => {
         sendSessionWireFrame(requestedSessionId, frame);
       },
+      classifyThrownError: () =>
+        pendingUserCancellationTurnId === input.turnId ? "cancelled" : "failed",
+      runLoop: fakeAssistantText
+        ? async (loopInput): Promise<HostedTurnEnvelopeLoopResult> => {
+            recordFakeTurnLifecycle(input.agentSessionId, input.turnId, fakeAssistantText);
+            return {
+              status: "completed",
+              attemptId: "attempt-1",
+              assistantText: fakeAssistantText,
+              toolOutputs: [],
+              diagnostic: createMinimalThreadLoopDiagnostic({
+                sessionId: input.agentSessionId,
+                turnId: input.turnId,
+                profile: loopInput.profile.name,
+              }),
+            };
+          }
+        : undefined,
     });
-
-    if (output.status === "suspended") {
-      recordTurnCommittedReceipt({
-        agentSessionId: input.agentSessionId,
-        turnId: input.turnId,
-        runtimeTurn,
-        attemptId: "attempt-1",
-        status: "failed",
-        assistantText: "",
-        toolOutputs: [],
-      });
-      return;
-    }
-
-    if (profile.requiresRecoveryWalReplay) {
-      recordSessionTurnTransition(sessionResult.runtime, {
-        sessionId: input.agentSessionId,
-        turn: runtimeTurn,
-        reason: "wal_recovery_resume",
-        status: "completed",
-        family: "recovery",
-        sourceEventId: input.walReplayId,
-        sourceEventType: "recovery_wal_recovery_completed",
-      });
-    }
-
-    if (output.status === "completed") {
-      recordTurnCommittedReceipt({
-        agentSessionId: input.agentSessionId,
-        turnId: input.turnId,
-        runtimeTurn,
-        attemptId: output.attemptId,
-        status: "completed",
-        assistantText: output.assistantText,
-        toolOutputs: [...output.toolOutputs],
-      });
-    } else if (output.status === "failed") {
-      recordTurnCommittedReceipt({
-        agentSessionId: input.agentSessionId,
-        turnId: input.turnId,
-        runtimeTurn,
-        attemptId: output.attemptId ?? "attempt-1",
-        status: "failed",
-        assistantText: output.assistantText ?? "",
-        toolOutputs: [...(output.toolOutputs ?? [])],
-      });
-    } else {
-      recordTurnCommittedReceipt({
-        agentSessionId: input.agentSessionId,
-        turnId: input.turnId,
-        runtimeTurn,
-        attemptId: "attempt-1",
-        status: "failed",
-        assistantText: "",
-        toolOutputs: [],
-      });
-    }
   } catch (error) {
-    const isCancelled = pendingUserCancellationTurnId === input.turnId;
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    if (profile.requiresRecoveryWalReplay) {
-      recordSessionTurnTransition(sessionResult.runtime, {
-        sessionId: input.agentSessionId,
-        turn: runtimeTurn,
-        reason: "wal_recovery_resume",
-        status: "failed",
-        family: "recovery",
-        sourceEventId: input.walReplayId,
-        sourceEventType: "recovery_wal_recovery_completed",
-        error: errorMessage,
-      });
-    }
-    recordTurnCommittedReceipt({
+    log("error", "worker turn envelope failed", {
+      requestedSessionId,
       agentSessionId: input.agentSessionId,
       turnId: input.turnId,
-      runtimeTurn,
-      attemptId: "attempt-1",
-      status: isCancelled ? "cancelled" : "failed",
-      assistantText: "",
-      toolOutputs: [],
+      error: error instanceof Error ? error.message : String(error),
     });
   } finally {
     if (pendingUserCancellationTurnId === input.turnId) {
       pendingUserCancellationTurnId = null;
     }
+    releaseSessionWireRelay();
     activeTurnId = null;
   }
 }

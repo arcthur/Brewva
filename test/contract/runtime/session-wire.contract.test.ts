@@ -72,6 +72,31 @@ describe("runtime session wire compiler", () => {
     });
   });
 
+  test("accepts subagent turn input trigger", () => {
+    const runtime = createRuntime();
+    const sessionId = "session-wire-subagent-trigger";
+
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      type: "turn_input_recorded",
+      turn: 0,
+      payload: {
+        turnId: "turn-subagent-1",
+        trigger: "subagent",
+        promptText: "child work",
+      },
+    });
+
+    expect(runtime.inspect.sessionWire.query(sessionId)).toEqual([
+      expect.objectContaining({
+        type: "turn.input",
+        turnId: "turn-subagent-1",
+        trigger: "subagent",
+        promptText: "child work",
+      }),
+    ]);
+  });
+
   test("derives durable attempt lifecycle from transition history", () => {
     const runtime = createRuntime();
     const sessionId = "session-wire-attempts";

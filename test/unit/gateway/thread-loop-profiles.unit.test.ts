@@ -15,7 +15,6 @@ describe("thread loop profiles", () => {
       allowsProviderFallbackRecovery: true,
       allowsSubagentDelivery: false,
       requiresRecoveryWalReplay: false,
-      recordsTurnReceipts: false,
     });
   });
 
@@ -30,7 +29,6 @@ describe("thread loop profiles", () => {
       allowsScheduleTrigger: true,
       allowsReasoningRevertResume: true,
       requiresRecoveryWalReplay: false,
-      recordsTurnReceipts: true,
     });
 
     expect(
@@ -43,7 +41,6 @@ describe("thread loop profiles", () => {
       allowsScheduleTrigger: false,
       allowsReasoningRevertResume: true,
       requiresRecoveryWalReplay: true,
-      recordsTurnReceipts: true,
     });
   });
 
@@ -60,7 +57,6 @@ describe("thread loop profiles", () => {
       allowsProviderFallbackRecovery: false,
       allowsSubagentDelivery: true,
       requiresRecoveryWalReplay: false,
-      recordsTurnReceipts: false,
     });
   });
 });

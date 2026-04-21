@@ -29,17 +29,16 @@ import type {
   SubagentStatusResult,
 } from "@brewva/brewva-tools";
 import type { SubscribablePromptSession } from "../session/contracts.js";
-import { runHostedThreadLoop } from "../session/hosted-thread-loop.js";
 import { resolveSubagentSessionShutdownReason } from "../session/shutdown-receipts.js";
-import { resolveThreadLoopProfile } from "../session/thread-loop-profiles.js";
+import { runHostedTurnEnvelope } from "../session/turn-envelope.js";
 import { recordSessionTurnTransition } from "../session/turn-transition.js";
 import { recordSessionShutdownIfMissing } from "../utils/runtime.js";
 import type { HostedSubagentBackgroundController } from "./background-controller.js";
 import { writeDetachedSubagentContextManifest } from "./background-protocol.js";
 import { loadHostedDelegationCatalog } from "./catalog.js";
 import { HostedDelegationStore, cloneDelegationRunRecord } from "./delegation-store.js";
+import { prepareSubagentEntry } from "./entry.js";
 import type { DelegationModelRoutingContext } from "./model-routing.js";
-import { buildDelegationPrompt } from "./prompt.js";
 import {
   aggregateChildCost,
   buildPatchArtifactRefs,
@@ -808,36 +807,21 @@ export function createHostedSubagentAdapter(
           },
         });
 
-        const delegatedSkill = input.target.skillName;
-        const childOwnsSkill = delegatedSkill && input.target.resultMode !== "consult";
-        const skillDocument = delegatedSkill
-          ? options.runtime.inspect.skills.get(delegatedSkill)
-          : undefined;
-        if (delegatedSkill && !skillDocument) {
-          throw new Error(`unknown_skill:${delegatedSkill}`);
-        }
-        if (childOwnsSkill) {
-          const activation = child.runtime.authority.skills.activate(
-            childSessionId,
-            delegatedSkill,
-          );
-          if (!activation.ok) {
-            throw new Error(`subagent_entry_skill_failed:${activation.reason}`);
-          }
-        }
-
-        const prompt = buildDelegationPrompt({
+        const preparedEntry = prepareSubagentEntry({
+          parentRuntime: options.runtime,
+          childRuntime: child.runtime,
+          childSessionId,
           target: input.target,
           packet: input.packet,
           promptOverride: executionPlan.prompt,
-          skill: skillDocument,
         });
-        const output = await runHostedThreadLoop({
+        const { delegatedSkill, childOwnsSkill, prompt } = preparedEntry;
+        const output = await runHostedTurnEnvelope({
           session: child.session,
           prompt,
-          profile: resolveThreadLoopProfile({ source: "subagent" }),
           runtime: child.runtime,
           sessionId: childSessionId,
+          source: "subagent",
         });
         if (output.status !== "completed") {
           throw new Error(`subagent_thread_loop_${output.status}`);
@@ -873,7 +857,7 @@ export function createHostedSubagentAdapter(
                 structuredOutcome.skillOutputs ?? {},
               )
             : undefined;
-        if (childOwnsSkill && skillValidation && !skillValidation.ok) {
+        if (childOwnsSkill && delegatedSkill && skillValidation && !skillValidation.ok) {
           recordRuntimeEvent(options.runtime, {
             sessionId: input.parentSessionId,
             type: "subagent_skill_output_validation_failed",

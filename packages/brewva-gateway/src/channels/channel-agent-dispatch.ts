@@ -2,8 +2,7 @@ import { BrewvaRuntime, type ToolOutputView } from "@brewva/brewva-runtime";
 import type { TurnEnvelope, TurnPart } from "@brewva/brewva-runtime/channels";
 import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type { SubscribablePromptSession } from "../session/contracts.js";
-import { runHostedThreadLoop } from "../session/hosted-thread-loop.js";
-import { resolveThreadLoopProfile } from "../session/thread-loop-profiles.js";
+import { runHostedTurnEnvelope } from "../session/turn-envelope.js";
 import { toErrorMessage } from "../utils/errors.js";
 import { clampText } from "../utils/runtime.js";
 import type { AgentRegistry } from "./agent-registry.js";
@@ -166,19 +165,19 @@ export function buildChannelDispatchPrompt(input: {
 export async function collectPromptTurnOutputs(
   session: PromptTurnOutputSession,
   prompt: string,
-  options?: {
-    runtime?: BrewvaRuntime;
-    sessionId?: string;
+  options: {
+    runtime: BrewvaRuntime;
+    sessionId: string;
     turnId?: string;
   },
 ): Promise<PromptTurnOutputs> {
-  const output = await runHostedThreadLoop({
+  const output = await runHostedTurnEnvelope({
     session,
     prompt,
-    profile: resolveThreadLoopProfile({ source: "channel" }),
-    runtime: options?.runtime,
-    sessionId: options?.sessionId,
-    turnId: options?.turnId,
+    runtime: options.runtime,
+    sessionId: options.sessionId,
+    turnId: options.turnId,
+    source: "channel",
   });
   if (output.status !== "completed") {
     throw new Error(`channel_thread_loop_${output.status}`);
@@ -199,9 +198,9 @@ export function createChannelAgentDispatch(input: {
   collectPromptTurnOutputs: (
     session: PromptTurnOutputSession,
     prompt: string,
-    options?: {
-      runtime?: BrewvaRuntime;
-      sessionId?: string;
+    options: {
+      runtime: BrewvaRuntime;
+      sessionId: string;
       turnId?: string;
     },
   ) => Promise<PromptTurnOutputs>;

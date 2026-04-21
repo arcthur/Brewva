@@ -69,7 +69,14 @@ describe("channel mode prompt output collector", () => {
   });
 
   test("aggregates assistant and tool outputs from prompt execution", async () => {
+    const runtime = createRuntimeFixture();
+    const sessionId = "channel-output-session";
     const session = createSessionMock([
+      {
+        type: "tool_execution_start",
+        toolCallId: "tc-1",
+        toolName: "exec",
+      } as BrewvaPromptSessionEvent,
       {
         type: "tool_execution_end",
         toolCallId: "tc-1",
@@ -91,6 +98,11 @@ describe("channel mode prompt output collector", () => {
     const outputs = await collectPromptTurnOutputs(
       session as unknown as Parameters<typeof collectPromptTurnOutputs>[0],
       "hello",
+      {
+        runtime,
+        sessionId,
+        turnId: "turn-channel-output",
+      },
     );
 
     expect(outputs.assistantText).toBe("final answer");
@@ -98,7 +110,14 @@ describe("channel mode prompt output collector", () => {
   });
 
   test("marks explicit fail verdict tool outputs as failed even when the channel succeeds", async () => {
+    const runtime = createRuntimeFixture();
+    const sessionId = "channel-fail-verdict-session";
     const session = createSessionMock([
+      {
+        type: "tool_execution_start",
+        toolCallId: "tc-2",
+        toolName: "exec",
+      } as BrewvaPromptSessionEvent,
       {
         type: "tool_execution_end",
         toolCallId: "tc-2",
@@ -114,6 +133,11 @@ describe("channel mode prompt output collector", () => {
     const outputs = await collectPromptTurnOutputs(
       session as unknown as Parameters<typeof collectPromptTurnOutputs>[0],
       "hello",
+      {
+        runtime,
+        sessionId,
+        turnId: "turn-channel-fail-verdict",
+      },
     );
 
     expect(outputs.toolOutputs).toHaveLength(1);

@@ -58,6 +58,7 @@ refresh the pointer summary and `Last reviewed` metadata here.
 
 ## Gateway, Session, And Scheduling
 
+- [`rfc-canonical-hosted-turn-envelope.md`](./rfc-canonical-hosted-turn-envelope.md)
 - [`rfc-derived-session-wire-schema-and-frontend-session-protocol.md`](./rfc-derived-session-wire-schema-and-frontend-session-protocol.md)
 - [`rfc-gateway-experience-ring-decomposition.md`](./rfc-gateway-experience-ring-decomposition.md)
 - [`rfc-hosted-thread-loop-and-unified-recovery-decisions.md`](./rfc-hosted-thread-loop-and-unified-recovery-decisions.md)

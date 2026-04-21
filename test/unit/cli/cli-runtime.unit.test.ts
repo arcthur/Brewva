@@ -28,8 +28,14 @@ describe("cli runtime print mode", () => {
       return true;
     }) as typeof process.stdout.write;
 
+    const runtime = new BrewvaRuntime({
+      cwd: mkdtempSync(join(tmpdir(), "brewva-cli-runtime-error-")),
+    });
     const listeners = new Set<(event: BrewvaPromptSessionEvent) => void>();
     const session = {
+      sessionManager: {
+        getSessionId: () => "cli-print-error-session",
+      },
       subscribe(next: (event: BrewvaPromptSessionEvent) => void) {
         listeners.add(next);
         return () => {
@@ -64,6 +70,7 @@ describe("cli runtime print mode", () => {
       await runCliPrintSession(session as BrewvaManagedPromptSession, {
         mode: "text",
         initialMessage: "Reply with exactly: pong",
+        runtime,
       });
       throw new Error("Expected runCliPrintSession to throw");
     } catch (error) {
