@@ -1,13 +1,12 @@
 import { isIP } from "node:net";
-import { basename, relative, resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import type { BrewvaConfig } from "../contracts/index.js";
 import { normalizeToolName } from "../utils/tool-name.js";
-
-const ENV_ASSIGNMENT_TOKEN = /^[A-Za-z_][A-Za-z0-9_]*=.*/u;
-const COMMAND_PREFIX_TOKENS = new Set(["sudo", "command", "time"]);
-const SHELL_WRAPPER_TOKENS = new Set(["sh", "bash", "zsh", "dash", "ksh", "mksh", "ash"]);
-const MAX_COMMAND_PARSE_DEPTH = 2;
-const URL_TOKEN_PATTERN = /\bhttps?:\/\/[^\s"'`]+/giu;
+import {
+  analyzeShellCommand,
+  collectCommandPolicyNetworkTargets,
+  type ShellCommandAnalysis,
+} from "./command-policy.js";
 
 export interface ToolBoundaryClassification {
   detectedCommands: string[];
@@ -16,6 +15,7 @@ export interface ToolBoundaryClassification {
     host: string;
     port?: number;
   }>;
+  commandPolicy?: ShellCommandAnalysis;
 }
 
 export interface ResolvedBoundaryPolicy {
@@ -34,256 +34,12 @@ function normalizeOptionalString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function normalizeCommandToken(token: string): string {
-  const trimmed = token.trim();
-  if (trimmed.length === 0) return "";
-  const withoutQuotes = trimmed.replace(/^["']+|["']+$/gu, "");
-  const normalized = withoutQuotes.toLowerCase();
-  if (normalized.length === 0) return "";
-  return normalized.includes("/") ? basename(normalized) : normalized;
-}
-
-function tokenizeCommand(command: string): string[] {
-  const tokens: string[] = [];
-  let current = "";
-  let quote: '"' | "'" | null = null;
-  let escaped = false;
-
-  const input = command.trim();
-  for (const char of input) {
-    if (escaped) {
-      current += char;
-      escaped = false;
-      continue;
-    }
-
-    if (char === "\\" && quote !== "'") {
-      escaped = true;
-      continue;
-    }
-
-    if (quote) {
-      if (char === quote) {
-        quote = null;
-      } else {
-        current += char;
-      }
-      continue;
-    }
-
-    if (char === '"' || char === "'") {
-      quote = char;
-      continue;
-    }
-
-    if (/\s/u.test(char)) {
-      if (current.length > 0) {
-        tokens.push(current);
-        current = "";
-      }
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (current.length > 0) {
-    tokens.push(current);
-  }
-  return tokens;
-}
-
-interface PrimaryCommandDescriptor {
-  token: string;
-  tokenIndex: number;
-  tokens: string[];
-}
-
-function resolvePrimaryCommandDescriptor(command: string): PrimaryCommandDescriptor | undefined {
-  const tokens = tokenizeCommand(command);
-  let envMode = false;
-
-  for (const [tokenIndex, token] of tokens.entries()) {
-    const normalizedToken = normalizeCommandToken(token);
-    if (!normalizedToken) continue;
-
-    if (ENV_ASSIGNMENT_TOKEN.test(token)) {
-      continue;
-    }
-
-    if (normalizedToken === "env") {
-      envMode = true;
-      continue;
-    }
-
-    if (envMode && token.startsWith("-")) {
-      continue;
-    }
-
-    if (COMMAND_PREFIX_TOKENS.has(normalizedToken)) {
-      continue;
-    }
-
-    return {
-      token: normalizedToken,
-      tokenIndex,
-      tokens,
-    };
-  }
-
-  return undefined;
-}
-
-function resolveShellInlineScript(descriptor: PrimaryCommandDescriptor): string | undefined {
-  if (!SHELL_WRAPPER_TOKENS.has(descriptor.token)) {
-    return undefined;
-  }
-
-  for (let index = descriptor.tokenIndex + 1; index < descriptor.tokens.length; index += 1) {
-    const token = descriptor.tokens[index]!;
-    if (token === "--") {
-      return undefined;
-    }
-
-    if (token.startsWith("--")) {
-      if (token === "--command") {
-        return descriptor.tokens[index + 1];
-      }
-      if (token.startsWith("--command=")) {
-        const inlineScript = token.slice("--command=".length);
-        return inlineScript.length > 0 ? inlineScript : undefined;
-      }
-      continue;
-    }
-
-    if (!token.startsWith("-")) {
-      return undefined;
-    }
-
-    const normalizedFlags = token.replace(/^-+/u, "");
-    if (normalizedFlags.length === 0) {
-      continue;
-    }
-
-    const cIndex = normalizedFlags.indexOf("c");
-    if (cIndex === -1) {
-      continue;
-    }
-
-    const inlineScript = normalizedFlags.slice(cIndex + 1);
-    if (inlineScript.length > 0) {
-      return inlineScript;
-    }
-
-    return descriptor.tokens[index + 1];
-  }
-
-  return undefined;
-}
-
-function splitShellCommandSegments(command: string): string[] {
-  const segments: string[] = [];
-  let current = "";
-  let quote: '"' | "'" | null = null;
-  let escaped = false;
-
-  const pushCurrent = () => {
-    const normalized = current.trim();
-    if (normalized.length > 0) {
-      segments.push(normalized);
-    }
-    current = "";
-  };
-
-  for (let index = 0; index < command.length; index += 1) {
-    const char = command[index]!;
-
-    if (escaped) {
-      current += char;
-      escaped = false;
-      continue;
-    }
-
-    if (char === "\\" && quote !== "'") {
-      current += char;
-      escaped = true;
-      continue;
-    }
-
-    if (quote) {
-      current += char;
-      if (char === quote) {
-        quote = null;
-      }
-      continue;
-    }
-
-    if (char === '"' || char === "'") {
-      quote = char;
-      current += char;
-      continue;
-    }
-
-    if (char === ";" || char === "\n") {
-      pushCurrent();
-      continue;
-    }
-
-    if (char === "&" && command[index + 1] === "&") {
-      pushCurrent();
-      index += 1;
-      continue;
-    }
-
-    if (char === "|") {
-      pushCurrent();
-      if (command[index + 1] === "|") {
-        index += 1;
-      }
-      continue;
-    }
-
-    current += char;
-  }
-
-  pushCurrent();
-  return segments;
-}
-
-function collectPrimaryCommandTokens(command: string, depth = 0): string[] {
-  if (depth > MAX_COMMAND_PARSE_DEPTH) {
-    return [];
-  }
-
-  const descriptor = resolvePrimaryCommandDescriptor(command);
-  if (!descriptor) {
-    return [];
-  }
-
-  const tokens = [descriptor.token];
-  const inlineScript = resolveShellInlineScript(descriptor);
-  if (!inlineScript) {
-    return tokens;
-  }
-
-  const nestedTokens = collectPrimaryCommandTokens(inlineScript, depth + 1);
-  return [...new Set([...tokens, ...nestedTokens])];
-}
-
-export function resolvePrimaryCommandTokens(command: string, depth = 0): string[] {
-  if (depth > MAX_COMMAND_PARSE_DEPTH) {
-    return [];
-  }
-
-  const segments = splitShellCommandSegments(command);
-  const tokens = segments
-    .flatMap((segment) => collectPrimaryCommandTokens(segment, depth))
-    .filter((token) => token.length > 0);
-  return [...new Set(tokens)];
-}
-
 function normalizeHost(host: string): string {
-  return host.trim().toLowerCase().replace(/\.$/u, "");
+  const normalized = host.trim().toLowerCase().replace(/\.$/u, "");
+  if (normalized.startsWith("[") && normalized.endsWith("]")) {
+    return normalized.slice(1, -1);
+  }
+  return normalized;
 }
 
 function isPathInsideRoot(path: string, root: string): boolean {
@@ -310,10 +66,20 @@ function isLoopbackHost(host: string): boolean {
   }
   const ipVersion = isIP(normalizedHost);
   if (ipVersion === 4) {
-    return normalizedHost.startsWith("127.");
+    return normalizedHost.startsWith("127.") || normalizedHost === "0.0.0.0";
   }
   if (ipVersion === 6) {
-    return normalizedHost === "::1";
+    if (normalizedHost === "::1" || normalizedHost === "::") {
+      return true;
+    }
+    const mappedIpv4 = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/u.exec(normalizedHost);
+    if (mappedIpv4) {
+      const high = Number.parseInt(mappedIpv4[1]!, 16);
+      return Number.isFinite(high) && high >> 8 === 127;
+    }
+    if (normalizedHost.startsWith("::ffff:127.")) {
+      return true;
+    }
   }
   return false;
 }
@@ -343,16 +109,10 @@ function resolveUrlTarget(urlValue: string): { host: string; port?: number } | u
 }
 
 export function collectExplicitUrlTargets(command: string): Array<{ host: string; port?: number }> {
-  const results: Array<{ host: string; port?: number }> = [];
-  for (const match of command.matchAll(URL_TOKEN_PATTERN)) {
-    const target = resolveUrlTarget(match[0]);
-    if (!target) continue;
-    if (results.some((entry) => entry.host === target.host && entry.port === target.port)) {
-      continue;
-    }
-    results.push(target);
-  }
-  return results;
+  return collectCommandPolicyNetworkTargets(command).map((target) => ({
+    host: target.host,
+    port: target.port,
+  }));
 }
 
 export function classifyToolBoundaryRequest(input: {
@@ -366,15 +126,24 @@ export function classifyToolBoundaryRequest(input: {
 
   if (normalizedToolName === "exec") {
     const command = normalizeOptionalString(args.command);
+    const commandPolicy = command ? analyzeShellCommand(command) : undefined;
     const baseCwd =
       normalizeOptionalString(input.cwd) ?? normalizeOptionalString(input.workspaceRoot);
     const workdir = normalizeOptionalString(args.workdir);
     const requestedCwd =
       baseCwd && workdir ? resolve(baseCwd, workdir) : baseCwd ? resolve(baseCwd) : undefined;
     return {
-      detectedCommands: command ? resolvePrimaryCommandTokens(command) : [],
+      detectedCommands: commandPolicy
+        ? [...new Set(commandPolicy.commands.map((entry) => entry.name))]
+        : [],
       requestedCwd,
-      targetHosts: command ? collectExplicitUrlTargets(command) : [],
+      targetHosts: commandPolicy
+        ? commandPolicy.networkTargets.map((target) => ({
+            host: target.host,
+            port: target.port,
+          }))
+        : [],
+      commandPolicy,
     };
   }
 

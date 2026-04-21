@@ -115,6 +115,8 @@ import type {
   MetricObservationQuery,
   MetricObservationRecord,
 } from "./iteration/facts.js";
+import type { CommandPolicySummary } from "./security/command-policy.js";
+import type { VirtualReadonlyPolicySummary } from "./security/virtual-readonly-policy.js";
 import type { ContextService } from "./services/context.js";
 import type { CostService } from "./services/cost.js";
 import type { CredentialVaultService } from "./services/credential-vault.js";
@@ -289,6 +291,8 @@ export interface BrewvaRuntimeMethodGroups {
       allowed: boolean;
       reason?: string;
       warning?: string;
+      commandPolicy?: CommandPolicySummary;
+      virtualReadonly?: VirtualReadonlyPolicySummary;
     };
     getActionPolicy(toolName: string, args?: Record<string, unknown>): ToolActionPolicy | undefined;
     registerActionPolicy(toolName: string, input: ToolActionPolicy): void;
@@ -773,6 +777,8 @@ export function createRuntimeMethodGroups(
             allowed: false,
             reason: access.reason,
             warning: access.warning,
+            commandPolicy: access.commandPolicy,
+            virtualReadonly: access.virtualReadonly,
           };
         }
         const compaction = deps.contextService.explainContextCompactionGate(
@@ -784,14 +790,25 @@ export function createRuntimeMethodGroups(
           return {
             allowed: false,
             reason: compaction.reason,
+            commandPolicy: access.commandPolicy,
+            virtualReadonly: access.virtualReadonly,
           };
         }
         const warnings = [access.warning].filter(
           (value): value is string => typeof value === "string" && value.trim().length > 0,
         );
         return warnings.length > 0
-          ? { allowed: true, warning: warnings.join("; ") }
-          : { allowed: true };
+          ? {
+              allowed: true,
+              warning: warnings.join("; "),
+              commandPolicy: access.commandPolicy,
+              virtualReadonly: access.virtualReadonly,
+            }
+          : {
+              allowed: true,
+              commandPolicy: access.commandPolicy,
+              virtualReadonly: access.virtualReadonly,
+            };
       },
       getActionPolicy: (toolName: string, args?: Record<string, unknown>) =>
         deps.actionPolicyRegistry.get(toolName, args),

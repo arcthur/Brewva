@@ -19,6 +19,17 @@ import {
   evaluateBoundaryClassification,
   resolveBoundaryPolicy,
 } from "../security/boundary-policy.js";
+import {
+  analyzeShellCommand,
+  summarizeShellCommandAnalysis,
+  type ShellCommandAnalysis,
+  type CommandPolicySummary,
+} from "../security/command-policy.js";
+import {
+  analyzeVirtualReadonlyEligibility,
+  summarizeVirtualReadonlyEligibility,
+  type VirtualReadonlyPolicySummary,
+} from "../security/virtual-readonly-policy.js";
 import { sha256 } from "../utils/hash.js";
 import { stableJsonStringify } from "../utils/json.js";
 import { normalizeToolName } from "../utils/tool-name.js";
@@ -60,6 +71,11 @@ export interface FinishToolCallInput {
 
 export interface ToolStartAuthorization extends ToolAccessDecision {
   authority: ResolvedToolAuthority;
+}
+
+interface ExecPolicyExplanation {
+  commandPolicy?: CommandPolicySummary;
+  virtualReadonly?: VirtualReadonlyPolicySummary;
 }
 
 export interface ToolCompletionContext {
@@ -160,8 +176,9 @@ export class ToolGateService {
     cwd?: string,
   ): ToolAccessExplanation {
     const access = this.explainToolAccessPolicy(sessionId, toolName, args);
+    const execPolicy = this.resolveExecPolicyExplanation(toolName, args);
     if (!access.allowed) {
-      return access;
+      return { ...access, ...execPolicy };
     }
 
     const boundary = this.evaluateBoundaryPolicy(sessionId, toolName, args, cwd);
@@ -171,10 +188,39 @@ export class ToolGateService {
 
     return {
       allowed: true,
+      commandPolicy: boundary.commandPolicy ?? execPolicy.commandPolicy,
+      virtualReadonly: boundary.virtualReadonly ?? execPolicy.virtualReadonly,
       warning:
         [access.warning, boundary.advisory]
           .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
           .join("; ") || undefined,
+    };
+  }
+
+  private resolveExecPolicyExplanation(
+    toolName: string,
+    args?: Record<string, unknown>,
+  ): ExecPolicyExplanation {
+    if (normalizeToolName(toolName) !== "exec") {
+      return {};
+    }
+    const command = args?.command;
+    if (typeof command !== "string" || command.trim().length === 0) {
+      return {};
+    }
+    return this.summarizeExecPolicy(analyzeShellCommand(command));
+  }
+
+  private summarizeExecPolicy(
+    commandPolicy: ShellCommandAnalysis | undefined,
+  ): ExecPolicyExplanation {
+    if (!commandPolicy) {
+      return {};
+    }
+    const virtualReadonly = analyzeVirtualReadonlyEligibility(commandPolicy);
+    return {
+      commandPolicy: summarizeShellCommandAnalysis(commandPolicy),
+      virtualReadonly: summarizeVirtualReadonlyEligibility(virtualReadonly),
     };
   }
 
@@ -292,12 +338,16 @@ export class ToolGateService {
       classification,
     );
     if (evaluation.allowed) {
-      return { allowed: true };
+      return {
+        allowed: true,
+        ...this.summarizeExecPolicy(classification.commandPolicy),
+      };
     }
 
     return {
       allowed: false,
       reason: evaluation.reason,
+      ...this.summarizeExecPolicy(classification.commandPolicy),
     };
   }
 
@@ -532,6 +582,7 @@ export class ToolGateService {
     const normalizedToolName = authority.normalizedToolName;
     const state = this.sessionState.getCell(input.sessionId);
     const requestedEffectCommitmentRequestId = input.effectCommitmentRequestId?.trim();
+    const execPolicy = this.resolveExecPolicyExplanation(input.toolName, input.args);
 
     const effectGateEvent =
       boundary === "effectful"
@@ -554,6 +605,8 @@ export class ToolGateService {
               effectiveAdmission: authority.effectiveAdmission ?? null,
               receiptPolicy: authority.receiptPolicy ?? null,
               recoveryPolicy: authority.recoveryPolicy ?? null,
+              commandPolicy: execPolicy.commandPolicy ?? null,
+              virtualReadonly: execPolicy.virtualReadonly ?? null,
             },
           })
         : undefined;

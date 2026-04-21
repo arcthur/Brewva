@@ -342,6 +342,19 @@ gateway result, but they are not replay truth and are not a second event family.
 - `reversible_mutation_prepared`
 - `reversible_mutation_recorded`
 
+`exec_routed`, `exec_fallback_host`, `exec_blocked_isolation`, and
+`exec_sandbox_error` include redacted command audit metadata (`commandHash`,
+`commandRedacted`) and, when a shell command was present, a structured
+`commandPolicy` verdict. The verdict records normalized command names,
+read-only eligibility, filesystem intent, unsupported features, effects, and
+network host/port details. Raw command strings, raw environment values, and
+secret-bearing error text are not event payload fields.
+
+`exec_routed` for `virtual_readonly` also records the backend selection and
+environment key metadata only. The tool result, not the audit event, carries
+exploration-only materialization details such as `isolation`,
+`materializedPaths`, `materializedBytes`, and `materializedEntries`.
+
 When a tool definition carries Brewva execution-traits metadata, `tool_call`
 and `tool_execution_start` may include `executionTraits` payload fields. Those
 fields are hosted scheduling metadata derived from the specific invocation
@@ -835,6 +848,9 @@ properties such as:
 - `effectiveAdmission`
 - `receiptPolicy`
 - `recoveryPolicy`
+- `commandPolicy` for `exec` calls, containing readonly eligibility,
+  normalized commands, filesystem intent, unsupported shell features, effects,
+  and network target host/port details without secret values
 
 `subagent_*` lifecycle events carry delegated-run state such as:
 

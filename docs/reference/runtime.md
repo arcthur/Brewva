@@ -414,6 +414,11 @@ mutable provider registry.
 - `listResourceLeases(sessionId, query?)`
 - `resolveUndoSessionId(preferredSessionId?)`
 
+For `exec`, `explainAccess(input)` also returns `commandPolicy` when
+`input.args.command` is present. This explanation shows why the command is
+read-only eligible, effectful, unsupported, or blocked by deployment boundary
+rules without executing the command.
+
 ### `inspect.task`
 
 - `getTargetDescriptor(sessionId)`

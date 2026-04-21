@@ -273,6 +273,8 @@ The architectural split is:
 
 - runtime action policies classify what kind of effect a tool carries and how
   it is admitted, receipted, and recovered
+- runtime command policy classifies `exec` shell semantics before deployment
+  boundary policy decides hostnames, roots, and backend routing
 - deployment boundary policy constrains where that effect may land in a
   specific deployment
 - execution adapters enforce the resulting decision at the concrete tool
@@ -289,7 +291,11 @@ Current implementation notes:
 - `ToolGateService` applies boundary-policy checks only for classified
   high-risk tools such as `exec` and browser entrypoints
 - `runtime.inspect.tools.explainAccess(...)` can explain boundary-policy decisions
-  without executing the tool
+  and exec command-policy verdicts without executing the tool
+- `virtual_readonly` is an exploration backend only. Its v1 write barrier is a
+  temporary materialized workspace subset with limits, not a full OverlayFS;
+  build/test verification claims still need sandbox or explicit host effect
+  receipts.
 
 ## Secret And Guard Ownership
 

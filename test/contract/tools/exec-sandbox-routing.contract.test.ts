@@ -68,7 +68,7 @@ describe("exec sandbox routing", () => {
     expect(commandRedacted).not.toContain("super-secret-token");
   });
 
-  test("standard mode with backend=best_available falls back to host even when fallbackToHost is false", async () => {
+  test("standard mode with backend=best_available fails closed when fallbackToHost is false", async () => {
     const { runtime, events } = createRuntimeForExecTests({
       mode: "standard",
       backend: "best_available",
@@ -76,24 +76,27 @@ describe("exec sandbox routing", () => {
       serverUrl: "http://127.0.0.1:4",
     });
     const execTool = createExecTool({ runtime });
-    const sessionId = "s13-exec-best-available-implicit-fallback";
+    const sessionId = "s13-exec-best-available-fail-closed";
 
-    const result = await execTool.execute(
-      "tc-exec-best-available-implicit-fallback",
-      {
-        command: "echo best-available-implicit-fallback",
-      },
-      undefined,
-      undefined,
-      fakeContext(sessionId),
-    );
-    expect(extractTextContent(result)).toContain("best-available-implicit-fallback");
-    expect((result.details as { backend?: string }).backend).toBe("host");
+    expect(
+      execTool.execute(
+        "tc-exec-best-available-fail-closed",
+        {
+          command: "echo best-available-fail-closed",
+        },
+        undefined,
+        undefined,
+        fakeContext(sessionId),
+      ),
+    ).rejects.toThrow("exec_blocked_isolation");
+
     const routed = events.find((event) => event.type === "exec_routed");
     expect(routed?.payload?.configuredBackend).toBe("best_available");
     expect(routed?.payload?.resolvedBackend).toBe("sandbox");
-    expect(routed?.payload?.routingPolicy).toBe("best_available");
-    expect(eventTypes(events)).toContain("exec_fallback_host");
+    expect(routed?.payload?.routingPolicy).toBe("fail_closed");
+    expect(routed?.payload?.fallbackToHost).toBe(false);
+    expect(eventTypes(events)).not.toContain("exec_fallback_host");
+    expect(eventTypes(events)).toContain("exec_blocked_isolation");
   });
 
   test("standard mode with backend=best_available falls back to host when fallbackToHost is true", async () => {

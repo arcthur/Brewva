@@ -11,6 +11,8 @@ import type {
   ToolGovernanceDescriptor,
   ToolRiskLevel,
 } from "../contracts/index.js";
+import { analyzeShellCommand } from "../security/command-policy.js";
+import { analyzeVirtualReadonlyEligibility } from "../security/virtual-readonly-policy.js";
 import { normalizeToolName } from "../utils/tool-name.js";
 
 type ToolActionPolicyInput = {
@@ -101,6 +103,33 @@ function readActionArgument(args: Record<string, unknown> | undefined): string |
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().toLowerCase();
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function readCommandArgument(args: Record<string, unknown> | undefined): string | undefined {
+  if (!args) return undefined;
+  const value = args.command;
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function hasUserProvidedEnvironment(args: Record<string, unknown> | undefined): boolean {
+  const env = args?.env;
+  if (!env || typeof env !== "object" || Array.isArray(env)) {
+    return false;
+  }
+  return Object.keys(env as Record<string, unknown>).length > 0;
+}
+
+function execCanUseReadonlyPolicy(args: Record<string, unknown> | undefined): boolean {
+  if (args?.background === true || hasUserProvidedEnvironment(args)) {
+    return false;
+  }
+  const command = readCommandArgument(args);
+  if (!command) {
+    return false;
+  }
+  return analyzeVirtualReadonlyEligibility(analyzeShellCommand(command)).eligible;
 }
 
 function workspaceRead(): ToolActionPolicy {
@@ -236,21 +265,18 @@ function localExecEffectful(
 }
 
 function localExecReadonly(): ToolActionPolicy {
-  // maxAdmission is intentionally "ask" until the command-policy grammar and physical
-  // sandbox posture are implemented. When the safety gate is lifted, maxAdmission must
-  // be relaxed to "allow" in lockstep — the ceiling and the gate travel together.
   return buildPolicy({
     actionClass: "local_exec_readonly",
     riskLevel: "medium",
-    defaultAdmission: "ask",
-    maxAdmission: "ask",
+    defaultAdmission: "allow",
+    maxAdmission: "allow",
     receiptPolicy: { kind: "execution", required: true },
     recoveryPolicy: { kind: "none" },
     effectClasses: ["local_exec"],
     sandboxPolicy: { kind: "sandbox_required" },
     safetyGate: {
-      localExecReadonlyAutoAllow: false,
-      reason: "command_policy_and_sandbox_not_implemented",
+      localExecReadonlyAutoAllow: true,
+      reason: "command_policy_and_virtual_readonly_shell_enforced",
     },
   });
 }
@@ -342,7 +368,15 @@ function resolveNarrativeMemoryPolicy(
   return NARRATIVE_MEMORY_DEFAULT_POLICY;
 }
 
+function resolveExecPolicy(input: ToolActionPolicyResolverInput): ToolActionPolicy | undefined {
+  if (normalizeToolName(input.toolName) !== "exec") return undefined;
+  return execCanUseReadonlyPolicy(input.args)
+    ? TOOL_ACTION_POLICY_BY_NAME.local_exec_readonly
+    : TOOL_ACTION_POLICY_BY_NAME.exec;
+}
+
 const EXACT_TOOL_ACTION_POLICY_RESOLVERS_BY_NAME: Record<string, ToolActionPolicyResolver> = {
+  exec: resolveExecPolicy,
   narrative_memory: resolveNarrativeMemoryPolicy,
 };
 

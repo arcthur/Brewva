@@ -172,7 +172,7 @@ Verification plan semantics:
 - `security.boundaryPolicy.filesystem.readAllow`: `[]`
 - `security.boundaryPolicy.filesystem.writeAllow`: `[]`
 - `security.boundaryPolicy.filesystem.writeDeny`: `[]`
-- `security.boundaryPolicy.network.mode`: `inherit`
+- `security.boundaryPolicy.network.mode`: `allowlist`
 - `security.boundaryPolicy.network.allowLoopback`: `true`
 - `security.boundaryPolicy.network.outbound`: `[]`
 - `security.loopDetection.exactCall.enabled`: `true`
@@ -185,7 +185,7 @@ Verification plan semantics:
 - `security.credentials.sandboxApiKeyRef`: `vault://sandbox/apiKey`
 - `security.credentials.gatewayTokenRef`: `vault://gateway/token`
 - `security.credentials.bindings`: `[]`
-- `security.execution.backend`: `best_available`
+- `security.execution.backend`: `sandbox`
 - `security.execution.enforceIsolation`: `false`
 - `security.execution.fallbackToHost`: `false`
 - `security.execution.sandbox.serverUrl`: `http://127.0.0.1:5555`
@@ -457,15 +457,27 @@ sha256("brewva:" + hostname + ":" + homedir)
 
 `security.execution` controls command isolation for `exec`:
 
-- `backend=best_available` prefers sandbox first; host fallback is implicit (always allowed unless strict/enforced isolation).
-- `backend=sandbox` is isolation-first; host fallback is controlled by `fallbackToHost` (`false` by default).
+- `backend=sandbox` is the default and fails closed when the sandbox backend is
+  unavailable.
+- `backend=best_available` still resolves to sandbox first, but it no longer
+  implies host fallback.
+- `backend=host` is an explicit operator policy for high-risk local execution.
+- Host fallback is controlled only by `fallbackToHost` (`false` by default) and
+  is still disabled by strict/enforced isolation.
 - `enforceIsolation=true` forces `backend=sandbox` and disables host fallback regardless of other inputs.
 - `strict` always disables host fallback.
+- `local_exec_readonly` auto-admission is available only for commands accepted
+  by the runtime command-policy grammar and routed through `virtual_readonly`.
+  The v1 virtual backend materializes explicit relative path arguments into a
+  temporary workspace subset and rejects unsafe path materialization rather than
+  reading the host workspace in place.
 - `exec.timeout` overrides `security.execution.sandbox.timeout` per command.
 - `exec.workdir` is validated against the current task target roots before
   backend routing; out-of-scope directories are rejected for both host and
   sandbox execution.
 - `exec.workdir` and `exec.env` are forwarded into sandbox commands via a shell wrapper (`cd` + `export`) only after target-root validation succeeds.
+- `exec.env` keys are validated before host or sandbox launch; invalid keys and
+  prototype-pollution keys are dropped and reported by key name only.
 
 ### `security.execution` Resolution Order
 
@@ -482,15 +494,17 @@ This yields the following invariants:
 - If `BREWVA_ENFORCE_EXEC_ISOLATION` is enabled, host fallback is disabled.
 - If `enforceIsolation=true`, host fallback is disabled.
 - If `security.mode=strict`, host fallback is disabled.
-- `backend=best_available` routes `sandbox` first and implicitly allows host fallback.
+- `backend=best_available` routes `sandbox` first and fails closed unless
+  `fallbackToHost=true`.
 - `backend=host` is honored only when none of the above force sandbox.
 
 ### `security.execution` Routing Matrix
 
 | mode       | backend        | enforceIsolation | fallbackToHost | resolved backend | host fallback |
 | ---------- | -------------- | ---------------- | -------------- | ---------------- | ------------- |
-| permissive | best_available | false            | any            | sandbox          | true          |
-| standard   | best_available | false            | any            | sandbox          | true          |
+| permissive | best_available | false            | false          | sandbox          | false         |
+| standard   | best_available | false            | false          | sandbox          | false         |
+| standard   | best_available | false            | true           | sandbox          | true          |
 | standard   | sandbox        | false            | false          | sandbox          | false         |
 | standard   | sandbox        | false            | true           | sandbox          | true          |
 | strict     | any            | false            | any            | sandbox          | false         |
@@ -499,7 +513,7 @@ This yields the following invariants:
 Notes:
 
 - `host fallback` applies only when the resolved backend is `sandbox`.
-- `backend=best_available` implicitly enables host fallback; `fallbackToHost` controls fallback for explicit `backend=sandbox`.
+- `backend=best_available` does not implicitly enable host fallback.
 - Sandbox background process mode is unsupported; with fallback disabled this is fail-closed.
 - When sandbox execution fails and host fallback is enabled, runtime applies a short backoff window before retrying sandbox (`exec_fallback_host.reason=sandbox_unavailable_cached`) to avoid repeated sandbox error churn.
 - Repeated sandbox failures in the same session can trigger a temporary session pin (`exec_fallback_host.reason=sandbox_unavailable_session_pinned`) so subsequent exec calls bypass sandbox until the pin TTL expires.
@@ -508,6 +522,9 @@ Notes:
   target-root scope first and rejects explicit directories outside the current
   task target roots.
 - `security.boundaryPolicy.commandDenyList` is the active best-effort command deny list.
+- `security.boundaryPolicy.network.mode` defaults to `allowlist`; explicit
+  outbound targets detected by command policy are denied unless loopback or an
+  allowlist rule permits them.
 - sandbox API key resolution uses the vault ref from `security.credentials.sandboxApiKeyRef`.
 - `security.execution.commandDenyList` and `security.execution.sandbox.apiKey` are invalid in active config. Rewrite or delete them in the config file before normal runtime use.
 

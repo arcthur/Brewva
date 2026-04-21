@@ -482,6 +482,15 @@ describe("Brewva config loader normalization", () => {
     );
   });
 
+  test("defaults exec routing to fail-closed sandbox and network allowlist", () => {
+    const workspace = createTestWorkspace("exec-fail-closed-defaults");
+    const loaded = loadBrewvaConfig({ cwd: workspace, configPath: ".brewva/brewva.json" });
+
+    expect(loaded.security.execution.backend).toBe("sandbox");
+    expect(loaded.security.execution.fallbackToHost).toBe(false);
+    expect(loaded.security.boundaryPolicy.network.mode).toBe("allowlist");
+  });
+
   test("resolves global config path", () => {
     const resolved = resolveGlobalBrewvaConfigPath();
     expect(typeof resolved).toBe("string");

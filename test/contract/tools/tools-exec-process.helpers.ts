@@ -86,7 +86,7 @@ export function createRuntimeForExecTests(input?: {
       bindings: [],
     };
     runtimeConfig.security.execution = {
-      backend: input?.backend ?? "best_available",
+      backend: input?.backend ?? "sandbox",
       enforceIsolation,
       fallbackToHost: input?.fallbackToHost ?? false,
       sandbox: {

@@ -59,7 +59,7 @@ export const DEFAULT_BREWVA_CONFIG: BrewvaConfig = {
         writeDeny: [],
       },
       network: {
-        mode: "inherit",
+        mode: "allowlist",
         allowLoopback: true,
         outbound: [],
       },
@@ -81,7 +81,7 @@ export const DEFAULT_BREWVA_CONFIG: BrewvaConfig = {
       bindings: [],
     },
     execution: {
-      backend: "best_available",
+      backend: "sandbox",
       enforceIsolation: false,
       fallbackToHost: false,
       sandbox: {

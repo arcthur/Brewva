@@ -153,18 +153,47 @@ describe("tool action policy", () => {
     expect(resolveEffectiveToolActionPolicy(policy, "allow").effectiveAdmission).toBe("ask");
   });
 
-  test("local exec read-only policy cannot auto-allow before the safety gate exists", () => {
+  test("local exec read-only policy auto-allows only after the command-policy safety gate", () => {
     const policy = requireDefined(
       TOOL_ACTION_POLICY_BY_NAME.local_exec_readonly,
       "missing local_exec_readonly policy",
     );
 
     expect(policy.actionClass).toBe("local_exec_readonly");
-    expect(policy.defaultAdmission).toBe("ask");
+    expect(policy.defaultAdmission).toBe("allow");
+    expect(policy.maxAdmission).toBe("allow");
     expect(policy.safetyGate).toEqual({
-      localExecReadonlyAutoAllow: false,
-      reason: "command_policy_and_sandbox_not_implemented",
+      localExecReadonlyAutoAllow: true,
+      reason: "command_policy_and_virtual_readonly_shell_enforced",
     });
+  });
+
+  test("exec action policy selects readonly only when the virtual route is eligible", () => {
+    expect(
+      getToolActionPolicy("exec", undefined, {
+        command: "cat package.json | head -n 1",
+      })?.actionClass,
+    ).toBe("local_exec_readonly");
+
+    expect(
+      getToolActionPolicy("exec", undefined, {
+        command: "cat /etc/hosts",
+      })?.actionClass,
+    ).toBe("local_exec_effectful");
+
+    expect(
+      getToolActionPolicy("exec", undefined, {
+        command: "cat package.json",
+        env: { SAFE_ENV: "1" },
+      })?.actionClass,
+    ).toBe("local_exec_effectful");
+
+    expect(
+      getToolActionPolicy("exec", undefined, {
+        command: "cat package.json",
+        background: true,
+      })?.actionClass,
+    ).toBe("local_exec_effectful");
   });
 
   test("tool action policy equality is order-stable and covers execution metadata", () => {

@@ -228,8 +228,25 @@ Scope notes:
 - `exec` shares the same target-root descriptor as code-navigation tools;
   `exec.workdir` must stay inside the current task target roots before host or
   sandbox routing is evaluated
+- `exec` is governed by the runtime command-policy analyzer before boundary
+  evaluation. The analyzer records normalized commands, readonly eligibility,
+  filesystem intent, unsupported shell features, and explicit network targets.
+- read-only exploration commands that pass the minimal grammar route through
+  `virtual_readonly`. The current backend materializes an explicit relative
+  workspace subset into a temporary directory, enforces output/materialization
+  limits, and discards the directory after execution. This evidence is suitable
+  for exploration, but it is not a build/test/verification pass.
+- `virtual_readonly` does not accept background execution, requested
+  environment overlays, unsafe absolute or parent-relative path materialization,
+  special files, or symlinks that resolve outside the target root.
+- `exec.env` keys are filtered through a null-prototype environment overlay;
+  invalid keys and prototype-pollution keys such as `__proto__`,
+  `constructor`, and `prototype` are dropped before host or sandbox execution.
+- commands outside the read-only grammar remain effectful `exec` and require
+  the normal action admission, receipt, and sandbox/host routing path.
 - `process` is the explicit follow-up surface for background `exec` sessions;
-  long-running commands are not an implicit hidden control plane
+  long-running commands are not an implicit hidden control plane, and
+  `virtual_readonly` commands do not create process sessions
 
 `workflow_status` is advisory only. It derives workflow status and ship posture
 from runtime events and session state, but it does not prescribe or

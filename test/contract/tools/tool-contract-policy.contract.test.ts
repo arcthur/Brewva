@@ -307,6 +307,132 @@ describe("effect governance policy modes", () => {
     }
   });
 
+  test("explainAccess includes exec command policy explanation", () => {
+    const workspace = createPolicyWorkspace("effect-governance-explain-command-policy");
+    const runtime = createRuntime(workspace, { security: { mode: "standard" } });
+    const sessionId = "effect-governance-explain-command-policy-1";
+
+    const explained = runtime.inspect.tools.explainAccess({
+      sessionId,
+      toolName: "exec",
+      args: {
+        command: "cat package.json | head -n 1",
+      },
+      cwd: workspace,
+    });
+
+    expect(explained.commandPolicy).toMatchObject({
+      readonlyEligible: true,
+      commands: ["cat", "head"],
+      filesystemIntent: "read",
+      unsupportedReasons: [],
+    });
+    expect(explained.virtualReadonly).toMatchObject({
+      readonlyGrammarEligible: true,
+      eligible: true,
+      materializedCandidates: ["package.json"],
+      blockedReasons: [],
+    });
+  });
+
+  test("exec readonly commands are auto-allowed only when the virtual route is eligible", () => {
+    const workspace = createPolicyWorkspace("effect-governance-exec-readonly-route");
+    const runtime = createRuntime(workspace, { security: { mode: "standard" } });
+    const sessionId = "effect-governance-exec-readonly-route-1";
+
+    const readonlyStart = runtime.authority.tools.start({
+      sessionId,
+      toolCallId: "tc-exec-readonly-policy",
+      toolName: "exec",
+      args: {
+        command: "cat package.json | head -n 1",
+      },
+      cwd: workspace,
+    });
+
+    expect(readonlyStart.allowed).toBe(true);
+    expect(readonlyStart.boundary).toBe("effectful");
+    expect(readonlyStart.commitmentReceipt).toBeUndefined();
+    expect(
+      runtime.inspect.events.query(sessionId, { type: "tool_effect_gate_selected" }).at(-1)
+        ?.payload,
+    ).toMatchObject({
+      toolName: "exec",
+      actionClass: "local_exec_readonly",
+      requiresApproval: false,
+      commandPolicy: {
+        readonlyEligible: true,
+      },
+      virtualReadonly: {
+        eligible: true,
+        materializedCandidates: ["package.json"],
+      },
+    });
+
+    const effectfulStart = runtime.authority.tools.start({
+      sessionId,
+      toolCallId: "tc-exec-absolute-policy",
+      toolName: "exec",
+      args: {
+        command: "cat /etc/hosts",
+      },
+      cwd: workspace,
+    });
+
+    expect(effectfulStart.allowed).toBe(false);
+    expect(effectfulStart.reason).toContain("effect_commitment_pending_operator_approval:");
+    expect(
+      runtime.inspect.events.query(sessionId, { type: "tool_effect_gate_selected" }).at(-1)
+        ?.payload,
+    ).toMatchObject({
+      toolName: "exec",
+      actionClass: "local_exec_effectful",
+      requiresApproval: true,
+      commandPolicy: {
+        readonlyEligible: true,
+      },
+      virtualReadonly: {
+        eligible: false,
+        blockedReasons: [
+          {
+            code: "unsafe_virtual_readonly_path",
+            command: "cat",
+          },
+        ],
+      },
+    });
+  });
+
+  test("explainAccess reports virtual-readonly materialization blockers", () => {
+    const workspace = createPolicyWorkspace("effect-governance-explain-virtual-block");
+    const runtime = createRuntime(workspace, { security: { mode: "standard" } });
+    const sessionId = "effect-governance-explain-virtual-block-1";
+
+    const explained = runtime.inspect.tools.explainAccess({
+      sessionId,
+      toolName: "exec",
+      args: {
+        command: "cat /etc/hosts",
+      },
+      cwd: workspace,
+    });
+
+    expect(explained.commandPolicy).toMatchObject({
+      readonlyEligible: true,
+      commands: ["cat"],
+    });
+    expect(explained.virtualReadonly).toMatchObject({
+      readonlyGrammarEligible: true,
+      eligible: false,
+      blockedReasons: [
+        {
+          code: "unsafe_virtual_readonly_path",
+          command: "cat",
+        },
+      ],
+    });
+  });
+
   test("hint-based governance emits governance_metadata_missing once until exact policy is added", () => {
     const workspace = createPolicyWorkspace("effect-governance-hint-metadata");
     const runtime = createRuntime(workspace, { security: { mode: "strict" } });

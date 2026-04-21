@@ -33,8 +33,9 @@ The accepted decision is:
   by managed tools
 - missing exact action policy fails closed for effectful execution regardless
   of `security.mode`
-- `local_exec_readonly` remains approval-bound until command policy grammar,
-  physical sandbox posture, and option-smuggling tests justify auto-allow
+- `local_exec_readonly` is auto-allow only after the runtime command-policy
+  grammar accepts the command and the execution route is isolated as
+  `virtual_readonly`
 
 ## Stable References
 
@@ -66,6 +67,12 @@ The accepted decision is:
   workspace files.
 - Operator admission overrides are tightening-first. Relaxation beyond the
   action class `maxAdmission` is rejected during config normalization.
+- `packages/brewva-runtime/src/security/command-policy.ts` classifies exec
+  command semantics before deployment-level boundary policy applies.
+- `local_exec_readonly` now carries `maxAdmission=allow` with a safety gate
+  reason tied to command-policy and virtual-readonly enforcement.
+- `exec` command events include structured command-policy verdicts and redacted
+  audit payloads; host fallback is explicit, not implied by `best_available`.
 
 ## Validation Status
 
@@ -78,16 +85,19 @@ Promotion is backed by:
 - capability-view coverage for action class, receipt policy, and recovery
   policy rendering
 - config-loader coverage for invalid operator override rejection
-- local exec safety-gate coverage proving read-only local exec is not
-  auto-allowed before Phase 3 prerequisites exist
+- local exec safety-gate coverage proving read-only local exec auto-admission
+  is tied to command-policy and virtual-readonly routing
+- command-policy unit and contract coverage for read/search pipelines,
+  option-smuggling rejection, unsupported shell features, network target
+  detection, and sandbox fail-closed behavior
 - docs coverage for reference configuration, runtime, tools, proposal boundary,
   and event semantics
 
 ## Remaining Backlog
 
-- A future command-policy RFC should define the smallest safe grammar for
-  `local_exec_readonly` and must include sandbox posture and option-smuggling
-  tests before relaxing admission.
+- The command-policy grammar is intentionally small. Future expansion should be
+  fixture-led and must preserve fail-closed behavior for shell features that
+  can mutate filesystem, execute nested shells, or smuggle network effects.
 - Browser actions still need a focused follow-on classifier if Brewva wants to
   distinguish local browser observation from external state mutation.
 - The existing approval spine can be further semanticized later, but the

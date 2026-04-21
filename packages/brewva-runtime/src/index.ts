@@ -11,6 +11,8 @@ export * from "./evidence/artifacts.js";
 export * from "./evidence/tsc.js";
 export * from "./security/sanitize.js";
 export * from "./security/compaction-integrity.js";
+export * from "./security/command-policy.js";
+export * from "./security/virtual-readonly-policy.js";
 export * from "./security/boundary-policy.js";
 export * from "./security/tool-policy.js";
 export * from "./context/identity.js";

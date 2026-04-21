@@ -1,5 +1,18 @@
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { resolve } from "node:path";
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readlink,
+  realpath,
+  rm,
+  stat,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, relative, resolve } from "node:path";
 import {
   DEFAULT_BREWVA_CONFIG,
   EXEC_BLOCKED_ISOLATION_EVENT_TYPE,
@@ -9,8 +22,14 @@ import {
   classifyToolBoundaryRequest,
   evaluateBoundaryClassification,
   resolveBoundaryPolicy,
+  analyzeVirtualReadonlyEligibility,
+  summarizeShellCommandAnalysis,
+  summarizeVirtualReadonlyEligibility,
   type BrewvaConfig,
+  type CommandPolicySummary,
   type ResolvedBoundaryPolicy,
+  type ShellCommandAnalysis,
+  type VirtualReadonlyEligibility,
 } from "@brewva/brewva-runtime";
 import type { BrewvaToolDefinition as ToolDefinition } from "@brewva/brewva-substrate";
 import { Type } from "@sinclair/typebox";
@@ -53,7 +72,14 @@ const DEFAULT_AUDIT_COMMAND_PREVIEW_LENGTH = 240;
 const SANDBOX_FAILURE_BACKOFF_MS = 60_000;
 const SANDBOX_SESSION_PIN_TTL_MS = 15 * 60_000;
 const SANDBOX_SESSION_PIN_FAILURE_THRESHOLD = 2;
+const VIRTUAL_READONLY_OUTPUT_LIMIT_BYTES = 4_000_000;
+const VIRTUAL_READONLY_DEFAULT_TIMEOUT_SEC = 30;
+const VIRTUAL_READONLY_MAX_MATERIALIZED_BYTES = 128_000_000;
+const VIRTUAL_READONLY_MAX_MATERIALIZED_ENTRIES = 20_000;
+const VIRTUAL_READONLY_TEMP_PREFIX = "brewva-vro-";
+const VIRTUAL_READONLY_ENV_PATH = "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin";
 const VALID_ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+const DANGEROUS_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const DENY_LIST_BEST_EFFORT_MESSAGE =
   "security.boundaryPolicy.commandDenyList is best-effort and must not be treated as a complete shell security boundary.";
 const TOOL_NAME_COMMAND_HINTS = new Set(["session_compact"]);
@@ -106,6 +132,27 @@ interface SandboxExecutionResult {
   timeoutSec: number;
 }
 
+interface RequestedEnvResolution {
+  env?: Record<string, string>;
+  requestedKeys: string[];
+  userRequestedKeys: string[];
+  boundEnvKeys: string[];
+  appliedKeys: string[];
+  droppedKeys: string[];
+}
+
+interface VirtualReadonlyWorkspace {
+  executionCwd: string;
+  materializedPaths: string[];
+  materializedBytes: number;
+  materializedEntries: number;
+  cleanup(): Promise<void>;
+}
+
+interface VirtualReadonlyMaterializationPlan {
+  candidates: string[];
+}
+
 let microsandboxSdkPromise: Promise<MicrosandboxSdk> | null = null;
 const sandboxBackoffUntilByTarget = new Map<string, number>();
 const sandboxSessionFailureCount = new Map<string, number>();
@@ -125,6 +172,16 @@ class SandboxAbortedError extends Error {
   constructor() {
     super("Execution aborted by signal.");
     this.name = "SandboxAbortedError";
+  }
+}
+
+class VirtualReadonlyMaterializationError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "VirtualReadonlyMaterializationError";
+    this.code = code;
   }
 }
 
@@ -168,6 +225,81 @@ function normalizeOptionalString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function isSafeEnvKey(key: string): boolean {
+  return VALID_ENV_KEY.test(key) && !DANGEROUS_OBJECT_KEYS.has(key);
+}
+
+function uniqueKeys(keys: readonly string[]): string[] {
+  return [...new Set(keys)];
+}
+
+function resolveRequestedEnv(input: {
+  userEnv?: Record<string, string>;
+  boundEnv: Record<string, string>;
+}): RequestedEnvResolution {
+  const env = Object.create(null) as Record<string, string>;
+  const requestedKeys: string[] = [];
+  const userRequestedKeys: string[] = [];
+  const boundEnvKeys: string[] = [];
+  const appliedKeys: string[] = [];
+  const droppedKeys: string[] = [];
+
+  const applyEntries = (entries: Iterable<[string, unknown]>, source: "user" | "bound") => {
+    for (const [key, value] of entries) {
+      requestedKeys.push(key);
+      if (source === "user") {
+        userRequestedKeys.push(key);
+      } else {
+        boundEnvKeys.push(key);
+      }
+      if (!isSafeEnvKey(key) || typeof value !== "string") {
+        droppedKeys.push(key);
+        continue;
+      }
+      env[key] = value;
+      appliedKeys.push(key);
+    }
+  };
+
+  applyEntries(Object.entries(input.userEnv ?? {}), "user");
+  applyEntries(Object.entries(input.boundEnv), "bound");
+
+  const uniqueAppliedKeys = uniqueKeys(appliedKeys);
+  return {
+    env: uniqueAppliedKeys.length > 0 ? env : undefined,
+    requestedKeys: uniqueKeys(requestedKeys),
+    userRequestedKeys: uniqueKeys(userRequestedKeys),
+    boundEnvKeys: uniqueKeys(boundEnvKeys),
+    appliedKeys: uniqueAppliedKeys,
+    droppedKeys: uniqueKeys(droppedKeys),
+  };
+}
+
+function buildHostEnv(requestedEnv?: Record<string, string>): NodeJS.ProcessEnv {
+  const env = Object.create(null) as NodeJS.ProcessEnv;
+  for (const [key, value] of Object.entries(process.env)) {
+    if (isSafeEnvKey(key) && typeof value === "string") {
+      env[key] = value;
+    }
+  }
+  for (const [key, value] of Object.entries(requestedEnv ?? {})) {
+    if (isSafeEnvKey(key)) {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
+function buildVirtualReadonlyEnv(): NodeJS.ProcessEnv {
+  const env = Object.create(null) as NodeJS.ProcessEnv;
+  env.PATH = VIRTUAL_READONLY_ENV_PATH;
+  env.HOME = tmpdir();
+  env.LANG = "C";
+  env.LC_ALL = "C";
+  env.NO_COLOR = "1";
+  return env;
 }
 
 function isTruthyEnvFlag(value: string | undefined): boolean {
@@ -245,7 +377,7 @@ function resolveExecutionPolicy(
     backend === "sandbox" &&
     !enforceIsolation &&
     security.mode !== "strict" &&
-    (configuredBackend === "best_available" || execution.fallbackToHost);
+    execution.fallbackToHost;
 
   return {
     mode: security.mode,
@@ -376,6 +508,10 @@ function redactCommandForAudit(command: string): string {
   return `${redacted.slice(0, DEFAULT_AUDIT_COMMAND_PREVIEW_LENGTH)}...`;
 }
 
+function redactTextForAudit(value: string): string {
+  return redactCommandForAudit(value);
+}
+
 function hashCommandForAudit(command: string): string {
   return createHash("sha256").update(command).digest("hex");
 }
@@ -385,6 +521,22 @@ function buildCommandAuditPayload(command: string): Record<string, unknown> {
     commandHash: hashCommandForAudit(command),
     commandRedacted: redactCommandForAudit(command),
   };
+}
+
+function buildCommandPolicyAuditPayload(commandPolicy: ShellCommandAnalysis | undefined): {
+  commandPolicy?: CommandPolicySummary;
+} {
+  return commandPolicy ? { commandPolicy: summarizeShellCommandAnalysis(commandPolicy) } : {};
+}
+
+function buildVirtualReadonlyAuditPayload(
+  virtualReadonly: VirtualReadonlyEligibility | undefined,
+): {
+  virtualReadonly?: ReturnType<typeof summarizeVirtualReadonlyEligibility>;
+} {
+  return virtualReadonly
+    ? { virtualReadonly: summarizeVirtualReadonlyEligibility(virtualReadonly) }
+    : {};
 }
 
 async function loadMicrosandboxSdk(): Promise<MicrosandboxSdk> {
@@ -434,7 +586,7 @@ function buildSandboxCommand(input: {
 }): SandboxCommandBuildResult {
   const requestedEnvEntries = Object.entries(input.requestedEnv ?? {});
   const requestedEnvKeys = requestedEnvEntries.map(([key]) => key);
-  const appliedEnvEntries = requestedEnvEntries.filter(([key]) => VALID_ENV_KEY.test(key));
+  const appliedEnvEntries = requestedEnvEntries.filter(([key]) => isSafeEnvKey(key));
   const appliedEnvKeys = appliedEnvEntries.map(([key]) => key);
   const droppedEnvKeys = requestedEnvEntries
     .map(([key]) => key)
@@ -448,6 +600,7 @@ function buildSandboxCommand(input: {
     prefixClauses.push(`export ${key}=${escapeForSingleQuotedShell(value)}`);
   }
 
+  // security-pattern-allow direct-shell-command-concat: cwd/env prefixes are escaped; command body remains policy-governed and receipt-bound.
   const shellCommand =
     prefixClauses.length > 0 ? `${prefixClauses.join(" && ")} && ${input.command}` : input.command;
   return {
@@ -552,6 +705,267 @@ async function executeHostCommand(input: {
     if (input.signal) {
       input.signal.removeEventListener("abort", onAbort);
     }
+  }
+}
+
+function isPathInsideRoot(path: string, root: string): boolean {
+  const rel = relative(resolve(root), resolve(path));
+  return rel === "" || (!rel.startsWith("..") && !rel.startsWith("/"));
+}
+
+function buildVirtualReadonlyMaterializationPlan(
+  virtualReadonly: VirtualReadonlyEligibility,
+): VirtualReadonlyMaterializationPlan {
+  if (!virtualReadonly.eligible) {
+    const blocked = virtualReadonly.blockedReasons[0];
+    throw new VirtualReadonlyMaterializationError(
+      blocked?.code ?? "virtual_readonly_not_eligible",
+      blocked?.detail ?? "Virtual readonly route is not eligible for this command.",
+    );
+  }
+
+  return { candidates: [...virtualReadonly.materializedCandidates] };
+}
+
+async function copyPathIntoVirtualWorkspace(input: {
+  sourcePath: string;
+  destinationPath: string;
+  sourceRoot: string;
+  counters: { bytes: number; entries: number };
+}): Promise<void> {
+  input.counters.entries += 1;
+  if (input.counters.entries > VIRTUAL_READONLY_MAX_MATERIALIZED_ENTRIES) {
+    throw new VirtualReadonlyMaterializationError(
+      "virtual_readonly_entry_limit",
+      `Virtual readonly materialization exceeded ${VIRTUAL_READONLY_MAX_MATERIALIZED_ENTRIES} entries.`,
+    );
+  }
+
+  const sourceStat = await lstat(input.sourcePath);
+  if (sourceStat.isSymbolicLink()) {
+    const target = resolve(dirname(input.sourcePath), await readlink(input.sourcePath));
+    const realTarget = await realpath(target);
+    if (!isPathInsideRoot(realTarget, input.sourceRoot)) {
+      throw new VirtualReadonlyMaterializationError(
+        "virtual_readonly_symlink_escape",
+        `Virtual readonly refused symlink outside target root: ${input.sourcePath}`,
+      );
+    }
+    await copyPathIntoVirtualWorkspace({
+      sourcePath: realTarget,
+      destinationPath: input.destinationPath,
+      sourceRoot: input.sourceRoot,
+      counters: input.counters,
+    });
+    return;
+  }
+
+  if (sourceStat.isDirectory()) {
+    await mkdir(input.destinationPath, { recursive: true });
+    const entries = await readdir(input.sourcePath);
+    for (const entry of entries) {
+      await copyPathIntoVirtualWorkspace({
+        sourcePath: join(input.sourcePath, entry),
+        destinationPath: join(input.destinationPath, entry),
+        sourceRoot: input.sourceRoot,
+        counters: input.counters,
+      });
+    }
+    return;
+  }
+
+  if (!sourceStat.isFile()) {
+    throw new VirtualReadonlyMaterializationError(
+      "virtual_readonly_special_file",
+      `Virtual readonly refused special file: ${input.sourcePath}`,
+    );
+  }
+
+  input.counters.bytes += sourceStat.size;
+  if (input.counters.bytes > VIRTUAL_READONLY_MAX_MATERIALIZED_BYTES) {
+    throw new VirtualReadonlyMaterializationError(
+      "virtual_readonly_size_limit",
+      `Virtual readonly materialization exceeded ${VIRTUAL_READONLY_MAX_MATERIALIZED_BYTES} bytes.`,
+    );
+  }
+
+  await mkdir(dirname(input.destinationPath), { recursive: true });
+  await copyFile(input.sourcePath, input.destinationPath);
+}
+
+async function createVirtualReadonlyWorkspace(
+  sourceCwd: string,
+  plan: VirtualReadonlyMaterializationPlan,
+): Promise<VirtualReadonlyWorkspace> {
+  const executionCwd = await mkdtemp(join(tmpdir(), VIRTUAL_READONLY_TEMP_PREFIX));
+  const counters = { bytes: 0, entries: 0 };
+  const materializedPaths: string[] = [];
+
+  try {
+    for (const candidate of plan.candidates) {
+      const sourcePath = resolve(sourceCwd, candidate);
+      if (!isPathInsideRoot(sourcePath, sourceCwd)) {
+        throw new VirtualReadonlyMaterializationError(
+          "virtual_readonly_path_escape",
+          `Virtual readonly path escapes target root: ${candidate}`,
+        );
+      }
+
+      try {
+        await stat(sourcePath);
+      } catch {
+        continue;
+      }
+
+      await copyPathIntoVirtualWorkspace({
+        sourcePath,
+        destinationPath: join(executionCwd, candidate),
+        sourceRoot: sourceCwd,
+        counters,
+      });
+      materializedPaths.push(candidate);
+    }
+
+    return {
+      executionCwd,
+      materializedPaths,
+      materializedBytes: counters.bytes,
+      materializedEntries: counters.entries,
+      async cleanup() {
+        await rm(executionCwd, { force: true, recursive: true });
+      },
+    };
+  } catch (error) {
+    await rm(executionCwd, { force: true, recursive: true });
+    throw error;
+  }
+}
+
+async function executeVirtualReadonlyCommand(input: {
+  command: string;
+  commandPolicy: ShellCommandAnalysis;
+  virtualReadonly: VirtualReadonlyEligibility;
+  cwd: string;
+  timeoutSec?: number;
+  signal?: AbortSignal;
+}) {
+  if (input.signal?.aborted) {
+    throw new SandboxAbortedError();
+  }
+
+  const materializationPlan = buildVirtualReadonlyMaterializationPlan(input.virtualReadonly);
+  const workspace = await createVirtualReadonlyWorkspace(input.cwd, materializationPlan);
+  const startedAt = Date.now();
+  const commandPolicy = summarizeShellCommandAnalysis(input.commandPolicy);
+  const virtualReadonly = summarizeVirtualReadonlyEligibility(input.virtualReadonly);
+
+  try {
+    return await new Promise<ReturnType<typeof textResult>>((resolveResult, rejectResult) => {
+      const child = spawn(SHELL_COMMAND, [...SHELL_ARGS, input.command], {
+        cwd: workspace.executionCwd,
+        env: buildVirtualReadonlyEnv(),
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let settled = false;
+      let aggregated = "";
+      let truncated = false;
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+      const cleanup = () => {
+        if (timeoutHandle !== undefined) {
+          clearTimeout(timeoutHandle);
+        }
+        if (input.signal) {
+          input.signal.removeEventListener("abort", abortExecution);
+        }
+      };
+
+      const settle = (callback: () => void) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        callback();
+      };
+
+      const append = (chunk: Buffer) => {
+        if (aggregated.length >= VIRTUAL_READONLY_OUTPUT_LIMIT_BYTES) {
+          truncated = true;
+          child.kill("SIGTERM");
+          return;
+        }
+        const next = chunk.toString("utf8");
+        const remaining = VIRTUAL_READONLY_OUTPUT_LIMIT_BYTES - aggregated.length;
+        if (next.length > remaining) {
+          aggregated += next.slice(0, remaining);
+          truncated = true;
+          child.kill("SIGTERM");
+          return;
+        }
+        aggregated += next;
+      };
+
+      function abortExecution() {
+        child.kill("SIGTERM");
+        settle(() => rejectResult(new SandboxAbortedError()));
+      }
+
+      child.stdout?.on("data", append);
+      child.stderr?.on("data", append);
+      child.on("error", (error) => {
+        settle(() => rejectResult(error));
+      });
+      child.on("close", (exitCode, exitSignal) => {
+        settle(() => {
+          const output = aggregated.trimEnd() || "(no output)";
+          if (exitCode === 0) {
+            resolveResult(
+              textResult(output, {
+                status: "completed",
+                exitCode,
+                durationMs: Date.now() - startedAt,
+                cwd: input.cwd,
+                command: input.command,
+                backend: "virtual_readonly",
+                evidenceKind: "exploration",
+                verificationEvidence: false,
+                outputTruncated: truncated,
+                isolation: "materialized_workspace_subset",
+                materializedPaths: workspace.materializedPaths,
+                materializedBytes: workspace.materializedBytes,
+                materializedEntries: workspace.materializedEntries,
+                commandPolicy,
+                virtualReadonly,
+              }),
+            );
+            return;
+          }
+
+          const exit = exitSignal ? `signal ${exitSignal}` : `code ${exitCode ?? 1}`;
+          rejectResult(new Error(`${output}\n\nProcess exited with ${exit}.`));
+        });
+      });
+
+      const timeoutSec = input.timeoutSec ?? VIRTUAL_READONLY_DEFAULT_TIMEOUT_SEC;
+      if (timeoutSec) {
+        timeoutHandle = setTimeout(() => {
+          child.kill("SIGTERM");
+          settle(() =>
+            rejectResult(
+              new SandboxCommandFailedError(
+                `Virtual readonly command timed out after ${timeoutSec} seconds.`,
+                124,
+              ),
+            ),
+          );
+        }, timeoutSec * 1_000);
+      }
+
+      if (input.signal) {
+        input.signal.addEventListener("abort", abortExecution, { once: true });
+      }
+    });
+  } finally {
+    await workspace.cleanup();
   }
 }
 
@@ -779,15 +1193,11 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
         }
         const sandboxRequestedCwd = requestedWorkdir ? hostCwd : undefined;
         const boundEnv = resolveToolRuntimeCredentialBindings(runtime, ownerSessionId, "exec");
-        const requestedEnv =
-          params.env || Object.keys(boundEnv).length > 0
-            ? {
-                ...params.env,
-                ...boundEnv,
-              }
-            : undefined;
-        const requestedEnvKeys = Object.keys(requestedEnv ?? {});
-        const hostEnv = requestedEnv ? { ...process.env, ...requestedEnv } : process.env;
+        const requestedEnv = resolveRequestedEnv({
+          userEnv: params.env,
+          boundEnv,
+        });
+        const hostEnv = buildHostEnv(requestedEnv.env);
         const timeoutSec = resolveTimeoutSec(params);
         const background = params.background === true;
         const yieldMs = background ? 0 : resolveYieldMs(params);
@@ -803,6 +1213,10 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
           workspaceRoot: runtime?.workspaceRoot,
         });
         const primaryTokens = boundaryClassification.detectedCommands;
+        const commandPolicy = boundaryClassification.commandPolicy;
+        const virtualReadonly = commandPolicy
+          ? analyzeVirtualReadonlyEligibility(commandPolicy)
+          : undefined;
         const misroutedToolName = resolveMisroutedToolName(primaryTokens);
         if (misroutedToolName) {
           const reason = `Command '${misroutedToolName}' is a Brewva tool name. Call tool '${misroutedToolName}' directly instead of using exec.`;
@@ -819,6 +1233,8 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
                 reason,
                 blockedAsToolNameMisroute: true,
                 suggestedTool: misroutedToolName,
+                ...buildCommandPolicyAuditPayload(commandPolicy),
+                ...buildVirtualReadonlyAuditPayload(virtualReadonly),
               },
             }),
           );
@@ -843,9 +1259,14 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
                 detectedCommands: primaryTokens,
                 deniedCommand,
                 requestedCwd: boundaryClassification.requestedCwd ?? null,
-                targetHosts: boundaryClassification.targetHosts.map((target) => target.host),
+                targetHosts: boundaryClassification.targetHosts.map((target) => ({
+                  host: target.host,
+                  port: target.port,
+                })),
                 reason: boundaryDecision.reason,
                 denyListPolicy: deniedCommand ? DENY_LIST_BEST_EFFORT_MESSAGE : undefined,
+                ...buildCommandPolicyAuditPayload(commandPolicy),
+                ...buildVirtualReadonlyAuditPayload(virtualReadonly),
               },
             }),
           );
@@ -853,6 +1274,69 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
         }
 
         const preferredBackend = policy.backend;
+        if (
+          commandPolicy &&
+          virtualReadonly?.eligible &&
+          requestedEnv.userRequestedKeys.length === 0 &&
+          !background
+        ) {
+          recordExecEvent(
+            runtime,
+            ownerSessionId,
+            EXEC_ROUTED_EVENT_TYPE,
+            buildExecAuditPayload({
+              toolCallId,
+              policy,
+              command,
+              payload: {
+                resolvedBackend: "virtual_readonly",
+                fallbackToHost: false,
+                requestedCwd: hostCwd,
+                requestedEnvKeys: requestedEnv.userRequestedKeys,
+                withheldBoundEnvKeys: requestedEnv.boundEnvKeys,
+                droppedEnvKeys: requestedEnv.droppedKeys,
+                requestedTimeoutSec: timeoutSec,
+                ...buildCommandPolicyAuditPayload(commandPolicy),
+                ...buildVirtualReadonlyAuditPayload(virtualReadonly),
+              },
+            }),
+          );
+          try {
+            return await executeVirtualReadonlyCommand({
+              command,
+              commandPolicy,
+              virtualReadonly,
+              cwd: hostCwd,
+              timeoutSec,
+              signal,
+            });
+          } catch (error) {
+            if (isSandboxAbortedError(error) || signal?.aborted) {
+              throw error;
+            }
+            const message = error instanceof Error ? error.message : String(error);
+            const auditError = redactTextForAudit(message);
+            recordExecEvent(
+              runtime,
+              ownerSessionId,
+              EXEC_BLOCKED_ISOLATION_EVENT_TYPE,
+              buildExecAuditPayload({
+                toolCallId,
+                policy,
+                command,
+                payload: {
+                  reason: "virtual_readonly_execution_error",
+                  blockedFeature:
+                    error instanceof VirtualReadonlyMaterializationError ? error.code : undefined,
+                  error: auditError,
+                  ...buildCommandPolicyAuditPayload(commandPolicy),
+                  ...buildVirtualReadonlyAuditPayload(virtualReadonly),
+                },
+              }),
+            );
+            throw new Error(`exec_blocked_isolation: ${message}`, { cause: error });
+          }
+        }
 
         const runHost = async () =>
           executeHostCommand({
@@ -880,9 +1364,13 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
                 fallbackToHost: policy.allowHostFallback,
                 requestedCwd: sandboxRequestedCwd,
                 effectiveSandboxCwd: sandboxRequestedCwd ?? DEFAULT_SANDBOX_WORKDIR,
-                requestedEnvKeys,
+                requestedEnvKeys: requestedEnv.requestedKeys,
+                appliedEnvKeys: requestedEnv.appliedKeys,
+                droppedEnvKeys: requestedEnv.droppedKeys,
                 requestedTimeoutSec: timeoutSec,
                 sandboxDefaultTimeoutSec: policy.sandbox.timeout,
+                ...buildCommandPolicyAuditPayload(commandPolicy),
+                ...buildVirtualReadonlyAuditPayload(virtualReadonly),
               },
             }),
           );
@@ -904,6 +1392,8 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
                 payload: {
                   reason: "sandbox_unavailable_session_pinned",
                   sessionPinMsRemaining: sessionPinRemainingMs,
+                  ...buildCommandPolicyAuditPayload(commandPolicy),
+                  ...buildVirtualReadonlyAuditPayload(virtualReadonly),
                 },
               }),
             );
@@ -922,6 +1412,8 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
                 payload: {
                   reason: "sandbox_unavailable_cached",
                   backoffMsRemaining,
+                  ...buildCommandPolicyAuditPayload(commandPolicy),
+                  ...buildVirtualReadonlyAuditPayload(virtualReadonly),
                 },
               }),
             );
@@ -942,9 +1434,13 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
               fallbackToHost: policy.allowHostFallback,
               requestedCwd: sandboxRequestedCwd,
               effectiveSandboxCwd: sandboxRequestedCwd ?? DEFAULT_SANDBOX_WORKDIR,
-              requestedEnvKeys,
+              requestedEnvKeys: requestedEnv.requestedKeys,
+              appliedEnvKeys: requestedEnv.appliedKeys,
+              droppedEnvKeys: requestedEnv.droppedKeys,
               requestedTimeoutSec: timeoutSec,
               sandboxDefaultTimeoutSec: policy.sandbox.timeout,
+              ...buildCommandPolicyAuditPayload(commandPolicy),
+              ...buildVirtualReadonlyAuditPayload(virtualReadonly),
             },
           }),
         );
@@ -960,7 +1456,11 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
                 toolCallId,
                 policy,
                 command,
-                payload: { reason },
+                payload: {
+                  reason,
+                  ...buildCommandPolicyAuditPayload(commandPolicy),
+                  ...buildVirtualReadonlyAuditPayload(virtualReadonly),
+                },
               }),
             );
             return await runHost();
@@ -974,7 +1474,11 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
               toolCallId,
               policy,
               command,
-              payload: { reason },
+              payload: {
+                reason,
+                ...buildCommandPolicyAuditPayload(commandPolicy),
+                ...buildVirtualReadonlyAuditPayload(virtualReadonly),
+              },
             }),
           );
           throw new Error(`exec_blocked_isolation: ${reason}`);
@@ -986,7 +1490,7 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
             command,
             policy,
             requestedCwd: sandboxRequestedCwd,
-            requestedEnv,
+            requestedEnv: requestedEnv.env,
             requestedTimeoutSec: timeoutSec,
             signal,
           });
@@ -1004,6 +1508,10 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
             appliedEnvKeys: result.appliedEnvKeys,
             droppedEnvKeys: result.droppedEnvKeys,
             timeoutSec: result.timeoutSec,
+            commandPolicy: commandPolicy ? summarizeShellCommandAnalysis(commandPolicy) : undefined,
+            virtualReadonly: virtualReadonly
+              ? summarizeVirtualReadonlyEligibility(virtualReadonly)
+              : undefined,
           });
         } catch (error) {
           if (error instanceof SandboxCommandFailedError) {
@@ -1014,6 +1522,7 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
           }
 
           const message = error instanceof Error ? error.message : String(error);
+          const auditError = redactTextForAudit(message);
           const now = Date.now();
           const backoffUntil = policy.allowHostFallback ? markSandboxBackoff(policy, now) : null;
           const sessionPin = policy.allowHostFallback
@@ -1028,7 +1537,9 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
               policy,
               command,
               payload: {
-                error: message,
+                error: auditError,
+                ...buildCommandPolicyAuditPayload(commandPolicy),
+                ...buildVirtualReadonlyAuditPayload(virtualReadonly),
               },
             }),
           );
@@ -1044,7 +1555,7 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
                 command,
                 payload: {
                   reason: "sandbox_execution_error",
-                  error: message,
+                  error: auditError,
                   backoffMs: SANDBOX_FAILURE_BACKOFF_MS,
                   backoffUntil,
                   sessionPinnedUntil: sessionPin.until,
@@ -1052,6 +1563,8 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
                     sessionPin.pinned && typeof sessionPin.until === "number"
                       ? Math.max(0, sessionPin.until - now)
                       : undefined,
+                  ...buildCommandPolicyAuditPayload(commandPolicy),
+                  ...buildVirtualReadonlyAuditPayload(virtualReadonly),
                 },
               }),
             );
@@ -1068,7 +1581,9 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
               command,
               payload: {
                 reason: "sandbox_execution_error",
-                error: message,
+                error: auditError,
+                ...buildCommandPolicyAuditPayload(commandPolicy),
+                ...buildVirtualReadonlyAuditPayload(virtualReadonly),
               },
             }),
           );

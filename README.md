@@ -66,6 +66,7 @@ Implementation detail and system boundaries:
 - `docs/reference/proposal-boundary.md`
 - `docs/reference/runtime.md`
 - `docs/reference/events.md`
+- `docs/reference/exec-threat-model.md`
 - `docs/reference/working-projection.md`
 
 ## Package Surfaces
