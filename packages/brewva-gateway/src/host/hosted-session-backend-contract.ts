@@ -3,9 +3,12 @@ import type {
   InternalHostPlugin,
   BrewvaHostedResourceLoader,
   BrewvaManagedPromptSession,
+  BrewvaDiffPreferences,
+  BrewvaModelPreferences,
   BrewvaMutableModelCatalog,
   BrewvaRegisteredModel,
 } from "@brewva/brewva-substrate";
+import type { HostedAuthCredential } from "./hosted-auth-store.js";
 import type {
   CreateHostedManagedSessionOptions,
   HostedSessionSettings,
@@ -27,6 +30,10 @@ export interface HostedSessionSettingsBackend extends BrewvaManagedAgentSessionS
   getDefaultProvider(): string | undefined;
   getDefaultModel(): string | undefined;
   getDefaultThinkingLevel(): string | undefined;
+  getModelPreferences(): BrewvaModelPreferences;
+  setModelPreferences(preferences: BrewvaModelPreferences): void;
+  getDiffPreferences(): BrewvaDiffPreferences;
+  setDiffPreferences(preferences: BrewvaDiffPreferences): void;
 }
 
 export type HostedSessionPersistenceBackend = ManagedAgentSessionStore;
@@ -39,9 +46,13 @@ export type HostedSessionBackendCreateResult = {
 };
 
 export interface HostedSessionBackendAuthStore {
+  get(provider: string): HostedAuthCredential | undefined;
   getApiKey(provider: string): Promise<string | undefined> | string | undefined;
   hasAuth(provider: string): boolean;
   isUsingOAuth(provider: string): boolean;
+  set(provider: string, credential: HostedAuthCredential): void;
+  remove(provider: string): void;
+  setFallbackResolver?(resolver: (provider: string) => string | undefined): void;
 }
 
 export interface HostedSessionBackendModelRegistry {
@@ -56,6 +67,7 @@ export interface HostedSessionBackendModelRegistry {
   ): Promise<
     { ok: true; apiKey?: string; headers?: Record<string, string> } | { ok: false; error: string }
   >;
+  refresh?(): void;
   registerProvider(providerName: string, config: object): void;
   unregisterProvider(providerName: string): void;
   isUsingOAuth(model: HostedSessionBackendModelDescriptor): boolean;
@@ -64,6 +76,7 @@ export interface HostedSessionBackendModelRegistry {
 export type HostedSessionServicesBundle = {
   agentDir: string;
   cwd: string;
+  runtime: BrewvaRuntime;
   settingsManager: HostedSessionSettingsBackend;
   resourceLoader: HostedSessionResourceLoaderBackend;
   sessionManager: HostedSessionPersistenceBackend;

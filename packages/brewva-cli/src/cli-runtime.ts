@@ -1,5 +1,5 @@
 import process from "node:process";
-import { runHostedPromptTurn } from "@brewva/brewva-gateway/host";
+import { createProviderConnectionPort, runHostedPromptTurn } from "@brewva/brewva-gateway/host";
 import type { BrewvaRuntime } from "@brewva/brewva-runtime";
 import type {
   BrewvaManagedPromptSession,
@@ -28,6 +28,7 @@ export interface CliInteractiveShellOptions {
 
 export interface CliInteractiveSessionOptions extends CliInteractiveShellOptions {
   runtime: BrewvaRuntime;
+  providerConnections?: BrewvaSessionResult["providerConnections"];
   orchestration?: BrewvaSessionResult["orchestration"];
 }
 
@@ -76,12 +77,21 @@ function createToolDefinitionMap(
 function toCliShellSessionBundle(input: {
   session: BrewvaManagedPromptSession;
   runtime: BrewvaRuntime;
+  providerConnections?: BrewvaSessionResult["providerConnections"];
   orchestration?: BrewvaSessionResult["orchestration"];
 }): CliShellSessionBundle {
   return {
     session: input.session,
     runtime: input.runtime,
     toolDefinitions: createToolDefinitionMap(input.session),
+    providerConnections:
+      input.providerConnections ??
+      (input.session.modelRegistry
+        ? createProviderConnectionPort({
+            runtime: input.runtime,
+            modelRegistry: input.session.modelRegistry,
+          })
+        : undefined),
     orchestration: input.orchestration,
   };
 }
@@ -186,6 +196,7 @@ export async function runCliInteractiveSession(
     toCliShellSessionBundle({
       session,
       runtime: options.runtime,
+      providerConnections: options.providerConnections,
       orchestration: options.orchestration,
     }),
     {

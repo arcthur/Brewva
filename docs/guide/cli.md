@@ -27,8 +27,8 @@ operator model:
   pager drill-down render as overlays over the same session truth
 - the base layout is transcript canvas, multiline composer, and bottom status
   bar
-- widget cards stay in a right rail on wide terminals and collapse under the
-  transcript on narrow terminals so the conversation canvas keeps readable width
+- transient operator details render through overlays, pagers, notifications, and
+  inline prompts instead of a persistent side rail
 
 The bottom status bar is the primary runtime hint surface. It carries the
 current mode, selected model / thinking posture, follow state (`live` vs
@@ -58,6 +58,14 @@ The first-pass keyboard contract is:
 Completion remains keyboard-first:
 
 - `/` opens slash-command completion with summaries and argument hints
+- `/models` opens the model picker for current, favorite, recent, and
+  provider-grouped models
+- `/connect` opens the provider connection picker. Supported providers can use
+  OAuth, provider-specific prompts, or API keys stored in the encrypted runtime
+  vault.
+- `/think` opens the thinking-level picker for the selected model
+- `/diffwrap` toggles wrapping for edit and patch diff views
+- `/diffstyle` toggles automatic split diffs and stacked unified diffs
 - `@` opens quoted or unquoted workspace path completion
 - completion is advisory only; it does not mutate session state until the
   operator accepts an action
@@ -69,6 +77,9 @@ The shell keeps operator actions inside the same interactive surface:
 - approval overlay
 - question overlay
 - task browser
+- model picker
+- provider connection picker
+- thinking-level picker
 - inspect overlay
 - session switcher
 - fullscreen pager
@@ -130,6 +141,10 @@ supports:
 - `brewva credentials add --ref <vault://...> --from-env <ENV_VAR>`
 - `brewva credentials remove --ref <vault://...>`
 - `brewva credentials discover`
+
+The interactive shell uses `/connect` as the primary provider-auth experience.
+The root `brewva credentials` command remains the lower-level operational entry
+for listing, importing, or removing vault refs outside the TUI.
 
 `brewva inspect` is the canonical replay-first operator view for a persisted
 session. It summarizes:
@@ -274,12 +289,13 @@ Current backend constraints:
 
 Embedded interactive sessions register a small runtime-plugin command set:
 
-- `/inspect [dir] | /inspect clear`
-- `/insights [dir] | /insights clear`
-- `/questions | /questions clear`
+- `/inspect [dir]`
+- `/insights [dir]`
+- `/questions`
 - `/theme | /theme list | /theme <name>`
+- `/diffwrap | /diffstyle`
 - `/answer <question-id> <answer>`
-- `/agent-overlays | /agent-overlays validate | /agent-overlays <name> | /agent-overlays clear`
+- `/agent-overlays | /agent-overlays validate | /agent-overlays <name>`
 - `/update [operator hints]`
 
 When `channels.orchestration.enabled=true`, channel orchestration commands

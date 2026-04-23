@@ -103,14 +103,19 @@ export function PromptPanel(input: {
     return `${completionKindLabel(completion.kind)} ${selected.label}`;
   });
   const footerStatus = createMemo(() => {
+    const completion = input.composer.completion;
     const selected = selectedCompletion();
-    const auxText = selected ? completionItemAuxText(selected) : undefined;
+    const auxText =
+      completion?.kind === "path" && selected ? completionItemAuxText(selected) : undefined;
     return auxText ?? promptStatus();
   });
+  const showFooterStatus = createMemo(
+    () => input.composer.completion?.kind !== "slash" || input.overlayActive,
+  );
   const completionHints = createMemo(() =>
     input.composer.completion
       ? input.composer.completion.kind === "slash"
-        ? "tab accept · esc close"
+        ? "enter run · tab complete · esc close"
         : selectedCompletion()?.detail === "directory"
           ? "tab expand · enter accept · esc close"
           : "tab insert · enter accept · esc close"
@@ -268,9 +273,11 @@ export function PromptPanel(input: {
         alignItems={stackedFooter() ? "flex-start" : "center"}
         gap={1}
       >
-        <text fg={input.theme.textMuted} wrapMode="none">
-          {footerStatus()}
-        </text>
+        <Show when={showFooterStatus()}>
+          <text fg={input.theme.textMuted} wrapMode="none">
+            {footerStatus()}
+          </text>
+        </Show>
         <text fg={input.theme.textMuted} wrapMode="none">
           {promptHints()}
         </text>

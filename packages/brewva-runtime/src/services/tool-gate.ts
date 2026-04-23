@@ -4,6 +4,7 @@ import type {
   BrewvaEventRecord,
   ContextBudgetUsage,
   DecisionReceipt,
+  EffectCommitmentDiffPreview,
   EffectCommitmentProposal,
   SkillDocument,
 } from "../contracts/index.js";
@@ -55,6 +56,7 @@ export interface StartToolCallInput {
   usage?: ContextBudgetUsage;
   recordLifecycleEvent?: boolean;
   effectCommitmentRequestId?: string;
+  diffPreview?: EffectCommitmentDiffPreview;
 }
 
 export interface FinishToolCallInput {
@@ -76,6 +78,18 @@ export interface ToolStartAuthorization extends ToolAccessDecision {
 interface ExecPolicyExplanation {
   commandPolicy?: CommandPolicySummary;
   virtualReadonly?: VirtualReadonlyPolicySummary;
+}
+
+function cloneDiffPreview(
+  preview: EffectCommitmentDiffPreview | undefined,
+): EffectCommitmentDiffPreview | undefined {
+  if (!preview) {
+    return undefined;
+  }
+  return {
+    ...preview,
+    files: preview.files?.map((file) => ({ ...file })),
+  };
 }
 
 export interface ToolCompletionContext {
@@ -403,6 +417,7 @@ export class ToolGateService {
         defaultRisk: descriptor.defaultRisk,
         argsDigest: argsIdentity.digest,
         argsSummary: argsIdentity.summary,
+        diffPreview: cloneDiffPreview(input.diffPreview),
       },
       evidenceRefs: [
         {

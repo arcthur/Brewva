@@ -57,6 +57,22 @@ describe("hosted provider helpers", () => {
     expect(openaiModels.some((model) => model.id === "gpt-5.4")).toBe(true);
   });
 
+  test("does not expose removed provider catalogs", () => {
+    const removedProviders = ["opencode", "opencode-go", "zai", "cerebras"];
+    const providerCoreProviders = getProviders();
+    const hostedProviders = getHostedBuiltInProviders();
+
+    for (const provider of removedProviders) {
+      expect(providerCoreProviders).not.toContain(provider);
+      expect(hostedProviders).not.toContain(provider);
+    }
+
+    const allHostedModels = hostedProviders.flatMap((provider) => getHostedBuiltInModels(provider));
+    for (const provider of removedProviders) {
+      expect(allHostedModels.some((model) => model.provider === provider)).toBe(false);
+    }
+  });
+
   test("mirrors provider-core built-in provider and model catalog", () => {
     const hostedProviders = [...getHostedBuiltInProviders()].toSorted();
     const providerCoreProviders = [...getProviders()].toSorted();

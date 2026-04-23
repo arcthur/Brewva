@@ -46,10 +46,6 @@ describe("substrate tool contract", () => {
         setStatus() {},
         setWorkingMessage() {},
         setHiddenThinkingLabel() {},
-        setWidget() {},
-        setFooter() {},
-        setHeader() {},
-        setTitle() {},
         async custom<T>() {
           return undefined as T;
         },

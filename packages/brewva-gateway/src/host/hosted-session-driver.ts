@@ -20,6 +20,7 @@ import {
   createHostedSessionRuntimeSettings,
 } from "./hosted-session-runtime.js";
 import type { HostedSessionLogger } from "./logger.js";
+import type { ProviderConnectionPort } from "./provider-connection.js";
 
 export type HostedSessionCustomTool = BrewvaToolDefinition;
 export type HostedSessionReadToolDetails = BrewvaReadToolDetails;
@@ -58,6 +59,7 @@ export interface HostedSessionServices {
   readonly diagnostics: readonly HostedSessionServiceDiagnostic[];
   readonly settings: HostedSessionSettingsView;
   readonly modelCatalog: BrewvaModelCatalog;
+  readonly providerConnections?: ProviderConnectionPort;
   createSession(
     options: CreateHostedManagedSessionOptions,
   ): Promise<Pick<HostedManagedSessionRuntimeResult, "session" | "modelFallbackMessage">>;

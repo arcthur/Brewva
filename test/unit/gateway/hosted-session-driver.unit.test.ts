@@ -6,6 +6,7 @@ import {
   createHostedSessionDriver,
   createHostedSettingsManager,
 } from "../../../packages/brewva-gateway/src/host/hosted-session-driver.js";
+import { patchProcessEnv } from "../../helpers/global-state.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
 function writeHostedSettings(
@@ -104,6 +105,77 @@ describe("hosted session driver", () => {
 
     await result.session.abort();
     result.session.dispose();
+  });
+
+  test("does not bootstrap an explicit requested model without provider auth", async () => {
+    const restoreEnv = patchProcessEnv({
+      ANTHROPIC_API_KEY: undefined,
+      ANTHROPIC_OAUTH_TOKEN: undefined,
+      AI_GATEWAY_API_KEY: undefined,
+      AWS_ACCESS_KEY_ID: undefined,
+      AWS_BEARER_TOKEN_BEDROCK: undefined,
+      AWS_CONTAINER_CREDENTIALS_FULL_URI: undefined,
+      AWS_CONTAINER_CREDENTIALS_RELATIVE_URI: undefined,
+      AWS_PROFILE: undefined,
+      AWS_SECRET_ACCESS_KEY: undefined,
+      AWS_WEB_IDENTITY_TOKEN_FILE: undefined,
+      AZURE_OPENAI_API_KEY: undefined,
+      COPILOT_GITHUB_TOKEN: undefined,
+      GEMINI_API_KEY: undefined,
+      GH_TOKEN: undefined,
+      GITHUB_TOKEN: undefined,
+      GOOGLE_CLOUD_API_KEY: undefined,
+      GOOGLE_APPLICATION_CREDENTIALS: undefined,
+      GOOGLE_CLOUD_LOCATION: undefined,
+      GOOGLE_CLOUD_PROJECT: undefined,
+      GROQ_API_KEY: undefined,
+      GCLOUD_PROJECT: undefined,
+      HF_TOKEN: undefined,
+      KIMI_API_KEY: undefined,
+      MINIMAX_API_KEY: undefined,
+      MINIMAX_CN_API_KEY: undefined,
+      MISTRAL_API_KEY: undefined,
+      OPENAI_API_KEY: undefined,
+      OPENROUTER_API_KEY: undefined,
+      XAI_API_KEY: undefined,
+    });
+    try {
+      const workspace = createTestWorkspace("hosted-session-driver-explicit-model-no-auth");
+      const agentDir = join(workspace, ".brewva-agent");
+      const driver = createHostedSessionDriver(agentDir);
+      driver.modelCatalog.registerProvider("demo", {
+        baseUrl: "https://demo.example.com/v1",
+        models: [
+          {
+            id: "explicit-model",
+            name: "Explicit Model",
+            api: "openai-completions",
+            reasoning: true,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 200_000,
+            maxTokens: 16_384,
+          },
+        ],
+      });
+      const settings = createHostedSettingsManager(workspace, agentDir);
+      const result = await driver.createRuntime({
+        cwd: workspace,
+        settings,
+        requestedModel: driver.modelCatalog.find("demo", "explicit-model"),
+        customTools: [],
+      });
+
+      expect(result.session.model).toBeUndefined();
+      expect(result.modelFallbackMessage).toBe(
+        "Could not use requested model demo/explicit-model: provider auth is not connected",
+      );
+
+      await result.session.abort();
+      result.session.dispose();
+    } finally {
+      restoreEnv();
+    }
   });
 
   test("uses Pi-aligned provider defaults when no explicit model exists", async () => {

@@ -14,12 +14,22 @@ import {
   buildBrewvaPromptText,
   type BrewvaPromptContentPart,
   type BrewvaPromptSessionEvent,
+  type BrewvaSessionModelDescriptor,
   type BrewvaToolUiPort,
 } from "@brewva/brewva-substrate";
 import { DEFAULT_TUI_THEME } from "@brewva/brewva-tui";
 import { CliShellController } from "../../../packages/brewva-cli/src/shell/controller.js";
 import { createCliShellPromptStore } from "../../../packages/brewva-cli/src/shell/prompt-store.js";
-import type { CliShellSessionBundle } from "../../../packages/brewva-cli/src/shell/types.js";
+import type {
+  CliShellSessionBundle,
+  ProviderAuthMethod,
+  ProviderOAuthAuthorization,
+  ProviderConnection,
+} from "../../../packages/brewva-cli/src/shell/types.js";
+
+function modelKey(model: Pick<BrewvaSessionModelDescriptor, "provider" | "id">): string {
+  return `${model.provider}/${model.id}`;
+}
 
 function createFakeBundle(
   options: {
@@ -27,6 +37,16 @@ function createFakeBundle(
     sessionId?: string;
     replaySessions?: BrewvaReplaySession[];
     sessionWireBySessionId?: Record<string, SessionWireFrame[]>;
+    models?: BrewvaSessionModelDescriptor[];
+    availableModelKeys?: string[];
+    providers?: ProviderConnection[];
+    authMethods?: Record<string, ProviderAuthMethod[]>;
+    authorizeOAuth?: (
+      provider: string,
+      methodId: string,
+      inputs?: Record<string, string>,
+    ) => Promise<ProviderOAuthAuthorization | undefined>;
+    completeOAuth?: (provider: string, methodId: string, code?: string) => Promise<void>;
   } = {},
 ) {
   let attachedUi: BrewvaToolUiPort | undefined;
@@ -59,18 +79,40 @@ function createFakeBundle(
     },
   });
   const querySessionWire = runtime.inspect.sessionWire.query.bind(runtime.inspect.sessionWire);
+  const providerConnects: Array<{ provider: string; key: string }> = [];
   Object.assign(runtime.inspect.sessionWire, {
     query(targetSessionId: string) {
       return options.sessionWireBySessionId?.[targetSessionId] ?? querySessionWire(targetSessionId);
     },
   });
+  const defaultModel: BrewvaSessionModelDescriptor = {
+    provider: "openai",
+    id: "gpt-5.4-mini",
+    name: "GPT-5.4 Mini",
+    contextWindow: 128_000,
+    maxTokens: 16_384,
+    reasoning: true,
+  };
+  const allModels = options.models ?? [defaultModel];
+  const availableModelKeys = new Set(options.availableModelKeys ?? allModels.map(modelKey));
+  let currentModel = allModels[0] ?? defaultModel;
+  let thinkingLevel = "high";
+  let modelPreferences = { recent: [], favorite: [] } as {
+    recent: Array<{ provider: string; id: string }>;
+    favorite: Array<{ provider: string; id: string }>;
+  };
+  let diffPreferences: { style: "auto" | "stacked"; wrapMode: "word" | "none" } = {
+    style: "auto",
+    wrapMode: "word",
+  };
 
   const session = {
-    model: {
-      provider: "openai",
-      id: "gpt-5.4-mini",
+    get model() {
+      return currentModel;
     },
-    thinkingLevel: "high",
+    get thinkingLevel() {
+      return thinkingLevel;
+    },
     isStreaming: false,
     sessionManager: {
       getSessionId() {
@@ -79,6 +121,40 @@ function createFakeBundle(
       buildSessionContext() {
         return { messages: [] };
       },
+    },
+    settingsManager: {
+      getQuietStartup() {
+        return false;
+      },
+      getModelPreferences() {
+        return modelPreferences;
+      },
+      setModelPreferences(next: typeof modelPreferences) {
+        modelPreferences = next;
+      },
+      getDiffPreferences() {
+        return diffPreferences;
+      },
+      setDiffPreferences(next: typeof diffPreferences) {
+        diffPreferences = next;
+      },
+    },
+    modelRegistry: {
+      getAll() {
+        return allModels;
+      },
+      getAvailable() {
+        return allModels.filter((model) => availableModelKeys.has(modelKey(model)));
+      },
+    },
+    async setModel(model: BrewvaSessionModelDescriptor) {
+      currentModel = model;
+    },
+    getAvailableThinkingLevels() {
+      return currentModel.reasoning ? ["off", "minimal", "low", "medium", "high"] : ["off"];
+    },
+    setThinkingLevel(level: string) {
+      thinkingLevel = level;
     },
     subscribe(listener: (event: BrewvaPromptSessionEvent) => void) {
       sessionListener = listener;
@@ -103,6 +179,41 @@ function createFakeBundle(
     session,
     toolDefinitions: new Map(),
     runtime,
+    providerConnections: options.providers
+      ? {
+          async listProviders() {
+            return options.providers ?? [];
+          },
+          listAuthMethods(provider: string) {
+            return (
+              options.authMethods?.[provider] ?? [
+                {
+                  id: "api_key" as const,
+                  kind: "api_key" as const,
+                  type: "api" as const,
+                  label: "API key",
+                  credentialRef: `vault://${provider}/apiKey`,
+                },
+              ]
+            );
+          },
+          async connectApiKey(provider: string, key: string) {
+            providerConnects.push({ provider, key });
+          },
+          async authorizeOAuth(
+            provider: string,
+            methodId: string,
+            inputs?: Record<string, string>,
+          ) {
+            return options.authorizeOAuth?.(provider, methodId, inputs);
+          },
+          async completeOAuth(provider: string, methodId: string, code?: string) {
+            await options.completeOAuth?.(provider, methodId, code);
+          },
+          async disconnect() {},
+          async refresh() {},
+        }
+      : undefined,
   } as unknown as CliShellSessionBundle;
 
   return {
@@ -112,6 +223,10 @@ function createFakeBundle(
       sessionListener?.(event);
     },
     approvalDecisions,
+    providerConnects,
+    getModelPreferences: () => modelPreferences,
+    getDiffPreferences: () => diffPreferences,
+    getCurrentModel: () => currentModel,
   };
 }
 
@@ -202,6 +317,1396 @@ describe("shell controller", () => {
       level: "warning",
       message: "Unknown theme selection.",
     });
+    controller.dispose();
+  });
+
+  test("slash completion exposes models/connect/think and omits legacy auth commands", () => {
+    const { bundle } = createFakeBundle();
+
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/");
+    const slashValues = controller.getState().composer.completion?.items.map((item) => item.value);
+
+    expect(slashValues).toContain("models");
+    expect(slashValues).toContain("connect");
+    expect(slashValues).toContain("think");
+    expect(slashValues).toContain("diffwrap");
+    expect(slashValues).toContain("diffstyle");
+    expect(slashValues).not.toContain("credentials");
+    expect(slashValues).not.toContain("auth");
+
+    controller.dispose();
+  });
+
+  test("diff slash commands update and persist transcript diff preferences", async () => {
+    const fixture = createFakeBundle();
+    const controller = new CliShellController(fixture.bundle, {
+      cwd: process.cwd(),
+      openSession: async () => fixture.bundle,
+      createSession: async () => fixture.bundle,
+    });
+
+    expect(controller.getState().diff).toEqual({ style: "auto", wrapMode: "word" });
+
+    controller.ui.setEditorText("/diffwrap");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(controller.getState().diff.wrapMode).toBe("none");
+    expect(fixture.getDiffPreferences().wrapMode).toBe("none");
+
+    controller.ui.setEditorText("/diffstyle");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(controller.getState().diff.style).toBe("stacked");
+    expect(fixture.getDiffPreferences().style).toBe("stacked");
+
+    controller.dispose();
+  });
+
+  test("enter on no-argument slash completion executes the selected command", async () => {
+    const { bundle } = createFakeBundle();
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/mo");
+    expect(controller.getState().composer.completion?.items[0]).toMatchObject({
+      value: "models",
+      enterBehavior: "submit",
+    });
+
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(controller.ui.getEditorText()).toBe("");
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "modelPicker",
+    });
+
+    controller.dispose();
+  });
+
+  test("typing a slash query resets selection to the best matching command", async () => {
+    const { bundle } = createFakeBundle();
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    for (const text of ["/", "/c", "/co", "/con"]) {
+      controller.ui.setEditorText(text);
+    }
+
+    const completion = controller.getState().composer.completion;
+    expect(completion?.items[completion.selectedIndex]).toMatchObject({
+      value: "connect",
+      enterBehavior: "submit",
+    });
+
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(controller.ui.getEditorText()).toBe("");
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "providerPicker",
+    });
+
+    controller.dispose();
+  });
+
+  test("enter on required-argument slash completion inserts the command for continued input", async () => {
+    const { bundle } = createFakeBundle();
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/ans");
+    expect(controller.getState().composer.completion?.items[0]).toMatchObject({
+      value: "answer",
+      enterBehavior: "insert",
+    });
+
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(controller.ui.getEditorText()).toBe("/answer ");
+    expect(controller.getState().overlay.active).toBeUndefined();
+
+    controller.dispose();
+  });
+
+  test("tab on slash completion still expands text for optional command arguments", async () => {
+    const { bundle } = createFakeBundle();
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/mo");
+    await controller.handleSemanticInput({
+      key: "tab",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(controller.ui.getEditorText()).toBe("/models ");
+    expect(controller.getState().overlay.active).toBeUndefined();
+
+    controller.dispose();
+  });
+
+  test("model picker selects models and persists recent/favorite preferences outside prompt turns", async () => {
+    const models: BrewvaSessionModelDescriptor[] = [
+      {
+        provider: "openai",
+        id: "gpt-5.4-mini",
+        name: "GPT-5.4 Mini",
+        contextWindow: 128_000,
+        maxTokens: 16_384,
+        reasoning: true,
+      },
+      {
+        provider: "anthropic",
+        id: "claude-opus-4-6",
+        name: "Claude Opus 4.6",
+        contextWindow: 200_000,
+        maxTokens: 32_000,
+        reasoning: true,
+      },
+    ];
+    const fixture = createFakeBundle({ models });
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/models ");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "modelPicker",
+    });
+
+    await controller.handleSemanticInput({
+      key: "character",
+      text: "f",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(fixture.getModelPreferences().favorite).toEqual([
+      { provider: "anthropic", id: "claude-opus-4-6" },
+    ]);
+
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(fixture.getCurrentModel()).toMatchObject({
+      provider: "anthropic",
+      id: "claude-opus-4-6",
+    });
+    expect(controller.getState().status.entries.model).toBe("anthropic/claude-opus-4-6");
+    expect(fixture.getModelPreferences().recent[0]).toEqual({
+      provider: "anthropic",
+      id: "claude-opus-4-6",
+    });
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "thinkingPicker",
+    });
+
+    controller.dispose();
+  });
+
+  test("model picker supports arrow and ctrl-n/ctrl-p navigation before selecting", async () => {
+    const models: BrewvaSessionModelDescriptor[] = [
+      {
+        provider: "openai",
+        id: "gpt-5.4-alpha",
+        name: "Alpha",
+        contextWindow: 128_000,
+        maxTokens: 16_384,
+        reasoning: false,
+      },
+      {
+        provider: "openai",
+        id: "gpt-5.4-beta",
+        name: "Beta",
+        contextWindow: 128_000,
+        maxTokens: 16_384,
+        reasoning: false,
+      },
+    ];
+    const fixture = createFakeBundle({ models });
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/models ");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "modelPicker",
+      selectedIndex: 0,
+    });
+
+    await controller.handleSemanticInput({
+      key: "n",
+      ctrl: true,
+      meta: false,
+      shift: false,
+    });
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "modelPicker",
+      selectedIndex: 1,
+    });
+
+    await controller.handleSemanticInput({
+      key: "p",
+      ctrl: true,
+      meta: false,
+      shift: false,
+    });
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "modelPicker",
+      selectedIndex: 0,
+    });
+
+    await controller.handleSemanticInput({
+      key: "arrowdown",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "modelPicker",
+      selectedIndex: 1,
+    });
+
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(fixture.getCurrentModel()).toMatchObject({
+      provider: "openai",
+      id: "gpt-5.4-beta",
+    });
+    expect(controller.getState().overlay.active).toBeUndefined();
+
+    controller.dispose();
+  });
+
+  test("model picker exposes disconnected providers when model search matches their catalog", async () => {
+    const models: BrewvaSessionModelDescriptor[] = [
+      {
+        provider: "openai",
+        id: "gpt-5.4",
+        name: "GPT-5.4",
+        contextWindow: 128_000,
+        maxTokens: 16_384,
+        reasoning: true,
+      },
+      {
+        provider: "openai-codex",
+        id: "gpt-5.3-codex",
+        name: "GPT-5.3 Codex",
+        contextWindow: 128_000,
+        maxTokens: 16_384,
+        reasoning: true,
+      },
+    ];
+    const providers: ProviderConnection[] = [
+      {
+        id: "openai",
+        name: "OpenAI",
+        group: "popular",
+        connected: false,
+        connectionSource: "none",
+        modelCount: 1,
+        availableModelCount: 0,
+        credentialRef: "vault://openai/apiKey",
+      },
+      {
+        id: "openai-codex",
+        name: "OpenAI Codex",
+        group: "popular",
+        connected: false,
+        connectionSource: "none",
+        modelCount: 1,
+        availableModelCount: 0,
+        credentialRef: "vault://openai-codex/apiKey",
+      },
+    ];
+    const fixture = createFakeBundle({ models, availableModelKeys: [], providers });
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/models gpt");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    const payload = controller.getState().overlay.active?.payload;
+    expect(payload).toMatchObject({
+      kind: "modelPicker",
+      query: "gpt",
+    });
+    if (payload?.kind !== "modelPicker") {
+      throw new Error("Expected model picker payload.");
+    }
+
+    expect(payload.items.map((item) => item.label)).toEqual(["OpenAI", "OpenAI Codex"]);
+    expect(payload.items.every((item) => item.kind === "connect_provider")).toBe(true);
+
+    controller.dispose();
+  });
+
+  test("model picker rows keep long provider model ids out of inline details", async () => {
+    const models: BrewvaSessionModelDescriptor[] = [
+      {
+        provider: "google",
+        id: "gemini-2.5-flash-lite-preview-06-17",
+        name: "Gemini 2.5 Flash Lite Preview 06-17",
+        contextWindow: 1_000_000,
+        maxTokens: 16_384,
+        reasoning: true,
+      },
+    ];
+    const { bundle } = createFakeBundle({ models });
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/models gemini");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    const payload = controller.getState().overlay.active?.payload;
+    if (payload?.kind !== "modelPicker") {
+      throw new Error("Expected model picker payload.");
+    }
+
+    expect(payload.items[0]).toMatchObject({
+      kind: "model",
+      section: "google",
+      label: "Gemini 2.5 Flash Lite Preview 06-17",
+      detail: undefined,
+      footer: undefined,
+    });
+
+    controller.dispose();
+  });
+
+  test("model picker routes disconnected OpenAI Codex models through the consolidated OpenAI connect flow", async () => {
+    const models: BrewvaSessionModelDescriptor[] = [
+      {
+        provider: "openai",
+        id: "gpt-5.4",
+        name: "GPT-5.4",
+        contextWindow: 128_000,
+        maxTokens: 16_384,
+        reasoning: true,
+      },
+      {
+        provider: "openai-codex",
+        id: "gpt-5.3-codex",
+        name: "GPT-5.3 Codex",
+        contextWindow: 128_000,
+        maxTokens: 16_384,
+        reasoning: true,
+      },
+    ];
+    const providers: ProviderConnection[] = [
+      {
+        id: "openai",
+        name: "OpenAI",
+        description: "ChatGPT Plus/Pro or API key",
+        group: "popular",
+        connected: true,
+        connectionSource: "vault",
+        modelProviders: ["openai", "openai-codex"],
+        modelCount: 2,
+        availableModelCount: 1,
+        credentialRef: "vault://openai/apiKey",
+      },
+    ];
+    const fixture = createFakeBundle({
+      models,
+      availableModelKeys: ["openai/gpt-5.4"],
+      providers,
+      authMethods: {
+        openai: [
+          {
+            id: "chatgpt_browser",
+            kind: "oauth",
+            type: "oauth",
+            label: "ChatGPT Pro/Plus (browser)",
+            credentialProvider: "openai-codex",
+            modelProviderFilter: "openai-codex",
+          },
+          {
+            id: "chatgpt_headless",
+            kind: "oauth",
+            type: "oauth",
+            label: "ChatGPT Pro/Plus (headless)",
+            credentialProvider: "openai-codex",
+            modelProviderFilter: "openai-codex",
+          },
+          {
+            id: "api_key",
+            kind: "api_key",
+            type: "api",
+            label: "Manually enter API Key",
+            credentialRef: "vault://openai/apiKey",
+          },
+        ],
+      },
+    });
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/models codex");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await Bun.sleep(0);
+
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "authMethodPicker",
+      items: [
+        { id: "chatgpt_browser", label: "ChatGPT Pro/Plus (browser)", detail: "OAuth" },
+        { id: "chatgpt_headless", label: "ChatGPT Pro/Plus (headless)", detail: "OAuth" },
+        { id: "api_key", label: "Manually enter API Key", detail: "API key" },
+      ],
+    });
+
+    controller.dispose();
+  });
+
+  test("model picker fuzzy search matches non-contiguous model names", async () => {
+    const models: BrewvaSessionModelDescriptor[] = [
+      {
+        provider: "google",
+        id: "gemini-2.5-flash-lite-preview-06-17",
+        name: "Gemini 2.5 Flash Lite Preview 06-17",
+        contextWindow: 1_000_000,
+        maxTokens: 16_384,
+        reasoning: true,
+      },
+      {
+        provider: "anthropic",
+        id: "claude-sonnet-4.5",
+        name: "Claude Sonnet 4.5",
+        contextWindow: 200_000,
+        maxTokens: 16_384,
+        reasoning: true,
+      },
+    ];
+    const { bundle } = createFakeBundle({ models });
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/models gmni");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    const payload = controller.getState().overlay.active?.payload;
+    if (payload?.kind !== "modelPicker") {
+      throw new Error("Expected model picker payload.");
+    }
+
+    expect(payload.items.map((item) => item.label)).toEqual([
+      "Gemini 2.5 Flash Lite Preview 06-17",
+    ]);
+
+    controller.dispose();
+  });
+
+  test("model picker c shortcut opens the provider connection picker", async () => {
+    const providers: ProviderConnection[] = [
+      {
+        id: "openai",
+        name: "OpenAI",
+        description: "ChatGPT Plus/Pro or API key",
+        group: "popular",
+        connected: true,
+        connectionSource: "oauth",
+        modelProviders: ["openai", "openai-codex"],
+        modelCount: 2,
+        availableModelCount: 1,
+        credentialRef: "vault://openai/apiKey",
+      },
+    ];
+    const fixture = createFakeBundle({ providers });
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/models ");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await controller.handleSemanticInput({
+      key: "character",
+      text: "codex",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await controller.handleSemanticInput({
+      key: "character",
+      text: " ",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await controller.handleSemanticInput({
+      key: "character",
+      text: "c",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "providerPicker",
+      query: "codex ",
+    });
+
+    controller.dispose();
+  });
+
+  test("picker backspace on an empty query does not rebuild the active overlay", async () => {
+    const providers: ProviderConnection[] = [
+      {
+        id: "openai",
+        name: "OpenAI",
+        group: "popular",
+        connected: false,
+        connectionSource: "none",
+        modelCount: 1,
+        availableModelCount: 0,
+        credentialRef: "vault://openai/apiKey",
+      },
+    ];
+    const fixture = createFakeBundle({ providers });
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/connect ");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    const before = controller.getState().overlay.active?.payload;
+    expect(before).toMatchObject({ kind: "providerPicker", query: "" });
+
+    await controller.handleSemanticInput({
+      key: "backspace",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(controller.getState().overlay.active?.payload).toBe(before);
+
+    controller.dispose();
+  });
+
+  test("provider picker supports ctrl-n/ctrl-p navigation before opening connect flow", async () => {
+    const providers: ProviderConnection[] = [
+      {
+        id: "openai",
+        name: "OpenAI",
+        group: "popular",
+        connected: false,
+        connectionSource: "none",
+        modelCount: 1,
+        availableModelCount: 0,
+        credentialRef: "vault://openai/apiKey",
+      },
+      {
+        id: "anthropic",
+        name: "Anthropic",
+        group: "popular",
+        connected: false,
+        connectionSource: "none",
+        modelCount: 1,
+        availableModelCount: 0,
+        credentialRef: "vault://anthropic/apiKey",
+      },
+    ];
+    const fixture = createFakeBundle({ providers });
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/connect ");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "providerPicker",
+      selectedIndex: 0,
+    });
+
+    await controller.handleSemanticInput({
+      key: "n",
+      ctrl: true,
+      meta: false,
+      shift: false,
+    });
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "providerPicker",
+      selectedIndex: 1,
+    });
+
+    await controller.handleSemanticInput({
+      key: "p",
+      ctrl: true,
+      meta: false,
+      shift: false,
+    });
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "providerPicker",
+      selectedIndex: 0,
+    });
+
+    await controller.handleSemanticInput({
+      key: "down",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await Bun.sleep(0);
+
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "input",
+      message: "API key for Anthropic (vault://anthropic/apiKey)",
+      masked: true,
+    });
+
+    await controller.handleSemanticInput({
+      key: "character",
+      text: "sk-test",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await Bun.sleep(0);
+
+    expect(fixture.providerConnects).toEqual([{ provider: "anthropic", key: "sk-test" }]);
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "modelPicker",
+      providerFilter: "anthropic",
+    });
+
+    controller.dispose();
+  });
+
+  test("provider connect flow warns when a provider exposes no in-TUI auth methods", async () => {
+    const providers: ProviderConnection[] = [
+      {
+        id: "external",
+        name: "External Provider",
+        group: "other",
+        connected: false,
+        connectionSource: "none",
+        modelCount: 1,
+        availableModelCount: 0,
+        credentialRef: "vault://external/apiKey",
+      },
+    ];
+    const fixture = createFakeBundle({
+      providers,
+      authMethods: {
+        external: [],
+      },
+    });
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/connect ");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await Bun.sleep(0);
+
+    expect(controller.getState().notifications.at(-1)).toMatchObject({
+      level: "warning",
+      message:
+        "External Provider does not expose an in-TUI auth flow. Configure provider auth, then reopen /models.",
+    });
+
+    controller.dispose();
+  });
+
+  test("provider connect flow supports OAuth method selection and auto completion", async () => {
+    const providers: ProviderConnection[] = [
+      {
+        id: "openai",
+        name: "OpenAI",
+        description: "ChatGPT Plus/Pro or API key",
+        group: "popular",
+        connected: false,
+        connectionSource: "none",
+        modelCount: 1,
+        availableModelCount: 0,
+        credentialRef: "vault://openai/apiKey",
+      },
+    ];
+    const oauthCalls: Array<{
+      provider: string;
+      methodId: string;
+      inputs?: Record<string, string>;
+    }> = [];
+    const completeCalls: Array<{ provider: string; methodId: string; code?: string }> = [];
+    const fixture = createFakeBundle({
+      providers,
+      availableModelKeys: [],
+      authMethods: {
+        openai: [
+          {
+            id: "chatgpt_browser",
+            kind: "oauth",
+            type: "oauth",
+            label: "ChatGPT Pro/Plus (browser)",
+            credentialProvider: "openai-codex",
+            modelProviderFilter: "openai-codex",
+          },
+          {
+            id: "chatgpt_headless",
+            kind: "oauth",
+            type: "oauth",
+            label: "ChatGPT Pro/Plus (headless)",
+            credentialProvider: "openai-codex",
+            modelProviderFilter: "openai-codex",
+          },
+          {
+            id: "api_key",
+            kind: "api_key",
+            type: "api",
+            label: "Manually enter API Key",
+            credentialRef: "vault://openai/apiKey",
+          },
+        ],
+      },
+      async authorizeOAuth(provider, methodId, inputs) {
+        oauthCalls.push({ provider, methodId, inputs });
+        return {
+          url: "https://auth.example.test",
+          method: "auto",
+          instructions: "Authorize in browser.",
+        };
+      },
+      async completeOAuth(provider, methodId, code) {
+        completeCalls.push({ provider, methodId, code });
+      },
+    });
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/connect ");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await Bun.sleep(0);
+
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "authMethodPicker",
+      items: [
+        { id: "chatgpt_browser", label: "ChatGPT Pro/Plus (browser)", detail: "OAuth" },
+        { id: "chatgpt_headless", label: "ChatGPT Pro/Plus (headless)", detail: "OAuth" },
+        { id: "api_key", label: "Manually enter API Key", detail: "API key" },
+      ],
+    });
+
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await Bun.sleep(0);
+
+    expect(oauthCalls).toEqual([{ provider: "openai", methodId: "chatgpt_browser", inputs: {} }]);
+    expect(completeCalls).toEqual([
+      { provider: "openai", methodId: "chatgpt_browser", code: undefined },
+    ]);
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "modelPicker",
+      providerFilter: "openai-codex",
+    });
+
+    controller.dispose();
+  });
+
+  test("provider connect flow lets browser OAuth paste a redirect URL from the wait dialog", async () => {
+    const providers: ProviderConnection[] = [
+      {
+        id: "openai",
+        name: "OpenAI",
+        description: "ChatGPT Plus/Pro or API key",
+        group: "popular",
+        connected: false,
+        connectionSource: "none",
+        modelCount: 1,
+        availableModelCount: 0,
+        credentialRef: "vault://openai/apiKey",
+      },
+    ];
+    const authUrl = "https://auth.example.test/oauth";
+    const completeCalls: Array<{ provider: string; methodId: string; code?: string }> = [];
+    let finishBrowserWait: (() => void) | undefined;
+    const fixture = createFakeBundle({
+      providers,
+      availableModelKeys: [],
+      authMethods: {
+        openai: [
+          {
+            id: "chatgpt_browser",
+            kind: "oauth",
+            type: "oauth",
+            label: "ChatGPT Pro/Plus (browser)",
+            credentialProvider: "openai-codex",
+            modelProviderFilter: "openai-codex",
+          },
+        ],
+      },
+      async authorizeOAuth() {
+        return {
+          url: authUrl,
+          method: "auto",
+          instructions: "Authorize in browser.",
+          manualCode: {
+            prompt: "Paste the final redirect URL or authorization code.",
+          },
+        };
+      },
+      async completeOAuth(provider, methodId, code) {
+        completeCalls.push({ provider, methodId, code });
+        if (!code) {
+          await new Promise<void>((resolve) => {
+            finishBrowserWait = resolve;
+          });
+        }
+      },
+    });
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/connect ");
+    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await Bun.sleep(0);
+
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "input",
+      title: "ChatGPT Pro/Plus (browser)",
+    });
+
+    for (const text of ["h", "t", "t", "p", "s", ":", "/", "/", "callback", "?", "code=abc"]) {
+      await controller.handleSemanticInput({
+        key: "character",
+        text,
+        ctrl: false,
+        meta: false,
+        shift: false,
+      });
+    }
+    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    finishBrowserWait?.();
+    await Bun.sleep(0);
+
+    expect(completeCalls).toEqual([
+      { provider: "openai", methodId: "chatgpt_browser", code: undefined },
+      { provider: "openai", methodId: "chatgpt_browser", code: "https://callback?code=abc" },
+    ]);
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "modelPicker",
+      providerFilter: "openai-codex",
+    });
+
+    controller.dispose();
+  });
+
+  test("provider connect flow closes manual OAuth input when browser OAuth completes", async () => {
+    const providers: ProviderConnection[] = [
+      {
+        id: "openai",
+        name: "OpenAI",
+        description: "ChatGPT Plus/Pro or API key",
+        group: "popular",
+        connected: false,
+        connectionSource: "none",
+        modelCount: 1,
+        availableModelCount: 0,
+        credentialRef: "vault://openai/apiKey",
+      },
+    ];
+    const completeCalls: Array<{ provider: string; methodId: string; code?: string }> = [];
+    let finishBrowserWait: (() => void) | undefined;
+    const fixture = createFakeBundle({
+      providers,
+      availableModelKeys: [],
+      authMethods: {
+        openai: [
+          {
+            id: "chatgpt_browser",
+            kind: "oauth",
+            type: "oauth",
+            label: "ChatGPT Pro/Plus (browser)",
+            credentialProvider: "openai-codex",
+            modelProviderFilter: "openai-codex",
+          },
+        ],
+      },
+      async authorizeOAuth() {
+        return {
+          url: "https://auth.example.test/oauth",
+          method: "auto",
+          instructions: "Authorize in browser.",
+          manualCode: {
+            prompt: "Paste the final redirect URL or authorization code.",
+          },
+        };
+      },
+      async completeOAuth(provider, methodId, code) {
+        completeCalls.push({ provider, methodId, code });
+        if (!code) {
+          await new Promise<void>((resolve) => {
+            finishBrowserWait = resolve;
+          });
+        }
+      },
+    });
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/connect ");
+    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await Bun.sleep(0);
+
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "input",
+      title: "ChatGPT Pro/Plus (browser)",
+    });
+
+    finishBrowserWait?.();
+    await Bun.sleep(0);
+
+    expect(completeCalls).toEqual([
+      { provider: "openai", methodId: "chatgpt_browser", code: undefined },
+    ]);
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "modelPicker",
+      providerFilter: "openai-codex",
+    });
+
+    controller.dispose();
+  });
+
+  test("provider connect flow does not switch auth methods when browser OAuth fails", async () => {
+    const providers: ProviderConnection[] = [
+      {
+        id: "openai",
+        name: "OpenAI",
+        description: "ChatGPT Plus/Pro or API key",
+        group: "popular",
+        connected: false,
+        connectionSource: "none",
+        modelCount: 1,
+        availableModelCount: 0,
+        credentialRef: "vault://openai/apiKey",
+      },
+    ];
+    const oauthCalls: Array<{
+      provider: string;
+      methodId: string;
+      inputs?: Record<string, string>;
+    }> = [];
+    const completeCalls: Array<{ provider: string; methodId: string; code?: string }> = [];
+    const fixture = createFakeBundle({
+      providers,
+      availableModelKeys: [],
+      authMethods: {
+        openai: [
+          {
+            id: "chatgpt_browser",
+            kind: "oauth",
+            type: "oauth",
+            label: "ChatGPT Pro/Plus (browser)",
+            credentialProvider: "openai-codex",
+            modelProviderFilter: "openai-codex",
+          },
+          {
+            id: "chatgpt_headless",
+            kind: "oauth",
+            type: "oauth",
+            label: "ChatGPT Pro/Plus (headless)",
+            credentialProvider: "openai-codex",
+            modelProviderFilter: "openai-codex",
+          },
+          {
+            id: "api_key",
+            kind: "api_key",
+            type: "api",
+            label: "Manually enter API Key",
+            credentialRef: "vault://openai/apiKey",
+          },
+        ],
+      },
+      async authorizeOAuth(provider, methodId, inputs) {
+        oauthCalls.push({ provider, methodId, inputs });
+        if (methodId === "chatgpt_browser") {
+          const error = new Error(
+            "OpenAI browser login uses localhost:1455, but that port is already in use.",
+          );
+          error.name = "ProviderOAuthPortInUseError";
+          throw error;
+        }
+        return {
+          url: "https://auth.openai.test/codex/device",
+          method: "auto",
+          instructions: "Enter code: CODE-1",
+        };
+      },
+      async completeOAuth(provider, methodId, code) {
+        completeCalls.push({ provider, methodId, code });
+      },
+    });
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/connect ");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await Bun.sleep(0);
+
+    expect(controller.getState().overlay.active?.payload).toMatchObject({
+      kind: "authMethodPicker",
+      items: [
+        { id: "chatgpt_browser", label: "ChatGPT Pro/Plus (browser)", detail: "OAuth" },
+        { id: "chatgpt_headless", label: "ChatGPT Pro/Plus (headless)", detail: "OAuth" },
+        { id: "api_key", label: "Manually enter API Key", detail: "API key" },
+      ],
+    });
+
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await Bun.sleep(0);
+
+    expect(oauthCalls).toEqual([{ provider: "openai", methodId: "chatgpt_browser", inputs: {} }]);
+    expect(completeCalls).toEqual([]);
+    expect(
+      controller
+        .getState()
+        .notifications.some(
+          (notification) =>
+            notification.level === "error" &&
+            notification.message ===
+              "OpenAI browser login uses localhost:1455, but that port is already in use.",
+        ),
+    ).toBe(true);
+
+    controller.dispose();
+  });
+
+  test("provider connect flow collects conditional OAuth prompts", async () => {
+    const providers: ProviderConnection[] = [
+      {
+        id: "github-copilot",
+        name: "GitHub Copilot",
+        description: "GitHub OAuth or token",
+        group: "popular",
+        connected: false,
+        connectionSource: "none",
+        modelCount: 1,
+        availableModelCount: 0,
+        credentialRef: "vault://github-copilot/token",
+      },
+    ];
+    const oauthCalls: Array<{
+      provider: string;
+      methodId: string;
+      inputs?: Record<string, string>;
+    }> = [];
+    const fixture = createFakeBundle({
+      providers,
+      availableModelKeys: [],
+      authMethods: {
+        "github-copilot": [
+          {
+            id: "github_copilot",
+            kind: "oauth",
+            type: "oauth",
+            label: "Login with GitHub Copilot",
+            prompts: [
+              {
+                type: "select",
+                key: "deploymentType",
+                message: "Select GitHub deployment type",
+                options: [
+                  { label: "GitHub.com", value: "github.com", hint: "Public" },
+                  { label: "GitHub Enterprise", value: "enterprise", hint: "Enterprise" },
+                ],
+              },
+              {
+                type: "text",
+                key: "enterpriseUrl",
+                message: "Enter your GitHub Enterprise URL or domain",
+                placeholder: "company.ghe.com",
+                when: { key: "deploymentType", op: "eq", value: "enterprise" },
+              },
+            ],
+          },
+        ],
+      },
+      async authorizeOAuth(provider, methodId, inputs) {
+        oauthCalls.push({ provider, methodId, inputs });
+        return {
+          url: "https://github.example.test/login/device",
+          method: "auto",
+          instructions: "Enter code: GH12-3456",
+        };
+      },
+      async completeOAuth() {},
+    });
+    const { bundle } = fixture;
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    controller.ui.setEditorText("/connect ");
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await Bun.sleep(0);
+    await controller.handleSemanticInput({
+      key: "down",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await controller.handleSemanticInput({
+      key: "character",
+      text: "company.ghe.com",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await Bun.sleep(0);
+
+    expect(oauthCalls).toEqual([
+      {
+        provider: "github-copilot",
+        methodId: "github_copilot",
+        inputs: {
+          deploymentType: "enterprise",
+          enterpriseUrl: "company.ghe.com",
+        },
+      },
+    ]);
+
     controller.dispose();
   });
 

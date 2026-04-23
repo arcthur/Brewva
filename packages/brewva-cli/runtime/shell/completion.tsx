@@ -5,7 +5,8 @@ import { type BoxRenderable } from "@opentui/core";
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import type { CliShellController } from "../../src/shell/controller.js";
 import type { CliShellState } from "../../src/shell/state/index.js";
-import { DEFAULT_SCROLL_ACCELERATION, type SessionPalette } from "./palette.js";
+import { COMPLETION_Z_INDEX } from "./overlay-style.js";
+import { DEFAULT_SCROLL_ACCELERATION, SPLIT_BORDER_CHARS, type SessionPalette } from "./palette.js";
 import { completionItemAuxText } from "./utils.js";
 
 export function CompletionOverlay(input: {
@@ -55,30 +56,23 @@ export function CompletionOverlay(input: {
       return {
         x: 2,
         y: Math.max(2, input.height - 8),
-        width: Math.min(72, input.width - 4),
+        width: Math.max(1, input.width - 4),
       };
     }
     const container = input.container() ?? anchor.parent;
     const parentX = container?.x ?? 0;
     const parentY = container?.y ?? 0;
+    const x = anchor.x - parentX;
     return {
-      x: anchor.x - parentX,
+      x,
       y: anchor.y - parentY,
-      width: Math.max(38, anchor.width),
+      width: Math.max(52, anchor.width || input.width - x - 2),
     };
   });
-  const overlayWidth = createMemo(() =>
-    Math.max(52, Math.min(Math.max(position().width, 52), input.width - position().x - 2, 88)),
-  );
-  // Content height inside the bordered menu. Keep one row minimum for the empty-state copy.
-  const overlayContentHeight = createMemo(() =>
-    Math.min(
-      10,
-      Math.max(1, input.completion.items.length === 0 ? 1 : input.completion.items.length),
-      Math.max(1, position().y - 2),
-    ),
-  );
-  const overlayOuterHeight = createMemo(() => overlayContentHeight() + 2);
+  const overlayContentHeight = createMemo(() => {
+    const count = input.completion.items.length || 1;
+    return Math.min(10, count, Math.max(1, position().y));
+  });
   createEffect(() => {
     void input.completion.query;
     setPointerMode("keyboard");
@@ -102,11 +96,12 @@ export function CompletionOverlay(input: {
   return (
     <box
       position="absolute"
-      zIndex={20}
+      zIndex={COMPLETION_Z_INDEX}
       left={position().x}
-      top={Math.max(1, position().y - overlayOuterHeight())}
-      width={overlayWidth()}
-      border={true}
+      top={Math.max(0, position().y - overlayContentHeight())}
+      width={position().width}
+      border={["left", "right"]}
+      customBorderChars={SPLIT_BORDER_CHARS}
       borderColor={input.theme.border}
       backgroundColor={input.theme.backgroundMenu}
     >
@@ -135,7 +130,7 @@ export function CompletionOverlay(input: {
                 <box
                   paddingLeft={1}
                   paddingRight={1}
-                  backgroundColor={selected ? input.theme.selectionBg : undefined}
+                  backgroundColor={selected ? input.theme.primary : undefined}
                   flexDirection="row"
                   gap={1}
                   onMouseMove={() => setPointerMode("mouse")}

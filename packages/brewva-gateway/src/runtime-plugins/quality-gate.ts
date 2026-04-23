@@ -1,9 +1,13 @@
+import { accessSync, constants, readFileSync } from "node:fs";
+import { isAbsolute, relative, resolve } from "node:path";
 import {
   classifyToolFailure,
   coerceContextBudgetUsage,
+  type EffectCommitmentDiffPreview,
   type BrewvaHostedRuntimePort,
 } from "@brewva/brewva-runtime";
 import {
+  buildBrewvaEditDiffPreview,
   BrewvaHostInputEventResult as InputEventResult,
   InternalHostPluginApi,
   BrewvaPromptContentPart,
@@ -52,6 +56,11 @@ function truncateText(value: string, maxChars: number): string {
   return `${value.slice(0, Math.max(1, maxChars - 3))}...`;
 }
 
+function isPathInside(basePath: string, targetPath: string): boolean {
+  const relativePath = relative(resolve(basePath), resolve(targetPath));
+  return relativePath.length === 0 || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+}
+
 export function createQualityGateLifecycle(
   runtime: BrewvaHostedRuntimePort,
   options: QualityGateLifecycleOptions = {},
@@ -98,6 +107,49 @@ export function createQualityGateLifecycle(
     sessionState.delete(toolCallId);
     if (sessionState.size === 0) {
       pendingToolStateBySession.delete(sessionId);
+    }
+  };
+
+  const buildDiffPreview = (input: {
+    toolName: string;
+    args?: Record<string, unknown>;
+    cwd?: string;
+  }): EffectCommitmentDiffPreview | undefined => {
+    if (input.toolName !== "edit" || !input.args || !options.toolDefinitionsByName?.has("edit")) {
+      return undefined;
+    }
+    const rawPath = typeof input.args.path === "string" ? input.args.path : undefined;
+    if (!rawPath || rawPath.trim().length === 0) {
+      return undefined;
+    }
+    const basePath = input.cwd?.trim() || process.cwd();
+    const absolutePath = isAbsolute(rawPath) ? rawPath : resolve(basePath, rawPath);
+    if (!isPathInside(basePath, absolutePath)) {
+      return {
+        kind: "diff",
+        path: rawPath,
+        error: "Diff preview is unavailable for files outside the current workspace.",
+      };
+    }
+
+    try {
+      accessSync(absolutePath, constants.R_OK);
+      const rawContent = readFileSync(absolutePath, "utf8");
+      const preview = buildBrewvaEditDiffPreview(input.args, rawContent);
+      return {
+        kind: "diff",
+        path: preview.path,
+        diff: preview.diff,
+      };
+    } catch (error) {
+      return {
+        kind: "diff",
+        path: rawPath,
+        error:
+          error instanceof Error
+            ? `Diff preview is unavailable: ${error.message}`
+            : "Diff preview is unavailable.",
+      };
     }
   };
 
@@ -204,6 +256,7 @@ export function createQualityGateLifecycle(
         args,
         cwd,
         usage,
+        diffPreview: buildDiffPreview({ toolName, args, cwd }),
       });
       if (!started.allowed) {
         deletePendingToolState(sessionId, toolCallId);

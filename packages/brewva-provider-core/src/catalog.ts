@@ -1,6 +1,22 @@
 import { MODELS } from "./models.generated.js";
 import type { Api, KnownProvider, Model, Usage } from "./types.js";
 
+const RETIRED_MODEL_KEYS = new Set([
+  "google/gemini-1.5-flash",
+  "google/gemini-1.5-flash-8b",
+  "google/gemini-1.5-pro",
+  "google/gemini-2.5-flash-lite-preview-06-17",
+  "google/gemini-2.5-flash-lite-preview-09-2025",
+  "google/gemini-2.5-flash-preview-04-17",
+  "google/gemini-2.5-flash-preview-05-20",
+  "google/gemini-2.5-flash-preview-09-2025",
+  "google/gemini-2.5-pro-preview-05-06",
+  "google/gemini-2.5-pro-preview-06-05",
+  "google/gemini-live-2.5-flash",
+  "google/gemini-live-2.5-flash-preview-native-audio",
+  "google/gemma-4-26b-it",
+]);
+
 type ModelApi<
   TProvider extends KnownProvider,
   TModelId extends keyof (typeof MODELS)[TProvider],
@@ -10,11 +26,22 @@ type ModelApi<
     : never
   : never;
 
+function modelKey(provider: string, modelId: string): string {
+  return `${provider}/${modelId}`;
+}
+
+function isRetiredModel(provider: string, modelId: string): boolean {
+  return RETIRED_MODEL_KEYS.has(modelKey(provider, modelId));
+}
+
 export function getModel<
   TProvider extends KnownProvider,
   TModelId extends keyof (typeof MODELS)[TProvider],
 >(provider: TProvider, modelId: TModelId): Model<ModelApi<TProvider, TModelId>> {
   const providerModels = MODELS[provider] as Record<string, Model<Api>> | undefined;
+  if (isRetiredModel(provider, modelId as string)) {
+    throw new Error(`Model "${modelKey(provider, modelId as string)}" is retired.`);
+  }
   return providerModels?.[modelId as string] as Model<ModelApi<TProvider, TModelId>>;
 }
 
@@ -27,9 +54,11 @@ export function getModels<TProvider extends KnownProvider>(
 ): Model<ModelApi<TProvider, keyof (typeof MODELS)[TProvider]>>[] {
   const providerModels = MODELS[provider] as Record<string, Model<Api>> | undefined;
   return providerModels
-    ? (Object.values(providerModels) as Model<
-        ModelApi<TProvider, keyof (typeof MODELS)[TProvider]>
-      >[])
+    ? (
+        Object.values(providerModels) as Model<
+          ModelApi<TProvider, keyof (typeof MODELS)[TProvider]>
+        >[]
+      ).filter((model) => !isRetiredModel(model.provider, model.id))
     : [];
 }
 

@@ -47,14 +47,10 @@ const DEFAULT_MODEL_PER_PROVIDER: Record<string, string> = {
   "vercel-ai-gateway": "anthropic/claude-opus-4-6",
   xai: "grok-4-fast-non-reasoning",
   groq: "openai/gpt-oss-120b",
-  cerebras: "zai-glm-4.7",
-  zai: "glm-5",
   mistral: "devstral-medium-latest",
   minimax: "MiniMax-M2.7",
   "minimax-cn": "MiniMax-M2.7",
   huggingface: "moonshotai/Kimi-K2.5",
-  opencode: "claude-opus-4-6",
-  "opencode-go": "kimi-k2.5",
   "kimi-coding": "kimi-k2-thinking",
 };
 
@@ -83,17 +79,21 @@ async function resolveHostedInitialModel(
     hasExistingSession && typeof existingSession.thinkingLevel === "string"
       ? existingSession.thinkingLevel
       : undefined;
+  let modelFallbackMessage: string | undefined;
 
   if (requestedModel) {
-    return {
-      model: requestedModel,
-      hasExistingSession,
-      hasThinkingEntry,
-      existingThinkingLevel,
-    };
+    const resolvedRequestedModel = modelRegistry.find(requestedModel.provider, requestedModel.id);
+    if (resolvedRequestedModel && modelRegistry.hasConfiguredAuth(resolvedRequestedModel)) {
+      return {
+        model: resolvedRequestedModel,
+        hasExistingSession,
+        hasThinkingEntry,
+        existingThinkingLevel,
+      };
+    }
+    modelFallbackMessage = `Could not use requested model ${requestedModel.provider}/${requestedModel.id}: provider auth is not connected`;
   }
 
-  let modelFallbackMessage: string | undefined;
   if (hasExistingSession && existingSession.model) {
     const restoredModel = modelRegistry.find(
       existingSession.model.provider,
@@ -223,6 +223,7 @@ async function createHostedLocalSessionServicesBundle(input: {
   return {
     agentDir: input.agentDir,
     cwd: input.cwd,
+    runtime,
     settingsManager,
     resourceLoader,
     sessionManager: new HostedRuntimeTapeSessionStore(runtime, input.cwd, input.sessionId),

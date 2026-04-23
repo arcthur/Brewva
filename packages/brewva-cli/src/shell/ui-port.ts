@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import process from "node:process";
 import {
   DEFAULT_TUI_THEME,
   getTuiTheme,
@@ -5,25 +7,18 @@ import {
   resolveTuiTheme,
   type TuiTheme,
 } from "@brewva/brewva-tui";
+import { copyTextToClipboard } from "./clipboard.js";
 import { cloneCliShellPromptParts, rebasePromptPartsAfterTextReplace } from "./prompt-parts.js";
 import type { CliShellAction, CliShellState } from "./state/index.js";
 import type { CliShellUiPort } from "./types.js";
 
-function normalizeLines(value: unknown): string[] {
-  if (typeof value === "string") {
-    return value.split(/\r?\n/u);
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry) => String(entry));
-  }
-  if (value && typeof value === "object" && "render" in value) {
-    const render = (value as { render?: (width: number) => unknown }).render;
-    if (typeof render === "function") {
-      const rendered = render(120);
-      return Array.isArray(rendered) ? rendered.map((entry) => String(entry)) : [];
-    }
-  }
-  return [];
+function openUrlInBrowser(url: string): Promise<void> {
+  return new Promise((resolve) => {
+    const command =
+      process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+    spawn(command, [url], { detached: true, stdio: "ignore" }).unref();
+    resolve();
+  });
 }
 
 interface CliShellDialogRequest<T> {
@@ -32,6 +27,7 @@ interface CliShellDialogRequest<T> {
   title: string;
   message?: string;
   options?: string[];
+  masked?: boolean;
   resolve(value: T): void;
 }
 
@@ -111,35 +107,14 @@ export function createCliShellUiPortController(input: {
         text: label,
       });
     },
-    setWidget(...args) {
-      const [id, lines, options] = args as [string, string[] | undefined, { placement?: string }?];
-      input.dispatch({
-        type: "status.widget",
-        id,
-        lines,
-        placement: options?.placement,
-      });
-    },
-    setFooter(factory) {
-      input.dispatch({
-        type: "status.footer",
-        lines: normalizeLines(factory),
-      });
-    },
-    setHeader(factory) {
-      input.dispatch({
-        type: "status.header",
-        lines: normalizeLines(factory),
-      });
-    },
-    setTitle(title) {
-      input.dispatch({
-        type: "status.title",
-        title,
-      });
-    },
     async custom() {
       return undefined as never;
+    },
+    async copyText(text) {
+      await copyTextToClipboard(text);
+    },
+    async openUrl(url) {
+      await openUrlInBrowser(url);
     },
     pasteToEditor(text) {
       const state = input.getState();

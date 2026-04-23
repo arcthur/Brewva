@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { HostedAuthStore } from "../../../packages/brewva-gateway/src/host/hosted-auth-store.js";
-import { HostedModelRegistry } from "../../../packages/brewva-gateway/src/host/hosted-model-registry.js";
+import {
+  createHostedModelServices,
+  HostedModelRegistry,
+} from "../../../packages/brewva-gateway/src/host/hosted-model-registry.js";
 import { patchProcessEnv } from "../../helpers/global-state.js";
 
 const TEST_ENV_KEY = "BREWVA_HOSTED_MODEL_REGISTRY_TEST_KEY";
@@ -64,6 +70,39 @@ describe("hosted model registry", () => {
       expect(apiKey).toBe("stored-token");
     } finally {
       restoreEnv();
+    }
+  });
+
+  test("persists hosted auth credentials in the agent auth store", () => {
+    const agentDir = mkdtempSync(join(tmpdir(), "brewva-hosted-model-services-"));
+    try {
+      const first = createHostedModelServices(agentDir);
+      first.authStore.set("openai-codex", {
+        type: "oauth",
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+        expiresAt: Date.now() + 60_000,
+      });
+
+      const raw = JSON.parse(readFileSync(join(agentDir, "auth.json"), "utf8")) as Record<
+        string,
+        { type?: string }
+      >;
+      expect(raw["openai-codex"]).toMatchObject({ type: "oauth" });
+
+      const second = createHostedModelServices(agentDir);
+      expect(second.authStore.get("openai-codex")).toMatchObject({
+        type: "oauth",
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+      });
+      expect(second.authStore.hasAuth("openai-codex")).toBe(true);
+
+      second.authStore.remove("openai-codex");
+      const third = createHostedModelServices(agentDir);
+      expect(third.authStore.get("openai-codex")).toBeUndefined();
+    } finally {
+      rmSync(agentDir, { recursive: true, force: true });
     }
   });
 });

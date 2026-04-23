@@ -9,6 +9,7 @@ import {
 } from "@brewva/brewva-gateway";
 import { runHostedPromptTurn } from "@brewva/brewva-gateway/host";
 import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
+import type { BrewvaPromptThinkingLevel } from "@brewva/brewva-substrate";
 import type {
   CliShellSessionBundle,
   OperatorSurfacePort,
@@ -22,66 +23,102 @@ const SLASH_COMMANDS = [
   {
     command: "inspect",
     description: "Replay-first inspect report for the current session.",
+    argumentMode: "none",
+  },
+  {
+    command: "models",
+    description: "Select a model for the current session.",
+    argumentMode: "optional",
+  },
+  {
+    command: "connect",
+    description: "Connect a model provider.",
+    argumentMode: "optional",
+  },
+  {
+    command: "think",
+    description: "Select the thinking level for the current model.",
+    argumentMode: "none",
+  },
+  {
+    command: "diffwrap",
+    description: "Toggle wrapping in diff views.",
+    argumentMode: "none",
+  },
+  {
+    command: "diffstyle",
+    description: "Toggle automatic split diffs and stacked unified diffs.",
+    argumentMode: "none",
   },
   {
     command: "insights",
     description: "Workspace-level insights without entering a model turn.",
+    argumentMode: "optional",
   },
   {
     command: "sessions",
     description: "Browse and switch replay sessions.",
+    argumentMode: "none",
   },
   {
     command: "approvals",
     description: "Review queued approval requests.",
+    argumentMode: "none",
   },
   {
     command: "tasks",
     description: "Inspect background task runs.",
+    argumentMode: "none",
   },
   {
     command: "notifications",
     description: "Open the operator notification inbox.",
+    argumentMode: "none",
   },
   {
     command: "questions",
     description: "List unresolved operator questions.",
+    argumentMode: "none",
   },
   {
     command: "theme",
     description: "List or switch interactive shell themes.",
+    argumentMode: "optional",
   },
   {
     command: "answer",
     description: "Answer a queued operator question.",
+    argumentMode: "required",
   },
   {
     command: "agent-overlays",
     description: "Inspect authored agent overlays.",
+    argumentMode: "optional",
   },
   {
     command: "update",
     description: "Queue Brewva update workflow.",
+    argumentMode: "none",
   },
   {
     command: "new",
     description: "Create a new interactive session.",
-  },
-  {
-    command: "credentials",
-    description: "Show credential vault references and management commands.",
+    argumentMode: "none",
   },
   {
     command: "stash",
     description: "Browse stashed prompt drafts.",
+    argumentMode: "optional",
   },
   {
     command: "unstash",
     description: "Restore the latest stashed prompt.",
+    argumentMode: "none",
   },
   {
     command: "quit",
     description: "Exit the interactive shell.",
+    argumentMode: "none",
   },
 ] as const;
 
@@ -116,6 +153,54 @@ export function createSessionViewPort(bundle: CliShellSessionBundle): SessionVie
     },
     getThinkingLevel() {
       return bundle.session.thinkingLevel ?? "off";
+    },
+    async listModels(options) {
+      const fallback = bundle.session.model ? [bundle.session.model] : [];
+      if (options?.includeUnavailable) {
+        return bundle.session.modelRegistry?.getAll?.() ?? fallback;
+      }
+      return [
+        ...(await Promise.resolve(bundle.session.modelRegistry?.getAvailable?.() ?? fallback)),
+      ];
+    },
+    async setModel(model) {
+      if (typeof bundle.session.setModel !== "function") {
+        throw new Error("This session does not support model switching.");
+      }
+      await bundle.session.setModel(model);
+    },
+    getAvailableThinkingLevels() {
+      return (
+        bundle.session.getAvailableThinkingLevels?.() ?? [bundle.session.thinkingLevel ?? "off"]
+      );
+    },
+    setThinkingLevel(level) {
+      if (typeof bundle.session.setThinkingLevel !== "function") {
+        throw new Error("This session does not support thinking-level selection.");
+      }
+      bundle.session.setThinkingLevel(level as BrewvaPromptThinkingLevel);
+    },
+    getModelPreferences() {
+      return (
+        bundle.session.settingsManager?.getModelPreferences?.() ?? {
+          recent: [],
+          favorite: [],
+        }
+      );
+    },
+    setModelPreferences(preferences) {
+      bundle.session.settingsManager?.setModelPreferences?.(preferences);
+    },
+    getDiffPreferences() {
+      return (
+        bundle.session.settingsManager?.getDiffPreferences?.() ?? {
+          style: "auto",
+          wrapMode: "word",
+        }
+      );
+    },
+    setDiffPreferences(preferences) {
+      bundle.session.settingsManager?.setDiffPreferences?.(preferences);
     },
     async prompt(parts, options) {
       if (

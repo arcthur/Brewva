@@ -4,29 +4,25 @@ import {
   type InternalRuntimePluginApi,
 } from "@brewva/brewva-gateway/runtime-plugins";
 import type { BrewvaOperatorRuntimePort } from "@brewva/brewva-runtime";
-import type { BrewvaHostContext } from "@brewva/brewva-substrate";
 import { buildProjectInsightsReport, formatProjectInsightsText } from "./insights.js";
 import { clampText, resolveInspectDirectory } from "./inspect-analysis.js";
 
-const DEFAULT_WIDGET_ID = "brewva-insights";
-const DEFAULT_MAX_WIDGET_LINES = 28;
+const DEFAULT_MAX_NOTIFICATION_LINES = 28;
 const DEFAULT_MAX_LINE_CHARS = 220;
 
-function clearInsightsWidget(ctx: BrewvaHostContext, widgetId: string): void {
-  if (!ctx.hasUI) return;
-  ctx.ui.setWidget(widgetId, undefined, {
-    placement: "belowEditor",
-  });
-}
-
-function toWidgetLines(text: string, maxLines: number, maxLineChars: number): string[] {
+function toNotificationMessage(
+  summary: string,
+  text: string,
+  maxLines: number,
+  maxLineChars: number,
+): string {
   const rawLines = text.split(/\r?\n/u).map((line) => clampText(line, maxLineChars));
-  if (rawLines.length <= maxLines) {
-    return rawLines;
+  if (rawLines.length > maxLines) {
+    const kept = rawLines.slice(0, Math.max(1, maxLines - 1));
+    kept.push(`...[insights truncated: ${rawLines.length - kept.length} more lines]`);
+    return [summary, "", ...kept].join("\n");
   }
-  const kept = rawLines.slice(0, Math.max(1, maxLines - 1));
-  kept.push(`...[insights truncated: ${rawLines.length - kept.length} more lines]`);
-  return kept;
+  return [summary, "", ...rawLines].join("\n");
 }
 
 function resolveInsightsNotifyLevel(input: {
@@ -42,15 +38,13 @@ function resolveInsightsNotifyLevel(input: {
 export function createInsightsCommandRuntimePlugin(
   runtime: BrewvaOperatorRuntimePort,
   options: {
-    widgetId?: string;
-    maxWidgetLines?: number;
+    maxNotificationLines?: number;
     maxLineChars?: number;
   } = {},
 ): InternalRuntimePlugin {
-  const widgetId = options.widgetId ?? DEFAULT_WIDGET_ID;
-  const maxWidgetLines = Math.max(
+  const maxNotificationLines = Math.max(
     8,
-    Math.trunc(options.maxWidgetLines ?? DEFAULT_MAX_WIDGET_LINES),
+    Math.trunc(options.maxNotificationLines ?? DEFAULT_MAX_NOTIFICATION_LINES),
   );
   const maxLineChars = Math.max(40, Math.trunc(options.maxLineChars ?? DEFAULT_MAX_LINE_CHARS));
 
@@ -58,29 +52,10 @@ export function createInsightsCommandRuntimePlugin(
     name: "cli.insights_command",
     capabilities: ["tool_registration.write"],
     register(runtimePluginApi: InternalRuntimePluginApi) {
-      runtimePluginApi.on("session_start", async (_event, ctx) => {
-        clearInsightsWidget(ctx, widgetId);
-      });
-      runtimePluginApi.on("session_switch", async (_event, ctx) => {
-        clearInsightsWidget(ctx, widgetId);
-      });
-      runtimePluginApi.on("session_shutdown", async (_event, ctx) => {
-        clearInsightsWidget(ctx, widgetId);
-      });
-
       runtimePluginApi.registerCommand("insights", {
-        description:
-          "Multi-session aggregated insights for a directory (usage: /insights [dir] | /insights clear)",
+        description: "Multi-session aggregated insights for a directory (usage: /insights [dir])",
         handler: async (args, ctx) => {
           const normalizedArgs = args.trim();
-          if (normalizedArgs === "clear") {
-            clearInsightsWidget(ctx, widgetId);
-            if (ctx.hasUI) {
-              ctx.ui.notify("Insights widget cleared.", "info");
-            }
-            return;
-          }
-
           if (!ctx.hasUI) {
             return;
           }
@@ -96,11 +71,9 @@ export function createInsightsCommandRuntimePlugin(
               directory,
             });
             const text = formatProjectInsightsText(report);
-            ctx.ui.setWidget(widgetId, toWidgetLines(text, maxWidgetLines, maxLineChars), {
-              placement: "belowEditor",
-            });
+            const summary = `Insights report for ${report.directory || "."} (${report.window.analyzedSessions} analyzed, ${report.window.failedSessions} failed).`;
             ctx.ui.notify(
-              `Insights updated for ${report.directory || "."} (${report.window.analyzedSessions} analyzed, ${report.window.failedSessions} failed). Use /insights clear to dismiss.`,
+              toNotificationMessage(summary, text, maxNotificationLines, maxLineChars),
               resolveInsightsNotifyLevel({
                 analyzedSessions: report.window.analyzedSessions,
                 failedSessions: report.window.failedSessions,

@@ -1,4 +1,11 @@
 import type { SessionOpenQuestion } from "@brewva/brewva-gateway";
+import type {
+  ProviderAuthMethod,
+  ProviderAuthPrompt,
+  ProviderConnection,
+  ProviderConnectionPort,
+  ProviderOAuthAuthorization,
+} from "@brewva/brewva-gateway/host";
 import type { BrewvaReplaySession, BrewvaRuntime } from "@brewva/brewva-runtime";
 import type {
   DecideEffectCommitmentInput,
@@ -7,6 +14,8 @@ import type {
 import type { DelegationRunRecord } from "@brewva/brewva-runtime";
 import type {
   BrewvaManagedPromptSession,
+  BrewvaDiffPreferences,
+  BrewvaModelPreferences,
   BrewvaPromptContentPart,
   BrewvaPromptOptions,
   BrewvaPromptSessionEvent,
@@ -19,6 +28,7 @@ export interface CliShellSessionBundle {
   session: BrewvaManagedPromptSession;
   runtime: BrewvaRuntime;
   toolDefinitions: ReadonlyMap<string, BrewvaToolDefinition>;
+  providerConnections?: ProviderConnectionPort;
   orchestration?: BrewvaSessionResult["orchestration"];
 }
 
@@ -71,6 +81,16 @@ export interface SessionViewPort {
   getSessionId(): string;
   getModelLabel(): string;
   getThinkingLevel(): string;
+  listModels(options?: {
+    includeUnavailable?: boolean;
+  }): Promise<readonly NonNullable<BrewvaManagedPromptSession["model"]>[]>;
+  setModel(model: NonNullable<BrewvaManagedPromptSession["model"]>): Promise<void>;
+  getAvailableThinkingLevels(): string[];
+  setThinkingLevel(level: string): void;
+  getModelPreferences(): BrewvaModelPreferences;
+  setModelPreferences(preferences: BrewvaModelPreferences): void;
+  getDiffPreferences(): BrewvaDiffPreferences;
+  setDiffPreferences(preferences: BrewvaDiffPreferences): void;
   prompt(parts: readonly BrewvaPromptContentPart[], options?: BrewvaPromptOptions): Promise<void>;
   waitForIdle(): Promise<void>;
   abort(): Promise<void>;
@@ -97,6 +117,8 @@ export interface OperatorSurfacePort {
 export interface CliApprovalOverlayPayload {
   kind: "approval";
   selectedIndex: number;
+  previewExpanded?: boolean;
+  previewScrollOffset?: number;
   snapshot: OperatorSurfaceSnapshot;
 }
 
@@ -169,8 +191,11 @@ export interface CliConfirmOverlayPayload {
 
 export interface CliInputOverlayPayload {
   kind: "input";
+  dialogId?: string;
+  title?: string;
   message?: string;
   value: string;
+  masked?: boolean;
   resolve(value: string | undefined): void;
 }
 
@@ -179,6 +204,82 @@ export interface CliSelectOverlayPayload {
   options: string[];
   selectedIndex: number;
   resolve(value: string | undefined): void;
+}
+
+export interface CliPickerItem {
+  id: string;
+  section?: string;
+  label: string;
+  detail?: string;
+  footer?: string;
+  marker?: string;
+  disabled?: boolean;
+}
+
+export interface CliModelPickerItem extends CliPickerItem {
+  kind: "model" | "connect_provider";
+  provider: string;
+  modelId?: string;
+  available?: boolean;
+  favorite?: boolean;
+  current?: boolean;
+}
+
+export interface CliModelPickerOverlayPayload {
+  kind: "modelPicker";
+  title: string;
+  query: string;
+  selectedIndex: number;
+  providerFilter?: string;
+  items: CliModelPickerItem[];
+  emptyMessage?: string;
+}
+
+export interface CliProviderPickerItem extends CliPickerItem {
+  provider: ProviderConnection;
+}
+
+export interface CliProviderPickerOverlayPayload {
+  kind: "providerPicker";
+  title: string;
+  query: string;
+  selectedIndex: number;
+  providers: ProviderConnection[];
+  items: CliProviderPickerItem[];
+}
+
+export interface CliThinkingPickerItem extends CliPickerItem {
+  level: string;
+  current: boolean;
+}
+
+export interface CliThinkingPickerOverlayPayload {
+  kind: "thinkingPicker";
+  title: string;
+  selectedIndex: number;
+  items: CliThinkingPickerItem[];
+}
+
+export interface CliAuthMethodPickerItem extends CliPickerItem {
+  method: ProviderAuthMethod;
+}
+
+export interface CliAuthMethodPickerOverlayPayload {
+  kind: "authMethodPicker";
+  title: string;
+  selectedIndex: number;
+  items: CliAuthMethodPickerItem[];
+  resolve(method: ProviderAuthMethod | undefined): void;
+}
+
+export interface CliOAuthWaitOverlayPayload {
+  kind: "oauthWait";
+  title: string;
+  url: string;
+  instructions: string;
+  copyText?: string;
+  manualCodePrompt?: string;
+  submitManualCode?(code: string): Promise<void>;
 }
 
 export type CliShellOverlayPayload =
@@ -191,11 +292,24 @@ export type CliShellOverlayPayload =
   | CliInspectOverlayPayload
   | CliConfirmOverlayPayload
   | CliInputOverlayPayload
-  | CliSelectOverlayPayload;
+  | CliSelectOverlayPayload
+  | CliModelPickerOverlayPayload
+  | CliProviderPickerOverlayPayload
+  | CliThinkingPickerOverlayPayload
+  | CliAuthMethodPickerOverlayPayload
+  | CliOAuthWaitOverlayPayload;
+
+export type {
+  ProviderAuthMethod,
+  ProviderAuthPrompt,
+  ProviderConnection,
+  ProviderOAuthAuthorization,
+};
 
 export interface SlashCommandEntry {
   command: string;
   description: string;
+  argumentMode?: "none" | "optional" | "required";
 }
 
 export interface PathCompletionEntry {
@@ -213,4 +327,7 @@ export interface ShellConfigPort {
   getEditorCommand(): string | undefined;
 }
 
-export interface CliShellUiPort extends BrewvaToolUiPort {}
+export interface CliShellUiPort extends BrewvaToolUiPort {
+  copyText?(text: string): Promise<void>;
+  openUrl?(url: string): Promise<void>;
+}

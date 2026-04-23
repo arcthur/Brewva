@@ -1,6 +1,11 @@
 import { recordSessionShutdownIfMissing } from "@brewva/brewva-gateway";
 import { createOperatorRuntimePort } from "@brewva/brewva-runtime";
-import type { BrewvaPromptSessionEvent } from "@brewva/brewva-substrate";
+import type {
+  BrewvaDiffPreferences,
+  BrewvaModelPreferences,
+  BrewvaPromptSessionEvent,
+  BrewvaSessionModelDescriptor,
+} from "@brewva/brewva-substrate";
 import {
   createKeybindingResolver,
   type KeybindingContext,
@@ -41,7 +46,6 @@ import {
   buildNotificationsOverlayPayload,
   buildOverlayView,
   buildSessionsOverlayPayload,
-  CREDENTIAL_HELP_LINES,
   resolveOverlayFocusOwner,
 } from "./controller-overlays.js";
 import {
@@ -69,11 +73,16 @@ import {
 } from "./transcript.js";
 import type {
   CliShellOverlayPayload,
+  CliOAuthWaitOverlayPayload,
   CliShellPromptPart,
   CliShellPromptStashEntry,
   CliShellPromptStorePort,
   CliShellSessionBundle,
   CliShellUiPort,
+  ProviderConnection,
+  ProviderAuthMethod,
+  ProviderAuthPrompt,
+  ProviderOAuthAuthorization,
   OperatorSurfaceSnapshot,
   SessionViewPort,
 } from "./types.js";
@@ -107,6 +116,19 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
+function hasDiffPreviewPayload(value: unknown): boolean {
+  const record = asRecord(value);
+  const preview = asRecord(record?.diffPreview ?? record?.previewDiff ?? record?.preview);
+  if (!preview) {
+    return false;
+  }
+  if (typeof preview.diff === "string" || typeof preview.error === "string") {
+    return true;
+  }
+  const files = preview.files;
+  return Array.isArray(files) && files.length > 0;
+}
+
 function toolResultStatus(input: { result?: unknown; isError?: boolean }): "completed" | "error" {
   if (input.isError === true) {
     return "error";
@@ -116,13 +138,212 @@ function toolResultStatus(input: { result?: unknown; isError?: boolean }): "comp
 }
 
 function normalizeBindingKey(key: string): string {
-  switch (key) {
+  switch (key.toLowerCase()) {
     case "return":
     case "linefeed":
       return "enter";
+    case "arrowup":
+    case "uparrow":
+      return "up";
+    case "arrowdown":
+    case "downarrow":
+      return "down";
+    case "arrowleft":
+    case "leftarrow":
+      return "left";
+    case "arrowright":
+    case "rightarrow":
+      return "right";
+    case "pageup":
+    case "page-up":
+      return "pageup";
+    case "pagedown":
+    case "page-down":
+      return "pagedown";
     default:
       return key.toLowerCase();
   }
+}
+
+const RECENT_MODEL_LIMIT = 10;
+
+function modelKey(model: Pick<BrewvaSessionModelDescriptor, "provider" | "id">): string {
+  return `${model.provider}/${model.id}`;
+}
+
+function normalizeSearchText(value: string): string {
+  return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function fuzzySearchScore(query: string, target: string): number | null {
+  const normalizedQuery = normalizeSearchText(query.trim());
+  const normalizedTarget = normalizeSearchText(target);
+  if (!normalizedQuery) {
+    return 0;
+  }
+  if (!normalizedTarget) {
+    return null;
+  }
+  if (normalizedTarget === normalizedQuery) {
+    return 10_000 - normalizedTarget.length;
+  }
+  if (normalizedTarget.startsWith(normalizedQuery)) {
+    return 8_000 - normalizedTarget.length;
+  }
+  const containsIndex = normalizedTarget.indexOf(normalizedQuery);
+  if (containsIndex >= 0) {
+    return 6_000 - containsIndex * 4 - normalizedTarget.length;
+  }
+
+  let queryIndex = 0;
+  let score = 0;
+  let lastMatchIndex = -2;
+  let firstMatchIndex = -1;
+  for (let targetIndex = 0; targetIndex < normalizedTarget.length; targetIndex++) {
+    if (normalizedTarget[targetIndex] !== normalizedQuery[queryIndex]) {
+      continue;
+    }
+    if (firstMatchIndex === -1) {
+      firstMatchIndex = targetIndex;
+    }
+    score += lastMatchIndex === targetIndex - 1 ? 14 : 3;
+    score -= Math.max(0, targetIndex - lastMatchIndex - 1);
+    lastMatchIndex = targetIndex;
+    queryIndex++;
+    if (queryIndex >= normalizedQuery.length) {
+      break;
+    }
+  }
+  if (queryIndex < normalizedQuery.length) {
+    return null;
+  }
+  return 1_000 + score - Math.max(0, firstMatchIndex) * 2 - normalizedTarget.length;
+}
+
+function bestSearchScore(query: string, candidates: readonly string[]): number | null {
+  const normalized = query.trim();
+  if (!normalized) {
+    return 0;
+  }
+  let best: number | null = null;
+  for (const candidate of candidates) {
+    const score = fuzzySearchScore(normalized, candidate);
+    if (score !== null && (best === null || score > best)) {
+      best = score;
+    }
+  }
+  return best;
+}
+
+function providerSearchScore(provider: ProviderConnection, query: string): number | null {
+  return bestSearchScore(query, [
+    provider.id,
+    provider.name,
+    provider.description ?? "",
+    provider.connectionSource,
+    ...(provider.modelProviders ?? []),
+  ]);
+}
+
+function providerCoversModelProvider(provider: ProviderConnection, modelProvider: string): boolean {
+  return provider.id === modelProvider || (provider.modelProviders ?? []).includes(modelProvider);
+}
+
+function authMethodCredentialProvider(providerId: string, method: ProviderAuthMethod): string {
+  return method.credentialProvider ?? providerId;
+}
+
+function authMethodModelProviderFilter(providerId: string, method: ProviderAuthMethod): string {
+  return method.modelProviderFilter ?? method.credentialProvider ?? providerId;
+}
+
+function providerConnectionFooter(provider: ProviderConnection): string {
+  if (!provider.connected) {
+    if (provider.id === "openai" || provider.id === "openai-codex") {
+      return "OAuth/API key";
+    }
+    if (provider.id === "github-copilot") {
+      return "OAuth/token";
+    }
+    return "API key";
+  }
+  switch (provider.connectionSource) {
+    case "oauth":
+      return "OAuth";
+    case "vault":
+      return "Vault";
+    case "environment":
+      return "Env";
+    case "provider_config":
+      return "Config";
+    case "none":
+      return "Connected";
+  }
+  return "Connected";
+}
+
+function modelMatchesQuery(model: BrewvaSessionModelDescriptor, query: string): boolean {
+  return modelSearchScore(model, query) !== null;
+}
+
+function modelSearchScore(model: BrewvaSessionModelDescriptor, query: string): number | null {
+  return bestSearchScore(query, [
+    model.provider,
+    model.id,
+    model.name ?? "",
+    model.displayName ?? "",
+    `${model.provider}/${model.id}`,
+  ]);
+}
+
+function compactModelPreferences(preferences: BrewvaModelPreferences): BrewvaModelPreferences {
+  const normalize = (
+    entries: readonly Pick<BrewvaSessionModelDescriptor, "provider" | "id">[],
+    limit?: number,
+  ) => {
+    const seen = new Set<string>();
+    const output: Array<{ provider: string; id: string }> = [];
+    for (const entry of entries) {
+      const key = modelKey(entry);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      output.push({ provider: entry.provider, id: entry.id });
+      if (limit && output.length >= limit) {
+        break;
+      }
+    }
+    return output;
+  };
+  return {
+    recent: normalize(preferences.recent, RECENT_MODEL_LIMIT),
+    favorite: normalize(preferences.favorite),
+  };
+}
+
+function normalizeDiffPreferences(
+  preferences: Partial<BrewvaDiffPreferences>,
+): BrewvaDiffPreferences {
+  return {
+    style: preferences.style === "stacked" ? "stacked" : "auto",
+    wrapMode: preferences.wrapMode === "none" ? "none" : "word",
+  };
+}
+
+function modelDisplayName(model: BrewvaSessionModelDescriptor): string {
+  return model.displayName ?? model.name ?? model.id;
+}
+
+function modelPickerDetail(input: {
+  section: string;
+  model: BrewvaSessionModelDescriptor;
+  favorite: boolean;
+}): string | undefined {
+  if (input.section === "Favorites" || input.section === "Recent") {
+    return input.model.provider;
+  }
+  return input.favorite ? "(Favorite)" : undefined;
 }
 
 export class CliShellController {
@@ -243,7 +464,7 @@ export class CliShellController {
       id: "completion.acceptEnter",
       context: "completion",
       trigger: { key: "enter", ctrl: false, meta: false, shift: false },
-      action: "acceptCompletion",
+      action: "submitCompletion",
     },
     {
       id: "completion.next",
@@ -294,9 +515,21 @@ export class CliShellController {
       action: "overlayNext",
     },
     {
+      id: "overlay.nextCtrlN",
+      context: "overlay",
+      trigger: { key: "n", ctrl: true, meta: false, shift: false },
+      action: "overlayNext",
+    },
+    {
       id: "overlay.prev",
       context: "overlay",
       trigger: { key: "up", ctrl: false, meta: false, shift: false },
+      action: "overlayPrev",
+    },
+    {
+      id: "overlay.prevCtrlP",
+      context: "overlay",
+      trigger: { key: "p", ctrl: true, meta: false, shift: false },
       action: "overlayPrev",
     },
     {
@@ -310,6 +543,12 @@ export class CliShellController {
       context: "overlay",
       trigger: { key: "pageup", ctrl: false, meta: false, shift: false },
       action: "overlayPageUp",
+    },
+    {
+      id: "overlay.fullscreen",
+      context: "overlay",
+      trigger: { key: "f", ctrl: true, meta: false, shift: false },
+      action: "overlayFullscreen",
     },
     {
       id: "pager.external",
@@ -407,6 +646,18 @@ export class CliShellController {
     return this.#operatorSnapshot;
   }
 
+  async openSessionById(sessionId: string): Promise<void> {
+    try {
+      await this.switchBundle(await this.#operatorPort.openSession(sessionId));
+      this.ui.notify(`Opened session ${sessionId}.`, "info");
+    } catch (error) {
+      this.ui.notify(
+        `Failed to open session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+        "warning",
+      );
+    }
+  }
+
   async decideApproval(requestId: string, decision: "accept" | "reject"): Promise<void> {
     await this.#operatorPort.decideApproval(requestId, {
       decision,
@@ -422,22 +673,6 @@ export class CliShellController {
       text: answerPrefix,
       cursor: answerPrefix.length,
     });
-  }
-
-  openTasksOverlay(): void {
-    this.openOverlay({ kind: "tasks", selectedIndex: 0, snapshot: this.#operatorSnapshot });
-  }
-
-  openSessionsBrowser(): void {
-    this.openSessionsOverlay();
-  }
-
-  openNotificationsInbox(): void {
-    this.openNotificationsOverlay();
-  }
-
-  async openInspectPanel(): Promise<void> {
-    await this.openInspectOverlay();
   }
 
   subscribe(listener: () => void): () => void {
@@ -612,6 +847,9 @@ export class CliShellController {
 
   wantsSemanticInput(input: CliShellSemanticInput): boolean {
     const activeOverlay = this.#state.overlay.active?.payload;
+    if (activeOverlay?.kind === "input") {
+      return true;
+    }
     const contexts = this.getInputContexts();
 
     const binding = this.#keybindings.resolve(contexts, {
@@ -644,6 +882,10 @@ export class CliShellController {
   private async handleSemanticInputNow(input: CliShellSemanticInput): Promise<boolean> {
     const activeOverlay = this.#state.overlay.active?.payload;
     try {
+      if (activeOverlay?.kind === "input") {
+        return this.handleInputOverlayInput(activeOverlay, input);
+      }
+
       const binding = this.#keybindings.resolve(this.getInputContexts(), {
         key: normalizeBindingKey(input.key),
         ctrl: input.ctrl,
@@ -655,22 +897,16 @@ export class CliShellController {
         return true;
       }
 
-      if (activeOverlay?.kind === "input") {
-        if (normalizeBindingKey(input.key) === "backspace") {
-          this.replaceActiveOverlay({
-            ...activeOverlay,
-            value: activeOverlay.value.slice(0, -1),
-          });
+      if (activeOverlay?.kind === "modelPicker" || activeOverlay?.kind === "providerPicker") {
+        const handledShortcut = await this.handleOverlayShortcut(activeOverlay, input);
+        if (handledShortcut) {
           return true;
         }
-        if (normalizeBindingKey(input.key) === "character" && typeof input.text === "string") {
-          this.replaceActiveOverlay({
-            ...activeOverlay,
-            value: `${activeOverlay.value}${input.text}`,
-          });
+        const handledText = await this.handlePickerTextInput(activeOverlay, input);
+        if (handledText) {
           return true;
         }
-        return true;
+        return typeof input.text === "string" || input.key.length > 0;
       }
 
       if (activeOverlay) {
@@ -709,20 +945,11 @@ export class CliShellController {
     this.#promptHistory.index = 0;
     this.#promptHistory.draft = undefined;
     this.#dismissedCompletionBySessionId.delete(sessionId);
-    this.applyActions(
-      [
-        {
-          type: "status.title",
-          title: `Session ${sessionId} (${this.#sessionPort.getModelLabel()})`,
-        },
-        {
-          type: "status.set",
-          key: "thinking",
-          text: this.#sessionPort.getThinkingLevel(),
-        },
-      ],
-      false,
-    );
+    this.#state = reduceCliShellState(this.#state, {
+      type: "diff.setPreferences",
+      preferences: normalizeDiffPreferences(this.#sessionPort.getDiffPreferences()),
+    });
+    this.applyActions(this.buildSessionStatusActions(), false);
     if (this.options.verbose) {
       this.dispatch({
         type: "notification.add",
@@ -747,6 +974,22 @@ export class CliShellController {
       });
     }
     this.emitChange();
+  }
+
+  private buildSessionStatusActions(): CliShellAction[] {
+    const modelLabel = this.#sessionPort.getModelLabel();
+    return [
+      {
+        type: "status.set",
+        key: "model",
+        text: modelLabel,
+      },
+      {
+        type: "status.set",
+        key: "thinking",
+        text: this.#sessionPort.getThinkingLevel(),
+      },
+    ];
   }
 
   private mountSession(bundle: CliShellSessionBundle): void {
@@ -1235,6 +1478,37 @@ export class CliShellController {
     );
   }
 
+  private handleInputOverlayInput(
+    active: Extract<CliShellOverlayPayload, { kind: "input" }>,
+    input: CliShellSemanticInput,
+  ): boolean {
+    const key = normalizeBindingKey(input.key);
+    if (key === "enter") {
+      active.resolve(active.value.trim().length > 0 ? active.value : undefined);
+      this.closeActiveOverlay(false);
+      return true;
+    }
+    if (key === "escape") {
+      this.closeActiveOverlay(true);
+      return true;
+    }
+    if (key === "backspace") {
+      this.replaceActiveOverlay({
+        ...active,
+        value: active.value.slice(0, -1),
+      });
+      return true;
+    }
+    if (!input.ctrl && !input.meta && key === "character" && typeof input.text === "string") {
+      this.replaceActiveOverlay({
+        ...active,
+        value: `${active.value}${input.text}`,
+      });
+      return true;
+    }
+    return true;
+  }
+
   private async handleOverlayShortcut(
     active: CliShellOverlayPayload,
     input: CliShellSemanticInput,
@@ -1315,6 +1589,32 @@ export class CliShellController {
       return true;
     }
 
+    if (active.kind === "modelPicker" && key === "f") {
+      await this.toggleSelectedModelFavorite(active);
+      return true;
+    }
+
+    if (active.kind === "modelPicker" && key === "c") {
+      this.closeActiveOverlay(false);
+      await this.openConnectDialog(active.query);
+      return true;
+    }
+
+    if (active.kind === "providerPicker" && key === "d") {
+      await this.disconnectSelectedProvider(active);
+      return true;
+    }
+
+    if (active.kind === "oauthWait" && key === "c") {
+      await this.copyOAuthWaitText(active);
+      return true;
+    }
+
+    if (active.kind === "oauthWait" && key === "p") {
+      void this.submitOAuthWaitManualCode(active);
+      return true;
+    }
+
     if (active.kind === "confirm") {
       if (key === "y") {
         active.resolve(true);
@@ -1359,6 +1659,9 @@ export class CliShellController {
       case "acceptCompletion":
         this.acceptCompletion();
         return;
+      case "submitCompletion":
+        await this.submitCompletion();
+        return;
       case "nextCompletion":
         this.moveCompletion(1);
         return;
@@ -1369,7 +1672,7 @@ export class CliShellController {
         this.dismissCompletion();
         return;
       case "closeOverlay":
-        this.closeActiveOverlay(false);
+        this.closeActiveOverlay(true);
         return;
       case "overlayPrimary":
         await this.handleOverlayPrimary();
@@ -1385,6 +1688,9 @@ export class CliShellController {
         return;
       case "overlayPageUp":
         this.scrollActiveOverlay(-this.getOverlayPageStep());
+        return;
+      case "overlayFullscreen":
+        this.toggleActiveOverlayFullscreen();
         return;
       case "externalPager":
         await this.openActivePagerExternally();
@@ -1503,6 +1809,30 @@ export class CliShellController {
     );
   }
 
+  private async submitCompletion(): Promise<void> {
+    const completion = this.#state.composer.completion;
+    if (!completion) {
+      return;
+    }
+    const selected = completion.items[completion.selectedIndex];
+    if (!selected || completion.kind !== "slash" || selected.enterBehavior !== "submit") {
+      this.acceptCompletion();
+      return;
+    }
+
+    const commandText = `/${selected.value}`;
+    this.dispatch(
+      {
+        type: "composer.setPromptState",
+        text: commandText,
+        cursor: commandText.length,
+        parts: [],
+      },
+      false,
+    );
+    await this.submitComposer();
+  }
+
   private dismissCompletion(): void {
     const completion = this.#state.composer.completion;
     if (!completion) {
@@ -1544,6 +1874,23 @@ export class CliShellController {
     const prompt = promptText.trim();
     if (!prompt) {
       return;
+    }
+    if (!prompt.startsWith("/")) {
+      const availableModels = await this.#sessionPort.listModels();
+      if (!this.#bundle.session.model || availableModels.length === 0) {
+        this.ui.notify(
+          availableModels.length === 0
+            ? "No connected model provider. Use /connect to add provider auth."
+            : "No model selected. Use /models to choose one.",
+          "warning",
+        );
+        if (availableModels.length === 0) {
+          await this.openConnectDialog();
+        } else {
+          await this.openModelsDialog();
+        }
+        return;
+      }
     }
     const promptSnapshot = {
       text: promptText,
@@ -1739,6 +2086,899 @@ export class CliShellController {
     );
   }
 
+  private async listProviderConnections(): Promise<ProviderConnection[]> {
+    if (this.#bundle.providerConnections) {
+      return this.#bundle.providerConnections.listProviders();
+    }
+
+    const allModels = await this.#sessionPort.listModels({ includeUnavailable: true });
+    const availableModels = await this.#sessionPort.listModels();
+    const allByProvider = new Map<string, BrewvaSessionModelDescriptor[]>();
+    const availableByProvider = new Map<string, BrewvaSessionModelDescriptor[]>();
+    for (const model of allModels) {
+      const entries = allByProvider.get(model.provider) ?? [];
+      entries.push(model);
+      allByProvider.set(model.provider, entries);
+    }
+    for (const model of availableModels) {
+      const entries = availableByProvider.get(model.provider) ?? [];
+      entries.push(model);
+      availableByProvider.set(model.provider, entries);
+    }
+    return [...allByProvider.entries()]
+      .map(([provider, models]) => {
+        const availableModelCount = availableByProvider.get(provider)?.length ?? 0;
+        return {
+          id: provider,
+          name: provider,
+          group: "other" as const,
+          connected: availableModelCount > 0,
+          connectionSource:
+            availableModelCount > 0 ? ("provider_config" as const) : ("none" as const),
+          modelCount: models.length,
+          availableModelCount,
+          credentialRef: `vault://${provider}/apiKey`,
+        };
+      })
+      .toSorted((left, right) => left.name.localeCompare(right.name));
+  }
+
+  private buildProviderPickerItems(
+    providers: readonly ProviderConnection[],
+    query: string,
+  ): NonNullable<Extract<CliShellOverlayPayload, { kind: "providerPicker" }>["items"]> {
+    const scored = providers
+      .map((provider) => ({ provider, score: providerSearchScore(provider, query) }))
+      .filter(
+        (entry): entry is { provider: ProviderConnection; score: number } => entry.score !== null,
+      );
+    const ordered = query.trim()
+      ? scored.toSorted((left, right) => right.score - left.score).map((entry) => entry.provider)
+      : scored.map((entry) => entry.provider);
+    return ordered.map((provider) => ({
+      id: provider.id,
+      section: provider.group === "popular" ? "Popular" : "Other",
+      label: provider.name,
+      marker: provider.connected ? "✓" : undefined,
+      detail: provider.connected
+        ? `${provider.availableModelCount}/${provider.modelCount} models`
+        : (provider.description ?? `${provider.modelCount} models`),
+      footer: providerConnectionFooter(provider),
+      provider,
+    }));
+  }
+
+  private async buildProviderPickerPayload(
+    input: {
+      query?: string;
+      selectedProviderId?: string;
+      selectedIndex?: number;
+    } = {},
+  ): Promise<Extract<CliShellOverlayPayload, { kind: "providerPicker" }>> {
+    const providers = await this.listProviderConnections();
+    const query = input.query ?? "";
+    const items = this.buildProviderPickerItems(providers, query);
+    const requestedIndex =
+      input.selectedProviderId !== undefined
+        ? items.findIndex((item) => item.provider.id === input.selectedProviderId)
+        : input.selectedIndex;
+    const selectedIndex =
+      items.length === 0 ? 0 : Math.max(0, Math.min(requestedIndex ?? 0, items.length - 1));
+    return {
+      kind: "providerPicker",
+      title: "Connect a provider",
+      query,
+      selectedIndex,
+      providers,
+      items,
+    };
+  }
+
+  private async openConnectDialog(query = ""): Promise<void> {
+    this.openOverlay(await this.buildProviderPickerPayload({ query }));
+  }
+
+  private modelPreferences(): BrewvaModelPreferences {
+    return compactModelPreferences(this.#sessionPort.getModelPreferences());
+  }
+
+  private persistModelPreferences(preferences: BrewvaModelPreferences): void {
+    this.#sessionPort.setModelPreferences(compactModelPreferences(preferences));
+  }
+
+  private persistDiffPreferences(preferences: BrewvaDiffPreferences): void {
+    const normalized = normalizeDiffPreferences(preferences);
+    this.#sessionPort.setDiffPreferences(normalized);
+    this.dispatch(
+      {
+        type: "diff.setPreferences",
+        preferences: normalized,
+      },
+      false,
+    );
+  }
+
+  private toggleDiffWrapMode(): void {
+    const next = this.#state.diff.wrapMode === "word" ? "none" : "word";
+    this.persistDiffPreferences({
+      ...this.#state.diff,
+      wrapMode: next,
+    });
+    this.ui.notify(next === "word" ? "Diff wrapping enabled." : "Diff wrapping disabled.", "info");
+  }
+
+  private toggleDiffStyle(): void {
+    const next = this.#state.diff.style === "auto" ? "stacked" : "auto";
+    this.persistDiffPreferences({
+      ...this.#state.diff,
+      style: next,
+    });
+    this.ui.notify(
+      next === "auto"
+        ? "Diff style set to auto split/unified."
+        : "Diff style set to stacked unified.",
+      "info",
+    );
+  }
+
+  private resolvePreferenceModels(
+    preferences: readonly Pick<BrewvaSessionModelDescriptor, "provider" | "id">[],
+    allModels: readonly BrewvaSessionModelDescriptor[],
+  ): BrewvaSessionModelDescriptor[] {
+    const byKey = new Map(allModels.map((model) => [modelKey(model), model]));
+    return preferences.flatMap((preference) => {
+      const model = byKey.get(modelKey(preference));
+      return model ? [model] : [];
+    });
+  }
+
+  private async buildModelPickerPayload(
+    input: {
+      query?: string;
+      providerFilter?: string;
+      selectedModelKey?: string;
+      selectedIndex?: number;
+    } = {},
+  ): Promise<Extract<CliShellOverlayPayload, { kind: "modelPicker" }>> {
+    const query = input.query ?? "";
+    const allModels = await this.#sessionPort.listModels({ includeUnavailable: true });
+    const availableModels = await this.#sessionPort.listModels();
+    const availableKeys = new Set(availableModels.map((model) => modelKey(model)));
+    const providers = await this.listProviderConnections();
+    const preferences = this.modelPreferences();
+    const favoriteKeys = new Set(preferences.favorite.map((model) => modelKey(model)));
+    const current = this.#bundle.session.model;
+    const items: Extract<CliShellOverlayPayload, { kind: "modelPicker" }>["items"] = [];
+    const added = new Set<string>();
+
+    const addModel = (section: string, model: BrewvaSessionModelDescriptor): void => {
+      const key = modelKey(model);
+      if (added.has(`${section}:${key}`)) {
+        return;
+      }
+      const available = availableKeys.has(key);
+      const favorite = favoriteKeys.has(key);
+      const currentModel = current?.provider === model.provider && current.id === model.id;
+      added.add(`${section}:${key}`);
+      items.push({
+        id: `model:${key}:${section}`,
+        kind: "model",
+        section,
+        provider: model.provider,
+        modelId: model.id,
+        label: modelDisplayName(model),
+        detail: modelPickerDetail({ section, model, favorite }),
+        footer: available ? undefined : "Connect",
+        marker: currentModel ? "●" : undefined,
+        available,
+        favorite,
+        current: currentModel,
+      });
+    };
+
+    const hasConnectedProvider = availableModels.length > 0;
+    if (!hasConnectedProvider && !input.providerFilter) {
+      const providersWithMatchingModels = new Set(
+        allModels.filter((model) => modelMatchesQuery(model, query)).map((model) => model.provider),
+      );
+      const providerItems = providers
+        .map((provider) => ({
+          provider,
+          score: providerSearchScore(provider, query),
+        }))
+        .filter((entry) => {
+          if (!query.trim()) {
+            return entry.provider.group === "popular";
+          }
+          return (
+            entry.score !== null ||
+            [...providersWithMatchingModels].some((modelProvider) =>
+              providerCoversModelProvider(entry.provider, modelProvider),
+            )
+          );
+        })
+        .toSorted((left, right) => (right.score ?? 0) - (left.score ?? 0))
+        .map((entry) => entry.provider);
+      for (const provider of providerItems) {
+        items.push({
+          id: `connect:${provider.id}`,
+          kind: "connect_provider",
+          section: "Connect",
+          provider: provider.id,
+          label: provider.name,
+          detail: provider.description ?? `${provider.modelCount} models`,
+          footer: providerConnectionFooter(provider),
+        });
+      }
+      return {
+        kind: "modelPicker",
+        title: "Models",
+        query,
+        selectedIndex: items.length > 0 ? 0 : 0,
+        providerFilter: input.providerFilter,
+        items,
+        emptyMessage: "No connected providers. Use /connect to add provider auth.",
+      };
+    }
+
+    const scoredCandidateModels = allModels
+      .map((model) => ({
+        model,
+        score: modelSearchScore(model, query),
+      }))
+      .filter((entry): entry is { model: BrewvaSessionModelDescriptor; score: number } => {
+        if (input.providerFilter && entry.model.provider !== input.providerFilter) {
+          return false;
+        }
+        if (entry.score === null) {
+          return false;
+        }
+        return query || input.providerFilter ? true : availableKeys.has(modelKey(entry.model));
+      });
+
+    const candidateModels = query.trim()
+      ? scoredCandidateModels
+          .toSorted((left, right) => right.score - left.score)
+          .map((entry) => entry.model)
+      : scoredCandidateModels.map((entry) => entry.model);
+
+    if (!query && !input.providerFilter) {
+      for (const model of this.resolvePreferenceModels(preferences.favorite, allModels)) {
+        if (candidateModels.some((candidate) => modelKey(candidate) === modelKey(model))) {
+          addModel("Favorites", model);
+        }
+      }
+      for (const model of this.resolvePreferenceModels(preferences.recent, allModels)) {
+        if (
+          !favoriteKeys.has(modelKey(model)) &&
+          candidateModels.some((candidate) => modelKey(candidate) === modelKey(model))
+        ) {
+          addModel("Recent", model);
+        }
+      }
+    }
+
+    const byProvider = new Map<string, BrewvaSessionModelDescriptor[]>();
+    for (const model of candidateModels) {
+      const entries = byProvider.get(model.provider) ?? [];
+      entries.push(model);
+      byProvider.set(model.provider, entries);
+    }
+    for (const [provider, models] of [...byProvider.entries()].toSorted((left, right) =>
+      left[0].localeCompare(right[0]),
+    )) {
+      for (const model of models.toSorted((left, right) =>
+        modelDisplayName(left).localeCompare(modelDisplayName(right)),
+      )) {
+        addModel(provider, model);
+      }
+    }
+
+    const requestedIndex =
+      input.selectedModelKey !== undefined
+        ? items.findIndex(
+            (item) =>
+              item.kind === "model" &&
+              `${item.provider}/${item.modelId}` === input.selectedModelKey,
+          )
+        : input.selectedIndex;
+    const selectedIndex =
+      items.length === 0 ? 0 : Math.max(0, Math.min(requestedIndex ?? 0, items.length - 1));
+    return {
+      kind: "modelPicker",
+      title: input.providerFilter ? `Models · ${input.providerFilter}` : "Models",
+      query,
+      selectedIndex,
+      providerFilter: input.providerFilter,
+      items,
+      emptyMessage: "No models match the current filter.",
+    };
+  }
+
+  private async openModelsDialog(
+    input: { query?: string; providerFilter?: string } = {},
+  ): Promise<void> {
+    this.openOverlay(await this.buildModelPickerPayload(input));
+  }
+
+  private async openThinkingDialog(): Promise<void> {
+    const levels = this.#sessionPort.getAvailableThinkingLevels();
+    const current = this.#sessionPort.getThinkingLevel();
+    const items = levels.map((level) => ({
+      id: `thinking:${level}`,
+      label: level,
+      detail: level === "off" ? "no extended thinking" : "extended thinking",
+      marker: level === current ? "●" : undefined,
+      level,
+      current: level === current,
+    }));
+    this.openOverlay({
+      kind: "thinkingPicker",
+      title: "Thinking",
+      selectedIndex: Math.max(0, levels.indexOf(current)),
+      items,
+    });
+  }
+
+  private async recordRecentModel(model: BrewvaSessionModelDescriptor): Promise<void> {
+    const preferences = this.modelPreferences();
+    this.persistModelPreferences({
+      ...preferences,
+      recent: [{ provider: model.provider, id: model.id }, ...preferences.recent].slice(
+        0,
+        RECENT_MODEL_LIMIT,
+      ),
+    });
+  }
+
+  private async cycleRecentModel(): Promise<void> {
+    const preferences = this.modelPreferences();
+    if (preferences.recent.length === 0) {
+      this.ui.notify("No recent models yet.", "warning");
+      return;
+    }
+    const allModels = await this.#sessionPort.listModels({ includeUnavailable: true });
+    const availableModels = await this.#sessionPort.listModels();
+    const availableKeys = new Set(availableModels.map((model) => modelKey(model)));
+    const resolved = this.resolvePreferenceModels(preferences.recent, allModels).filter((model) =>
+      availableKeys.has(modelKey(model)),
+    );
+    if (resolved.length === 0) {
+      this.ui.notify("No recent models are currently connected.", "warning");
+      return;
+    }
+    const currentKey = this.#bundle.session.model ? modelKey(this.#bundle.session.model) : "";
+    const currentIndex = resolved.findIndex((model) => modelKey(model) === currentKey);
+    const next = resolved[(currentIndex + 1 + resolved.length) % resolved.length] ?? resolved[0];
+    if (!next) {
+      return;
+    }
+    await this.#sessionPort.setModel(next);
+    await this.recordRecentModel(next);
+    this.dispatchMany(this.buildSessionStatusActions(), false);
+    this.ui.notify(`Model switched to ${modelKey(next)}.`, "info");
+  }
+
+  private async toggleSelectedModelFavorite(
+    payload: Extract<CliShellOverlayPayload, { kind: "modelPicker" }>,
+  ): Promise<void> {
+    const item = payload.items[payload.selectedIndex];
+    if (!item || item.kind !== "model" || !item.modelId) {
+      return;
+    }
+    const preferences = this.modelPreferences();
+    const key = `${item.provider}/${item.modelId}`;
+    const exists = preferences.favorite.some((model) => modelKey(model) === key);
+    const favorite = exists
+      ? preferences.favorite.filter((model) => modelKey(model) !== key)
+      : [{ provider: item.provider, id: item.modelId }, ...preferences.favorite];
+    this.persistModelPreferences({
+      ...preferences,
+      favorite,
+    });
+    this.replaceActiveOverlay(
+      await this.buildModelPickerPayload({
+        query: payload.query,
+        providerFilter: payload.providerFilter,
+        selectedModelKey: key,
+      }),
+    );
+  }
+
+  private async selectAuthMethod(
+    methods: readonly ProviderAuthMethod[],
+    providerName: string,
+  ): Promise<ProviderAuthMethod | undefined> {
+    if (methods.length === 0) {
+      this.ui.notify(
+        `${providerName} does not expose an in-TUI auth flow. Configure provider auth, then reopen /models.`,
+        "warning",
+      );
+      return undefined;
+    }
+    if (methods.length <= 1) {
+      return methods[0];
+    }
+    return new Promise<ProviderAuthMethod | undefined>((resolve) => {
+      const items: Extract<CliShellOverlayPayload, { kind: "authMethodPicker" }>["items"] =
+        methods.map((method) => ({
+          id: method.id,
+          label: method.label,
+          detail: method.kind === "oauth" ? "OAuth" : "API key",
+          method,
+        }));
+      this.openOverlay(
+        {
+          kind: "authMethodPicker",
+          title: `Connect ${providerName}`,
+          selectedIndex: 0,
+          items,
+          resolve,
+        } satisfies CliShellOverlayPayload,
+        "queued",
+      );
+    });
+  }
+
+  private async collectAuthPromptInputs(
+    prompts: readonly ProviderAuthPrompt[] | undefined,
+  ): Promise<Record<string, string> | undefined> {
+    const inputs: Record<string, string> = {};
+    for (const prompt of prompts ?? []) {
+      if (prompt.when) {
+        const value = inputs[prompt.when.key];
+        if (value === undefined) {
+          continue;
+        }
+        const matches =
+          prompt.when.op === "eq" ? value === prompt.when.value : value !== prompt.when.value;
+        if (!matches) {
+          continue;
+        }
+      }
+
+      if (prompt.type === "select") {
+        const options = prompt.options.map((option, index) =>
+          option.hint
+            ? `${index + 1}. ${option.label} — ${option.hint}`
+            : `${index + 1}. ${option.label}`,
+        );
+        const selected = await this.requestDialog<string | undefined>({
+          id: `auth-prompt:${prompt.key}:${Date.now()}`,
+          kind: "select",
+          title: prompt.message,
+          options,
+          resolve: (value) => value,
+        });
+        if (!selected) {
+          return undefined;
+        }
+        const optionIndex = options.indexOf(selected);
+        const option = optionIndex >= 0 ? prompt.options[optionIndex] : undefined;
+        if (!option) {
+          return undefined;
+        }
+        inputs[prompt.key] = option.value;
+        continue;
+      }
+
+      const value = await this.requestDialog<string | undefined>({
+        id: `auth-prompt:${prompt.key}:${Date.now()}`,
+        kind: "input",
+        title: prompt.message,
+        message: prompt.placeholder ?? prompt.message,
+        masked: prompt.masked,
+        resolve: (nextValue) => nextValue,
+      });
+      if (value === undefined) {
+        return undefined;
+      }
+      inputs[prompt.key] = value.trim();
+    }
+    return inputs;
+  }
+
+  private async copyOAuthTextIfAvailable(authorization: ProviderOAuthAuthorization): Promise<void> {
+    if (!authorization.copyText || !this.ui.copyText) {
+      return;
+    }
+    try {
+      await this.ui.copyText(authorization.copyText);
+      this.ui.notify("Authorization code copied to clipboard.", "info");
+    } catch {
+      this.ui.notify("Press copy manually if the authorization code was not copied.", "warning");
+    }
+  }
+
+  private async copyOAuthWaitText(payload: CliOAuthWaitOverlayPayload): Promise<void> {
+    if (!this.ui.copyText) {
+      this.ui.notify("Clipboard copy is unavailable.", "warning");
+      return;
+    }
+    try {
+      await this.ui.copyText(payload.copyText ?? payload.url);
+      this.ui.notify("Copied to clipboard.", "info");
+    } catch {
+      this.ui.notify("Unable to copy automatically.", "warning");
+    }
+  }
+
+  private async submitOAuthWaitManualCode(payload: CliOAuthWaitOverlayPayload): Promise<void> {
+    if (!payload.submitManualCode) {
+      await this.copyOAuthWaitText(payload);
+      return;
+    }
+    const code = await this.requestDialog<string | undefined>(
+      {
+        id: `oauth-manual:${Date.now()}`,
+        kind: "input",
+        title: payload.title,
+        message: payload.manualCodePrompt ?? "Paste the final redirect URL or authorization code.",
+        resolve: (value) => value,
+      },
+      { suspendCurrent: true },
+    );
+    if (!code?.trim()) {
+      return;
+    }
+    try {
+      await payload.submitManualCode(code.trim());
+    } catch (error) {
+      this.ui.notify(
+        error instanceof Error ? error.message : "OAuth authorization failed.",
+        "error",
+      );
+    }
+  }
+
+  private async completeProviderOAuth(
+    providerId: string,
+    providerName: string,
+    method: ProviderAuthMethod,
+    authorization: ProviderOAuthAuthorization,
+  ): Promise<void> {
+    const connectionPort = this.#bundle.providerConnections;
+    if (!connectionPort) {
+      this.ui.notify("Provider connection is unavailable for this session.", "warning");
+      return;
+    }
+
+    if (authorization.method === "code") {
+      const code = await this.requestDialog<string | undefined>({
+        id: `oauth-code:${providerId}:${Date.now()}`,
+        kind: "input",
+        title: method.label,
+        message: `${authorization.instructions}\n${authorization.url}`,
+        resolve: (value) => value,
+      });
+      if (!code?.trim()) {
+        return;
+      }
+      await connectionPort.completeOAuth(providerId, method.id, code.trim());
+      this.ui.notify(`Connected ${providerName}.`, "info");
+      await this.openModelsDialog({
+        providerFilter: authMethodModelProviderFilter(providerId, method),
+      });
+      return;
+    }
+
+    await this.copyOAuthTextIfAvailable(authorization);
+    if (authorization.openBrowser && this.ui.openUrl) {
+      void this.ui.openUrl(authorization.url).catch(() => {});
+    }
+    let completionHandled = false;
+    const handleConnected = async () => {
+      if (completionHandled) {
+        return;
+      }
+      completionHandled = true;
+      this.ui.notify(`Connected ${providerName}.`, "info");
+      if (
+        this.#state.overlay.active?.payload?.kind === "input" &&
+        this.#state.overlay.active.payload.dialogId?.startsWith("oauth-manual:")
+      ) {
+        this.closeActiveOverlay(true);
+      }
+      if (this.#state.overlay.active?.payload?.kind === "oauthWait") {
+        this.closeActiveOverlay(false);
+      }
+      await this.openModelsDialog({
+        providerFilter: authMethodModelProviderFilter(providerId, method),
+      });
+    };
+    this.openOverlay({
+      kind: "oauthWait",
+      title: method.label,
+      url: authorization.url,
+      instructions: authorization.instructions,
+      copyText: authorization.copyText,
+      manualCodePrompt: authorization.manualCode?.prompt,
+      submitManualCode: authorization.manualCode
+        ? async (code) => {
+            await connectionPort.completeOAuth(providerId, method.id, code);
+            await handleConnected();
+          }
+        : undefined,
+    });
+    try {
+      await connectionPort.completeOAuth(providerId, method.id);
+      await handleConnected();
+    } catch (error) {
+      if (this.#state.overlay.active?.payload?.kind === "oauthWait") {
+        this.closeActiveOverlay(false);
+      }
+      this.ui.notify(
+        error instanceof Error ? error.message : `Failed to connect ${providerName}.`,
+        "error",
+      );
+    }
+  }
+
+  private async runProviderOAuthMethod(input: {
+    connectionPort: NonNullable<CliShellSessionBundle["providerConnections"]>;
+    providerId: string;
+    providerName: string;
+    method: ProviderAuthMethod;
+    inputs: Record<string, string>;
+  }): Promise<void> {
+    const authorization = await input.connectionPort.authorizeOAuth(
+      input.providerId,
+      input.method.id,
+      input.inputs,
+    );
+    if (!authorization) {
+      this.ui.notify(`${input.providerName} does not expose this OAuth flow.`, "warning");
+      return;
+    }
+    await this.completeProviderOAuth(
+      input.providerId,
+      input.providerName,
+      input.method,
+      authorization,
+    );
+  }
+
+  private async openProviderConnectFlow(providerId: string): Promise<void> {
+    const connectionPort = this.#bundle.providerConnections;
+    if (!connectionPort) {
+      this.ui.notify("Provider connection is unavailable for this session.", "warning");
+      return;
+    }
+    const providers = await connectionPort.listProviders();
+    const provider = providers.find((candidate) => candidate.id === providerId);
+    if (!provider) {
+      this.ui.notify(`Unknown provider: ${providerId}`, "warning");
+      return;
+    }
+    const authMethods = connectionPort.listAuthMethods(provider.id);
+    const method = await this.selectAuthMethod(authMethods, provider.name);
+    if (!method) {
+      return;
+    }
+    const inputs = await this.collectAuthPromptInputs(method.prompts);
+    if (inputs === undefined) {
+      return;
+    }
+    if (method.kind === "oauth") {
+      try {
+        await this.runProviderOAuthMethod({
+          connectionPort,
+          providerId: provider.id,
+          providerName: provider.name,
+          method,
+          inputs,
+        });
+      } catch (error) {
+        this.ui.notify(
+          error instanceof Error ? error.message : `Failed to connect ${provider.name}.`,
+          "error",
+        );
+      }
+      return;
+    }
+    if (method.kind !== "api_key") {
+      this.ui.notify(
+        `${provider.name} does not expose an in-TUI auth flow. Configure provider auth, then reopen /models.`,
+        "warning",
+      );
+      return;
+    }
+    this.openOverlay({
+      kind: "input",
+      message: `${method.label} for ${provider.name} (${method.credentialRef})`,
+      value: "",
+      masked: true,
+      resolve: (value) => {
+        const apiKey = value?.trim();
+        if (!apiKey) {
+          return;
+        }
+        void this.connectProviderApiKey(
+          authMethodCredentialProvider(provider.id, method),
+          provider.name,
+          apiKey,
+          inputs,
+          authMethodModelProviderFilter(provider.id, method),
+        );
+      },
+    });
+  }
+
+  private async connectProviderApiKey(
+    providerId: string,
+    providerName: string,
+    apiKey: string,
+    inputs?: Record<string, string>,
+    modelProviderFilter = providerId,
+  ): Promise<void> {
+    const connectionPort = this.#bundle.providerConnections;
+    if (!connectionPort) {
+      this.ui.notify("Provider connection is unavailable for this session.", "warning");
+      return;
+    }
+    try {
+      await connectionPort.connectApiKey(providerId, apiKey, inputs);
+      this.ui.notify(`Connected ${providerName}.`, "info");
+      await this.openModelsDialog({ providerFilter: modelProviderFilter });
+    } catch (error) {
+      this.ui.notify(
+        error instanceof Error ? error.message : `Failed to connect ${providerName}.`,
+        "error",
+      );
+    }
+  }
+
+  private startProviderConnectFlow(providerId: string): void {
+    void this.openProviderConnectFlow(providerId).catch((error: unknown) => {
+      this.ui.notify(
+        error instanceof Error ? error.message : `Failed to connect ${providerId}.`,
+        "error",
+      );
+    });
+  }
+
+  private startModelProviderConnectFlow(modelProvider: string): void {
+    void (async () => {
+      const providers = await this.listProviderConnections();
+      const provider =
+        providers.find((candidate) => providerCoversModelProvider(candidate, modelProvider)) ??
+        providers.find((candidate) => candidate.id === modelProvider);
+      await this.openProviderConnectFlow(provider?.id ?? modelProvider);
+    })().catch((error: unknown) => {
+      this.ui.notify(
+        error instanceof Error ? error.message : `Failed to connect ${modelProvider}.`,
+        "error",
+      );
+    });
+  }
+
+  private async selectProviderPickerItem(
+    payload: Extract<CliShellOverlayPayload, { kind: "providerPicker" }>,
+  ): Promise<void> {
+    const item = payload.items[payload.selectedIndex];
+    if (!item) {
+      return;
+    }
+    this.closeActiveOverlay(false);
+    this.startProviderConnectFlow(item.provider.id);
+  }
+
+  private async disconnectSelectedProvider(
+    payload: Extract<CliShellOverlayPayload, { kind: "providerPicker" }>,
+  ): Promise<void> {
+    const item = payload.items[payload.selectedIndex];
+    if (!item) {
+      return;
+    }
+    const connectionPort = this.#bundle.providerConnections;
+    if (!connectionPort) {
+      this.ui.notify("Provider connection is unavailable for this session.", "warning");
+      return;
+    }
+    await connectionPort.disconnect(item.provider.id);
+    this.ui.notify(`Removed vault credential for ${item.provider.name}.`, "info");
+    this.replaceActiveOverlay(
+      await this.buildProviderPickerPayload({
+        query: payload.query,
+        selectedProviderId: item.provider.id,
+      }),
+    );
+  }
+
+  private async selectModelPickerItem(
+    payload: Extract<CliShellOverlayPayload, { kind: "modelPicker" }>,
+  ): Promise<void> {
+    const item = payload.items[payload.selectedIndex];
+    if (!item) {
+      return;
+    }
+    if (item.kind === "connect_provider") {
+      this.closeActiveOverlay(false);
+      this.startProviderConnectFlow(item.provider);
+      return;
+    }
+    if (!item.modelId) {
+      return;
+    }
+    if (!item.available) {
+      this.closeActiveOverlay(false);
+      this.startModelProviderConnectFlow(item.provider);
+      return;
+    }
+    const model = (await this.#sessionPort.listModels({ includeUnavailable: true })).find(
+      (candidate) => candidate.provider === item.provider && candidate.id === item.modelId,
+    );
+    if (!model) {
+      this.ui.notify(`Unknown model: ${item.provider}/${item.modelId}`, "warning");
+      return;
+    }
+    await this.#sessionPort.setModel(model);
+    await this.recordRecentModel(model);
+    this.closeActiveOverlay(false);
+    this.dispatchMany(this.buildSessionStatusActions(), false);
+    this.ui.notify(`Model switched to ${modelKey(model)}.`, "info");
+    if (this.#sessionPort.getAvailableThinkingLevels().length > 1) {
+      await this.openThinkingDialog();
+    }
+  }
+
+  private selectThinkingPickerItem(
+    payload: Extract<CliShellOverlayPayload, { kind: "thinkingPicker" }>,
+  ): void {
+    const item = payload.items[payload.selectedIndex];
+    if (!item) {
+      return;
+    }
+    this.#sessionPort.setThinkingLevel(item.level);
+    this.closeActiveOverlay(false);
+    this.dispatchMany(this.buildSessionStatusActions(), false);
+    this.ui.notify(`Thinking level set to ${this.#sessionPort.getThinkingLevel()}.`, "info");
+  }
+
+  private async updatePickerQuery(
+    payload: Extract<CliShellOverlayPayload, { kind: "modelPicker" | "providerPicker" }>,
+    query: string,
+  ): Promise<void> {
+    if (query === payload.query) {
+      return;
+    }
+    if (payload.kind === "modelPicker") {
+      this.replaceActiveOverlay(
+        await this.buildModelPickerPayload({
+          query,
+          providerFilter: payload.providerFilter,
+          selectedIndex: 0,
+        }),
+      );
+      return;
+    }
+    this.replaceActiveOverlay(
+      await this.buildProviderPickerPayload({
+        query,
+        selectedIndex: 0,
+      }),
+    );
+  }
+
+  private async handlePickerTextInput(
+    payload: Extract<CliShellOverlayPayload, { kind: "modelPicker" | "providerPicker" }>,
+    input: CliShellSemanticInput,
+  ): Promise<boolean> {
+    const key = normalizeBindingKey(input.key);
+    if (key === "backspace") {
+      if (payload.query.length === 0) {
+        return true;
+      }
+      await this.updatePickerQuery(payload, payload.query.slice(0, -1));
+      return true;
+    }
+    if (!input.ctrl && !input.meta && key === "character" && typeof input.text === "string") {
+      await this.updatePickerQuery(payload, `${payload.query}${input.text}`);
+      return true;
+    }
+    return false;
+  }
+
   private async handleShellCommand(prompt: string): Promise<boolean> {
     if (prompt === "/quit" || prompt === "/exit") {
       this.#resolveExit?.();
@@ -1764,21 +3004,45 @@ export class CliShellController {
       await this.openInspectOverlay();
       return true;
     }
+    if (prompt === "/models") {
+      await this.openModelsDialog();
+      return true;
+    }
+    if (prompt.startsWith("/models ")) {
+      const args = prompt.slice("/models ".length).trim();
+      if (args === "recent") {
+        await this.cycleRecentModel();
+        return true;
+      }
+      await this.openModelsDialog({ query: args });
+      return true;
+    }
+    if (prompt === "/connect") {
+      await this.openConnectDialog();
+      return true;
+    }
+    if (prompt.startsWith("/connect ")) {
+      await this.openConnectDialog(prompt.slice("/connect ".length).trim());
+      return true;
+    }
+    if (prompt === "/think") {
+      await this.openThinkingDialog();
+      return true;
+    }
+    if (prompt === "/diffwrap") {
+      this.toggleDiffWrapMode();
+      return true;
+    }
+    if (prompt === "/diffstyle") {
+      this.toggleDiffStyle();
+      return true;
+    }
     if (prompt === "/notifications" || prompt === "/inbox") {
       this.openNotificationsOverlay();
       return true;
     }
     if (prompt === "/new") {
       await this.switchBundle(await this.#operatorPort.createSession());
-      return true;
-    }
-    if (prompt === "/credentials" || prompt === "/auth") {
-      this.openOverlay({
-        kind: "pager",
-        title: "Credentials",
-        lines: [...CREDENTIAL_HELP_LINES],
-        scrollOffset: 0,
-      });
       return true;
     }
     if (prompt === "/stash") {
@@ -1841,7 +3105,11 @@ export class CliShellController {
       active.kind === "sessions" ||
       active.kind === "notifications" ||
       active.kind === "inspect" ||
-      active.kind === "select"
+      active.kind === "select" ||
+      active.kind === "modelPicker" ||
+      active.kind === "providerPicker" ||
+      active.kind === "thinkingPicker" ||
+      active.kind === "authMethodPicker"
     ) {
       const items =
         active.kind === "approval"
@@ -1856,7 +3124,9 @@ export class CliShellController {
                   ? active.notifications
                   : active.kind === "inspect"
                     ? active.sections
-                    : active.options;
+                    : active.kind === "select"
+                      ? active.options
+                      : active.items;
       if (items.length === 0) {
         return;
       }
@@ -1909,7 +3179,33 @@ export class CliShellController {
         ...active,
         scrollOffsets: nextOffsets,
       });
+      return;
     }
+    if (active.kind === "approval") {
+      const item = active.snapshot.approvals[active.selectedIndex];
+      if (!hasDiffPreviewPayload(item)) {
+        return;
+      }
+      this.replaceActiveOverlay({
+        ...active,
+        previewScrollOffset: Math.max(0, (active.previewScrollOffset ?? 0) + delta),
+      });
+    }
+  }
+
+  private toggleActiveOverlayFullscreen(): void {
+    const active = this.#state.overlay.active?.payload;
+    if (!active || active.kind !== "approval") {
+      return;
+    }
+    const item = active.snapshot.approvals[active.selectedIndex];
+    if (!hasDiffPreviewPayload(item)) {
+      return;
+    }
+    this.replaceActiveOverlay({
+      ...active,
+      previewExpanded: !active.previewExpanded,
+    });
   }
 
   private closeActiveOverlay(cancelled: boolean): void {
@@ -1922,6 +3218,8 @@ export class CliShellController {
       if (payload.kind === "confirm") {
         payload.resolve(false);
       } else if (payload.kind === "input" || payload.kind === "select") {
+        payload.resolve(undefined);
+      } else if (payload.kind === "authMethodPicker") {
         payload.resolve(undefined);
       }
     }
@@ -2036,6 +3334,22 @@ export class CliShellController {
       case "select":
         active.resolve(active.options[active.selectedIndex]);
         this.closeActiveOverlay(false);
+        return;
+      case "modelPicker":
+        await this.selectModelPickerItem(active);
+        return;
+      case "providerPicker":
+        await this.selectProviderPickerItem(active);
+        return;
+      case "thinkingPicker":
+        this.selectThinkingPickerItem(active);
+        return;
+      case "authMethodPicker":
+        active.resolve(active.items[active.selectedIndex]?.method);
+        this.closeActiveOverlay(false);
+        return;
+      case "oauthWait":
+        void this.submitOAuthWaitManualCode(active);
         return;
       case "inspect": {
         const section = active.sections[active.selectedIndex];
@@ -2163,14 +3477,18 @@ export class CliShellController {
     });
   }
 
-  private async requestDialog<T>(request: {
-    id: string;
-    kind: "confirm" | "input" | "select";
-    title: string;
-    message?: string;
-    options?: string[];
-    resolve(value: T): void;
-  }): Promise<T> {
+  private async requestDialog<T>(
+    request: {
+      id: string;
+      kind: "confirm" | "input" | "select";
+      title: string;
+      message?: string;
+      options?: string[];
+      masked?: boolean;
+      resolve(value: T): void;
+    },
+    options: { priority?: OverlayPriority; suspendCurrent?: boolean } = {},
+  ): Promise<T> {
     return await new Promise<T>((resolve) => {
       const payload =
         request.kind === "confirm"
@@ -2185,8 +3503,11 @@ export class CliShellController {
           : request.kind === "input"
             ? ({
                 kind: "input",
+                dialogId: request.id,
+                title: request.title,
                 message: request.message,
                 value: "",
+                masked: request.masked,
                 resolve: (value: string | undefined) => {
                   request.resolve(value as T);
                   resolve(value as T);
@@ -2201,7 +3522,10 @@ export class CliShellController {
                   resolve(value as T);
                 },
               } satisfies CliShellOverlayPayload);
-      this.openOverlay(payload, "queued");
+      this.openOverlayWithOptions(payload, {
+        priority: options.priority ?? "queued",
+        suspendCurrent: options.suspendCurrent,
+      });
     });
   }
 

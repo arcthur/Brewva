@@ -24,6 +24,10 @@ import type {
   HostedSessionServices,
   HostedSessionSettings,
 } from "./hosted-session-driver.js";
+import {
+  configureCredentialVaultModelAuth,
+  createProviderConnectionPort,
+} from "./provider-connection.js";
 
 type HostedBackendModelRegistry = HostedSessionBackendModelRegistry;
 type HostedBackendAuthStore = HostedSessionBackendAuthStore;
@@ -207,6 +211,11 @@ function createHostedSessionServices(services: HostedSessionRuntimeBundle): Host
     diagnostics: services.diagnostics ?? [],
     settings: services.settings,
     modelCatalog: services.modelCatalog,
+    providerConnections: createProviderConnectionPort({
+      runtime: services.runtime.runtime,
+      modelRegistry: services.modelRegistry,
+      authStore: services.authStore,
+    }),
     createSession(options) {
       return createHostedManagedSession(services, options);
     },
@@ -261,6 +270,10 @@ class HostedSessionRuntimeDriver implements HostedSessionDriver {
       runtime: options.runtime,
       runtimePlugins: options.internalRuntimePlugins,
       sessionId: options.sessionId,
+    });
+    configureCredentialVaultModelAuth({
+      runtime: runtime.runtime,
+      authStore: this.#authStore,
     });
     return createHostedSessionServices({
       runtime,

@@ -75,16 +75,6 @@ export function visibleLineWindow(
   };
 }
 
-export function resolveOverlaySurfaceDimensions(width: number, height: number) {
-  const surfaceWidth = Math.min(Math.max(72, Math.floor(width * 0.8)), width - 6);
-  const surfaceHeight = Math.min(Math.max(12, Math.floor(height * 0.72)), height - 4);
-  return {
-    surfaceWidth,
-    surfaceHeight,
-    contentHeight: Math.max(4, surfaceHeight - 4),
-  };
-}
-
 export function cloneOverlayPayload(payload: CliShellOverlayPayload): CliShellOverlayPayload {
   switch (payload.kind) {
     case "approval":
@@ -130,6 +120,31 @@ export function cloneOverlayPayload(payload: CliShellOverlayPayload): CliShellOv
         ...payload,
         options: [...payload.options],
       };
+    case "modelPicker":
+      return {
+        ...payload,
+        items: [...payload.items],
+      };
+    case "providerPicker":
+      return {
+        ...payload,
+        providers: [...payload.providers],
+        items: [...payload.items],
+      };
+    case "thinkingPicker":
+      return {
+        ...payload,
+        items: [...payload.items],
+      };
+    case "authMethodPicker":
+      return {
+        ...payload,
+        items: [...payload.items],
+      };
+    case "oauthWait":
+      return {
+        ...payload,
+      };
     default: {
       const exhaustiveCheck: never = payload;
       return exhaustiveCheck;
@@ -138,7 +153,8 @@ export function cloneOverlayPayload(payload: CliShellOverlayPayload): CliShellOv
 }
 
 export function renderNotificationSummary(notification: CliShellNotification): string {
-  return `[${notification.level}] ${notification.message}`;
+  const [firstLine = ""] = notification.message.split(/\r?\n/u);
+  return `[${notification.level}] ${firstLine}`;
 }
 
 export function completionKindLabel(

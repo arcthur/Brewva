@@ -6,10 +6,9 @@ import type {
   OpenTuiScrollBoxHandle,
   OpenTuiTextareaHandle,
 } from "@brewva/brewva-tui/internal-opentui-runtime";
-import { RGBA } from "@opentui/core";
 import type { BoxRenderable } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
-import { Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { For } from "solid-js";
 import type { CliShellController } from "../../src/shell/controller.js";
 import {
@@ -26,12 +25,12 @@ import { InlineApprovalPrompt, InlineQuestionPrompt } from "./inline-cards.js";
 import { ModalOverlay } from "./overlay.js";
 import { createPalette, DEFAULT_SCROLL_ACCELERATION } from "./palette.js";
 import { PromptPanel, createPromptPartStyle } from "./prompt.js";
+import { ShellRenderProvider } from "./render-context.js";
 import {
   copyOpenTuiSelection,
   copyTextWithShellFeedback,
   type ClipboardCopy,
 } from "./selection.js";
-import { SidebarPanel } from "./sidebar.js";
 import { ToastStrip } from "./toast.js";
 import { createToolRenderCache, type ToolRenderCache } from "./tool-render.js";
 import { TranscriptMessageView } from "./transcript.js";
@@ -55,18 +54,18 @@ export function BrewvaOpenTuiShell(input: {
   const state = useShellState(input.controller);
   const dimensions = useTerminalDimensions();
   const theme = createMemo(() => createPalette(state.theme));
-  const sidebarVisible = createMemo(() => dimensions().width > 120);
+  const shellRenderContext = {
+    controller: input.controller,
+    diffStyle: () => state.diff.style,
+    diffWrapMode: () => state.diff.wrapMode,
+  };
   const showScrollbar = createMemo(() => dimensions().width >= 96);
-  const bundleRefreshKey = createMemo(
-    () => `${state.status.title ?? ""}:${state.transcript.messages.length}`,
-  );
+  const bundleRefreshKey = createMemo(() => `${state.transcript.messages.length}`);
   const toolDefinitions = createMemo(() => {
     bundleRefreshKey();
     return input.controller.getBundle().toolDefinitions;
   });
-  const transcriptWidth = createMemo(() =>
-    Math.max(20, dimensions().width - (sidebarVisible() ? 48 : 8)),
-  );
+  const transcriptWidth = createMemo(() => Math.max(20, dimensions().width - 8));
   const [scrollbox, setScrollbox] = createSignal<OpenTuiScrollBoxHandle | null>(null);
   const [textarea, setTextarea] = createSignal<OpenTuiTextareaHandle | null>(null);
   const [completionContainer, setCompletionContainer] = createSignal<BoxRenderable | null>(null);
@@ -333,14 +332,20 @@ export function BrewvaOpenTuiShell(input: {
     }
     return overlay;
   });
-  const wide = createMemo(() => dimensions().width > 120);
   const modelLabel = createMemo(() => {
+    if (state.status.entries.model) {
+      return state.status.entries.model;
+    }
     const model = input.controller.getBundle().session.model;
     if (!model?.provider || !model.id) {
       return "unresolved-model";
     }
     return `${model.provider}/${model.id}`;
   });
+  const thinkingLevel = createMemo(
+    () =>
+      state.status.entries.thinking ?? input.controller.getBundle().session.thinkingLevel ?? "off",
+  );
   const inlineApproval = createMemo(() =>
     activeOverlay()?.payload?.kind === "approval"
       ? (activeOverlay()!.payload as CliApprovalOverlayPayload)
@@ -363,137 +368,114 @@ export function BrewvaOpenTuiShell(input: {
   });
 
   return (
-    <box
-      width="100%"
-      height="100%"
-      flexDirection="row"
-      backgroundColor={theme().background}
-      onMouseUp={() => {
-        void copySelection();
-      }}
-    >
+    <ShellRenderProvider value={shellRenderContext}>
       <box
-        ref={(node: BoxRenderable) => setCompletionContainer(node)}
-        flexGrow={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={2}
-        gap={1}
+        width="100%"
+        height="100%"
+        flexDirection="row"
+        backgroundColor={theme().background}
+        onMouseUp={() => {
+          void copySelection();
+        }}
       >
-        <scrollbox
-          ref={(node: OpenTuiScrollBoxHandle) => setScrollbox(node)}
-          viewportOptions={{
-            paddingRight: showScrollbar() ? 1 : 0,
-          }}
-          verticalScrollbarOptions={{
-            visible: showScrollbar(),
-            trackOptions: {
-              backgroundColor: theme().backgroundElement,
-              foregroundColor: theme().border,
-            },
-          }}
-          stickyScroll={state.transcript.followMode === "live"}
-          stickyStart="bottom"
-          viewportCulling={true}
+        <box
+          ref={(node: BoxRenderable) => setCompletionContainer(node)}
           flexGrow={1}
-          scrollAcceleration={DEFAULT_SCROLL_ACCELERATION}
-          backgroundColor={theme().background}
+          paddingBottom={1}
+          paddingLeft={2}
+          paddingRight={2}
+          gap={1}
         >
-          <box height={1} />
-          <For each={state.transcript.messages}>
-            {(message, index) => (
-              <TranscriptMessageView
-                message={message}
-                theme={theme()}
-                toolDefinitions={toolDefinitions()}
-                toolRenderCache={toolRenderCache}
-                transcriptWidth={transcriptWidth()}
-                showToolDetails={state.status.toolsExpanded}
-                index={index()}
-                isLast={message.id === lastAssistantId()}
-                modelLabel={modelLabel()}
-              />
-            )}
-          </For>
-        </scrollbox>
+          <scrollbox
+            ref={(node: OpenTuiScrollBoxHandle) => setScrollbox(node)}
+            viewportOptions={{
+              paddingRight: showScrollbar() ? 1 : 0,
+            }}
+            verticalScrollbarOptions={{
+              visible: showScrollbar(),
+              trackOptions: {
+                backgroundColor: theme().backgroundElement,
+                foregroundColor: theme().border,
+              },
+            }}
+            stickyScroll={state.transcript.followMode === "live"}
+            stickyStart="bottom"
+            viewportCulling={true}
+            flexGrow={1}
+            scrollAcceleration={DEFAULT_SCROLL_ACCELERATION}
+            backgroundColor={theme().background}
+          >
+            <box height={1} />
+            <For each={state.transcript.messages}>
+              {(message, index) => (
+                <TranscriptMessageView
+                  message={message}
+                  theme={theme()}
+                  toolDefinitions={toolDefinitions()}
+                  toolRenderCache={toolRenderCache}
+                  transcriptWidth={transcriptWidth()}
+                  showToolDetails={state.status.toolsExpanded}
+                  index={index()}
+                  isLast={message.id === lastAssistantId()}
+                  modelLabel={modelLabel()}
+                />
+              )}
+            </For>
+          </scrollbox>
 
-        <Show when={inlineApproval()}>
-          <InlineApprovalPrompt
+          <Show when={inlineApproval()}>
+            <InlineApprovalPrompt
+              controller={input.controller}
+              payload={inlineApproval()!}
+              theme={theme()}
+              transcriptWidth={transcriptWidth()}
+            />
+          </Show>
+          <Show when={!inlineApproval() && inlineQuestion()}>
+            <InlineQuestionPrompt
+              controller={input.controller}
+              payload={inlineQuestion()!}
+              theme={theme()}
+            />
+          </Show>
+
+          <PromptPanel
             controller={input.controller}
-            payload={inlineApproval()!}
+            composer={state.composer}
+            status={state.status}
+            overlayActive={Boolean(state.overlay.active)}
             theme={theme()}
-          />
-        </Show>
-        <Show when={!inlineApproval() && inlineQuestion()}>
-          <InlineQuestionPrompt
-            controller={input.controller}
-            payload={inlineQuestion()!}
-            theme={theme()}
-          />
-        </Show>
-
-        <PromptPanel
-          controller={input.controller}
-          composer={state.composer}
-          status={state.status}
-          overlayActive={Boolean(state.overlay.active)}
-          theme={theme()}
-          width={dimensions().width}
-          modelLabel={modelLabel()}
-          thinkingLevel={input.controller.getBundle().session.thinkingLevel ?? "off"}
-          setAnchor={(node) => setPromptAnchor(node)}
-          setTextarea={(node) => setTextarea(node)}
-        />
-
-        <ToastStrip notifications={state.notifications} theme={theme()} />
-
-        <Show when={state.composer.completion && !state.overlay.active}>
-          <CompletionOverlay
-            controller={input.controller}
-            completion={state.composer.completion!}
-            anchor={promptAnchor}
-            container={completionContainer}
             width={dimensions().width}
-            height={dimensions().height}
-            theme={theme()}
+            modelLabel={modelLabel()}
+            thinkingLevel={thinkingLevel()}
+            setAnchor={(node) => setPromptAnchor(node)}
+            setTextarea={(node) => setTextarea(node)}
           />
-        </Show>
 
-        <Show when={modalOverlay()}>
-          <ModalOverlay
-            overlay={modalOverlay()!}
-            width={dimensions().width}
-            height={dimensions().height}
-            theme={theme()}
-          />
-        </Show>
+          <ToastStrip notifications={state.notifications} theme={theme()} />
+
+          <Show when={state.composer.completion && !state.overlay.active}>
+            <CompletionOverlay
+              controller={input.controller}
+              completion={state.composer.completion!}
+              anchor={promptAnchor}
+              container={completionContainer}
+              width={dimensions().width}
+              height={dimensions().height}
+              theme={theme()}
+            />
+          </Show>
+
+          <Show when={modalOverlay()}>
+            <ModalOverlay
+              overlay={modalOverlay()!}
+              width={dimensions().width}
+              height={dimensions().height}
+              theme={theme()}
+            />
+          </Show>
+        </box>
       </box>
-
-      <Show when={sidebarVisible()}>
-        <Switch>
-          <Match when={wide()}>
-            <SidebarPanel controller={input.controller} state={state} theme={theme()} />
-          </Match>
-          <Match when={!wide()}>
-            <box
-              position="absolute"
-              top={0}
-              left={0}
-              right={0}
-              bottom={0}
-              alignItems="flex-end"
-              backgroundColor={RGBA.fromInts(0, 0, 0, 70)}
-            >
-              <SidebarPanel
-                controller={input.controller}
-                state={state}
-                theme={theme()}
-                overlay={true}
-              />
-            </box>
-          </Match>
-        </Switch>
-      </Show>
-    </box>
+    </ShellRenderProvider>
   );
 }

@@ -9,28 +9,19 @@ import {
   type InternalRuntimePluginApi,
 } from "@brewva/brewva-gateway/runtime-plugins";
 import type { BrewvaRuntime } from "@brewva/brewva-runtime";
-import type { BrewvaHostContext } from "@brewva/brewva-substrate";
 import { clampText } from "./inspect-analysis.js";
 
-const OVERLAY_WIDGET_ID = "brewva-agent-overlays";
-const MAX_WIDGET_LINES = 28;
+const MAX_NOTIFICATION_LINES = 28;
 const MAX_LINE_CHARS = 220;
 
-function clearOverlayWidget(ctx: BrewvaHostContext, widgetId: string): void {
-  if (!ctx.hasUI) return;
-  ctx.ui.setWidget(widgetId, undefined, {
-    placement: "belowEditor",
-  });
-}
-
-function toWidgetLines(text: string): string[] {
+function toNotificationMessage(summary: string, text: string): string {
   const rawLines = text.split(/\r?\n/u).map((line) => clampText(line, MAX_LINE_CHARS));
-  if (rawLines.length <= MAX_WIDGET_LINES) {
-    return rawLines;
+  if (rawLines.length > MAX_NOTIFICATION_LINES) {
+    const kept = rawLines.slice(0, Math.max(1, MAX_NOTIFICATION_LINES - 1));
+    kept.push(`...[agent-overlays truncated: ${rawLines.length - kept.length} more lines]`);
+    return [summary, "", ...kept].join("\n");
   }
-  const kept = rawLines.slice(0, Math.max(1, MAX_WIDGET_LINES - 1));
-  kept.push(`...[agent-overlays truncated: ${rawLines.length - kept.length} more lines]`);
-  return kept;
+  return [summary, "", ...rawLines].join("\n");
 }
 
 function normalizeArgs(args: string): string | undefined {
@@ -117,43 +108,25 @@ export function createAgentOverlaysCommandRuntimePlugin(
     name: "cli.agent_overlays_command",
     capabilities: ["tool_registration.write"],
     register(runtimePluginApi: InternalRuntimePluginApi) {
-      runtimePluginApi.on("session_start", async (_event, ctx) => {
-        clearOverlayWidget(ctx, OVERLAY_WIDGET_ID);
-      });
-      runtimePluginApi.on("session_switch", async (_event, ctx) => {
-        clearOverlayWidget(ctx, OVERLAY_WIDGET_ID);
-      });
-      runtimePluginApi.on("session_shutdown", async (_event, ctx) => {
-        clearOverlayWidget(ctx, OVERLAY_WIDGET_ID);
-      });
-
       runtimePluginApi.registerCommand("agent-overlays", {
         description:
-          "Inspect or validate authored delegated-worker overlays (usage: /agent-overlays | /agent-overlays validate | /agent-overlays <name> | /agent-overlays clear)",
+          "Inspect or validate authored delegated-worker overlays (usage: /agent-overlays | /agent-overlays validate | /agent-overlays <name>)",
         handler: async (args, ctx) => {
           const normalizedArgs = normalizeArgs(args);
-          if (normalizedArgs === "clear") {
-            clearOverlayWidget(ctx, OVERLAY_WIDGET_ID);
-            if (ctx.hasUI) {
-              ctx.ui.notify("Agent overlay widget cleared.", "info");
-            }
-            return;
-          }
           const inspection = await inspectHostedDelegationCatalog(runtime.workspaceRoot);
           const text =
             normalizedArgs && normalizedArgs !== "validate"
               ? formatOverlayDetail(inspection, normalizedArgs)
               : formatOverlayList(inspection);
           if (ctx.hasUI) {
-            ctx.ui.setWidget(OVERLAY_WIDGET_ID, toWidgetLines(text), {
-              placement: "belowEditor",
-            });
-            ctx.ui.notify(
+            const summary =
               inspection.status === "valid"
                 ? normalizedArgs === "validate"
                   ? "Agent overlay validation passed."
-                  : "Agent overlay inspection updated."
-                : "Agent overlay inspection found validation errors.",
+                  : "Agent overlay inspection report."
+                : "Agent overlay inspection found validation errors.";
+            ctx.ui.notify(
+              toNotificationMessage(summary, text),
               inspection.status === "valid" ? "info" : "warning",
             );
           }

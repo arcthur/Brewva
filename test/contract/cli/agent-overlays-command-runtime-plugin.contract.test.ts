@@ -55,14 +55,10 @@ Keep findings short and concrete.
       "expected agent-overlays command registration",
     );
 
-    const widgets: Array<{ id: string; lines?: string[]; options?: Record<string, unknown> }> = [];
     const notifications: Array<{ message: string; level: string }> = [];
     const ctx = {
       hasUI: true,
       ui: {
-        setWidget(id: string, lines: string[] | undefined, options?: Record<string, unknown>) {
-          widgets.push({ id, lines, options });
-        },
         notify(message: string, level = "info") {
           notifications.push({ message, level });
         },
@@ -71,12 +67,11 @@ Keep findings short and concrete.
 
     await command.handler("validate", ctx);
 
-    expect(widgets.at(-1)?.id).toBe("brewva-agent-overlays");
-    expect(widgets.at(-1)?.options?.placement).toBe("belowEditor");
-    const rendered = (widgets.at(-1)?.lines ?? []).join("\n");
+    const rendered = notifications.at(-1)?.message ?? "";
+    expect(rendered).toContain("Agent overlay validation passed.");
     expect(rendered).toContain("Agent overlays — valid");
     expect(rendered).toContain("reviewer");
     expect(rendered).toContain(".brewva/agents/reviewer.md");
-    expect(notifications).toEqual([{ message: "Agent overlay validation passed.", level: "info" }]);
+    expect(notifications.at(-1)?.level).toBe("info");
   });
 });

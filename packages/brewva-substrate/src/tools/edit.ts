@@ -53,6 +53,10 @@ export interface BrewvaEditToolDetails {
   firstChangedLine?: number;
 }
 
+export interface BrewvaEditDiffPreview extends BrewvaEditToolDetails {
+  path: string;
+}
+
 export interface BrewvaEditOperations {
   readFile: (absolutePath: string) => Promise<Buffer>;
   writeFile: (absolutePath: string, content: string) => Promise<void>;
@@ -102,6 +106,23 @@ function extractText(result: { content: Array<{ type: string; text?: string }> }
     .filter((part) => part.type === "text")
     .map((part) => part.text ?? "")
     .join("\n");
+}
+
+export function buildBrewvaEditDiffPreview(
+  input: unknown,
+  rawContent: string,
+): BrewvaEditDiffPreview {
+  const normalizedInput = prepareEditArguments(input);
+  const { path, edits } = validateEditInput(normalizedInput);
+  const { text } = stripBom(rawContent);
+  const normalizedContent = normalizeToLF(text);
+  const { baseContent, newContent } = applyEditsToNormalizedContent(normalizedContent, edits, path);
+  const diffResult = generateDiffString(baseContent, newContent);
+  return {
+    path,
+    diff: diffResult.diff,
+    firstChangedLine: diffResult.firstChangedLine,
+  };
 }
 
 export function createBrewvaEditToolDefinition(

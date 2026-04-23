@@ -64,6 +64,7 @@ import {
   type HostedSessionSettingsView,
 } from "./hosted-session-driver.js";
 import type { HostedSessionLogger } from "./logger.js";
+import type { ProviderConnectionPort } from "./provider-connection.js";
 import { DEFAULT_HOSTED_ROUTING_SCOPES } from "./routing-defaults.js";
 import { createHostedSemanticReranker } from "./semantic-reranker.js";
 
@@ -72,6 +73,7 @@ export type HostedSession = BrewvaManagedPromptSession;
 export interface HostedSessionResult {
   session: HostedSession;
   runtime: BrewvaRuntime;
+  providerConnections?: ProviderConnectionPort;
   modelFallbackMessage?: string;
   orchestration?: BrewvaToolOrchestration;
 }
@@ -838,6 +840,7 @@ export async function createHostedSession(
   return {
     session,
     runtime,
+    providerConnections: sessionRuntime.services.providerConnections,
     modelFallbackMessage: sessionRuntime.modelFallbackMessage,
     orchestration,
   };

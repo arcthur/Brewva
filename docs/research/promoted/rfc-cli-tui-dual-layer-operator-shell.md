@@ -26,7 +26,7 @@ The accepted decision is:
 - approvals, questions, tasks, inspect, session switching, and pager drill-down
   are overlay or pager surfaces over the same Brewva session truth
 - keyboard routing and completion stay context-scoped and Brewva-owned rather
-  than being delegated to ad hoc widget-local state
+  than being delegated to ad hoc component-local state
 - the shell does not introduce a hidden planner, a second command authority
   model, or a compatibility revival of the retired line-oriented interactive
   path

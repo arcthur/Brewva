@@ -12,28 +12,19 @@ import {
 } from "@brewva/brewva-gateway/runtime-plugins";
 import type { BrewvaRuntime } from "@brewva/brewva-runtime";
 import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
-import type { BrewvaHostContext } from "@brewva/brewva-substrate";
 import { clampText } from "./inspect-analysis.js";
 
-const QUESTIONS_WIDGET_ID = "brewva-questions";
-const MAX_WIDGET_LINES = 28;
+const MAX_NOTIFICATION_LINES = 28;
 const MAX_LINE_CHARS = 220;
 
-function clearQuestionsWidget(ctx: BrewvaHostContext, widgetId: string): void {
-  if (!ctx.hasUI) return;
-  ctx.ui.setWidget(widgetId, undefined, {
-    placement: "belowEditor",
-  });
-}
-
-function toWidgetLines(text: string): string[] {
+function toNotificationMessage(summary: string, text: string): string {
   const rawLines = text.split(/\r?\n/u).map((line) => clampText(line, MAX_LINE_CHARS));
-  if (rawLines.length <= MAX_WIDGET_LINES) {
-    return rawLines;
+  if (rawLines.length > MAX_NOTIFICATION_LINES) {
+    const kept = rawLines.slice(0, Math.max(1, MAX_NOTIFICATION_LINES - 1));
+    kept.push(`...[questions truncated: ${rawLines.length - kept.length} more lines]`);
+    return [summary, "", ...kept].join("\n");
   }
-  const kept = rawLines.slice(0, Math.max(1, MAX_WIDGET_LINES - 1));
-  kept.push(`...[questions truncated: ${rawLines.length - kept.length} more lines]`);
-  return kept;
+  return [summary, "", ...rawLines].join("\n");
 }
 
 function formatQuestionsText(input: {
@@ -86,44 +77,26 @@ export function createQuestionsCommandRuntimePlugin(runtime: BrewvaRuntime): Int
     name: "cli.questions_command",
     capabilities: ["tool_registration.write", "user_message.enqueue"],
     register(runtimePluginApi: InternalRuntimePluginApi) {
-      runtimePluginApi.on("session_start", async (_event, ctx) => {
-        clearQuestionsWidget(ctx, QUESTIONS_WIDGET_ID);
-      });
-      runtimePluginApi.on("session_switch", async (_event, ctx) => {
-        clearQuestionsWidget(ctx, QUESTIONS_WIDGET_ID);
-      });
-      runtimePluginApi.on("session_shutdown", async (_event, ctx) => {
-        clearQuestionsWidget(ctx, QUESTIONS_WIDGET_ID);
-      });
-
       runtimePluginApi.registerCommand("questions", {
         description:
-          "Inspect unresolved session questions without entering a model turn (usage: /questions | /questions clear)",
+          "Inspect unresolved session questions without entering a model turn (usage: /questions)",
         handler: async (args, ctx) => {
           const normalizedArgs = normalizeArgs(args);
-          if (normalizedArgs === "clear") {
-            clearQuestionsWidget(ctx, QUESTIONS_WIDGET_ID);
-            if (ctx.hasUI) {
-              ctx.ui.notify("Questions widget cleared.", "info");
-            }
-            return;
-          }
           if (normalizedArgs) {
             if (ctx.hasUI) {
-              ctx.ui.notify("Usage: /questions | /questions clear", "warning");
+              ctx.ui.notify("Usage: /questions", "warning");
             }
             return;
           }
           const sessionId = ctx.sessionManager.getSessionId();
           const collection = await collectOpenSessionQuestions(runtime, sessionId);
           if (ctx.hasUI) {
-            ctx.ui.setWidget(QUESTIONS_WIDGET_ID, toWidgetLines(formatQuestionsText(collection)), {
-              placement: "belowEditor",
-            });
-            ctx.ui.notify(
+            const summary =
               collection.questions.length > 0
                 ? `Questions updated (${collection.questions.length} open).`
-                : "No open questions found.",
+                : "No open questions found.";
+            ctx.ui.notify(
+              toNotificationMessage(summary, formatQuestionsText(collection)),
               collection.questions.length > 0 ? "info" : "warning",
             );
           }

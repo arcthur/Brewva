@@ -5,6 +5,7 @@ import { getHostedEnvApiKey } from "./hosted-provider-helpers.js";
 
 const OPENAI_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const OPENAI_OAUTH_ISSUER = "https://auth.openai.com";
+const OPENAI_CHATGPT_OAUTH_PROVIDERS = new Set(["openai", "openai-codex"]);
 
 export type HostedAuthCredential =
   | {
@@ -41,7 +42,7 @@ function readFiniteNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-async function refreshOpenAICodexAccessToken(
+async function refreshOpenAIChatGPTAccessToken(
   refreshToken: string,
 ): Promise<Required<Pick<ResolvedOAuthCredential, "accessToken">> & ResolvedOAuthCredential> {
   const response = await fetch(`${OPENAI_OAUTH_ISSUER}/oauth/token`, {
@@ -175,11 +176,11 @@ export class HostedAuthStore {
       return accessToken;
     }
 
-    if (provider !== "openai-codex" || !refreshToken) {
+    if (!OPENAI_CHATGPT_OAUTH_PROVIDERS.has(provider) || !refreshToken) {
       return accessToken;
     }
 
-    const refreshed = await refreshOpenAICodexAccessToken(refreshToken);
+    const refreshed = await refreshOpenAIChatGPTAccessToken(refreshToken);
     const nextRefreshToken = refreshed.refreshToken ?? refreshToken;
     const nextCredential: Extract<HostedAuthCredential, { type: "oauth" }> = {
       ...credential,
@@ -198,6 +199,11 @@ export class HostedAuthStore {
 
   set(provider: string, credential: HostedAuthCredential): void {
     this.#data[provider] = credential;
+    this.persist();
+  }
+
+  remove(provider: string): void {
+    delete this.#data[provider];
     this.persist();
   }
 

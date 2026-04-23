@@ -7,8 +7,8 @@ This page is the event-family and payload-shape catalog. Session ordering and
 recovery interpretation live in `docs/reference/session-lifecycle.md`; API and
 inspect surface details live in `docs/reference/runtime.md`.
 
-Slash-command availability, argument syntax, and widget or transport behavior
-do not live here; those product veneers are documented separately.
+Slash-command availability, argument syntax, and transport behavior do not live
+here; those product veneers are documented separately.
 
 ## Event Envelope
 

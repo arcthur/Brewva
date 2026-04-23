@@ -22,6 +22,24 @@ export interface EvidenceRef {
   createdAt: number;
 }
 
+export interface EffectCommitmentDiffPreviewFile {
+  path: string;
+  displayPath?: string;
+  diff: string;
+  action?: string;
+  additions?: number;
+  deletions?: number;
+  movePath?: string;
+}
+
+export interface EffectCommitmentDiffPreview {
+  kind: "diff";
+  path?: string;
+  diff?: string;
+  files?: EffectCommitmentDiffPreviewFile[];
+  error?: string;
+}
+
 export interface EffectCommitmentProposalPayload {
   toolName: BrewvaToolName;
   toolCallId: BrewvaToolCallId;
@@ -30,6 +48,7 @@ export interface EffectCommitmentProposalPayload {
   defaultRisk?: ToolGovernanceRisk;
   argsDigest: string;
   argsSummary?: string;
+  diffPreview?: EffectCommitmentDiffPreview;
 }
 
 export interface EffectCommitmentProposal {
@@ -83,6 +102,7 @@ export interface PendingEffectCommitmentRequest {
   defaultRisk?: ToolGovernanceRisk;
   argsDigest: string;
   argsSummary?: string;
+  diffPreview?: EffectCommitmentDiffPreview;
   evidenceRefs: EvidenceRef[];
   turn: number;
   createdAt: number;

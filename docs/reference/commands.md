@@ -37,8 +37,8 @@ The shell is a dual-layer operator surface:
 - OpenTUI is loaded only after CLI mode resolution commits to interactive
   full-screen execution; non-interactive commands and Node-based dist entrypoints
   stay on the Node-safe module graph
-- status widgets render in a right rail on wide terminals and stack under the
-  transcript on narrow terminals instead of compressing the conversation canvas
+- transient operator details render through overlays, pagers, notifications, and
+  inline prompts instead of a persistent side rail
 - the shell selects a built-in dark or light theme from terminal background
   detection at startup; operators can still override it explicitly with
   `/theme <name>`
@@ -71,9 +71,18 @@ The shell is a dual-layer operator surface:
 Completion and overlays are part of the stable command contract:
 
 - slash-command completion is triggered by `/`
+- `/models` opens the model-selection overlay; it handles current model,
+  favorites, recents, provider grouping, search, and recent-model cycling
+- `/connect` opens the provider connection overlay; provider auth may use
+  OAuth, provider-specific prompts, or API-key entries stored as canonical
+  vault refs such as `vault://openai/apiKey`
+- `/think` opens the thinking-level overlay and only offers levels supported by
+  the selected model
+- `/diffwrap` toggles edit/apply-patch diff wrapping
+- `/diffstyle` toggles automatic split diffs and stacked unified diffs
 - workspace path completion is triggered by `@`
-- interactive overlays include approval, question, task, inspect, session, and
-  pager surfaces
+- interactive overlays include approval, question, task, model, provider,
+  thinking, inspect, session, and pager surfaces
 - task drill-down must expose recent output, structured result data, and
   artifact refs rather than only listing task metadata
 
@@ -97,12 +106,13 @@ Completion and overlays are part of the stable command contract:
 Embedded interactive sessions register a small operator command set through
 runtime plugins:
 
-- `/inspect [dir] | /inspect clear`
-- `/insights [dir] | /insights clear`
-- `/questions | /questions clear`
+- `/inspect [dir]`
+- `/insights [dir]`
+- `/questions`
 - `/theme | /theme list | /theme <name>`
+- `/diffwrap | /diffstyle`
 - `/answer <question-id> <answer>`
-- `/agent-overlays | /agent-overlays validate | /agent-overlays <name> | /agent-overlays clear`
+- `/agent-overlays | /agent-overlays validate | /agent-overlays <name>`
 - `/update [operator hints]`
 
 These commands are thin session-local veneers over existing replay, workflow,

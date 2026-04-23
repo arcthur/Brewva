@@ -51,6 +51,27 @@ export function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
+export interface ToolDiffFile {
+  path: string;
+  displayPath: string;
+  diff: string;
+  action?: string;
+  additions?: number;
+  deletions?: number;
+  movePath?: string;
+}
+
+export type ToolDiffPayload =
+  | {
+      kind: "single";
+      path?: string;
+      diff: string;
+    }
+  | {
+      kind: "files";
+      files: ToolDiffFile[];
+    };
+
 function readToolRenderState(cache: ToolRenderCache, toolCallId: string): unknown {
   let state = cache.stateByToolCallId.get(toolCallId);
   if (!state) {
@@ -164,6 +185,19 @@ function readRecordString(
   return undefined;
 }
 
+function readRecordStringMaybeEmpty(
+  record: Record<string, unknown> | undefined,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = record?.[key];
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  return undefined;
+}
+
 function readRecordNumber(
   record: Record<string, unknown> | undefined,
   keys: readonly string[],
@@ -202,6 +236,12 @@ function normalizeDisplayPath(path: string | undefined): string | undefined {
   return path;
 }
 
+const DIFF_SOURCE_RECORD_KEYS = ["previewDiff", "diffPreview", "preview"] as const;
+
+function readToolDetails(part: CliShellTranscriptToolPart): Record<string, unknown> | undefined {
+  return asRecord(part.result?.details) ?? asRecord(part.partialResult?.details);
+}
+
 export function readToolPath(part: CliShellTranscriptToolPart): string | undefined {
   const args = asRecord(part.args);
   return normalizeDisplayPath(readRecordString(args, ["path", "filePath", "file_path"]));
@@ -237,13 +277,168 @@ export function readToolRangeSuffix(part: CliShellTranscriptToolPart): string {
   return `:${startLine}`;
 }
 
-export function readToolDiffText(part: CliShellTranscriptToolPart): string {
-  const resultDetails = asRecord(part.result?.details);
-  if (typeof resultDetails?.diff === "string" && resultDetails.diff.length > 0) {
-    return resultDetails.diff;
+function normalizeDiffFile(value: unknown): ToolDiffFile | undefined {
+  const record = asRecord(value);
+  if (!record) {
+    return undefined;
   }
-  const partialDetails = asRecord(part.partialResult?.details);
-  return typeof partialDetails?.diff === "string" ? partialDetails.diff : "";
+  const rawDiff = readRecordStringMaybeEmpty(record, ["diff", "patch", "diffText", "content"]);
+  const action = readRecordString(record, ["action", "type", "status", "kind"]);
+  const deletions = readRecordNumber(record, ["deletions", "removed", "removedLines"]);
+  if (rawDiff === undefined && action !== "delete" && deletions === undefined) {
+    return undefined;
+  }
+  const rawPath = readRecordString(record, [
+    "path",
+    "filePath",
+    "file_path",
+    "relativePath",
+    "relative_path",
+  ]);
+  const displayPath = normalizeDisplayPath(rawPath) ?? "file";
+  return {
+    path: rawPath ?? displayPath,
+    displayPath,
+    diff: rawDiff ?? "",
+    action,
+    additions: readRecordNumber(record, ["additions", "added", "addedLines"]),
+    deletions,
+    movePath: normalizeDisplayPath(readRecordString(record, ["movePath", "newPath", "toPath"])),
+  };
+}
+
+function readDiffFiles(details: Record<string, unknown> | undefined): ToolDiffFile[] {
+  const directFiles = details?.files;
+  if (Array.isArray(directFiles)) {
+    return directFiles.flatMap((file) => {
+      const normalized = normalizeDiffFile(file);
+      return normalized ? [normalized] : [];
+    });
+  }
+
+  const patchSet = asRecord(details?.patchSet ?? details?.patch_set ?? details?.patches);
+  const changes = patchSet?.changes;
+  if (Array.isArray(changes)) {
+    return changes.flatMap((change) => {
+      const normalized = normalizeDiffFile(change);
+      return normalized ? [normalized] : [];
+    });
+  }
+
+  return [];
+}
+
+function readDiffPathFromRecord(
+  details: Record<string, unknown> | undefined,
+  fallback?: string,
+): string | undefined {
+  return (
+    normalizeDisplayPath(
+      readRecordString(details, ["path", "filePath", "file_path", "relativePath", "relative_path"]),
+    ) ?? fallback
+  );
+}
+
+function readDirectDiffPayloadFromDetails(
+  details: Record<string, unknown> | undefined,
+  path?: string,
+): ToolDiffPayload | undefined {
+  const files = readDiffFiles(details);
+  if (files.length > 0) {
+    return {
+      kind: "files",
+      files,
+    };
+  }
+
+  const diff =
+    readRecordString(details, ["diff", "patch", "diffText"]) ??
+    readRecordStringMaybeEmpty(details, ["unifiedDiff"]);
+  if (!diff || diff.length === 0) {
+    return undefined;
+  }
+  return {
+    kind: "single",
+    path,
+    diff,
+  };
+}
+
+export function readDiffSourceRecordFromDetails(
+  details: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!details) {
+    return undefined;
+  }
+  const direct = readDirectDiffPayloadFromDetails(details, readDiffPathFromRecord(details));
+  if (direct) {
+    return details;
+  }
+  for (const key of DIFF_SOURCE_RECORD_KEYS) {
+    const nested = asRecord(details[key]);
+    if (!nested) {
+      continue;
+    }
+    const nestedPayload = readDirectDiffPayloadFromDetails(nested, readDiffPathFromRecord(nested));
+    const nestedError = readRecordString(nested, ["error"]);
+    if (nestedPayload || nestedError) {
+      return nested;
+    }
+  }
+  return details;
+}
+
+export function readDiffPayloadFromDetails(
+  details: Record<string, unknown> | undefined,
+  path?: string,
+): ToolDiffPayload | undefined {
+  const direct = readDirectDiffPayloadFromDetails(details, readDiffPathFromRecord(details, path));
+  if (direct) {
+    return direct;
+  }
+
+  for (const key of DIFF_SOURCE_RECORD_KEYS) {
+    const nested = asRecord(details?.[key]);
+    if (!nested) {
+      continue;
+    }
+    const nestedPayload = readDirectDiffPayloadFromDetails(
+      nested,
+      readDiffPathFromRecord(nested, path),
+    );
+    if (nestedPayload) {
+      return nestedPayload;
+    }
+  }
+  return undefined;
+}
+
+export function readToolDiffPayload(part: CliShellTranscriptToolPart): ToolDiffPayload | undefined {
+  const details = readToolDetails(part);
+  return readDiffPayloadFromDetails(details, readToolPath(part));
+}
+
+function readWorkerSessionIdFromRecord(
+  record: Record<string, unknown> | undefined,
+): string | undefined {
+  const direct = readRecordString(record, ["workerSessionId", "childSessionId"]);
+  if (direct) {
+    return direct;
+  }
+  const outcomes = record?.outcomes;
+  if (Array.isArray(outcomes)) {
+    for (const outcome of outcomes) {
+      const nested = readWorkerSessionIdFromRecord(asRecord(outcome));
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+  return undefined;
+}
+
+export function readToolWorkerSessionId(part: CliShellTranscriptToolPart): string | undefined {
+  return readWorkerSessionIdFromRecord(readToolDetails(part));
 }
 
 export function inferFiletype(path: string | undefined): string {

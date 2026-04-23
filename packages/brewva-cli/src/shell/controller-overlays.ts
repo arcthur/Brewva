@@ -11,39 +11,25 @@ import type {
   OperatorSurfaceSnapshot,
 } from "./types.js";
 
-const CREDENTIAL_HELP_LINES = [
-  "Brewva stores API keys in an encrypted local vault.",
-  "",
-  "Run these commands in a separate terminal to manage credentials:",
-  "",
-  "  Add from environment variable (recommended):",
-  "    brewva credentials add --ref vault://openai/apiKey    --from-env OPENAI_API_KEY",
-  "    brewva credentials add --ref vault://anthropic/apiKey --from-env ANTHROPIC_API_KEY",
-  "    brewva credentials add --ref vault://gemini/apiKey    --from-env GEMINI_API_KEY",
-  "    brewva credentials add --ref vault://google/apiKey    --from-env GOOGLE_API_KEY",
-  "    brewva credentials add --ref vault://mistral/apiKey   --from-env MISTRAL_API_KEY",
-  "    brewva credentials add --ref vault://groq/apiKey      --from-env GROQ_API_KEY",
-  "    brewva credentials add --ref vault://xai/apiKey       --from-env XAI_API_KEY",
-  "    brewva credentials add --ref vault://together/apiKey  --from-env TOGETHER_API_KEY",
-  "    brewva credentials add --ref vault://github/token     --from-env GITHUB_TOKEN",
-  "",
-  "  Add a raw value directly:",
-  "    brewva credentials add --ref vault://openai/apiKey --value sk-...",
-  "",
-  "  List stored credentials:",
-  "    brewva credentials list",
-  "",
-  "  Discover credentials from current environment:",
-  "    brewva credentials discover",
-  "",
-  "  Remove a credential:",
-  "    brewva credentials remove --ref vault://openai/apiKey",
-  "",
-  "Environment variables are also accepted directly without storing them in the vault.",
-  "Set OPENAI_API_KEY, ANTHROPIC_API_KEY, etc. before starting Brewva.",
-] as const;
-
 type SessionInspectReport = ReturnType<typeof buildSessionInspectReport>;
+
+interface PickerInspectLineItem {
+  section?: string;
+  label: string;
+  detail?: string;
+}
+
+function renderPickerInspectLines(
+  items: readonly PickerInspectLineItem[],
+  selectedIndex: number,
+): string[] {
+  return items.map((item, index) => {
+    const marker = index === selectedIndex ? ">" : " ";
+    const section = item.section ? `${item.section}: ` : "";
+    const detail = item.detail ? ` :: ${item.detail}` : "";
+    return `${marker} ${section}${item.label}${detail}`;
+  });
+}
 
 export function resolveOverlayFocusOwner(
   payload: CliShellOverlayPayload,
@@ -74,6 +60,11 @@ export function resolveOverlayFocusOwner(
     case "confirm":
     case "input":
     case "select":
+    case "modelPicker":
+    case "providerPicker":
+    case "thinkingPicker":
+    case "authMethodPicker":
+    case "oauthWait":
       return "dialog";
     default: {
       const exhaustiveCheck: never = payload;
@@ -239,7 +230,7 @@ export function buildOverlayView(payload: CliShellOverlayPayload): {
     case "approval": {
       const lines = [
         `Pending approvals: ${payload.snapshot.approvals.length}`,
-        "Use ↑/↓ to choose, Enter or a to accept, r to reject, Esc to close.",
+        "Use ↑/↓ to choose, Enter or a to accept, r to reject, Ctrl+F to expand diff, Esc to close.",
       ];
       for (const [index, item] of payload.snapshot.approvals.entries()) {
         const marker = index === payload.selectedIndex ? ">" : " ";
@@ -330,7 +321,13 @@ export function buildOverlayView(payload: CliShellOverlayPayload): {
     case "input":
       return {
         title: "Input",
-        lines: [payload.message ?? "", "", payload.value, "", "Enter=confirm  Esc=cancel"],
+        lines: [
+          payload.message ?? "",
+          "",
+          payload.masked ? "*".repeat(payload.value.length) : payload.value,
+          "",
+          "Enter=confirm  Esc=cancel",
+        ],
       };
     case "select":
       return {
@@ -338,6 +335,38 @@ export function buildOverlayView(payload: CliShellOverlayPayload): {
         lines: payload.options.map(
           (item, index) => `${index === payload.selectedIndex ? ">" : " "} ${item}`,
         ),
+      };
+    case "modelPicker":
+      return {
+        title: payload.title,
+        lines: renderPickerInspectLines(payload.items, payload.selectedIndex),
+      };
+    case "providerPicker":
+      return {
+        title: payload.title,
+        lines: renderPickerInspectLines(payload.items, payload.selectedIndex),
+      };
+    case "thinkingPicker":
+      return {
+        title: payload.title,
+        lines: renderPickerInspectLines(payload.items, payload.selectedIndex),
+      };
+    case "authMethodPicker":
+      return {
+        title: payload.title,
+        lines: renderPickerInspectLines(payload.items, payload.selectedIndex),
+      };
+    case "oauthWait":
+      return {
+        title: payload.title,
+        lines: [
+          payload.url,
+          "",
+          payload.instructions,
+          "",
+          "Waiting for authorization...",
+          payload.manualCodePrompt ? "Enter/p=paste callback  c=copy" : "c=copy",
+        ],
       };
     default: {
       const exhaustiveCheck: never = payload;
@@ -437,8 +466,6 @@ export function summarizeDraftPreview(text: string): {
     preview: trimmed.split(/\r?\n/u)[0]?.slice(0, 96) ?? "",
   };
 }
-
-export { CREDENTIAL_HELP_LINES };
 
 function renderListValue(values: readonly string[]): string {
   return values.length > 0 ? values.join(", ") : "none";

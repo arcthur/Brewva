@@ -28,23 +28,22 @@ export interface CliShellStatusState {
   entries: Record<string, string>;
   workingMessage?: string;
   hiddenThinkingLabel?: string;
-  title?: string;
-  headerLines: string[];
-  footerLines: string[];
-  widgets: Record<
-    string,
-    {
-      lines: string[];
-      placement?: string;
-    }
-  >;
   toolsExpanded: boolean;
+}
+
+export type CliShellDiffStyle = "auto" | "stacked";
+export type CliShellDiffWrapMode = "word" | "none";
+
+export interface CliShellDiffState {
+  style: CliShellDiffStyle;
+  wrapMode: CliShellDiffWrapMode;
 }
 
 export interface CliShellCompletionItem {
   label: string;
   value: string;
   insertText: string;
+  enterBehavior?: "insert" | "submit";
   description?: string;
   detail?: string;
   kind: "slash" | "path";
@@ -104,6 +103,7 @@ export interface CliShellState {
   };
   notifications: CliShellNotification[];
   status: CliShellStatusState;
+  diff: CliShellDiffState;
 }
 
 export type CliShellAction =
@@ -187,26 +187,12 @@ export type CliShellAction =
       text: string | undefined;
     }
   | {
-      type: "status.title";
-      title: string | undefined;
-    }
-  | {
-      type: "status.header";
-      lines: string[];
-    }
-  | {
-      type: "status.footer";
-      lines: string[];
-    }
-  | {
-      type: "status.widget";
-      id: string;
-      lines: string[] | undefined;
-      placement?: string;
-    }
-  | {
       type: "status.toolsExpanded";
       expanded: boolean;
+    }
+  | {
+      type: "diff.setPreferences";
+      preferences: Partial<CliShellDiffState>;
     };
 
 function snapshotOverlayState(overlays: OverlayManager): CliShellOverlayState {
@@ -242,10 +228,11 @@ export function createCliShellState(): CliShellState {
     notifications: [],
     status: {
       entries: {},
-      headerLines: [],
-      footerLines: [],
-      widgets: {},
       toolsExpanded: true,
+    },
+    diff: {
+      style: "auto",
+      wrapMode: "word",
     },
   };
 }
@@ -457,54 +444,20 @@ export function reduceCliShellState(state: CliShellState, action: CliShellAction
           hiddenThinkingLabel: action.text,
         },
       };
-    case "status.title":
-      return {
-        ...state,
-        status: {
-          ...state.status,
-          title: action.title,
-        },
-      };
-    case "status.header":
-      return {
-        ...state,
-        status: {
-          ...state.status,
-          headerLines: [...action.lines],
-        },
-      };
-    case "status.footer":
-      return {
-        ...state,
-        status: {
-          ...state.status,
-          footerLines: [...action.lines],
-        },
-      };
-    case "status.widget": {
-      const nextWidgets = { ...state.status.widgets };
-      if (action.lines && action.lines.length > 0) {
-        nextWidgets[action.id] = {
-          lines: [...action.lines],
-          placement: action.placement,
-        };
-      } else {
-        delete nextWidgets[action.id];
-      }
-      return {
-        ...state,
-        status: {
-          ...state.status,
-          widgets: nextWidgets,
-        },
-      };
-    }
     case "status.toolsExpanded":
       return {
         ...state,
         status: {
           ...state.status,
           toolsExpanded: action.expanded,
+        },
+      };
+    case "diff.setPreferences":
+      return {
+        ...state,
+        diff: {
+          style: action.preferences.style ?? state.diff.style,
+          wrapMode: action.preferences.wrapMode ?? state.diff.wrapMode,
         },
       };
   }

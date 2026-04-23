@@ -418,9 +418,6 @@ function buildParams(
 
   if (context.tools) {
     params.tools = convertTools(context.tools, compat);
-    if (compat.zaiToolStream) {
-      (params as any).tool_stream = true;
-    }
   } else if (hasToolHistory(context.messages)) {
     // Anthropic (via LiteLLM/proxy) requires tools param when conversation has tool_calls/tool_results
     params.tools = [];
@@ -430,9 +427,7 @@ function buildParams(
     params.tool_choice = options.toolChoice;
   }
 
-  if (compat.thinkingFormat === "zai" && model.reasoning) {
-    (params as any).enable_thinking = !!options?.reasoningEffort;
-  } else if (compat.thinkingFormat === "qwen" && model.reasoning) {
+  if (compat.thinkingFormat === "qwen" && model.reasoning) {
     (params as any).enable_thinking = !!options?.reasoningEffort;
   } else if (compat.thinkingFormat === "qwen-chat-template" && model.reasoning) {
     (params as any).chat_template_kwargs = { enable_thinking: !!options?.reasoningEffort };
@@ -529,7 +524,7 @@ export function convertMessages(
   const normalizeToolCallId = (id: string): string => {
     // Handle pipe-separated IDs from OpenAI Responses API
     // Format: {call_id}|{id} where {id} can be 400+ chars with special chars (+, /, =)
-    // These come from providers like github-copilot, openai-codex, opencode
+    // These come from providers like github-copilot and openai-codex.
     // Extract just the call_id part and normalize it
     if (id.includes("|")) {
       const [callId] = id.split("|");
@@ -842,18 +837,11 @@ function detectCompat(model: Model<"openai-completions">): Required<OpenAIComple
   const provider = model.provider;
   const baseUrl = model.baseUrl;
 
-  const isZai = provider === "zai" || baseUrl.includes("api.z.ai");
-
   const isNonStandard =
-    provider === "cerebras" ||
-    baseUrl.includes("cerebras.ai") ||
     provider === "xai" ||
     baseUrl.includes("api.x.ai") ||
     baseUrl.includes("chutes.ai") ||
-    baseUrl.includes("deepseek.com") ||
-    isZai ||
-    provider === "opencode" ||
-    baseUrl.includes("opencode.ai");
+    baseUrl.includes("deepseek.com");
 
   const useMaxTokens = baseUrl.includes("chutes.ai");
 
@@ -873,21 +861,17 @@ function detectCompat(model: Model<"openai-completions">): Required<OpenAIComple
   return {
     supportsStore: !isNonStandard,
     supportsDeveloperRole: !isNonStandard,
-    supportsReasoningEffort: !isGrok && !isZai,
+    supportsReasoningEffort: !isGrok,
     reasoningEffortMap,
     supportsUsageInStreaming: true,
     maxTokensField: useMaxTokens ? "max_tokens" : "max_completion_tokens",
     requiresToolResultName: false,
     requiresAssistantAfterToolResult: false,
     requiresThinkingAsText: false,
-    thinkingFormat: isZai
-      ? "zai"
-      : provider === "openrouter" || baseUrl.includes("openrouter.ai")
-        ? "openrouter"
-        : "openai",
+    thinkingFormat:
+      provider === "openrouter" || baseUrl.includes("openrouter.ai") ? "openrouter" : "openai",
     openRouterRouting: {},
     vercelGatewayRouting: {},
-    zaiToolStream: false,
     supportsStrictMode: true,
   };
 }
@@ -916,7 +900,6 @@ function getCompat(model: Model<"openai-completions">): Required<OpenAICompletio
     thinkingFormat: model.compat.thinkingFormat ?? detected.thinkingFormat,
     openRouterRouting: model.compat.openRouterRouting ?? {},
     vercelGatewayRouting: model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
-    zaiToolStream: model.compat.zaiToolStream ?? detected.zaiToolStream,
     supportsStrictMode: model.compat.supportsStrictMode ?? detected.supportsStrictMode,
   };
 }

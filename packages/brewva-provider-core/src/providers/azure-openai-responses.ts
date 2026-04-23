@@ -20,12 +20,7 @@ import {
 import { buildBaseOptions, clampReasoning } from "./simple-options.js";
 
 const DEFAULT_AZURE_API_VERSION = "v1";
-const AZURE_TOOL_CALL_PROVIDERS = new Set([
-  "openai",
-  "openai-codex",
-  "opencode",
-  "azure-openai-responses",
-]);
+const AZURE_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "azure-openai-responses"]);
 
 function parseDeploymentNameMap(value: string | undefined): Map<string, string> {
   const map = new Map<string, string>();

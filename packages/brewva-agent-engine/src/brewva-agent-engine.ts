@@ -38,6 +38,45 @@ type ActiveRun = {
   abortController: AbortController;
 };
 
+function excludeTransientAssistantFailure(
+  message: BrewvaAgentEngineMessage,
+): BrewvaAgentEngineMessage {
+  if (
+    message.role !== "assistant" ||
+    (message.stopReason !== "error" && message.stopReason !== "aborted")
+  ) {
+    return message;
+  }
+  return {
+    ...message,
+    excludeFromContext: true,
+  };
+}
+
+function excludeTransientFailureFromEvent(event: BrewvaAgentEngineEvent): BrewvaAgentEngineEvent {
+  switch (event.type) {
+    case "message_start":
+    case "message_update":
+    case "message_end":
+      return {
+        ...event,
+        message: excludeTransientAssistantFailure(event.message),
+      };
+    case "turn_end":
+      return {
+        ...event,
+        message: excludeTransientAssistantFailure(event.message),
+      };
+    case "agent_end":
+      return {
+        ...event,
+        messages: event.messages.map(excludeTransientAssistantFailure),
+      };
+    default:
+      return event;
+  }
+}
+
 const EMPTY_MODEL: BrewvaRegisteredModel = {
   provider: "unknown",
   id: "unknown",
@@ -394,11 +433,11 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
   }
 
   async #processEvents(event: BrewvaAgentEngineEvent): Promise<BrewvaAgentEngineEvent> {
-    let currentEvent = event;
+    let currentEvent = excludeTransientFailureFromEvent(event);
     for (const listener of this.#listeners) {
       const result = await listener(currentEvent);
       if (result && result.type === currentEvent.type) {
-        currentEvent = result;
+        currentEvent = excludeTransientFailureFromEvent(result);
       }
     }
 

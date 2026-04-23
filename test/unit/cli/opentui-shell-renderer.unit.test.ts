@@ -9,6 +9,7 @@ import {
 import type {
   BrewvaPromptSessionEvent,
   BrewvaRenderableComponent,
+  BrewvaSessionModelDescriptor,
   BrewvaToolDefinition,
   BrewvaToolUiPort,
 } from "@brewva/brewva-substrate";
@@ -21,6 +22,14 @@ import {
 } from "@brewva/brewva-tui/internal-opentui-runtime";
 import { createTestRenderer } from "@opentui/core/testing";
 import { BrewvaOpenTuiShell } from "../../../packages/brewva-cli/runtime/opentui-shell-renderer.js";
+import { resolveDiffView } from "../../../packages/brewva-cli/runtime/shell/diff-view.js";
+import {
+  resolveDialogContentWidth,
+  resolveDialogSurfaceDimensions,
+  resolveDialogWidth,
+  resolveToastMaxWidth,
+} from "../../../packages/brewva-cli/runtime/shell/overlay-style.js";
+import { createToolRenderCache } from "../../../packages/brewva-cli/runtime/shell/tool-render.js";
 import { CliShellController } from "../../../packages/brewva-cli/src/shell/controller.js";
 import type { CliShellSessionBundle } from "../../../packages/brewva-cli/src/shell/types.js";
 
@@ -99,9 +108,18 @@ async function waitForRenderedFrame(
   return frame;
 }
 
+function countOccurrences(text: string, needle: string): number {
+  if (needle.length === 0) {
+    return 0;
+  }
+  return text.split(needle).length - 1;
+}
+
 function createFakeBundle(
   options: {
     approvals?: number;
+    models?: BrewvaSessionModelDescriptor[];
+    availableModelKeys?: string[];
     seedMessages?: unknown[];
     sessionId?: string;
     replaySessions?: BrewvaReplaySession[];
@@ -125,6 +143,24 @@ function createFakeBundle(
     createdAt: Date.now(),
   }));
   const sessionId = options.sessionId ?? "session-1";
+  const modelKey = (model: Pick<BrewvaSessionModelDescriptor, "provider" | "id">) =>
+    `${model.provider}/${model.id}`;
+  const defaultModel: BrewvaSessionModelDescriptor = {
+    provider: "openai",
+    id: "gpt-5.4-mini",
+    name: "GPT-5.4 Mini",
+    contextWindow: 128_000,
+    maxTokens: 16_384,
+    reasoning: true,
+  };
+  const allModels = options.models ?? [defaultModel];
+  const availableModelKeys = new Set(options.availableModelKeys ?? allModels.map(modelKey));
+  let currentModel = allModels[0] ?? defaultModel;
+  let thinkingLevel = "high";
+  let diffPreferences: { style: "auto" | "stacked"; wrapMode: "word" | "none" } = {
+    style: "auto",
+    wrapMode: "word",
+  };
   const replaySessions = options.replaySessions ?? [
     {
       sessionId,
@@ -134,11 +170,20 @@ function createFakeBundle(
   ];
 
   const session = {
-    model: {
-      provider: "openai",
-      id: "gpt-5.4-mini",
+    get model() {
+      return currentModel;
     },
-    thinkingLevel: "high",
+    get thinkingLevel() {
+      return thinkingLevel;
+    },
+    modelRegistry: {
+      getAll() {
+        return allModels;
+      },
+      getAvailable() {
+        return allModels.filter((model) => availableModelKeys.has(modelKey(model)));
+      },
+    },
     isStreaming: false,
     sessionManager: {
       getSessionId() {
@@ -146,6 +191,21 @@ function createFakeBundle(
       },
       buildSessionContext() {
         return { messages: options.seedMessages ?? [] };
+      },
+    },
+    settingsManager: {
+      getQuietStartup() {
+        return false;
+      },
+      getModelPreferences() {
+        return { recent: [], favorite: [] };
+      },
+      setModelPreferences() {},
+      getDiffPreferences() {
+        return diffPreferences;
+      },
+      setDiffPreferences(next: typeof diffPreferences) {
+        diffPreferences = next;
       },
     },
     subscribe(listener: (event: BrewvaPromptSessionEvent) => void) {
@@ -159,6 +219,15 @@ function createFakeBundle(
     async prompt() {},
     async waitForIdle() {},
     async abort() {},
+    async setModel(model: BrewvaSessionModelDescriptor) {
+      currentModel = model;
+    },
+    getAvailableThinkingLevels() {
+      return currentModel.reasoning ? ["off", "minimal", "low", "medium", "high"] : ["off"];
+    },
+    setThinkingLevel(level: string) {
+      thinkingLevel = level;
+    },
     dispose() {},
     setUiPort(ui: BrewvaToolUiPort) {
       attachedUi = ui;
@@ -207,6 +276,25 @@ function createFakeBundle(
 }
 
 describe("opentui solid shell runtime", () => {
+  test("keeps shared overlay geometry positive on tiny terminals", () => {
+    expect(resolveDialogWidth(4)).toBe(2);
+    expect(resolveDialogWidth(1)).toBe(1);
+    expect(resolveDialogContentWidth(4)).toBe(1);
+    expect(resolveToastMaxWidth(5)).toBe(1);
+
+    const surface = resolveDialogSurfaceDimensions(4, 4);
+    expect(surface.surfaceWidth).toBe(2);
+    expect(surface.surfaceHeight).toBeGreaterThanOrEqual(1);
+    expect(surface.contentHeight).toBeGreaterThanOrEqual(1);
+    expect(Object.keys(surface)).not.toContain("topInset");
+  });
+
+  test("uses opencode-style automatic split diff thresholds", () => {
+    expect(resolveDiffView(121, "auto")).toBe("split");
+    expect(resolveDiffView(120, "auto")).toBe("unified");
+    expect(resolveDiffView(180, "stacked")).toBe("unified");
+  });
+
   test("updates a mounted Solid root instead of stacking duplicate roots", async () => {
     const testSetup = await createTestRenderer({
       width: 40,
@@ -273,6 +361,74 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("Brewva");
       expect(frame).toContain("Solid");
       expect(frame).toContain("notice");
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("updates the prompt model label after selecting a model", async () => {
+    const models: BrewvaSessionModelDescriptor[] = [
+      {
+        provider: "openai",
+        id: "alpha",
+        name: "Alpha",
+        contextWindow: 128_000,
+        maxTokens: 16_384,
+        reasoning: false,
+      },
+      {
+        provider: "anthropic",
+        id: "beta",
+        name: "Beta",
+        contextWindow: 200_000,
+        maxTokens: 32_000,
+        reasoning: false,
+      },
+    ];
+    const { bundle } = createFakeBundle({ models });
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 100,
+        height: 24,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+      expect(testSetup.captureCharFrame()).toContain("openai/alpha");
+
+      controller.ui.setEditorText("/models beta");
+      await openTuiSolidAct(async () => {
+        await controller.handleSemanticInput({
+          key: "enter",
+          ctrl: false,
+          meta: false,
+          shift: false,
+        });
+        await controller.handleSemanticInput({
+          key: "enter",
+          ctrl: false,
+          meta: false,
+          shift: false,
+        });
+      });
+
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+      const frame = testSetup.captureCharFrame();
+      expect(frame).toContain("anthropic/beta");
+      expect(frame).not.toContain("openai/alpha");
     } finally {
       controller.dispose();
       testSetup.renderer.destroy();
@@ -373,9 +529,12 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("┃  /qu");
       expect(frame).toContain("command /questions");
       expect(frame).toContain("/questions");
-      expect(frame).toContain("List unresolved operator questions.");
+      expect(frame).not.toContain("List unresolved operator questions.");
       expect(frame).toContain("/quit");
       expect(frame).toContain("Exit the interactive shell.");
+      expect(countOccurrences(frame, "Exit the interactive shell.")).toBe(1);
+      expect(frame).not.toContain("┌");
+      expect(frame).not.toContain("└");
 
       fixture.emitSessionEvent({
         type: "message_update",
@@ -392,7 +551,10 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("┃  /qu");
       expect(frame).toContain("command /questions");
       expect(frame).toContain("/questions");
-      expect(frame).toContain("List unresolved operator questions.");
+      expect(frame).not.toContain("List unresolved operator questions.");
+      expect(countOccurrences(frame, "Exit the interactive shell.")).toBe(1);
+      expect(frame).not.toContain("┌");
+      expect(frame).not.toContain("└");
       expect(controller.getState().composer.completion?.selectedIndex).toBe(1);
       expect(
         controller.getState().composer.completion?.items[
@@ -600,6 +762,335 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
 
       expect(controller.getState().overlay.active?.kind).toBe("approval");
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("updates model picker highlight when keyboard navigation changes selection", async () => {
+    const { bundle } = createFakeBundle();
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    controller.openOverlay({
+      kind: "modelPicker",
+      title: "Models",
+      query: "",
+      selectedIndex: 0,
+      items: [
+        {
+          id: "model:openai/alpha:openai",
+          kind: "model",
+          provider: "openai",
+          modelId: "alpha",
+          label: "Alpha",
+          detail: "openai/alpha",
+          available: true,
+        },
+        {
+          id: "model:openai/beta:openai",
+          kind: "model",
+          provider: "openai",
+          modelId: "beta",
+          label: "Beta",
+          detail: "openai/beta",
+          available: true,
+        },
+      ],
+    });
+
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 100,
+        height: 30,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      expect(testSetup.captureCharFrame()).toContain("Alpha openai/alpha");
+
+      await openTuiSolidAct(async () => {
+        testSetup.mockInput.pressKey("n", { ctrl: true });
+        await Bun.sleep(0);
+      });
+      const frame = await waitForRenderedFrame(testSetup, {
+        predicate: (candidate) => candidate.includes("Beta openai/beta"),
+      });
+
+      expect(controller.getState().overlay.active?.payload).toMatchObject({
+        kind: "modelPicker",
+        selectedIndex: 1,
+      });
+      expect(frame).toContain("Beta openai/beta");
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("renders long model picker rows as one clipped line with a short footer", async () => {
+    const { bundle } = createFakeBundle();
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    controller.openOverlay({
+      kind: "modelPicker",
+      title: "Models",
+      query: "gemini",
+      selectedIndex: 0,
+      items: [
+        {
+          id: "model:google/gemini-2.5-flash-lite-preview-06-17:google",
+          kind: "model",
+          section: "google",
+          provider: "google",
+          modelId: "gemini-2.5-flash-lite-preview-06-17",
+          label: "Gemini 2.5 Flash Lite Preview 06-17 With Extra Long Experimental Name",
+          footer: "Connect",
+          available: false,
+        },
+      ],
+    });
+
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 60,
+        height: 24,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      const frame = testSetup.captureCharFrame();
+      const modelRows = frame
+        .split("\n")
+        .filter((line) => line.includes("Gemini") || line.includes("Experimental"));
+
+      expect(modelRows).toHaveLength(1);
+      expect(modelRows[0]).toContain("Gemini 2.5 Flash Lite Preview");
+      expect(modelRows[0]).toContain("…");
+      expect(modelRows[0]).toContain("Connect");
+      expect(frame).not.toContain("google/gemini-2.5-flash-lite-preview-06-17");
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("renders provider picker with the OpenCode dialog-select shell", async () => {
+    const { bundle } = createFakeBundle();
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    controller.openOverlay({
+      kind: "providerPicker",
+      title: "Connect a provider",
+      query: "",
+      selectedIndex: 0,
+      providers: [],
+      items: [
+        {
+          id: "openai",
+          section: "Popular",
+          label: "OpenAI",
+          marker: "✓",
+          detail: "(ChatGPT Plus/Pro or API key)",
+          footer: "Vault",
+          provider: {
+            id: "openai",
+            name: "OpenAI",
+            description: "ChatGPT Plus/Pro or API key",
+            group: "popular",
+            connected: true,
+            connectionSource: "vault",
+            modelCount: 2,
+            availableModelCount: 2,
+            credentialRef: "vault://openai/apiKey",
+          },
+        },
+        {
+          id: "google",
+          section: "Popular",
+          label: "Google",
+          detail: "(API key)",
+          provider: {
+            id: "google",
+            name: "Google",
+            description: "API key",
+            group: "popular",
+            connected: false,
+            connectionSource: "none",
+            modelCount: 1,
+            availableModelCount: 0,
+            credentialRef: "vault://google/apiKey",
+          },
+        },
+      ],
+    });
+
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 100,
+        height: 30,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      const frame = testSetup.captureCharFrame();
+
+      expect(frame).toContain("Connect a provider");
+      expect(frame).toContain("Search");
+      expect(frame).toContain("Popular");
+      expect(frame).toContain("✓");
+      expect(frame).toContain("OpenAI");
+      expect(frame).toContain("(ChatGPT Plus/Pr");
+      expect(frame).toContain("…");
+      expect(frame).toContain("Disconnect d");
+      expect(frame).not.toContain("Connect Provider");
+      expect(frame).not.toContain("Type search");
+      expect(frame).not.toContain("›");
+      expect(frame).not.toContain("┌");
+      expect(frame).not.toContain("└");
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("renders OAuth wait dialog with copyable URL fallback", async () => {
+    const { bundle } = createFakeBundle();
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+    const copiedText: string[] = [];
+    const authUrl =
+      "https://auth.openai.com/oauth/authorize?client_id=brewva-test&redirect_uri=http://localhost:1455/auth/callback&state=tail-marker";
+
+    await controller.start();
+    controller.ui.copyText = async (text: string) => {
+      copiedText.push(text);
+    };
+    controller.openOverlay({
+      kind: "oauthWait",
+      title: "ChatGPT Pro/Plus (browser)",
+      url: authUrl,
+      instructions: "Complete authorization in your browser. Brewva will continue automatically.",
+    });
+
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 100,
+        height: 30,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      const frame = testSetup.captureCharFrame();
+
+      expect(frame).toContain("ChatGPT Pro/Plus (browser)");
+      expect(frame).toContain("https://auth.openai.com/oauth/authorize");
+      expect(frame).toContain("state=tail-marker");
+      expect(frame).toContain("Waiting for authorization...");
+      expect(frame).toContain("c copy");
+      expect(frame).not.toContain("enter/c");
+      expect(frame).not.toContain("authorization code to clipboard");
+
+      await openTuiSolidAct(async () => {
+        testSetup.mockInput.pressKey("c");
+        await Bun.sleep(0);
+      });
+      await testSetup.renderOnce();
+
+      expect(copiedText).toEqual([authUrl]);
+      expect(controller.getState().notifications.at(-1)).toMatchObject({
+        level: "info",
+        message: "Copied to clipboard.",
+      });
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("renders OAuth manual callback input with keyboard entry", async () => {
+    const { bundle } = createFakeBundle();
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+    const submittedCodes: string[] = [];
+    const authUrl =
+      "https://auth.openai.com/oauth/authorize?client_id=brewva-test&redirect_uri=http://localhost:1455/auth/callback&state=tail-marker";
+
+    await controller.start();
+    controller.openOverlay({
+      kind: "oauthWait",
+      title: "ChatGPT Pro/Plus (browser)",
+      url: authUrl,
+      instructions: "Authorize in browser.",
+      manualCodePrompt: "Paste the final redirect URL or authorization code.",
+      async submitManualCode(code: string) {
+        submittedCodes.push(code);
+      },
+    });
+
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 100,
+        height: 30,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      let frame = testSetup.captureCharFrame();
+      expect(frame).toContain("enter/p paste callback");
+
+      await openTuiSolidAct(async () => {
+        testSetup.mockInput.pressKey("p");
+        await Bun.sleep(0);
+      });
+      await testSetup.renderOnce();
+      frame = testSetup.captureCharFrame();
+      expect(frame).toContain("Paste the final redirect URL or authorization code.");
+
+      await openTuiSolidAct(async () => {
+        await testSetup.mockInput.typeText("https://callback?code=abc");
+        testSetup.mockInput.pressEnter();
+        await Bun.sleep(0);
+      });
+      await testSetup.renderOnce();
+
+      expect(submittedCodes).toEqual(["https://callback?code=abc"]);
     } finally {
       controller.dispose();
       testSetup.renderer.destroy();
@@ -892,48 +1383,6 @@ describe("opentui solid shell runtime", () => {
     }
   });
 
-  test("renders the OpenCode-style sidebar on wide terminals", async () => {
-    const { bundle } = createFakeBundle({
-      seedMessages: [
-        {
-          role: "assistant",
-          content: "Hello from Brewva",
-        },
-      ],
-    });
-    const controller = new CliShellController(bundle, {
-      cwd: process.cwd(),
-      openSession: async () => bundle,
-      createSession: async () => bundle,
-      operatorPollIntervalMs: 60_000,
-    });
-
-    await controller.start();
-    const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
-      {
-        width: 140,
-        height: 32,
-      },
-    );
-
-    try {
-      await openTuiSolidAct(async () => {
-        await Bun.sleep(CliShellController.STATUS_DEBOUNCE_MS + 20);
-      });
-      await testSetup.renderOnce();
-      await testSetup.renderOnce();
-      const frame = testSetup.captureCharFrame();
-      expect(frame).toContain("Hello from Brewva");
-      expect(frame).toContain("session-1");
-      expect(frame).toContain("Inbox");
-      expect(frame).toContain("Replay");
-    } finally {
-      controller.dispose();
-      testSetup.renderer.destroy();
-    }
-  });
-
   test("renders the prompt action bar with live session status", async () => {
     const { bundle } = createFakeBundle();
     const controller = new CliShellController(bundle, {
@@ -1021,6 +1470,82 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("Permission required");
       expect(frame).toContain("Tool: write");
       expect(frame).toContain("Boundary: effectful");
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("renders inline approval diff preview with fullscreen hint", async () => {
+    const { bundle } = createFakeBundle();
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    controller.openOverlay({
+      kind: "approval",
+      selectedIndex: 0,
+      snapshot: {
+        approvals: [
+          {
+            requestId: "approval-1",
+            proposalId: "proposal-1",
+            toolName: asBrewvaToolName("edit"),
+            toolCallId: asBrewvaToolCallId("tool-call-1"),
+            subject: "tool:edit",
+            boundary: "effectful",
+            effects: ["workspace_write"],
+            argsDigest: "digest-1",
+            argsSummary: "path=src/generated.ts",
+            diffPreview: {
+              kind: "diff",
+              path: "src/generated.ts",
+              diff: "--- src/generated.ts\n+++ src/generated.ts\n@@ -1,1 +1,1 @@\n-export const value = 1;\n+export const value = 2;\n",
+            },
+            evidenceRefs: [],
+            turn: 1,
+            createdAt: Date.now(),
+          },
+        ],
+        questions: [],
+        taskRuns: [],
+        sessions: [],
+      },
+    });
+
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 120,
+        height: 40,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+      let frame = testSetup.captureCharFrame();
+      expect(frame).toContain("Edit src/generated.ts");
+      expect(frame).toContain("ctrl+f fullscreen");
+      expect(frame).toContain("1 + export const value = 2;");
+
+      await controller.handleSemanticInput({
+        key: "f",
+        ctrl: true,
+        meta: false,
+        shift: false,
+      });
+      await testSetup.renderOnce();
+      frame = testSetup.captureCharFrame();
+      expect(controller.getState().overlay.active?.payload).toMatchObject({
+        kind: "approval",
+        previewExpanded: true,
+      });
+      expect(frame).toContain("ctrl+f minimize");
     } finally {
       controller.dispose();
       testSetup.renderer.destroy();
@@ -1413,6 +1938,10 @@ describe("opentui solid shell runtime", () => {
       let frame = testSetup.captureCharFrame();
       expect(frame).toContain("Notifications");
       expect(frame).toContain("latest notification");
+      expect(frame).toContain("Details");
+      expect(frame).toContain("dismiss d");
+      expect(frame).toContain("clear x");
+      expect(frame).toContain("details enter");
 
       await openTuiSolidAct(async () => {
         await controller.handleSemanticInput({
@@ -1626,6 +2155,83 @@ describe("opentui solid shell runtime", () => {
     }
   });
 
+  test("renders multi-file patch tool results as per-file native diffs", async () => {
+    const { bundle } = createFakeBundle({
+      seedMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool-patch-1",
+              name: "apply_patch",
+              arguments: { description: "update generated files" },
+            },
+          ],
+          stopReason: "toolUse",
+        },
+        {
+          role: "toolResult",
+          toolCallId: "tool-patch-1",
+          toolName: "apply_patch",
+          content: [{ type: "text", text: "Applied patch to 3 files." }],
+          details: {
+            files: [
+              {
+                path: "src/created.ts",
+                action: "add",
+                diff: "--- /dev/null\n+++ src/created.ts\n@@ -0,0 +1,1 @@\n+export const created = true;\n",
+              },
+              {
+                path: "src/generated.ts",
+                action: "modify",
+                diff: "--- src/generated.ts\n+++ src/generated.ts\n@@ -1,1 +1,1 @@\n-export const value = 1;\n+export const value = 2;\n",
+              },
+              {
+                path: "src/old.ts",
+                action: "delete",
+                deletions: 12,
+              },
+            ],
+          },
+          isError: false,
+        },
+      ],
+    });
+
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 140,
+        height: 36,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+      const frame = testSetup.captureCharFrame();
+      expect(frame).toContain("Created src/created.ts");
+      expect(frame).toContain("Patch src/generated.ts");
+      expect(frame).toContain("Deleted src/old.ts");
+      expect(frame).toContain("export const created = true;");
+      expect(frame).toContain("export const value = 2;");
+      expect(frame).toContain("-12 lines");
+      expect(frame).not.toContain('"description": "update generated files"');
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
   test("renders exec tools as shell-style transcript blocks", async () => {
     const { bundle } = createFakeBundle({
       seedMessages: [
@@ -1680,6 +2286,125 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("$ bun test");
       expect(frame).toContain("1775 pass");
       expect(frame).not.toContain('"command": "bun test"');
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("collapses long exec output with an expandable hint", async () => {
+    const output = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n");
+    const { bundle } = createFakeBundle({
+      seedMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool-exec-long",
+              name: "exec_command",
+              arguments: {
+                command: "bun test --verbose",
+                description: "Run verbose unit tests",
+              },
+            },
+          ],
+          stopReason: "toolUse",
+        },
+        {
+          role: "toolResult",
+          toolCallId: "tool-exec-long",
+          toolName: "exec_command",
+          content: [{ type: "text", text: output }],
+          details: { exitCode: 0 },
+          isError: false,
+        },
+      ],
+    });
+    const toolRenderCache = createToolRenderCache();
+    toolRenderCache.resetForSession("session-1");
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller, toolRenderCache }),
+      {
+        width: 120,
+        height: 32,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+      const frame = testSetup.captureCharFrame();
+      expect(frame).toContain("Run verbose unit tests");
+      expect(frame).toContain("line 10");
+      expect(frame).not.toContain("line 11");
+      expect(frame).toContain("Click to expand 2 more line(s)");
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("keeps generic tools with diff-shaped details on the generic renderer", async () => {
+    const { bundle } = createFakeBundle({
+      seedMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool-git-diff",
+              name: "git_diff",
+              arguments: { scope: "working-tree" },
+            },
+          ],
+          stopReason: "toolUse",
+        },
+        {
+          role: "toolResult",
+          toolCallId: "tool-git-diff",
+          toolName: "git_diff",
+          content: [{ type: "text", text: "Repository diff generated." }],
+          details: {
+            diff: "--- src/app.ts\n+++ src/app.ts\n@@ -1,1 +1,1 @@\n-old\n+new\n",
+          },
+          isError: false,
+        },
+      ],
+    });
+
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 120,
+        height: 28,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+      const frame = testSetup.captureCharFrame();
+      expect(frame).toContain("git_diff · completed");
+      expect(frame).toContain("Repository diff generated.");
+      expect(frame).not.toContain("Patch file");
+      expect(frame).not.toContain("1 + new");
     } finally {
       controller.dispose();
       testSetup.renderer.destroy();

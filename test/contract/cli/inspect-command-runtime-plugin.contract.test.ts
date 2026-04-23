@@ -49,7 +49,7 @@ function requireCommand(commands: Map<string, RegisteredCommand>, name: string):
 }
 
 describe("inspect interactive command runtime plugin", () => {
-  test("registers inspect and renders into a widget without mutating runtime event history", async () => {
+  test("registers inspect and publishes a report notification without mutating runtime event history", async () => {
     const workspace = createTestWorkspace("inspect-command-runtime-plugin");
     writeFileSync(join(workspace, ".brewva", "brewva.json"), "{}\n", "utf8");
     mkdirSync(join(workspace, "src"), { recursive: true });
@@ -109,19 +109,15 @@ describe("inspect interactive command runtime plugin", () => {
     const beforeEventCount = runtime.inspect.events.query(sessionId).length;
     const { api, commands } = createCommandApiMock();
     await createInspectCommandRuntimePlugin(runtime, {
-      maxWidgetLines: 64,
+      maxNotificationLines: 64,
     }).register(api);
 
     const inspectCommand = requireCommand(commands, "inspect");
 
-    const widgets: Array<{ id: string; lines?: string[]; options?: Record<string, unknown> }> = [];
     const notifications: Array<{ message: string; level: string }> = [];
     const ctx = {
       hasUI: true,
       ui: {
-        setWidget(id: string, lines: string[] | undefined, options?: Record<string, unknown>) {
-          widgets.push({ id, lines, options });
-        },
         notify(message: string, level = "info") {
           notifications.push({ message, level });
         },
@@ -134,53 +130,11 @@ describe("inspect interactive command runtime plugin", () => {
     await inspectCommand.handler("src", ctx);
 
     expect(runtime.inspect.events.query(sessionId)).toHaveLength(beforeEventCount);
-    expect(widgets.length).toBeGreaterThan(0);
-    expect(widgets.at(-1)?.id).toBe("brewva-inspect");
-    expect(widgets.at(-1)?.options?.placement).toBe("belowEditor");
-    const rendered = (widgets.at(-1)?.lines ?? []).join("\n");
+    const rendered = notifications.at(-1)?.message ?? "";
+    expect(rendered).toContain("Inspect report for src");
     expect(rendered).toContain("Analysis: directory=src");
     expect(rendered).toContain("code=shell_composition");
     expect(rendered).toContain("code=scope_drift");
-    expect(notifications.at(-1)?.message).toContain("Inspect updated for src");
-  });
-
-  test("supports `/inspect clear` by removing the widget", async () => {
-    const workspace = createTestWorkspace("inspect-command-clear");
-    writeFileSync(join(workspace, ".brewva", "brewva.json"), "{}\n", "utf8");
-    const runtime = new BrewvaRuntime({
-      cwd: workspace,
-      config: structuredClone(DEFAULT_BREWVA_CONFIG),
-    });
-
-    const { api, commands } = createCommandApiMock();
-    await createInspectCommandRuntimePlugin(runtime).register(api);
-    const command = requireCommand(commands, "inspect");
-
-    const widgets: Array<{ id: string; lines?: string[]; options?: Record<string, unknown> }> = [];
-    const notifications: Array<{ message: string; level: string }> = [];
-    const ctx = {
-      hasUI: true,
-      ui: {
-        setWidget(id: string, lines: string[] | undefined, options?: Record<string, unknown>) {
-          widgets.push({ id, lines, options });
-        },
-        notify(message: string, level = "info") {
-          notifications.push({ message, level });
-        },
-      },
-      sessionManager: {
-        getSessionId: () => "inspect-command-clear-session",
-      },
-    };
-
-    await command.handler("clear", ctx);
-
-    expect(widgets).toHaveLength(1);
-    expect(widgets[0]).toEqual({
-      id: "brewva-inspect",
-      lines: undefined,
-      options: { placement: "belowEditor" },
-    });
-    expect(notifications).toEqual([{ message: "Inspect widget cleared.", level: "info" }]);
+    expect(notifications.at(-1)?.level).toBe("warning");
   });
 });

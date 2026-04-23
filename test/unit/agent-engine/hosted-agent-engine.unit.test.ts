@@ -490,8 +490,89 @@ describe("hosted agent engine", () => {
         role: "assistant",
         stopReason: "error",
         errorMessage: "provider exploded",
+        excludeFromContext: true,
       },
     });
+  });
+
+  test("excludes failed assistant turns from the next provider request context", async () => {
+    const streamContexts: BrewvaAgentEngineLlmMessage[][] = [];
+    let streamCalls = 0;
+    const failedMessage = {
+      ...createAssistantMessage(
+        [{ type: "text", text: "partial answer before server_error" }],
+        "error",
+      ),
+      errorMessage: "server_error",
+    };
+    const streamFn: BrewvaAgentEngineStreamFunction = async (_model, context) => {
+      streamCalls += 1;
+      streamContexts.push([...context.messages]);
+      if (streamCalls === 1) {
+        return createStream(failedMessage);
+      }
+      return createStream(createAssistantMessage([{ type: "text", text: "recovered" }]));
+    };
+
+    const events: BrewvaAgentEngineEvent[] = [];
+    const engine = createHostedAgentEngine({
+      initialModel: TEST_MODEL,
+      initialThinkingLevel: "off",
+      sessionId: "session-retry-after-failure",
+      steeringMode: "one-at-a-time",
+      followUpMode: "one-at-a-time",
+      transport: "sse",
+      thinkingBudgets: undefined,
+      maxRetryDelayMs: 1000,
+      beforeToolCall: async () => undefined,
+      afterToolCall: async () => undefined,
+      onPayload: async (payload) => payload,
+      transformContext: async (messages) => messages,
+      resolveRequestAuth: async () => ({ ok: true, apiKey: "retry-key" }),
+      streamFn,
+    });
+
+    const unsubscribe = engine.subscribe((event) => {
+      events.push(event);
+    });
+
+    await engine.prompt({
+      role: "user",
+      content: [{ type: "text", text: "first" }],
+      timestamp: Date.now(),
+    });
+    await engine.prompt({
+      role: "user",
+      content: [{ type: "text", text: "continue" }],
+      timestamp: Date.now(),
+    });
+
+    unsubscribe();
+
+    const failedEnd = events.find(
+      (event) =>
+        event.type === "message_end" &&
+        event.message.role === "assistant" &&
+        event.message.stopReason === "error",
+    );
+    expect(failedEnd).toMatchObject({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        excludeFromContext: true,
+      },
+    });
+    expect(streamContexts).toHaveLength(2);
+    expect(
+      streamContexts[1]?.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content.some(
+            (part) =>
+              part.type === "text" && part.text.includes("partial answer before server_error"),
+          ),
+      ),
+    ).toBe(false);
   });
 
   test("stops the current loop after boundary tool results when requested", async () => {

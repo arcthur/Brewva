@@ -84,7 +84,7 @@ function recordWriteSession(
 }
 
 describe("insights interactive command runtime plugin", () => {
-  test("renders aggregated project insights into a widget", async () => {
+  test("publishes aggregated project insights into a notification", async () => {
     const workspace = createTestWorkspace("insights-command-runtime-plugin");
     writeFileSync(join(workspace, ".brewva", "brewva.json"), "{}\n", "utf8");
     mkdirSync(join(workspace, "src"), { recursive: true });
@@ -122,14 +122,10 @@ describe("insights interactive command runtime plugin", () => {
       "expected insights command registration",
     );
 
-    const widgets: Array<{ id: string; lines?: string[]; options?: Record<string, unknown> }> = [];
     const notifications: Array<{ message: string; level: string }> = [];
     const ctx = {
       hasUI: true,
       ui: {
-        setWidget(id: string, lines: string[] | undefined, options?: Record<string, unknown>) {
-          widgets.push({ id, lines, options });
-        },
         notify(message: string, level = "info") {
           notifications.push({ message, level });
         },
@@ -138,54 +134,12 @@ describe("insights interactive command runtime plugin", () => {
 
     await command.handler(".", ctx);
 
-    expect(widgets.length).toBeGreaterThan(0);
-    expect(widgets.at(-1)?.id).toBe("brewva-insights");
-    expect(widgets.at(-1)?.options?.placement).toBe("belowEditor");
-    const rendered = (widgets.at(-1)?.lines ?? []).join("\n");
+    const rendered = notifications.at(-1)?.message ?? "";
+    expect(rendered).toContain("Insights report for .");
     expect(rendered).toContain("Brewva Project Insights");
     expect(rendered).toContain("Top directories:");
     expect(rendered).toContain("src: 1 session(s), 1 write(s)");
     expect(rendered).toContain("packages/tool: 1 session(s), 1 write(s)");
-    expect(notifications.at(-1)?.message).toContain("Insights updated for .");
-  });
-
-  test("supports `/insights clear` by removing the widget", async () => {
-    const workspace = createTestWorkspace("insights-command-clear");
-    writeFileSync(join(workspace, ".brewva", "brewva.json"), "{}\n", "utf8");
-    const runtime = new BrewvaRuntime({
-      cwd: workspace,
-      config: structuredClone(DEFAULT_BREWVA_CONFIG),
-    });
-
-    const { api, commands } = createCommandApiMock();
-    await createInsightsCommandRuntimePlugin(runtime).register(api);
-    const command = requireDefined(
-      commands.get("insights"),
-      "expected insights command registration",
-    );
-
-    const widgets: Array<{ id: string; lines?: string[]; options?: Record<string, unknown> }> = [];
-    const notifications: Array<{ message: string; level: string }> = [];
-    const ctx = {
-      hasUI: true,
-      ui: {
-        setWidget(id: string, lines: string[] | undefined, options?: Record<string, unknown>) {
-          widgets.push({ id, lines, options });
-        },
-        notify(message: string, level = "info") {
-          notifications.push({ message, level });
-        },
-      },
-    };
-
-    await command.handler("clear", ctx);
-
-    expect(widgets).toHaveLength(1);
-    expect(widgets[0]).toEqual({
-      id: "brewva-insights",
-      lines: undefined,
-      options: { placement: "belowEditor" },
-    });
-    expect(notifications).toEqual([{ message: "Insights widget cleared.", level: "info" }]);
+    expect(notifications.at(-1)?.level).toBe("info");
   });
 });

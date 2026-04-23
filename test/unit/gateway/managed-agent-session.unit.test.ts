@@ -144,6 +144,14 @@ function createSettingsStub() {
     },
     setDefaultModelAndProvider() {},
     setDefaultThinkingLevel() {},
+    getModelPreferences() {
+      return { recent: [], favorite: [] };
+    },
+    setModelPreferences() {},
+    getDiffPreferences() {
+      return { style: "auto" as const, wrapMode: "word" as const };
+    },
+    setDiffPreferences() {},
   };
 }
 
@@ -375,10 +383,6 @@ describe("managed agent session compaction", () => {
       setStatus() {},
       setWorkingMessage() {},
       setHiddenThinkingLabel() {},
-      setWidget() {},
-      setFooter() {},
-      setHeader() {},
-      setTitle() {},
       async custom() {
         return undefined as never;
       },

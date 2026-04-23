@@ -29,16 +29,12 @@ export type KnownProvider =
   | "github-copilot"
   | "xai"
   | "groq"
-  | "cerebras"
   | "openrouter"
   | "vercel-ai-gateway"
-  | "zai"
   | "mistral"
   | "minimax"
   | "minimax-cn"
   | "huggingface"
-  | "opencode"
-  | "opencode-go"
   | "kimi-coding";
 export type Provider = KnownProvider | string;
 
@@ -326,14 +322,12 @@ export interface OpenAICompletionsCompat {
   requiresAssistantAfterToolResult?: boolean;
   /** Whether thinking blocks must be converted to text blocks with <thinking> delimiters. Default: auto-detected from URL. */
   requiresThinkingAsText?: boolean;
-  /** Format for reasoning/thinking parameter. "openai" uses reasoning_effort, "openrouter" uses reasoning: { effort }, "zai" uses top-level enable_thinking: boolean, "qwen" uses top-level enable_thinking: boolean, and "qwen-chat-template" uses chat_template_kwargs.enable_thinking. Default: "openai". */
-  thinkingFormat?: "openai" | "openrouter" | "zai" | "qwen" | "qwen-chat-template";
+  /** Format for reasoning/thinking parameter. "openai" uses reasoning_effort, "openrouter" uses reasoning: { effort }, "qwen" uses top-level enable_thinking: boolean, and "qwen-chat-template" uses chat_template_kwargs.enable_thinking. Default: "openai". */
+  thinkingFormat?: "openai" | "openrouter" | "qwen" | "qwen-chat-template";
   /** OpenRouter-specific routing preferences. Only used when baseUrl points to OpenRouter. */
   openRouterRouting?: OpenRouterRouting;
   /** Vercel AI Gateway routing preferences. Only used when baseUrl points to Vercel AI Gateway. */
   vercelGatewayRouting?: VercelGatewayRouting;
-  /** Whether z.ai supports top-level `tool_stream: true` for streaming tool call deltas. Default: false. */
-  zaiToolStream?: boolean;
   /** Whether the provider supports the `strict` field in tool definitions. Default: true. */
   supportsStrictMode?: boolean;
 }

@@ -1,33 +1,36 @@
 /** @jsxImportSource @opentui/solid */
 
 import type { BrewvaToolDefinition } from "@brewva/brewva-substrate";
+import type { JSX } from "solid-js";
 import { For, Index, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js";
 import type {
   CliShellTranscriptMessage,
   CliShellTranscriptPart,
   CliShellTranscriptToolPart,
 } from "../../src/shell/transcript.js";
+import { DiffView, formatDiffFileTitle } from "./diff-view.js";
 import {
   SPLIT_BORDER_CHARS,
   getReasoningSyntaxStyle,
   getTranscriptSyntaxStyle,
   type SessionPalette,
 } from "./palette.js";
+import { useShellRenderContext } from "./render-context.js";
 import {
   asRecord,
   formatUnknown,
   inferFiletype,
-  readToolDiffText,
+  readToolDiffPayload,
   readToolErrorText,
   readToolPath,
   readToolRangeSuffix,
   readToolResultText,
   readToolTextInput,
   readToolCommand,
+  readToolWorkerSessionId,
   renderToolComponentLines,
   summarizeInput,
   toolStatusText,
-  truncateText,
   type ToolRenderCache,
 } from "./tool-render.js";
 
@@ -127,15 +130,33 @@ function InlineTool(input: {
   part: CliShellTranscriptToolPart;
   theme: SessionPalette;
   errorText?: string;
+  hint?: string;
+  onSelect?: () => void;
 }) {
+  const [hovered, setHovered] = createSignal(false);
+  const actionable = createMemo(() => Boolean(input.onSelect));
   const tone = createMemo(() => {
     if (input.part.status === "error") {
       return input.theme.error;
     }
+    if (hovered() && actionable()) {
+      return input.theme.accent;
+    }
     return input.complete ? input.theme.textMuted : input.theme.text;
   });
   return (
-    <box id={`tool-${input.part.id}`} marginTop={1} paddingLeft={3} flexDirection="column">
+    <box
+      id={`tool-${input.part.id}`}
+      marginTop={1}
+      paddingLeft={3}
+      paddingRight={2}
+      flexDirection="column"
+      backgroundColor={hovered() ? input.theme.backgroundElement : undefined}
+      onMouseMove={() => setHovered(true)}
+      onMouseOver={() => setHovered(true)}
+      onMouseOut={() => setHovered(false)}
+      onMouseUp={() => input.onSelect?.()}
+    >
       <text paddingLeft={3} fg={tone()}>
         <Show when={input.complete} fallback={`~ ${input.pending}`}>
           <span
@@ -148,6 +169,13 @@ function InlineTool(input: {
           {input.text}
         </Show>
       </text>
+      <Show when={hovered() && input.hint}>
+        {(hint) => (
+          <text paddingLeft={3} fg={input.theme.textMuted}>
+            {hint()}
+          </text>
+        )}
+      </Show>
       <Show when={input.errorText}>
         <text fg={input.theme.error}>{input.errorText}</text>
       </Show>
@@ -160,11 +188,16 @@ function BlockTool(input: {
   part: CliShellTranscriptToolPart;
   theme: SessionPalette;
   titleColor?: string;
-  children: unknown;
+  children: JSX.Element;
+  idSuffix?: string;
+  hint?: string;
+  onSelect?: () => void;
 }) {
+  const [hovered, setHovered] = createSignal(false);
+  const actionable = createMemo(() => Boolean(input.onSelect));
   return (
     <box
-      id={`tool-${input.part.id}`}
+      id={`tool-${input.part.id}${input.idSuffix ? `:${input.idSuffix}` : ""}`}
       border={["left"]}
       customBorderChars={SPLIT_BORDER_CHARS}
       paddingTop={1}
@@ -172,13 +205,26 @@ function BlockTool(input: {
       paddingLeft={2}
       marginTop={1}
       gap={1}
-      backgroundColor={input.theme.backgroundPanel}
-      borderColor={input.theme.background}
+      backgroundColor={hovered() ? input.theme.backgroundElement : input.theme.backgroundPanel}
+      borderColor={
+        hovered() && actionable()
+          ? (input.titleColor ?? input.theme.borderActive)
+          : input.theme.background
+      }
       flexDirection="column"
+      onMouseMove={() => setHovered(true)}
+      onMouseOver={() => setHovered(true)}
+      onMouseOut={() => setHovered(false)}
+      onMouseUp={() => input.onSelect?.()}
     >
-      <text paddingLeft={3} fg={input.titleColor ?? input.theme.textMuted}>
-        {input.title}
-      </text>
+      <box flexDirection="row" justifyContent="space-between" paddingLeft={3} paddingRight={3}>
+        <text fg={input.titleColor ?? input.theme.textMuted}>{input.title}</text>
+        <Show when={input.hint}>
+          {(hint) => (
+            <text fg={hovered() ? input.theme.accent : input.theme.textMuted}>{hint()}</text>
+          )}
+        </Show>
+      </box>
       {input.children}
       <Show when={readToolErrorText(input.part)}>
         <text paddingLeft={3} fg={input.theme.error}>
@@ -322,41 +368,90 @@ function WriteToolView(input: { part: CliShellTranscriptToolPart; theme: Session
   );
 }
 
-function EditToolView(input: { part: CliShellTranscriptToolPart; theme: SessionPalette }) {
+function formatDiffToolTitle(part: CliShellTranscriptToolPart, path: string): string {
+  if (part.toolName === "edit") {
+    return `← Edit ${path}`;
+  }
+  if (part.toolName === "apply_patch") {
+    return `← Patch ${path}`;
+  }
+  return `← ${part.toolName} ${path}`.trim();
+}
+
+function DiffToolView(input: {
+  part: CliShellTranscriptToolPart;
+  theme: SessionPalette;
+  transcriptWidth: number;
+}) {
+  const shellContext = useShellRenderContext();
   const path = createMemo(() => readToolPath(input.part) ?? "file");
-  const diffText = createMemo(() => readToolDiffText(input.part));
+  const payload = createMemo(() => readToolDiffPayload(input.part));
+  const singleDiff = createMemo(() => {
+    const current = payload();
+    return current?.kind === "single" ? current : undefined;
+  });
+  const diffFiles = createMemo(() => {
+    const current = payload();
+    return current?.kind === "files" ? current.files : [];
+  });
   return (
     <Switch>
-      <Match when={diffText().length > 0}>
-        <BlockTool title={`← Edit ${path()}`} part={input.part} theme={input.theme}>
-          <box paddingLeft={1}>
-            <diff
-              diff={diffText()}
-              view="unified"
-              wrapMode="word"
-              showLineNumbers={true}
-              filetype={inferFiletype(path())}
-              syntaxStyle={getTranscriptSyntaxStyle(input.theme)}
-              fg={input.theme.text}
-              addedBg={input.theme.diffAddedBg}
-              removedBg={input.theme.diffRemovedBg}
-              contextBg={input.theme.diffContextBg}
-              addedSignColor={input.theme.diffHighlightAdded}
-              removedSignColor={input.theme.diffHighlightRemoved}
-              lineNumberFg={input.theme.diffLineNumber}
-              lineNumberBg={input.theme.backgroundElement}
-              addedLineNumberBg={input.theme.diffAddedLineNumberBg}
-              removedLineNumberBg={input.theme.diffRemovedLineNumberBg}
-            />
-          </box>
+      <Match when={singleDiff()}>
+        <BlockTool
+          title={formatDiffToolTitle(input.part, path())}
+          part={input.part}
+          theme={input.theme}
+        >
+          <DiffView
+            diff={singleDiff()?.diff ?? ""}
+            filePath={singleDiff()?.path ?? path()}
+            width={input.transcriptWidth}
+            style={shellContext.diffStyle()}
+            wrapMode={shellContext.diffWrapMode()}
+            theme={input.theme}
+          />
         </BlockTool>
+      </Match>
+      <Match when={diffFiles().length > 0}>
+        <box flexDirection="column" gap={0}>
+          <For each={diffFiles()}>
+            {(file, index) => (
+              <BlockTool
+                title={formatDiffFileTitle(file)}
+                part={input.part}
+                theme={input.theme}
+                idSuffix={`file:${index()}`}
+              >
+                <Show
+                  when={file.diff.length > 0}
+                  fallback={
+                    <text paddingLeft={1} fg={input.theme.diffRemoved}>
+                      -{file.deletions ?? 0} lines
+                    </text>
+                  }
+                >
+                  <DiffView
+                    diff={file.diff}
+                    filePath={file.path}
+                    width={input.transcriptWidth}
+                    style={shellContext.diffStyle()}
+                    wrapMode={shellContext.diffWrapMode()}
+                    theme={input.theme}
+                  />
+                </Show>
+              </BlockTool>
+            )}
+          </For>
+        </box>
       </Match>
       <Match when={true}>
         <InlineTool
           icon="←"
-          pending="Preparing edit..."
+          pending={
+            input.part.toolName === "apply_patch" ? "Preparing patch..." : "Preparing edit..."
+          }
           complete={Boolean(readToolPath(input.part))}
-          text={`Edit ${path()} ${summarizeInput(input.part.args, ["path", "filePath", "file_path"])}`.trim()}
+          text={`${input.part.toolName === "apply_patch" ? "Patch" : "Edit"} ${path()} ${summarizeInput(input.part.args, ["path", "filePath", "file_path"])}`.trim()}
           part={input.part}
           theme={input.theme}
           errorText={readToolErrorText(input.part)}
@@ -366,9 +461,60 @@ function EditToolView(input: { part: CliShellTranscriptToolPart; theme: SessionP
   );
 }
 
-function BashToolView(input: { part: CliShellTranscriptToolPart; theme: SessionPalette }) {
+const BASH_COLLAPSED_LINE_LIMIT = 10;
+
+interface TranscriptToolInteractionState {
+  bashExpanded?: boolean;
+}
+
+function readTranscriptToolInteractionState(
+  cache: ToolRenderCache,
+  toolCallId: string,
+): TranscriptToolInteractionState {
+  const existing = asRecord(cache.stateByToolCallId.get(toolCallId));
+  if (existing) {
+    return existing as TranscriptToolInteractionState;
+  }
+  const created: TranscriptToolInteractionState = {};
+  cache.stateByToolCallId.set(toolCallId, created);
+  return created;
+}
+
+function BashToolView(input: {
+  part: CliShellTranscriptToolPart;
+  theme: SessionPalette;
+  toolRenderCache: ToolRenderCache;
+}) {
+  const interactionState = readTranscriptToolInteractionState(
+    input.toolRenderCache,
+    input.part.toolCallId,
+  );
+  const [expanded, setExpanded] = createSignal(Boolean(interactionState.bashExpanded));
   const command = createMemo(() => readToolCommand(input.part) ?? "");
-  const output = createMemo(() => truncateText(readToolResultText(input.part), 10));
+  const outputLines = createMemo(() => {
+    const output = readToolResultText(input.part);
+    return output.length > 0 ? output.split(/\r?\n/u) : [];
+  });
+  const collapsible = createMemo(() => outputLines().length > BASH_COLLAPSED_LINE_LIMIT);
+  const visibleOutputLines = createMemo(() =>
+    collapsible() && !expanded()
+      ? outputLines().slice(0, BASH_COLLAPSED_LINE_LIMIT)
+      : outputLines(),
+  );
+  const hiddenLineCount = createMemo(() =>
+    Math.max(0, outputLines().length - visibleOutputLines().length),
+  );
+  const toggleExpanded = () => {
+    if (!collapsible()) {
+      return;
+    }
+    const next = !expanded();
+    interactionState.bashExpanded = next;
+    setExpanded(next);
+  };
+  const clickHint = createMemo(() =>
+    collapsible() ? (expanded() ? "Click to collapse" : "Click to expand") : undefined,
+  );
   const title = createMemo(() => {
     const args: Record<string, unknown> = (input.part.args as Record<string, unknown>) ?? {};
     const description = (typeof args.description === "string" ? args.description : null) ?? "Shell";
@@ -384,15 +530,30 @@ function BashToolView(input: { part: CliShellTranscriptToolPart; theme: SessionP
   return (
     <Switch>
       <Match
-        when={command().length > 0 && (output().length > 0 || input.part.status === "completed")}
+        when={
+          command().length > 0 && (outputLines().length > 0 || input.part.status === "completed")
+        }
       >
-        <BlockTool title={title()} part={input.part} theme={input.theme}>
+        <BlockTool
+          title={title()}
+          part={input.part}
+          theme={input.theme}
+          hint={clickHint()}
+          onSelect={collapsible() ? toggleExpanded : undefined}
+        >
           <box flexDirection="column" gap={0}>
             <text paddingLeft={1} fg={input.theme.text}>
               $ {command()}
             </text>
-            <Show when={output().length > 0}>
-              <TextLineBlock lines={output().split(/\r?\n/u)} color={input.theme.text} />
+            <Show when={visibleOutputLines().length > 0}>
+              <TextLineBlock lines={visibleOutputLines()} color={input.theme.text} />
+            </Show>
+            <Show when={collapsible()}>
+              <text paddingLeft={1} fg={input.theme.textMuted}>
+                {expanded()
+                  ? "Click to collapse"
+                  : `Click to expand ${hiddenLineCount()} more line(s)`}
+              </text>
             </Show>
           </box>
         </BlockTool>
@@ -568,6 +729,22 @@ function GenericToolView(input: {
   transcriptWidth: number;
   showDetails: boolean;
 }) {
+  const shellContext = useShellRenderContext();
+  const workerSessionId = createMemo(() =>
+    input.part.toolName === "subagent_run" || input.part.toolName === "subagent_fanout"
+      ? readToolWorkerSessionId(input.part)
+      : undefined,
+  );
+  const openWorkerSession = () => {
+    const sessionId = workerSessionId();
+    if (!sessionId) {
+      return;
+    }
+    void shellContext.controller.openSessionById(sessionId);
+  };
+  const workerSessionHint = createMemo(() =>
+    workerSessionId() ? "Click to open worker session" : undefined,
+  );
   const callLines = createMemo(() =>
     renderToolComponentLines({
       kind: "call",
@@ -614,6 +791,8 @@ function GenericToolView(input: {
           part={input.part}
           theme={input.theme}
           errorText={readToolErrorText(input.part)}
+          hint={workerSessionHint()}
+          onSelect={workerSessionId() ? openWorkerSession : undefined}
         />
       </Match>
       <Match when={resultText().trim().length > 0 || fallbackCallLines().length > 0}>
@@ -621,6 +800,8 @@ function GenericToolView(input: {
           title={`${input.part.toolName} · ${toolStatusText(input.part)}`}
           part={input.part}
           theme={input.theme}
+          hint={workerSessionHint()}
+          onSelect={workerSessionId() ? openWorkerSession : undefined}
           titleColor={
             input.part.status === "error"
               ? input.theme.error
@@ -649,6 +830,8 @@ function GenericToolView(input: {
           part={input.part}
           theme={input.theme}
           errorText={readToolErrorText(input.part)}
+          hint={workerSessionHint()}
+          onSelect={workerSessionId() ? openWorkerSession : undefined}
         />
       </Match>
     </Switch>
@@ -671,11 +854,19 @@ function ToolPartView(input: {
       <Match when={input.part.toolName === "write"}>
         <WriteToolView part={input.part} theme={input.theme} />
       </Match>
-      <Match when={input.part.toolName === "edit"}>
-        <EditToolView part={input.part} theme={input.theme} />
+      <Match when={input.part.toolName === "edit" || input.part.toolName === "apply_patch"}>
+        <DiffToolView
+          part={input.part}
+          theme={input.theme}
+          transcriptWidth={input.transcriptWidth}
+        />
       </Match>
       <Match when={input.part.toolName === "exec_command" || input.part.toolName === "bash"}>
-        <BashToolView part={input.part} theme={input.theme} />
+        <BashToolView
+          part={input.part}
+          theme={input.theme}
+          toolRenderCache={input.toolRenderCache}
+        />
       </Match>
       <Match when={input.part.toolName === "skill_load"}>
         <SkillLoadToolView part={input.part} theme={input.theme} showDetails={input.showDetails} />

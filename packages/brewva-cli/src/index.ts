@@ -1125,6 +1125,7 @@ async function run(): Promise<void> {
       const interactiveRuntime = await loadCliInteractiveRuntime();
       const interactiveOptions: CliInteractiveSessionOptions = {
         runtime,
+        providerConnections: sessionResult.providerConnections,
         orchestration,
         cwd: parsed.cwd ?? runtime.cwd,
         initialMessage,

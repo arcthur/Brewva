@@ -62,7 +62,7 @@ function requireCommand(commands: Map<string, RegisteredCommand>, name: string):
 }
 
 describe("questions interactive command runtime plugin", () => {
-  test("renders open questions into a widget without mutating event history", async () => {
+  test("publishes open questions into a notification without mutating event history", async () => {
     const workspace = createTestWorkspace("questions-command-runtime-plugin");
     writeFileSync(join(workspace, ".brewva", "brewva.json"), "{}\n", "utf8");
     const runtime = new BrewvaRuntime({
@@ -94,14 +94,10 @@ describe("questions interactive command runtime plugin", () => {
 
     const questionsCommand = requireCommand(commands, "questions");
 
-    const widgets: Array<{ id: string; lines?: string[]; options?: Record<string, unknown> }> = [];
     const notifications: Array<{ message: string; level: string }> = [];
     const ctx = {
       hasUI: true,
       ui: {
-        setWidget(id: string, lines: string[] | undefined, options?: Record<string, unknown>) {
-          widgets.push({ id, lines, options });
-        },
         notify(message: string, level = "info") {
           notifications.push({ message, level });
         },
@@ -114,13 +110,12 @@ describe("questions interactive command runtime plugin", () => {
     await questionsCommand.handler("", ctx);
 
     expect(runtime.inspect.events.query(sessionId)).toHaveLength(beforeEventCount);
-    expect(widgets.at(-1)?.id).toBe("brewva-questions");
-    expect(widgets.at(-1)?.options?.placement).toBe("belowEditor");
-    const rendered = (widgets.at(-1)?.lines ?? []).join("\n");
+    const rendered = notifications.at(-1)?.message ?? "";
+    expect(rendered).toContain("Questions updated (1 open).");
     expect(rendered).toContain("Open questions: 1");
     expect(rendered).toContain(questionEventId);
     expect(rendered).toContain("Which deployment target should the gateway use?");
-    expect(notifications.at(-1)?.message).toContain("Questions updated (1 open).");
+    expect(notifications.at(-1)?.level).toBe("info");
   });
 
   test("routes /answer back into the session and records a durable answer event", async () => {

@@ -179,6 +179,7 @@ export function resolveComposerCompletion(
         label: maxLabelLen > 0 ? rawLabel.padEnd(maxLabelLen + 2) : rawLabel,
         value: entry.command,
         insertText: `/${entry.command} `,
+        enterBehavior: entry.argumentMode === "required" ? "insert" : "submit",
         description: entry.description,
       };
     });
@@ -189,7 +190,7 @@ export function resolveComposerCompletion(
         kind: "slash",
         query: slashQuery,
         items,
-        selectedIndex: resolveCompletionSelection(input.current, items),
+        selectedIndex: resolveCompletionSelection(input.current, slashQuery, items),
       },
       clearDismissed: input.dismissed !== undefined,
     };
@@ -217,7 +218,7 @@ export function resolveComposerCompletion(
               kind: "path",
               query: pathRange.query,
               items,
-              selectedIndex: resolveCompletionSelection(input.current, items),
+              selectedIndex: resolveCompletionSelection(input.current, pathRange.query, items),
             }
           : undefined,
       clearDismissed: input.dismissed !== undefined,
@@ -327,9 +328,10 @@ function normalizeCompletionQuery(query: string): string {
 
 function resolveCompletionSelection(
   previous: CliShellCompletionState | undefined,
+  query: string,
   items: readonly CliShellCompletionItem[],
 ): number {
-  if (!previous || previous.items.length === 0 || items.length === 0) {
+  if (!previous || previous.query !== query || previous.items.length === 0 || items.length === 0) {
     return 0;
   }
   const selected = previous.items[previous.selectedIndex];
@@ -354,6 +356,7 @@ function completionItemEquals(
     left.label === right.label &&
     left.value === right.value &&
     left.insertText === right.insertText &&
+    left.enterBehavior === right.enterBehavior &&
     left.description === right.description &&
     left.detail === right.detail
   );

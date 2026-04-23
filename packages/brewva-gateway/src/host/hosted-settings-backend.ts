@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { BrewvaDiffPreferences, BrewvaModelPreferences } from "@brewva/brewva-substrate";
 import type { HostedSessionSettingsBackend } from "./hosted-session-backend-contract.js";
 import type {
   CreateHostedManagedSessionOptions,
@@ -34,6 +35,14 @@ interface HostedSettingsData {
     medium?: number;
     high?: number;
   };
+  modelPreferences?: {
+    recent?: Array<{ provider?: unknown; id?: unknown }>;
+    favorite?: Array<{ provider?: unknown; id?: unknown }>;
+  };
+  diffPreferences?: {
+    style?: unknown;
+    wrapMode?: unknown;
+  };
 }
 
 function readSettingsFile(path: string): HostedSettingsData {
@@ -63,6 +72,65 @@ function mergeSettings(base: HostedSettingsData, override: HostedSettingsData): 
       ...base.thinkingBudgets,
       ...override.thinkingBudgets,
     },
+    modelPreferences: {
+      ...base.modelPreferences,
+      ...override.modelPreferences,
+    },
+    diffPreferences: {
+      ...base.diffPreferences,
+      ...override.diffPreferences,
+    },
+  };
+}
+
+function readModelPreferenceRef(value: unknown): { provider: string; id: string } | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const provider = typeof record.provider === "string" ? record.provider.trim() : "";
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  return provider && id ? { provider, id } : undefined;
+}
+
+function normalizeModelPreferenceList(
+  values: readonly unknown[] | undefined,
+  limit?: number,
+): Array<{ provider: string; id: string }> {
+  const entries: Array<{ provider: string; id: string }> = [];
+  const seen = new Set<string>();
+  for (const value of values ?? []) {
+    const ref = readModelPreferenceRef(value);
+    if (!ref) {
+      continue;
+    }
+    const key = `${ref.provider}/${ref.id}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    entries.push(ref);
+    if (limit && entries.length >= limit) {
+      break;
+    }
+  }
+  return entries;
+}
+
+function normalizeModelPreferences(preferences: BrewvaModelPreferences): BrewvaModelPreferences {
+  return {
+    recent: normalizeModelPreferenceList(preferences.recent, 10),
+    favorite: normalizeModelPreferenceList(preferences.favorite),
+  };
+}
+
+function normalizeDiffPreferences(preferences: {
+  style?: unknown;
+  wrapMode?: unknown;
+}): BrewvaDiffPreferences {
+  return {
+    style: preferences.style === "stacked" ? "stacked" : "auto",
+    wrapMode: preferences.wrapMode === "none" ? "none" : "word",
   };
 }
 
@@ -167,6 +235,28 @@ class BrewvaHostedSettingsHandle implements HostedSessionSettings, HostedSession
 
   setDefaultThinkingLevel(thinkingLevel: string): void {
     this.#globalSettings.defaultThinkingLevel = thinkingLevel as HostedThinkingLevel;
+    this.persistGlobalSettings();
+  }
+
+  getModelPreferences(): BrewvaModelPreferences {
+    const settings = this.settings.modelPreferences;
+    return {
+      recent: normalizeModelPreferenceList(settings?.recent, 10),
+      favorite: normalizeModelPreferenceList(settings?.favorite),
+    };
+  }
+
+  setModelPreferences(preferences: BrewvaModelPreferences): void {
+    this.#globalSettings.modelPreferences = normalizeModelPreferences(preferences);
+    this.persistGlobalSettings();
+  }
+
+  getDiffPreferences(): BrewvaDiffPreferences {
+    return normalizeDiffPreferences(this.settings.diffPreferences ?? {});
+  }
+
+  setDiffPreferences(preferences: BrewvaDiffPreferences): void {
+    this.#globalSettings.diffPreferences = normalizeDiffPreferences(preferences);
     this.persistGlobalSettings();
   }
 

@@ -104,6 +104,8 @@ export interface OpenTuiTestKeyboardModifiers {
 
 export interface OpenTuiTestInputDriver {
   pressKey(key: string, modifiers?: OpenTuiTestKeyboardModifiers): void;
+  pressEnter(modifiers?: OpenTuiTestKeyboardModifiers): void;
+  typeText(text: string, delayMs?: number): Promise<void>;
 }
 
 export interface OpenTuiTestRenderSetup {

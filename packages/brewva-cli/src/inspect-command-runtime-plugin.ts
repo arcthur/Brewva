@@ -8,25 +8,22 @@ import type { BrewvaHostContext } from "@brewva/brewva-substrate";
 import { clampText, resolveInspectDirectory } from "./inspect-analysis.js";
 import { buildSessionInspectReport, formatInspectText } from "./inspect.js";
 
-const DEFAULT_WIDGET_ID = "brewva-inspect";
-const DEFAULT_MAX_WIDGET_LINES = 28;
+const DEFAULT_MAX_NOTIFICATION_LINES = 28;
 const DEFAULT_MAX_LINE_CHARS = 220;
 
-function clearInspectWidget(ctx: BrewvaHostContext, widgetId: string): void {
-  if (!ctx.hasUI) return;
-  ctx.ui.setWidget(widgetId, undefined, {
-    placement: "belowEditor",
-  });
-}
-
-function toWidgetLines(text: string, maxLines: number, maxLineChars: number): string[] {
+function toNotificationMessage(
+  summary: string,
+  text: string,
+  maxLines: number,
+  maxLineChars: number,
+): string {
   const rawLines = text.split(/\r?\n/u).map((line) => clampText(line, maxLineChars));
-  if (rawLines.length <= maxLines) {
-    return rawLines;
+  if (rawLines.length > maxLines) {
+    const kept = rawLines.slice(0, Math.max(1, maxLines - 1));
+    kept.push(`...[inspect truncated: ${rawLines.length - kept.length} more lines]`);
+    return [summary, "", ...kept].join("\n");
   }
-  const kept = rawLines.slice(0, Math.max(1, maxLines - 1));
-  kept.push(`...[inspect truncated: ${rawLines.length - kept.length} more lines]`);
-  return kept;
+  return [summary, "", ...rawLines].join("\n");
 }
 
 function resolveVerdictNotifyLevel(
@@ -44,15 +41,13 @@ function normalizeCommandArgs(args: string): string | undefined {
 export function createInspectCommandRuntimePlugin(
   runtime: BrewvaOperatorRuntimePort,
   options: {
-    widgetId?: string;
-    maxWidgetLines?: number;
+    maxNotificationLines?: number;
     maxLineChars?: number;
   } = {},
 ): InternalRuntimePlugin {
-  const widgetId = options.widgetId ?? DEFAULT_WIDGET_ID;
-  const maxWidgetLines = Math.max(
+  const maxNotificationLines = Math.max(
     8,
-    Math.trunc(options.maxWidgetLines ?? DEFAULT_MAX_WIDGET_LINES),
+    Math.trunc(options.maxNotificationLines ?? DEFAULT_MAX_NOTIFICATION_LINES),
   );
   const maxLineChars = Math.max(40, Math.trunc(options.maxLineChars ?? DEFAULT_MAX_LINE_CHARS));
 
@@ -60,26 +55,8 @@ export function createInspectCommandRuntimePlugin(
     name: "cli.inspect_command",
     capabilities: ["tool_registration.write"],
     register(runtimePluginApi: InternalRuntimePluginApi) {
-      runtimePluginApi.on("session_start", async (_event, ctx) => {
-        clearInspectWidget(ctx, widgetId);
-      });
-      runtimePluginApi.on("session_switch", async (_event, ctx) => {
-        clearInspectWidget(ctx, widgetId);
-      });
-      runtimePluginApi.on("session_shutdown", async (_event, ctx) => {
-        clearInspectWidget(ctx, widgetId);
-      });
-
       const handler = async (args: string, ctx: BrewvaHostContext) => {
         const normalizedArgs = normalizeCommandArgs(args);
-        if (normalizedArgs === "clear") {
-          clearInspectWidget(ctx, widgetId);
-          if (ctx.hasUI) {
-            ctx.ui.notify("Inspect widget cleared.", "info");
-          }
-          return;
-        }
-
         if (!ctx.hasUI) {
           return;
         }
@@ -92,11 +69,9 @@ export function createInspectCommandRuntimePlugin(
             directory,
           });
           const text = formatInspectText(report.base);
-          ctx.ui.setWidget(widgetId, toWidgetLines(text, maxWidgetLines, maxLineChars), {
-            placement: "belowEditor",
-          });
+          const summary = `Inspect report for ${report.directory} (${report.verdict}).`;
           ctx.ui.notify(
-            `Inspect updated for ${report.directory} (${report.verdict}). Use /inspect clear to dismiss.`,
+            toNotificationMessage(summary, text, maxNotificationLines, maxLineChars),
             resolveVerdictNotifyLevel(report.verdict),
           );
         } catch (error) {
@@ -109,7 +84,7 @@ export function createInspectCommandRuntimePlugin(
 
       runtimePluginApi.registerCommand("inspect", {
         description:
-          "Review the current Brewva session for a directory without entering a model turn (usage: /inspect [dir] | /inspect clear)",
+          "Review the current Brewva session for a directory without entering a model turn (usage: /inspect [dir])",
         handler,
       });
     },

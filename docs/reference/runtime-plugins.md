@@ -43,7 +43,7 @@ These commands are intentionally thin. They inspect or route against durable
 runtime / gateway state instead of creating a second planner or hidden task
 store inside the runtime plugin layer.
 
-They own command registration, widget lifecycle, and follow-up delivery
+They own command registration, notification delivery, and follow-up delivery
 behavior. They do not redefine runtime read-model shapes, event payload
 contracts, or durable receipt semantics.
 

@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { BrewvaProviderRegistration, BrewvaRegisteredModel } from "@brewva/brewva-substrate";
 import { HostedAuthStore } from "./hosted-auth-store.js";
 import { resolveHostedConfigValueOrThrow, resolveHostedHeaders } from "./hosted-config-value.js";
@@ -204,7 +205,7 @@ export class HostedModelRegistry implements HostedSessionBackendModelRegistry {
     try {
       const providerConfig = this.#providerRequestConfigs.get(model.provider);
       const apiKey =
-        (await this.#authStore.getApiKey(model.provider, { includeFallback: false })) ??
+        (await this.#authStore.getApiKey(model.provider)) ??
         (providerConfig?.apiKey
           ? resolveHostedConfigValueOrThrow(
               providerConfig.apiKey,
@@ -338,13 +339,17 @@ export class HostedModelRegistry implements HostedSessionBackendModelRegistry {
 }
 
 export function createHostedModelServices(agentDir: string): HostedSessionModelServices {
-  const authStore = HostedAuthStore.create(`${agentDir}/auth.json`);
+  const authStore = HostedAuthStore.create(join(agentDir, "auth.json"));
   const modelRegistry = HostedModelRegistry.create(authStore, `${agentDir}/models.json`);
   return {
     authStore: {
-      getApiKey: (provider) => authStore.getApiKey(provider, { includeFallback: false }),
+      get: (provider) => authStore.get(provider),
+      getApiKey: (provider) => authStore.getApiKey(provider),
       hasAuth: (provider) => authStore.hasAuth(provider),
       isUsingOAuth: (provider) => authStore.get(provider)?.type === "oauth",
+      set: (provider, credential) => authStore.set(provider, credential),
+      remove: (provider) => authStore.remove(provider),
+      setFallbackResolver: (resolver) => authStore.setFallbackResolver(resolver),
     },
     modelRegistry,
   };

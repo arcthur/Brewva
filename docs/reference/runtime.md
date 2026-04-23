@@ -259,9 +259,10 @@ from the caller. The runtime recomputes merge state from the session's recorded
 
 `inspect` is the read-only operator and host read-model surface.
 
-Slash-command syntax such as `/inspect`, `/insights`, `/questions`, and
-`/answer` is documented in `docs/reference/commands.md`. This page defines the
-underlying replay-first contracts those operator products read from.
+Slash-command syntax such as `/models`, `/connect`, `/think`, `/inspect`,
+`/insights`, `/questions`, and `/answer` is documented in
+`docs/reference/commands.md`. This page defines the underlying replay-first
+contracts those operator products read from.
 
 ### `inspect.skills`
 
@@ -763,7 +764,7 @@ This keeps inspection rich while narrowing mutation authority.
 
 Embedded operator commands such as `/inspect` and `/insights` are built against
 this port rather than against the full hosted runtime surface. Command syntax
-and widget or transport behavior still live outside this page.
+and transport behavior still live outside this page.
 
 ## Internal Subpath
 

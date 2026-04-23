@@ -48,7 +48,9 @@ export {
   type BrewvaToolUpdateHandler,
 } from "./contracts/tool.js";
 export {
+  buildBrewvaEditDiffPreview,
   createBrewvaEditToolDefinition,
+  type BrewvaEditDiffPreview,
   type BrewvaEditOperations,
   type BrewvaEditToolDetails,
   type BrewvaEditToolInput,
@@ -186,6 +188,11 @@ export {
 export {
   type BrewvaManagedPromptSession,
   type BrewvaManagedSessionSettingsView,
+  type BrewvaDiffPreferences,
+  type BrewvaDiffStyle,
+  type BrewvaDiffWrapMode,
+  type BrewvaModelPreferenceRef,
+  type BrewvaModelPreferences,
   type BrewvaPromptDispatchSession,
   type BrewvaPromptInputSource,
   type BrewvaPromptMessageDeltaEvent,

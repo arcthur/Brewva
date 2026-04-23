@@ -42,6 +42,24 @@ export interface BrewvaSessionModelDescriptor {
   displayName?: string;
 }
 
+export interface BrewvaModelPreferenceRef {
+  provider: string;
+  id: string;
+}
+
+export interface BrewvaModelPreferences {
+  recent: BrewvaModelPreferenceRef[];
+  favorite: BrewvaModelPreferenceRef[];
+}
+
+export type BrewvaDiffStyle = "auto" | "stacked";
+export type BrewvaDiffWrapMode = "word" | "none";
+
+export interface BrewvaDiffPreferences {
+  style: BrewvaDiffStyle;
+  wrapMode: BrewvaDiffWrapMode;
+}
+
 export interface BrewvaSessionModelCatalogView {
   getAvailable?():
     | Promise<readonly BrewvaSessionModelDescriptor[]>
@@ -65,10 +83,18 @@ export interface BrewvaPromptSessionManagerView {
 
 export interface BrewvaSessionSettingsView {
   getQuietStartup?(): boolean;
+  getModelPreferences?(): BrewvaModelPreferences;
+  setModelPreferences?(preferences: BrewvaModelPreferences): void;
+  getDiffPreferences?(): BrewvaDiffPreferences;
+  setDiffPreferences?(preferences: BrewvaDiffPreferences): void;
 }
 
 export interface BrewvaManagedSessionSettingsView extends BrewvaSessionSettingsView {
   getQuietStartup(): boolean;
+  getModelPreferences(): BrewvaModelPreferences;
+  setModelPreferences(preferences: BrewvaModelPreferences): void;
+  getDiffPreferences(): BrewvaDiffPreferences;
+  setDiffPreferences(preferences: BrewvaDiffPreferences): void;
 }
 
 export interface BrewvaPromptDispatchSession {

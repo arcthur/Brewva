@@ -22,6 +22,8 @@ import {
   type BrewvaManagedPromptSession,
   type BrewvaManagedSessionStore,
   type BrewvaManagedSessionSettingsView,
+  type BrewvaDiffPreferences,
+  type BrewvaModelPreferences,
   type BrewvaMutableModelCatalog,
   type BrewvaCompactionRequest,
   type BrewvaPromptContentPart,
@@ -87,6 +89,10 @@ export interface BrewvaManagedAgentSessionSettingsPort {
   getRetrySettings(): { maxDelayMs: number } | undefined;
   setDefaultModelAndProvider(provider: string, modelId: string): void;
   setDefaultThinkingLevel(thinkingLevel: string): void;
+  getModelPreferences(): BrewvaModelPreferences;
+  setModelPreferences(preferences: BrewvaModelPreferences): void;
+  getDiffPreferences(): BrewvaDiffPreferences;
+  setDiffPreferences(preferences: BrewvaDiffPreferences): void;
 }
 
 export interface CreateBrewvaManagedAgentSessionOptions {
@@ -164,10 +170,6 @@ const NOOP_UI: BrewvaToolUiPort = {
   setStatus() {},
   setWorkingMessage() {},
   setHiddenThinkingLabel() {},
-  setWidget() {},
-  setFooter() {},
-  setHeader() {},
-  setTitle() {},
   async custom() {
     return undefined as never;
   },
@@ -647,6 +649,22 @@ class ManagedSessionSettingsView implements BrewvaManagedSessionSettingsView {
 
   getQuietStartup(): boolean {
     return this.settings.getQuietStartup();
+  }
+
+  getModelPreferences(): BrewvaModelPreferences {
+    return this.settings.getModelPreferences();
+  }
+
+  setModelPreferences(preferences: BrewvaModelPreferences): void {
+    this.settings.setModelPreferences(preferences);
+  }
+
+  getDiffPreferences(): BrewvaDiffPreferences {
+    return this.settings.getDiffPreferences();
+  }
+
+  setDiffPreferences(preferences: BrewvaDiffPreferences): void {
+    this.settings.setDiffPreferences(preferences);
   }
 }
 

@@ -4,6 +4,8 @@ import type {
   DecideEffectCommitmentInput,
   DecideEffectCommitmentResult,
   EvidenceRef,
+  EffectCommitmentDiffPreview,
+  EffectCommitmentDiffPreviewFile,
   EffectCommitmentProposal,
   EffectCommitmentRequestListQuery,
   EffectCommitmentRequestRecord as PublicEffectCommitmentRequestRecord,
@@ -48,6 +50,7 @@ function clonePendingRequest(
   return {
     ...request,
     effects: [...request.effects],
+    diffPreview: cloneDiffPreview(request.diffPreview),
     evidenceRefs: request.evidenceRefs.map((ref) => ({ ...ref })),
   };
 }
@@ -70,8 +73,21 @@ function cloneProposal(proposal: EffectCommitmentProposal): EffectCommitmentProp
     payload: {
       ...proposal.payload,
       effects: [...proposal.payload.effects],
+      diffPreview: cloneDiffPreview(proposal.payload.diffPreview),
     },
     evidenceRefs: proposal.evidenceRefs.map((ref) => ({ ...ref })),
+  };
+}
+
+function cloneDiffPreview(
+  preview: EffectCommitmentDiffPreview | undefined,
+): EffectCommitmentDiffPreview | undefined {
+  if (!preview) {
+    return undefined;
+  }
+  return {
+    ...preview,
+    files: preview.files?.map((file) => ({ ...file })),
   };
 }
 
@@ -187,6 +203,7 @@ export class EffectCommitmentDeskService {
         boundary: created.request.boundary,
         effects: [...created.request.effects],
         argsSummary: created.request.argsSummary ?? null,
+        diffPreview: cloneDiffPreview(created.request.diffPreview) ?? null,
         defaultRisk: created.request.defaultRisk ?? null,
         proposal: cloneProposal(created.proposal),
       },
@@ -613,11 +630,60 @@ export class EffectCommitmentDeskService {
         defaultRisk: proposalPayload.defaultRisk,
         argsDigest: proposalPayload.argsDigest,
         argsSummary: proposalPayload.argsSummary,
+        diffPreview: this.readDiffPreview(proposalPayload.diffPreview),
       },
       evidenceRefs,
       confidence: candidate.confidence,
       expiresAt: candidate.expiresAt,
       createdAt: candidate.createdAt,
+    };
+  }
+
+  private readDiffPreview(payload: unknown): EffectCommitmentDiffPreview | undefined {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return undefined;
+    }
+    const record = payload as Partial<EffectCommitmentDiffPreview>;
+    if (record.kind !== "diff") {
+      return undefined;
+    }
+    const path = typeof record.path === "string" ? record.path : undefined;
+    const diff = typeof record.diff === "string" ? record.diff : undefined;
+    const error = typeof record.error === "string" ? record.error : undefined;
+    const files = Array.isArray(record.files)
+      ? record.files.flatMap((file) => {
+          const normalized = this.readDiffPreviewFile(file);
+          return normalized ? [normalized] : [];
+        })
+      : undefined;
+    if (!diff && !error && (!files || files.length === 0)) {
+      return undefined;
+    }
+    return {
+      kind: "diff",
+      path,
+      diff,
+      files: files && files.length > 0 ? files : undefined,
+      error,
+    };
+  }
+
+  private readDiffPreviewFile(payload: unknown): EffectCommitmentDiffPreviewFile | undefined {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return undefined;
+    }
+    const record = payload as Partial<EffectCommitmentDiffPreviewFile>;
+    if (typeof record.path !== "string" || typeof record.diff !== "string") {
+      return undefined;
+    }
+    return {
+      path: record.path,
+      displayPath: typeof record.displayPath === "string" ? record.displayPath : undefined,
+      diff: record.diff,
+      action: typeof record.action === "string" ? record.action : undefined,
+      additions: typeof record.additions === "number" ? record.additions : undefined,
+      deletions: typeof record.deletions === "number" ? record.deletions : undefined,
+      movePath: typeof record.movePath === "string" ? record.movePath : undefined,
     };
   }
 
@@ -771,6 +837,7 @@ export class EffectCommitmentDeskService {
       defaultRisk: input.proposal.payload.defaultRisk,
       argsDigest: input.proposal.payload.argsDigest,
       argsSummary: input.proposal.payload.argsSummary,
+      diffPreview: cloneDiffPreview(input.proposal.payload.diffPreview),
       evidenceRefs: input.proposal.evidenceRefs.map((ref) => ({ ...ref })),
       turn:
         typeof input.turn === "number" && Number.isFinite(input.turn) ? Math.floor(input.turn) : 0,

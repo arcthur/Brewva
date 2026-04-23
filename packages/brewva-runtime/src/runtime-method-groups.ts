@@ -22,6 +22,7 @@ import type {
   ActiveSkillRuntimeState,
   EvidenceLedgerRow,
   EvidenceQuery,
+  EffectCommitmentDiffPreview,
   EffectCommitmentListQuery,
   EffectCommitmentProposal,
   EffectCommitmentRecord,
@@ -307,6 +308,7 @@ export interface BrewvaRuntimeMethodGroups {
       usage?: ContextBudgetUsage;
       recordLifecycleEvent?: boolean;
       effectCommitmentRequestId?: string;
+      diffPreview?: EffectCommitmentDiffPreview;
     }): {
       allowed: boolean;
       reason?: string;

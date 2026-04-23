@@ -34,10 +34,6 @@ export interface BrewvaToolUiPort {
   setStatus(key: string, text: string | undefined): void;
   setWorkingMessage(message?: string): void;
   setHiddenThinkingLabel(label?: string): void;
-  setWidget(...args: readonly unknown[]): void;
-  setFooter(factory: unknown): void;
-  setHeader(factory: unknown): void;
-  setTitle(title: string): void;
   custom<T>(...args: readonly unknown[]): Promise<T>;
   pasteToEditor(text: string): void;
   setEditorText(text: string): void;
