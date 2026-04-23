@@ -14,10 +14,17 @@ export interface BrewvaImageContentPart {
 
 export type BrewvaToolContentPart = BrewvaTextContentPart | BrewvaImageContentPart;
 
+export interface BrewvaToolResultDisplay {
+  summaryText?: string;
+  detailsText?: string;
+  rawText?: string;
+}
+
 export interface BrewvaToolResult<TDetails = unknown> {
   content: BrewvaToolContentPart[];
   details: TDetails;
   isError?: boolean;
+  display?: BrewvaToolResultDisplay;
 }
 
 export interface BrewvaToolContextUsage {

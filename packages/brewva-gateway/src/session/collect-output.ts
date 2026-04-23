@@ -1,5 +1,5 @@
 import {
-  resolveToolDisplayText,
+  resolveToolDisplay,
   resolveToolDisplayVerdict,
 } from "@brewva/brewva-gateway/runtime-plugins";
 import {
@@ -524,11 +524,12 @@ export async function streamAndCollectAttempt(
       if (!attemptId) {
         return;
       }
-      const streamedText = resolveToolDisplayText({
+      const streamedDisplay = resolveToolDisplay({
         toolName: toolUpdateEvent.toolName,
         isError: false,
         result: toolUpdateEvent.partialResult,
       });
+      const streamedText = streamedDisplay.text;
       const streamedVerdict = resolveToolDisplayVerdict({
         isError: false,
         result: toolUpdateEvent.partialResult,
@@ -551,6 +552,7 @@ export async function streamAndCollectAttempt(
             verdict: streamedVerdict,
             isError: false,
             text: streamedText,
+            ...(streamedDisplay.display ? { display: streamedDisplay.display } : {}),
           }),
           nextFrameId,
         );
@@ -575,16 +577,18 @@ export async function streamAndCollectAttempt(
         isError: toolEvent.isError,
         result: toolEvent.result,
       });
+      const toolDisplay = resolveToolDisplay({
+        toolName: toolEvent.toolName,
+        isError: toolEvent.isError,
+        result: toolEvent.result,
+      });
       const nextToolOutput: ToolOutputView = {
         toolCallId: asBrewvaToolCallId(toolEvent.toolCallId),
         toolName: asBrewvaToolName(toolEvent.toolName),
         isError: toolEvent.isError,
         verdict,
-        text: resolveToolDisplayText({
-          toolName: toolEvent.toolName,
-          isError: toolEvent.isError,
-          result: toolEvent.result,
-        }),
+        text: toolDisplay.text,
+        ...(toolDisplay.display ? { display: toolDisplay.display } : {}),
       };
       if (attemptId === currentAttemptId) {
         committedToolOutputsByCallId.set(toolEvent.toolCallId, nextToolOutput);
@@ -605,6 +609,7 @@ export async function streamAndCollectAttempt(
           verdict,
           isError: toolEvent.isError,
           text: nextToolOutput.text,
+          ...(nextToolOutput.display ? { display: nextToolOutput.display } : {}),
         }),
         nextFrameId,
       );

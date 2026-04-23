@@ -115,7 +115,7 @@ function generateHtml(sessionData, themeName) {
         .replace("{{HIGHLIGHT_JS}}", hljsJs);
 }
 /** Built-in tool names that have custom rendering in template.js */
-const BUILTIN_TOOLS = new Set(["bash", "read", "write", "edit", "ls", "find", "grep"]);
+const BUILTIN_TOOLS = new Set(["exec", "read", "write", "edit", "ls", "find", "grep"]);
 /**
  * Pre-render custom tools to HTML using their TUI renderers.
  */

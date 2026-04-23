@@ -10,10 +10,13 @@ describe("binary packaging contract", () => {
     const runtimeAssetsRoot = resolve(repoRoot, "packages", "brewva-cli", "runtime-assets");
     const themePath = resolve(runtimeAssetsRoot, "theme", "theme.js");
     const exportHtmlPath = resolve(runtimeAssetsRoot, "export-html", "index.js");
+    const exportHtmlTemplatePath = resolve(runtimeAssetsRoot, "export-html", "template.js");
     const photonPath = resolve(runtimeAssetsRoot, "photon_rs_bg.wasm");
 
     const rootPackageJsonSource = readFileSync(rootPackageJsonPath, "utf8");
     const buildScriptSource = readFileSync(buildScriptPath, "utf8");
+    const exportHtmlIndexSource = readFileSync(exportHtmlPath, "utf8");
+    const exportHtmlTemplateSource = readFileSync(exportHtmlTemplatePath, "utf8");
 
     expect(rootPackageJsonSource).not.toContain('"@mariozechner/pi-coding-agent"');
     expect(buildScriptSource).toContain('packages", "brewva-cli", "runtime-assets"');
@@ -28,6 +31,11 @@ describe("binary packaging contract", () => {
     expect(existsSync(themePath)).toBe(true);
     expect(existsSync(exportHtmlPath)).toBe(true);
     expect(existsSync(photonPath)).toBe(true);
+
+    expect(exportHtmlIndexSource).toContain('"exec"');
+    expect(exportHtmlTemplateSource).toContain("case 'exec'");
+    expect(exportHtmlTemplateSource).not.toContain("case 'bash'");
+    expect(exportHtmlTemplateSource).not.toContain("bashExecution");
   });
 
   test("extracts staged OpenTUI tarballs without absolute archive paths", () => {

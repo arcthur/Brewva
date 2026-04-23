@@ -1,6 +1,8 @@
+import type { ToolOutputDisplayView } from "@brewva/brewva-runtime";
 import {
   extractMessageError,
   extractVisibleTextFromMessage,
+  normalizeToolOutputDisplay,
   readMessageContentParts,
   readMessageRole,
   readToolResultMessage,
@@ -29,6 +31,7 @@ export interface CliShellTranscriptReasoningPart {
 export interface CliShellTranscriptToolResultPayload {
   content: NormalizedMessageContentPart[];
   details?: unknown;
+  display?: ToolOutputDisplayView;
   isError?: boolean;
 }
 
@@ -92,9 +95,11 @@ function normalizeToolResultPayload(
   const content = Array.isArray(record.content)
     ? readMessageContentParts({ content: record.content })
     : [];
+  const display = normalizeToolOutputDisplay(record.display);
   return {
     content,
     details: record.details,
+    ...(display ? { display } : {}),
     isError: record.isError === true,
   };
 }

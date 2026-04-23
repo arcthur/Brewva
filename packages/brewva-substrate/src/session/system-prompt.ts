@@ -33,13 +33,13 @@ function formatSkillsForPrompt(skills: readonly BrewvaSystemPromptSkill[]): stri
 export function buildBrewvaSystemPrompt(options: BuildBrewvaSystemPromptOptions = {}): string {
   const cwd = (options.cwd ?? process.cwd()).replace(/\\/gu, "/");
   const date = new Date().toISOString().slice(0, 10);
-  const selectedTools = options.selectedTools ?? ["read", "bash", "edit", "write"];
+  const selectedTools = options.selectedTools ?? ["read", "exec", "edit", "write"];
   const toolSnippets = options.toolSnippets ?? {};
   const promptGuidelines = new Set<string>();
-  const hasBash = selectedTools.includes("bash");
+  const hasExec = selectedTools.includes("exec");
   const hasRead = selectedTools.includes("read");
 
-  if (hasBash) {
+  if (hasExec) {
     promptGuidelines.add("Prefer direct, deterministic tool usage over narration.");
   }
   promptGuidelines.add("Be concise in responses.");

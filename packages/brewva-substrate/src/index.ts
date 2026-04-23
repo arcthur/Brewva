@@ -41,6 +41,7 @@ export {
   type BrewvaToolContext,
   type BrewvaToolContextUsage,
   type BrewvaToolDefinition,
+  type BrewvaToolResultDisplay,
   defineBrewvaTool,
   type BrewvaToolRenderContext,
   type BrewvaToolResult,

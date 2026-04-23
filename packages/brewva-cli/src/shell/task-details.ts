@@ -292,11 +292,12 @@ function buildWorkerSessionRecentOutputLines(
       for (const toolOutput of turn.toolOutputs.slice(0, MAX_TOOL_OUTPUTS)) {
         const statusSuffix = toolOutput.isError ? " error" : "";
         lines.push(`    - ${toolOutput.toolName} [${toolOutput.verdict}${statusSuffix}]`);
-        const outputLines = splitTextLines(toolOutput.text).slice(0, MAX_TOOL_OUTPUT_LINES);
+        const displayText = toolOutput.display?.summaryText ?? toolOutput.text;
+        const outputLines = splitTextLines(displayText).slice(0, MAX_TOOL_OUTPUT_LINES);
         for (const line of outputLines) {
           lines.push(`      ${line}`);
         }
-        const hiddenCount = splitTextLines(toolOutput.text).length - outputLines.length;
+        const hiddenCount = splitTextLines(displayText).length - outputLines.length;
         if (hiddenCount > 0) {
           lines.push(`      ... (${hiddenCount} more line(s))`);
         }

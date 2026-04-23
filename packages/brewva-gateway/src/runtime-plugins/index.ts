@@ -373,10 +373,11 @@ export {
 } from "./tool-output-distiller.js";
 export {
   extractToolResultText,
+  resolveToolDisplay,
   resolveToolDisplayStatus,
-  resolveToolDisplayText,
   resolveToolDisplayVerdict,
   type ResolveToolDisplayTextInput,
+  type ResolvedToolDisplay,
   type ToolDisplayVerdict,
 } from "./tool-output-display.js";
 export { registerTurnLifecyclePorts, type TurnLifecyclePort } from "./turn-lifecycle-port.js";

@@ -2832,7 +2832,7 @@ describe("shell controller", () => {
             toolOutputs: [
               {
                 toolCallId: asBrewvaToolCallId("tool-1"),
-                toolName: asBrewvaToolName("exec_command"),
+                toolName: asBrewvaToolName("exec"),
                 verdict: "pass",
                 isError: false,
                 text: "bun test\n1775 pass",
@@ -2911,7 +2911,7 @@ describe("shell controller", () => {
         "    QA summary line",
         "    Found stale contract drift.",
         "  toolOutputs:",
-        "    - exec_command [pass]",
+        "    - exec [pass]",
         "      bun test",
         "workerSessionId: worker-session-1",
         "summary: Collected output summary",

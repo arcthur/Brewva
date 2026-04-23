@@ -1,5 +1,4 @@
 import type {
-  BrewvaAgentEngineBashExecutionMessage,
   BrewvaAgentEngineBranchSummaryMessage,
   BrewvaAgentEngineCompactionSummaryMessage,
   BrewvaAgentEngineCustomMessage,
@@ -22,28 +21,9 @@ export const BRANCH_SUMMARY_PREFIX = `The following is a summary of a branch tha
 
 export const BRANCH_SUMMARY_SUFFIX = `</summary>`;
 
-export type BashExecutionMessage = BrewvaAgentEngineBashExecutionMessage;
 export type CustomMessage<T = unknown> = BrewvaAgentEngineCustomMessage<T>;
 export type BranchSummaryMessage = BrewvaAgentEngineBranchSummaryMessage;
 export type CompactionSummaryMessage = BrewvaAgentEngineCompactionSummaryMessage;
-
-export function bashExecutionToText(msg: BashExecutionMessage): string {
-  let text = `Ran \`${msg.command}\`\n`;
-  if (msg.output) {
-    text += `\`\`\`\n${msg.output}\n\`\`\``;
-  } else {
-    text += "(no output)";
-  }
-  if (msg.cancelled) {
-    text += "\n\n(command cancelled)";
-  } else if (msg.exitCode !== null && msg.exitCode !== undefined && msg.exitCode !== 0) {
-    text += `\n\nCommand exited with code ${msg.exitCode}`;
-  }
-  if (msg.truncated && msg.fullOutputPath) {
-    text += `\n\n[Output truncated. Full output: ${msg.fullOutputPath}]`;
-  }
-  return text;
-}
 
 export function convertToLlm(messages: BrewvaAgentEngineMessage[]): BrewvaAgentEngineLlmMessage[] {
   return messages
@@ -52,12 +32,6 @@ export function convertToLlm(messages: BrewvaAgentEngineMessage[]): BrewvaAgentE
         return undefined;
       }
       switch (message.role) {
-        case "bashExecution":
-          return {
-            role: "user",
-            content: [{ type: "text", text: bashExecutionToText(message) }],
-            timestamp: message.timestamp,
-          };
         case "custom": {
           const content =
             typeof message.content === "string"

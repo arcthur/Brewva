@@ -201,6 +201,11 @@ Important protocol rules:
 - `turn.committed.toolOutputs` includes only accepted final-attempt tool state.
   Late superseded-attempt live tool frames remain telemetry and do not re-enter
   committed replay state.
+- live and committed tool outputs may carry
+  `display={summaryText?,detailsText?,rawText?}`. `summaryText` is semantic
+  display metadata from explicit tool results, gateway distillation, or short
+  raw text only; long raw output remains renderer-owned collapse state, not a
+  semantic summary.
 - only live cache emits `assistant.delta`, `session.status`, and the initial
   `attempt.started(reason=initial)`.
 - replay may still emit durable `attempt.superseded` plus

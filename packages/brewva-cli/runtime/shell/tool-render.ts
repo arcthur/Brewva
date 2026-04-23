@@ -87,6 +87,7 @@ export function renderToolComponentLines(input: {
   toolRenderCache: ToolRenderCache;
   part: CliShellTranscriptToolPart;
   width: number;
+  expanded?: boolean;
 }): string[] {
   const toolDefinition = input.toolDefinitions.get(input.part.toolName);
   if (!toolDefinition) {
@@ -116,7 +117,7 @@ export function renderToolComponentLines(input: {
       executionStarted: input.part.status !== "pending",
       argsComplete: true,
       isPartial: input.part.status !== "completed" && input.part.status !== "error",
-      expanded: true,
+      expanded: input.expanded ?? true,
       showImages: false,
       isError: input.part.status === "error",
     });
@@ -133,9 +134,10 @@ export function renderToolComponentLines(input: {
       content: payload.content as never,
       details: payload.details,
       isError: payload.isError,
+      ...(payload.display ? { display: payload.display } : {}),
     },
     {
-      expanded: true,
+      expanded: input.expanded ?? true,
       isPartial: !input.part.result,
     },
     renderTheme,
@@ -149,7 +151,7 @@ export function renderToolComponentLines(input: {
       executionStarted: input.part.status !== "pending",
       argsComplete: true,
       isPartial: !input.part.result,
-      expanded: true,
+      expanded: input.expanded ?? true,
       showImages: false,
       isError: input.part.status === "error",
     },
@@ -249,14 +251,6 @@ export function readToolPath(part: CliShellTranscriptToolPart): string | undefin
 
 export function readToolCommand(part: CliShellTranscriptToolPart): string | undefined {
   return readRecordString(asRecord(part.args), ["command", "cmd"]);
-}
-
-function readToolDescription(part: CliShellTranscriptToolPart): string | undefined {
-  return readRecordString(asRecord(part.args), ["description", "title"]);
-}
-
-function readToolWorkdir(part: CliShellTranscriptToolPart): string | undefined {
-  return normalizeDisplayPath(readRecordString(asRecord(part.args), ["workdir", "cwd"]));
 }
 
 export function readToolTextInput(part: CliShellTranscriptToolPart): string | undefined {
@@ -374,6 +368,10 @@ export function readDiffSourceRecordFromDetails(
   if (direct) {
     return details;
   }
+  const directError = readRecordString(details, ["error"]);
+  if (directError) {
+    return details;
+  }
   for (const key of DIFF_SOURCE_RECORD_KEYS) {
     const nested = asRecord(details[key]);
     if (!nested) {
@@ -385,7 +383,7 @@ export function readDiffSourceRecordFromDetails(
       return nested;
     }
   }
-  return details;
+  return undefined;
 }
 
 export function readDiffPayloadFromDetails(
@@ -488,6 +486,30 @@ export function readToolResultText(part: CliShellTranscriptToolPart): string {
     .join("\n");
 }
 
+function readDisplayTextValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+export function readToolDisplaySummaryText(part: CliShellTranscriptToolPart): string | undefined {
+  const payload = part.result ?? part.partialResult;
+  return readDisplayTextValue(payload?.display?.summaryText);
+}
+
+export function readToolDisplayDetailsText(part: CliShellTranscriptToolPart): string | undefined {
+  const payload = part.result ?? part.partialResult;
+  return (
+    readDisplayTextValue(payload?.display?.detailsText) ??
+    readDisplayTextValue(payload?.display?.rawText)
+  );
+}
+
+export function readToolDisplayText(part: CliShellTranscriptToolPart, expanded: boolean): string {
+  if (expanded) {
+    return readToolDisplayDetailsText(part) ?? readToolResultText(part);
+  }
+  return readToolDisplaySummaryText(part) ?? readToolResultText(part);
+}
+
 export function readToolErrorText(part: CliShellTranscriptToolPart): string | undefined {
   if (part.status !== "error") {
     return undefined;
@@ -504,30 +526,6 @@ export function toolStatusText(part: CliShellTranscriptToolPart): string {
     return "completed";
   }
   return part.phase ?? part.status;
-}
-
-export function buildToolTitleLine(part: CliShellTranscriptToolPart): string {
-  const path = readToolPath(part) ?? "";
-  const description = readToolDescription(part) ?? "Shell";
-  const workdir = readToolWorkdir(part);
-  const command = readToolCommand(part) ?? "";
-
-  if (part.toolName === "exec_command" || part.toolName === "bash") {
-    if (!workdir || description.includes(workdir)) {
-      return `# ${description}`;
-    }
-    return `# ${description} in ${workdir}`;
-  }
-
-  if (part.toolName === "write") {
-    return `# Wrote ${path}`;
-  }
-
-  if (part.toolName === "edit") {
-    return `← Edit ${path} ${summarizeInput(part.args, ["path", "filePath", "file_path"])}`.trim();
-  }
-
-  return command;
 }
 
 export type { SessionPalette };

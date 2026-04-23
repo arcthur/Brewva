@@ -1,6 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 
 import type { BrewvaToolDefinition } from "@brewva/brewva-substrate";
+import { useRenderer } from "@opentui/solid";
 import type { JSX } from "solid-js";
 import { For, Index, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js";
 import type {
@@ -18,8 +19,10 @@ import {
 import { useShellRenderContext } from "./render-context.js";
 import {
   asRecord,
-  formatUnknown,
   inferFiletype,
+  readToolDisplayDetailsText,
+  readToolDisplaySummaryText,
+  readToolDisplayText,
   readToolDiffPayload,
   readToolErrorText,
   readToolPath,
@@ -133,8 +136,15 @@ function InlineTool(input: {
   hint?: string;
   onSelect?: () => void;
 }) {
+  const renderer = useRenderer();
   const [hovered, setHovered] = createSignal(false);
   const actionable = createMemo(() => Boolean(input.onSelect));
+  const handleSelect = () => {
+    if (renderer.getSelection()?.getSelectedText()) {
+      return;
+    }
+    input.onSelect?.();
+  };
   const tone = createMemo(() => {
     if (input.part.status === "error") {
       return input.theme.error;
@@ -155,7 +165,7 @@ function InlineTool(input: {
       onMouseMove={() => setHovered(true)}
       onMouseOver={() => setHovered(true)}
       onMouseOut={() => setHovered(false)}
-      onMouseUp={() => input.onSelect?.()}
+      onMouseUp={handleSelect}
     >
       <text paddingLeft={3} fg={tone()}>
         <Show when={input.complete} fallback={`~ ${input.pending}`}>
@@ -193,8 +203,15 @@ function BlockTool(input: {
   hint?: string;
   onSelect?: () => void;
 }) {
+  const renderer = useRenderer();
   const [hovered, setHovered] = createSignal(false);
   const actionable = createMemo(() => Boolean(input.onSelect));
+  const handleSelect = () => {
+    if (renderer.getSelection()?.getSelectedText()) {
+      return;
+    }
+    input.onSelect?.();
+  };
   return (
     <box
       id={`tool-${input.part.id}${input.idSuffix ? `:${input.idSuffix}` : ""}`}
@@ -215,11 +232,11 @@ function BlockTool(input: {
       onMouseMove={() => setHovered(true)}
       onMouseOver={() => setHovered(true)}
       onMouseOut={() => setHovered(false)}
-      onMouseUp={() => input.onSelect?.()}
+      onMouseUp={handleSelect}
     >
-      <box flexDirection="row" justifyContent="space-between" paddingLeft={3} paddingRight={3}>
+      <box flexDirection="row" justifyContent="space-between" paddingRight={3}>
         <text fg={input.titleColor ?? input.theme.textMuted}>{input.title}</text>
-        <Show when={input.hint}>
+        <Show when={hovered() && input.hint}>
           {(hint) => (
             <text fg={hovered() ? input.theme.accent : input.theme.textMuted}>{hint()}</text>
           )}
@@ -227,7 +244,7 @@ function BlockTool(input: {
       </box>
       {input.children}
       <Show when={readToolErrorText(input.part)}>
-        <text paddingLeft={3} fg={input.theme.error}>
+        <text paddingLeft={1} fg={input.theme.error}>
           {readToolErrorText(input.part)}
         </text>
       </Show>
@@ -461,10 +478,45 @@ function DiffToolView(input: {
   );
 }
 
-const BASH_COLLAPSED_LINE_LIMIT = 10;
+const EXEC_COLLAPSED_LINE_LIMIT = 10;
+const GENERIC_COLLAPSED_LINE_LIMIT = 5;
+
+function formatCollapseHint(input: {
+  expanded: boolean;
+  hiddenLineCount: number;
+  totalLineCount: number;
+}): string {
+  if (input.expanded) {
+    return "Click to collapse";
+  }
+  if (input.hiddenLineCount > 0) {
+    return `Click to expand ${input.hiddenLineCount} more line(s) · ${input.totalLineCount} lines total`;
+  }
+  return "Click to expand";
+}
+
+function formatGenericDiffTitle(path: string | undefined): string {
+  return path ? `Diff ${path}` : "Diff";
+}
+
+function isDiffLikeText(text: string): boolean {
+  return /^(diff --git|--- |\+\+\+ |@@ )/mu.test(text);
+}
+
+function isExecToolName(toolName: string): boolean {
+  return toolName === "exec";
+}
+
+function firstNonEmptyLine(text: string): string | undefined {
+  return text
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+}
 
 interface TranscriptToolInteractionState {
-  bashExpanded?: boolean;
+  execExpanded?: boolean;
+  genericExpanded?: boolean;
 }
 
 function readTranscriptToolInteractionState(
@@ -480,7 +532,7 @@ function readTranscriptToolInteractionState(
   return created;
 }
 
-function BashToolView(input: {
+function ExecToolView(input: {
   part: CliShellTranscriptToolPart;
   theme: SessionPalette;
   toolRenderCache: ToolRenderCache;
@@ -489,17 +541,31 @@ function BashToolView(input: {
     input.toolRenderCache,
     input.part.toolCallId,
   );
-  const [expanded, setExpanded] = createSignal(Boolean(interactionState.bashExpanded));
+  const [expanded, setExpanded] = createSignal(Boolean(interactionState.execExpanded));
   const command = createMemo(() => readToolCommand(input.part) ?? "");
+  const outputText = createMemo(
+    () => readToolDisplayDetailsText(input.part) ?? readToolResultText(input.part),
+  );
+  const summaryText = createMemo(() => readToolDisplaySummaryText(input.part));
   const outputLines = createMemo(() => {
-    const output = readToolResultText(input.part);
+    const output = outputText();
     return output.length > 0 ? output.split(/\r?\n/u) : [];
   });
-  const collapsible = createMemo(() => outputLines().length > BASH_COLLAPSED_LINE_LIMIT);
+  const summaryLines = createMemo(() => {
+    const summary = summaryText();
+    return summary && summary.trim() !== outputText().trim() ? summary.split(/\r?\n/u) : [];
+  });
+  const collapsedOutputLines = createMemo(() => {
+    if (summaryLines().length > 0) {
+      return summaryLines().slice(0, EXEC_COLLAPSED_LINE_LIMIT);
+    }
+    return outputLines().slice(0, EXEC_COLLAPSED_LINE_LIMIT);
+  });
+  const collapsible = createMemo(
+    () => outputLines().length > EXEC_COLLAPSED_LINE_LIMIT || summaryLines().length > 0,
+  );
   const visibleOutputLines = createMemo(() =>
-    collapsible() && !expanded()
-      ? outputLines().slice(0, BASH_COLLAPSED_LINE_LIMIT)
-      : outputLines(),
+    collapsible() && !expanded() ? collapsedOutputLines() : outputLines(),
   );
   const hiddenLineCount = createMemo(() =>
     Math.max(0, outputLines().length - visibleOutputLines().length),
@@ -509,11 +575,15 @@ function BashToolView(input: {
       return;
     }
     const next = !expanded();
-    interactionState.bashExpanded = next;
+    interactionState.execExpanded = next;
     setExpanded(next);
   };
-  const clickHint = createMemo(() =>
-    collapsible() ? (expanded() ? "Click to collapse" : "Click to expand") : undefined,
+  const collapseHint = createMemo(() =>
+    formatCollapseHint({
+      expanded: expanded(),
+      hiddenLineCount: hiddenLineCount(),
+      totalLineCount: outputLines().length,
+    }),
   );
   const title = createMemo(() => {
     const args: Record<string, unknown> = (input.part.args as Record<string, unknown>) ?? {};
@@ -538,7 +608,6 @@ function BashToolView(input: {
           title={title()}
           part={input.part}
           theme={input.theme}
-          hint={clickHint()}
           onSelect={collapsible() ? toggleExpanded : undefined}
         >
           <box flexDirection="column" gap={0}>
@@ -550,9 +619,7 @@ function BashToolView(input: {
             </Show>
             <Show when={collapsible()}>
               <text paddingLeft={1} fg={input.theme.textMuted}>
-                {expanded()
-                  ? "Click to collapse"
-                  : `Click to expand ${hiddenLineCount()} more line(s)`}
+                {collapseHint()}
               </text>
             </Show>
           </box>
@@ -730,6 +797,11 @@ function GenericToolView(input: {
   showDetails: boolean;
 }) {
   const shellContext = useShellRenderContext();
+  const interactionState = readTranscriptToolInteractionState(
+    input.toolRenderCache,
+    input.part.toolCallId,
+  );
+  const [expanded, setExpanded] = createSignal(Boolean(interactionState.genericExpanded));
   const workerSessionId = createMemo(() =>
     input.part.toolName === "subagent_run" || input.part.toolName === "subagent_fanout"
       ? readToolWorkerSessionId(input.part)
@@ -745,6 +817,23 @@ function GenericToolView(input: {
   const workerSessionHint = createMemo(() =>
     workerSessionId() ? "Click to open worker session" : undefined,
   );
+  const diffPayload = createMemo(() => readToolDiffPayload(input.part));
+  const singleDiff = createMemo(() => {
+    const current = diffPayload();
+    return current?.kind === "single" ? current : undefined;
+  });
+  const diffFiles = createMemo(() => {
+    const current = diffPayload();
+    return current?.kind === "files" ? current.files : [];
+  });
+  const hasDiffPayload = createMemo(() => Boolean(singleDiff()) || diffFiles().length > 0);
+  const inlineText = createMemo(() => {
+    const summary = readToolDisplaySummaryText(input.part);
+    if (summary) {
+      return firstNonEmptyLine(summary) ?? input.part.toolName;
+    }
+    return `${input.part.toolName} ${summarizeInput(input.part.args)}`.trim();
+  });
   const callLines = createMemo(() =>
     renderToolComponentLines({
       kind: "call",
@@ -752,6 +841,7 @@ function GenericToolView(input: {
       toolRenderCache: input.toolRenderCache,
       part: input.part,
       width: input.transcriptWidth,
+      expanded: true,
     }),
   );
   const resultLines = createMemo(() =>
@@ -761,23 +851,95 @@ function GenericToolView(input: {
       toolRenderCache: input.toolRenderCache,
       part: input.part,
       width: input.transcriptWidth,
+      expanded: expanded(),
     }),
   );
   const fallbackCallLines = createMemo(() => {
     if (callLines().length > 0) {
       return callLines();
     }
-    return [
-      input.part.args !== undefined
-        ? `${input.part.toolName} ${formatUnknown(input.part.args)}`
-        : input.part.toolName,
-    ];
+    const summary = summarizeInput(input.part.args);
+    return summary.length > 0 ? [summary] : [];
+  });
+  const defaultCollapsedResultText = createMemo(() => readToolDisplayText(input.part, false));
+  const defaultExpandedResultText = createMemo(() => readToolDisplayText(input.part, true));
+  const diffSummaryText = createMemo(() => {
+    const summary = readToolDisplaySummaryText(input.part);
+    if (summary) {
+      return summary;
+    }
+    const rawText = readToolResultText(input.part);
+    return rawText.trim().length > 0 && !isDiffLikeText(rawText) ? rawText : "";
   });
   const resultText = createMemo(() => {
     if (resultLines().length > 0) {
       return resultLines().join("\n");
     }
-    return readToolResultText(input.part);
+    if (hasDiffPayload()) {
+      return diffSummaryText();
+    }
+    return expanded() ? defaultExpandedResultText() : defaultCollapsedResultText();
+  });
+  const resultTextLines = createMemo(() => {
+    const text = resultText().trimEnd();
+    return text.length > 0 ? text.split(/\r?\n/u) : [];
+  });
+  const resultCollapsible = createMemo(() => {
+    if (hasDiffPayload()) {
+      return false;
+    }
+    if (resultLines().length > 0 && input.part.status !== "pending") {
+      return true;
+    }
+    const collapsedText = defaultCollapsedResultText().trim();
+    const expandedText = defaultExpandedResultText().trim();
+    if (collapsedText.length > 0 && expandedText.length > 0 && collapsedText !== expandedText) {
+      return true;
+    }
+    return resultTextLines().length > GENERIC_COLLAPSED_LINE_LIMIT;
+  });
+  const visibleResultLines = createMemo(() =>
+    resultCollapsible() && !expanded()
+      ? resultTextLines().slice(0, GENERIC_COLLAPSED_LINE_LIMIT)
+      : resultTextLines(),
+  );
+  const expandedResultLineCount = createMemo(() => {
+    const text = defaultExpandedResultText().trimEnd();
+    return text.length > 0 ? text.split(/\r?\n/u).length : resultTextLines().length;
+  });
+  const totalResultLineCount = createMemo(() =>
+    Math.max(expandedResultLineCount(), resultTextLines().length),
+  );
+  const hiddenLineCount = createMemo(() =>
+    Math.max(0, totalResultLineCount() - visibleResultLines().length),
+  );
+  const collapseHint = createMemo(() =>
+    formatCollapseHint({
+      expanded: expanded(),
+      hiddenLineCount: hiddenLineCount(),
+      totalLineCount: totalResultLineCount(),
+    }),
+  );
+  const toggleExpanded = () => {
+    if (!resultCollapsible()) {
+      return;
+    }
+    const next = !expanded();
+    interactionState.genericExpanded = next;
+    setExpanded(next);
+  };
+  const selectTool = () => {
+    if (resultCollapsible()) {
+      toggleExpanded();
+      return;
+    }
+    openWorkerSession();
+  };
+  const selectHint = createMemo(() => {
+    if (resultCollapsible()) {
+      return undefined;
+    }
+    return workerSessionHint();
   });
 
   return (
@@ -787,7 +949,7 @@ function GenericToolView(input: {
           icon="⚙"
           pending="Running tool..."
           complete={true}
-          text={`${input.part.toolName} ${summarizeInput(input.part.args)}`.trim()}
+          text={inlineText()}
           part={input.part}
           theme={input.theme}
           errorText={readToolErrorText(input.part)}
@@ -795,13 +957,15 @@ function GenericToolView(input: {
           onSelect={workerSessionId() ? openWorkerSession : undefined}
         />
       </Match>
-      <Match when={resultText().trim().length > 0 || fallbackCallLines().length > 0}>
+      <Match
+        when={resultText().trim().length > 0 || fallbackCallLines().length > 0 || hasDiffPayload()}
+      >
         <BlockTool
           title={`${input.part.toolName} · ${toolStatusText(input.part)}`}
           part={input.part}
           theme={input.theme}
-          hint={workerSessionHint()}
-          onSelect={workerSessionId() ? openWorkerSession : undefined}
+          hint={selectHint()}
+          onSelect={resultCollapsible() || workerSessionId() ? selectTool : undefined}
           titleColor={
             input.part.status === "error"
               ? input.theme.error
@@ -812,11 +976,61 @@ function GenericToolView(input: {
         >
           <box flexDirection="column" gap={1}>
             <TextLineBlock lines={fallbackCallLines()} color={input.theme.text} />
-            <Show when={resultText().trim().length > 0}>
+            <Show when={visibleResultLines().length > 0}>
               <TextLineBlock
-                lines={resultText().split(/\r?\n/u)}
+                lines={visibleResultLines()}
                 color={input.part.status === "error" ? input.theme.error : input.theme.text}
               />
+            </Show>
+            <Show when={singleDiff()}>
+              <box flexDirection="column" gap={0}>
+                <text paddingLeft={1} fg={input.theme.textMuted}>
+                  {formatGenericDiffTitle(singleDiff()?.path ?? readToolPath(input.part))}
+                </text>
+                <DiffView
+                  diff={singleDiff()?.diff ?? ""}
+                  filePath={singleDiff()?.path ?? readToolPath(input.part)}
+                  width={input.transcriptWidth}
+                  style={shellContext.diffStyle()}
+                  wrapMode={shellContext.diffWrapMode()}
+                  theme={input.theme}
+                />
+              </box>
+            </Show>
+            <Show when={diffFiles().length > 0}>
+              <box flexDirection="column" gap={1}>
+                <For each={diffFiles()}>
+                  {(file) => (
+                    <box flexDirection="column" gap={0}>
+                      <text paddingLeft={1} fg={input.theme.textMuted}>
+                        {formatDiffFileTitle(file)}
+                      </text>
+                      <Show
+                        when={file.diff.length > 0}
+                        fallback={
+                          <text paddingLeft={1} fg={input.theme.diffRemoved}>
+                            -{file.deletions ?? 0} lines
+                          </text>
+                        }
+                      >
+                        <DiffView
+                          diff={file.diff}
+                          filePath={file.path}
+                          width={input.transcriptWidth}
+                          style={shellContext.diffStyle()}
+                          wrapMode={shellContext.diffWrapMode()}
+                          theme={input.theme}
+                        />
+                      </Show>
+                    </box>
+                  )}
+                </For>
+              </box>
+            </Show>
+            <Show when={resultCollapsible()}>
+              <text paddingLeft={1} fg={input.theme.textMuted}>
+                {collapseHint()}
+              </text>
             </Show>
           </box>
         </BlockTool>
@@ -826,7 +1040,7 @@ function GenericToolView(input: {
           icon="⚙"
           pending="Running tool..."
           complete={input.part.status === "completed"}
-          text={`${input.part.toolName} ${summarizeInput(input.part.args)}`.trim()}
+          text={inlineText()}
           part={input.part}
           theme={input.theme}
           errorText={readToolErrorText(input.part)}
@@ -861,8 +1075,8 @@ function ToolPartView(input: {
           transcriptWidth={input.transcriptWidth}
         />
       </Match>
-      <Match when={input.part.toolName === "exec_command" || input.part.toolName === "bash"}>
-        <BashToolView
+      <Match when={isExecToolName(input.part.toolName)}>
+        <ExecToolView
           part={input.part}
           theme={input.theme}
           toolRenderCache={input.toolRenderCache}

@@ -148,6 +148,20 @@ function isToolVerdict(value: unknown): boolean {
   return value === "pass" || value === "fail" || value === "inconclusive";
 }
 
+function isToolOutputDisplayView(value: unknown): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    isOptionalString(value.summaryText) &&
+    isOptionalString(value.detailsText) &&
+    isOptionalString(value.rawText)
+  );
+}
+
 function isToolOutputView(value: unknown): boolean {
   if (!isRecord(value)) {
     return false;
@@ -157,7 +171,8 @@ function isToolOutputView(value: unknown): boolean {
     typeof value.toolName === "string" &&
     isToolVerdict(value.verdict) &&
     typeof value.isError === "boolean" &&
-    typeof value.text === "string"
+    typeof value.text === "string" &&
+    isToolOutputDisplayView(value.display)
   );
 }
 
@@ -429,7 +444,8 @@ export function validateSessionWireFramePayload(
         typeof value.toolName !== "string" ||
         !isToolVerdict(value.verdict) ||
         typeof value.isError !== "boolean" ||
-        typeof value.text !== "string"
+        typeof value.text !== "string" ||
+        !isToolOutputDisplayView(value.display)
       ) {
         return { ok: false, error: `${type} payload is invalid` };
       }

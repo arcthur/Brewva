@@ -840,6 +840,14 @@ During live transport, gateway may still emit cache-class `tool.finished`
 preview frames; frontends should treat `turn.committed.toolOutputs` as the
 committed final state.
 
+When `turn_render_committed.toolOutputs[]` carries `display`, it mirrors
+session-wire `ToolOutputView.display`:
+`display={summaryText?,detailsText?,rawText?}`. `summaryText` is a semantic
+presentation summary, not an arbitrary first-lines truncation of a long raw
+payload. Consumers that do not receive `summaryText` should apply their own
+collapse policy over `detailsText`, `rawText`, or `text` and keep the full
+output available for expansion/search.
+
 `event_listener_error` is also audit-retained because it records fan-out
 degradation without dropping the source event.
 

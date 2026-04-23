@@ -42,12 +42,19 @@ export interface ContextPressureView {
   level: "normal" | "elevated" | "critical";
 }
 
+export interface ToolOutputDisplayView {
+  summaryText?: string;
+  detailsText?: string;
+  rawText?: string;
+}
+
 export interface ToolOutputView {
   toolCallId: BrewvaToolCallId;
   toolName: BrewvaToolName;
   verdict: "pass" | "fail" | "inconclusive";
   isError: boolean;
   text: string;
+  display?: ToolOutputDisplayView;
 }
 
 export interface TurnInputRecordedPayload {
@@ -144,6 +151,7 @@ export type SessionWireFrame =
       verdict: ToolOutputView["verdict"];
       isError: boolean;
       text: string;
+      display?: ToolOutputDisplayView;
     })
   | (SessionWireFrameBase & {
       type: "tool.finished";
@@ -154,6 +162,7 @@ export type SessionWireFrame =
       verdict: ToolOutputView["verdict"];
       isError: boolean;
       text: string;
+      display?: ToolOutputDisplayView;
     })
   // `turn.committed` is the replayable final turn state. Live preview frames
   // such as `tool.finished` and `assistant.delta` do not replace it.

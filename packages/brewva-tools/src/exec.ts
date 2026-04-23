@@ -317,6 +317,13 @@ function formatExit(session: ManagedExecFinishedSession): string {
   return `code ${session.exitCode ?? 0}`;
 }
 
+function execDisplayResult(text: string, details: Record<string, unknown>) {
+  return textResult(text, details, {
+    detailsText: text,
+    rawText: text,
+  });
+}
+
 function runningResult(session: ManagedExecRunningSession) {
   const lines = [
     `Command still running (session ${session.id}, pid ${session.pid ?? "n/a"}).`,
@@ -325,7 +332,7 @@ function runningResult(session: ManagedExecRunningSession) {
   if (session.tail.trim().length > 0) {
     lines.push("", session.tail.trimEnd());
   }
-  return textResult(lines.join("\n"), {
+  return execDisplayResult(lines.join("\n"), {
     status: "running",
     verdict: "inconclusive",
     sessionId: session.id,
@@ -690,7 +697,7 @@ async function executeHostCommand(input: {
 
     const output = finished.aggregated.trimEnd() || "(no output)";
     if (finished.status === "completed") {
-      return textResult(output, {
+      return execDisplayResult(output, {
         status: "completed",
         exitCode: finished.exitCode ?? 0,
         durationMs: finished.endedAt - finished.startedAt,
@@ -919,7 +926,7 @@ async function executeVirtualReadonlyCommand(input: {
           const output = aggregated.trimEnd() || "(no output)";
           if (exitCode === 0) {
             resolveResult(
-              textResult(output, {
+              execDisplayResult(output, {
                 status: "completed",
                 exitCode,
                 durationMs: Date.now() - startedAt,
@@ -1496,7 +1503,7 @@ export function createExecTool(options?: ExecToolOptions): ToolDefinition {
           });
           clearSandboxBackoff(policy);
           clearSandboxSessionFailureState(ownerSessionId);
-          return textResult(result.output, {
+          return execDisplayResult(result.output, {
             status: "completed",
             exitCode: result.exitCode,
             durationMs: Date.now() - startedAt,

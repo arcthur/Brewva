@@ -124,6 +124,23 @@ Boundary rule:
 - tool code must not rediscover a raw `BrewvaRuntime` or reach sideways into
   `runtime.maintain.*` as an implicit fallback path
 
+## Tool Result Display
+
+Managed tools may return display metadata alongside their canonical result
+content and details. The stable shape is `display={summaryText?,detailsText?,rawText?}`:
+
+- `summaryText` is a concise semantic presentation string suitable for collapsed
+  transcript views and context-facing summaries
+- `detailsText` is the expanded human-readable view, usually the full command
+  output, structured detail text, or rendered operation detail
+- `rawText` is the raw textual payload when one exists
+
+`summaryText` is not a generic truncation field. Tool authors and gateway
+distillers should set it only when the text is intentionally useful as a
+summary. Long raw output without a semantic summary should keep `detailsText`
+and `rawText`; transcript renderers own line-count collapse and should expose
+the total output size rather than pretending the first few lines are a summary.
+
 ## Tool Families
 
 ### Code Navigation

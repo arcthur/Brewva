@@ -633,6 +633,12 @@ In the current wire, live `tool.started`, `tool.progress`, and `tool.finished`
 are explicitly attempt-scoped through repo-owned lifecycle binding; replay still
 converges only through committed `turn.committed.toolOutputs`.
 
+`ToolOutputView` may include `display={summaryText?,detailsText?,rawText?}`.
+Runtime replay preserves this presentation metadata on committed tool outputs;
+gateway live frames use the same shape when preview output is available.
+`summaryText` is reserved for intentional semantic display summaries, while
+long raw output without such a summary remains renderer-owned collapse state.
+
 ## `maintain`
 
 `maintain` is the explicit rebuild and bounded-recovery surface.

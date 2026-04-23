@@ -8,6 +8,7 @@ import {
   type SessionWireSource,
   type SessionWireTransitionFamily,
   type SessionWireTransitionStatus,
+  type ToolOutputDisplayView,
   type ToolOutputView,
   type TurnInputRecordedPayload,
   type TurnRenderCommittedPayload,
@@ -74,6 +75,31 @@ function readBoolean(value: unknown): boolean {
   return value === true;
 }
 
+function readOptionalDisplayText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function readToolOutputDisplayView(value: unknown): ToolOutputDisplayView | undefined {
+  const record = asRecord(value);
+  if (!record) {
+    return undefined;
+  }
+  const summaryText = readOptionalDisplayText(record.summaryText);
+  const detailsText = readOptionalDisplayText(record.detailsText);
+  const rawText = readOptionalDisplayText(record.rawText);
+  const display: ToolOutputDisplayView = {};
+  if (summaryText) {
+    display.summaryText = summaryText;
+  }
+  if (detailsText) {
+    display.detailsText = detailsText;
+  }
+  if (rawText) {
+    display.rawText = rawText;
+  }
+  return Object.keys(display).length > 0 ? display : undefined;
+}
+
 function readSessionWireCommittedStatus(value: unknown): SessionWireCommittedStatus | undefined {
   return value === "completed" || value === "failed" || value === "cancelled" ? value : undefined;
 }
@@ -120,12 +146,14 @@ function readToolOutputView(value: unknown): ToolOutputView | null {
   if (verdict !== "pass" && verdict !== "fail" && verdict !== "inconclusive") {
     return null;
   }
+  const display = readToolOutputDisplayView(record.display);
   return {
     toolCallId: asBrewvaToolCallId(toolCallId),
     toolName: asBrewvaToolName(toolName),
     verdict,
     isError: readBoolean(record.isError),
     text: readString(record.text) ?? "",
+    ...(display ? { display } : {}),
   };
 }
 

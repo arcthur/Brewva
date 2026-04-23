@@ -4,7 +4,7 @@
 
 - Status: `promoted`
 - Owner: gateway and runtime maintainers
-- Last reviewed: `2026-04-05`
+- Last reviewed: `2026-04-23`
 - Promotion target:
   - `docs/architecture/system-architecture.md`
   - `docs/reference/runtime.md`
@@ -34,8 +34,8 @@ The promoted decision is:
 
 Stable implementation now includes:
 
-- stable runtime contracts for `SessionWireFrame`, `ContextPressureView`, and
-  `ToolOutputView`
+- stable runtime contracts for `SessionWireFrame`, `ContextPressureView`,
+  `ToolOutputView`, and `ToolOutputDisplayView`
 - a runtime-owned durable compiler for `turn_input_recorded`,
   `turn_render_committed`, `session_turn_transition`, approval receipts,
   subagent lifecycle receipts, and `session_shutdown`
@@ -83,6 +83,11 @@ The promoted contract is:
 6. Removed protocol surfaces stay removed.
    The promoted contract does not keep `session.turn.*`, reducer aliases, or
    compatibility wrappers for the old grammar.
+7. Tool output display metadata is presentation metadata, not authority.
+   `ToolOutputDisplayView.summaryText` is a semantic summary supplied by a tool,
+   gateway distiller, or short raw result. Long raw output without such a
+   summary remains renderer-owned collapse state over `detailsText`, `rawText`,
+   or `text`.
 
 ## Validation Status
 

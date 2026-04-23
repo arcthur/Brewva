@@ -442,7 +442,7 @@ describe("managed agent session compaction", () => {
     await handleAgentEvent({
       type: "tool_execution_start",
       toolCallId: "tool_approval_1",
-      toolName: "exec_command",
+      toolName: "exec",
       args: { command: "echo hello" },
     });
     observedPhases.length = 0;
@@ -465,7 +465,7 @@ describe("managed agent session compaction", () => {
       type: "effect_commitment_approval_requested",
       payload: {
         requestId: "approval-1",
-        toolName: "exec_command",
+        toolName: "exec",
         toolCallId: "tool_approval_1",
         subject: "run command",
       },
@@ -528,14 +528,14 @@ describe("managed agent session compaction", () => {
         kind: "waiting_approval",
         requestId: "transition:effect_commitment_pending",
         toolCallId: "tool_approval_1",
-        toolName: "exec_command",
+        toolName: "exec",
         turn: 1,
       },
       {
         kind: "waiting_approval",
         requestId: "approval-1",
         toolCallId: "tool_approval_1",
-        toolName: "exec_command",
+        toolName: "exec",
         turn: 1,
       },
       {
@@ -893,7 +893,7 @@ describe("managed agent session compaction", () => {
       type: "effect_commitment_approval_requested",
       payload: {
         requestId: "approval-history-1",
-        toolName: "exec_command",
+        toolName: "exec",
         toolCallId: "tool-history-1",
         subject: "run command",
       },
@@ -961,7 +961,7 @@ describe("managed agent session compaction", () => {
         kind: "waiting_approval",
         requestId: "approval-history-1",
         toolCallId: "tool-history-1",
-        toolName: "exec_command",
+        toolName: "exec",
         turn: 1,
       });
       expect(observedPhases).toContain("waiting_approval");
@@ -1004,7 +1004,7 @@ describe("managed agent session compaction", () => {
       type: "effect_commitment_approval_requested",
       payload: {
         requestId: "approval-history-warning-1",
-        toolName: "exec_command",
+        toolName: "exec",
         toolCallId: "tool-history-warning-1",
         subject: "run command",
       },

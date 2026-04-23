@@ -206,7 +206,7 @@ export function createBrewvaReadToolDefinition(
                 const firstLineSize = formatSize(
                   Buffer.byteLength(allLines[startLine] ?? "", "utf8"),
                 );
-                outputText = `[Line ${startLineDisplay} is ${firstLineSize}, exceeds ${formatSize(DEFAULT_MAX_BYTES)} limit. Use bash: sed -n '${startLineDisplay}p' ${path} | head -c ${DEFAULT_MAX_BYTES}]`;
+                outputText = `[Line ${startLineDisplay} is ${firstLineSize}, exceeds ${formatSize(DEFAULT_MAX_BYTES)} limit. Use exec to run: sed -n '${startLineDisplay}p' ${path} | head -c ${DEFAULT_MAX_BYTES}]`;
                 details = { truncation };
               } else if (truncation.truncated) {
                 const endLineDisplay = startLineDisplay + truncation.outputLines - 1;

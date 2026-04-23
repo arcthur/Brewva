@@ -130,21 +130,6 @@ export interface BrewvaAgentEngineCustomMessage<TDetails = unknown> extends Omit
   timestamp: number;
 }
 
-export interface BrewvaAgentEngineBashExecutionMessage extends Omit<
-  BrewvaAgentEngineMessageVisibility,
-  "excludeFromContext"
-> {
-  role: "bashExecution";
-  command: string;
-  output: string;
-  exitCode: number | undefined;
-  cancelled: boolean;
-  truncated: boolean;
-  fullOutputPath?: string;
-  timestamp: number;
-  excludeFromContext?: boolean;
-}
-
 export interface BrewvaAgentEngineBranchSummaryMessage extends BrewvaAgentEngineMessageVisibility {
   role: "branchSummary";
   summary: string;
@@ -164,7 +149,6 @@ export type BrewvaAgentEngineMessage =
   | BrewvaAgentEngineAssistantMessage
   | BrewvaAgentEngineToolResultMessage
   | BrewvaAgentEngineCustomMessage
-  | BrewvaAgentEngineBashExecutionMessage
   | BrewvaAgentEngineBranchSummaryMessage
   | BrewvaAgentEngineCompactionSummaryMessage;
 

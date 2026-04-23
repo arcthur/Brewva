@@ -23,8 +23,8 @@ describe("session phase runtime facts", () => {
       turnId: "turn-1",
       requestId: "approval-1",
       toolCallId: asBrewvaToolCallId("tool-1"),
-      toolName: asBrewvaToolName("exec_command"),
-      subject: "tool:exec_command",
+      toolName: asBrewvaToolName("exec"),
+      subject: "tool:exec",
     };
 
     expect(deriveSessionPhaseFromRuntimeFactFrame({ kind: "idle" }, frame, 1)).toEqual({
@@ -32,11 +32,11 @@ describe("session phase runtime facts", () => {
         kind: "waiting_approval",
         requestId: "approval-1",
         toolCallId: "tool-1",
-        toolName: "exec_command",
+        toolName: "exec",
         turn: 1,
       },
       reason: "approval_requested",
-      detail: "tool:exec_command",
+      detail: "tool:exec",
     });
   });
 
@@ -65,8 +65,8 @@ describe("session phase runtime facts", () => {
         turnId: "turn-1",
         requestId: "approval-1",
         toolCallId: asBrewvaToolCallId("tool-1"),
-        toolName: asBrewvaToolName("exec_command"),
-        subject: "tool:exec_command",
+        toolName: asBrewvaToolName("exec"),
+        subject: "tool:exec",
       },
     ];
 
@@ -75,11 +75,11 @@ describe("session phase runtime facts", () => {
         kind: "waiting_approval",
         requestId: "approval-1",
         toolCallId: "tool-1",
-        toolName: "exec_command",
+        toolName: "exec",
         turn: 1,
       },
       reason: "approval_requested",
-      detail: "tool:exec_command",
+      detail: "tool:exec",
     });
   });
 });

@@ -192,6 +192,31 @@ describe("gateway protocol validator", () => {
     expect(result.ok).toBe(true);
   });
 
+  test("given session wire tool frame with display payload, when validating payload, then validation succeeds", () => {
+    const result = validateSessionWireFramePayload({
+      schema: "brewva.session-wire.v2",
+      sessionId: "session-1",
+      frameId: "live:tool-finished",
+      ts: 1,
+      source: "live",
+      durability: "cache",
+      type: "tool.finished",
+      turnId: "turn-1",
+      attemptId: "attempt-1",
+      toolCallId: "tool-call-1",
+      toolName: "exec",
+      verdict: "pass",
+      isError: false,
+      text: "ok",
+      display: {
+        summaryText: "exec ok",
+        detailsText: "ok",
+        rawText: "ok",
+      },
+    });
+    expect(result.ok).toBe(true);
+  });
+
   test("given session wire tool frame without attemptId, when validating payload, then validation fails", () => {
     const result = validateSessionWireFramePayload({
       schema: "brewva.session-wire.v2",

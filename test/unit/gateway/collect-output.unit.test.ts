@@ -134,6 +134,8 @@ describe("gateway collect output", () => {
     expect(text).toContain("[ExecDistilled]");
     expect(text).toContain("status: failed");
     expect(text.length).toBeLessThan(noisyOutput.length);
+    expect(output.toolOutputs[0]?.display?.summaryText).toContain("[ExecDistilled]");
+    expect(output.toolOutputs[0]?.display?.detailsText).toBe(noisyOutput);
   });
 
   test("given tool execution updates, when collecting output, then streamed chunk uses distilled text", async () => {
@@ -188,6 +190,8 @@ describe("gateway collect output", () => {
       return;
     }
     expect(toolUpdateFrame.text).toContain("[ExecDistilled]");
+    expect(toolUpdateFrame.display?.summaryText).toContain("[ExecDistilled]");
+    expect(toolUpdateFrame.display?.detailsText).toBe(noisyPartial);
     expect(toolUpdateFrame.attemptId).toBe("attempt-1");
   });
 
@@ -670,6 +674,11 @@ describe("gateway collect output", () => {
         verdict: "pass",
         isError: false,
         text: "current attempt output",
+        display: {
+          summaryText: "current attempt output",
+          detailsText: "current attempt output",
+          rawText: "current attempt output",
+        },
       },
     ]);
     const finishedToolCallIds = frames

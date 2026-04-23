@@ -101,6 +101,46 @@ describe("cli transcript model", () => {
     });
   });
 
+  test("preserves tool result display metadata", () => {
+    const messages = buildSeedTranscriptMessages([
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "tool-json-1",
+            name: "structured_process",
+            arguments: { payload: { nested: true } },
+          },
+        ],
+      },
+      {
+        role: "toolResult",
+        toolCallId: "tool-json-1",
+        toolName: "structured_process",
+        content: [{ type: "text", text: '{"verbose":true}' }],
+        details: { status: "completed" },
+        display: {
+          summaryText: "Process completed",
+          detailsText: "Verbose process output",
+          rawText: '{"verbose":true}',
+        },
+        isError: false,
+      },
+    ]);
+
+    expect(messages[0]?.parts[0]).toMatchObject({
+      type: "tool",
+      result: {
+        display: {
+          summaryText: "Process completed",
+          detailsText: "Verbose process output",
+          rawText: '{"verbose":true}',
+        },
+      },
+    });
+  });
+
   test("preserves streamed tool execution state when the assistant partial message is rebuilt", () => {
     const partial = buildTranscriptMessageFromMessage(
       {

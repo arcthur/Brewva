@@ -1,3 +1,5 @@
+import type { ToolOutputDisplayView } from "@brewva/brewva-runtime";
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -45,6 +47,7 @@ export interface NormalizedToolResultMessage {
   toolName: string;
   content: NormalizedMessageContentPart[];
   details?: unknown;
+  display?: ToolOutputDisplayView;
   isError: boolean;
 }
 
@@ -165,6 +168,36 @@ export function readMessageContentParts(message: unknown): NormalizedMessageCont
   return parts;
 }
 
+export function normalizeToolOutputDisplay(value: unknown): ToolOutputDisplayView | undefined {
+  const record = asRecord(value);
+  if (!record) {
+    return undefined;
+  }
+  const summaryText =
+    typeof record.summaryText === "string" && record.summaryText.trim().length > 0
+      ? record.summaryText
+      : undefined;
+  const detailsText =
+    typeof record.detailsText === "string" && record.detailsText.trim().length > 0
+      ? record.detailsText
+      : undefined;
+  const rawText =
+    typeof record.rawText === "string" && record.rawText.trim().length > 0
+      ? record.rawText
+      : undefined;
+  const display: ToolOutputDisplayView = {};
+  if (summaryText) {
+    display.summaryText = summaryText;
+  }
+  if (detailsText) {
+    display.detailsText = detailsText;
+  }
+  if (rawText) {
+    display.rawText = rawText;
+  }
+  return Object.keys(display).length > 0 ? display : undefined;
+}
+
 export function readToolResultMessage(message: unknown): NormalizedToolResultMessage | null {
   const record = asRecord(message);
   if (!record || record.role !== "toolResult") {
@@ -175,11 +208,13 @@ export function readToolResultMessage(message: unknown): NormalizedToolResultMes
     return null;
   }
 
+  const display = normalizeToolOutputDisplay(record.display);
   return {
     toolCallId: record.toolCallId,
     toolName: record.toolName,
     content: readMessageContentParts(message),
     details: record.details,
+    ...(display ? { display } : {}),
     isError: record.isError === true,
   };
 }

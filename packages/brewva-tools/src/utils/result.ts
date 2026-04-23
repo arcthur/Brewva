@@ -1,4 +1,7 @@
-import type { BrewvaToolResult as AgentToolResult } from "@brewva/brewva-substrate";
+import type {
+  BrewvaToolResult as AgentToolResult,
+  BrewvaToolResultDisplay,
+} from "@brewva/brewva-substrate";
 
 export type ToolResultVerdict = "pass" | "fail" | "inconclusive";
 
@@ -9,10 +12,22 @@ export function toolDetails(details: object): Record<string, unknown> {
 export function textResult(
   text: string,
   details: Record<string, unknown> = {},
+  display?: BrewvaToolResultDisplay,
 ): AgentToolResult<Record<string, unknown>> {
   return {
     content: [{ type: "text", text }],
     details,
+    ...(display ? { display } : {}),
+  };
+}
+
+export function withDisplay<TDetails>(
+  result: AgentToolResult<TDetails>,
+  display: BrewvaToolResultDisplay,
+): AgentToolResult<TDetails> {
+  return {
+    ...result,
+    display,
   };
 }
 

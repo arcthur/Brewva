@@ -322,7 +322,6 @@
             const msg = entry.message;
             parts.push(msg.role);
             if (msg.content) parts.push(extractContent(msg.content));
-            if (msg.role === 'bashExecution' && msg.command) parts.push(msg.command);
             break;
           }
           case 'custom_message':
@@ -570,10 +569,10 @@
             return `[write: ${shortenPath(String(args.path || args.file_path || ''))}]`;
           case 'edit':
             return `[edit: ${shortenPath(String(args.path || args.file_path || ''))}]`;
-          case 'bash': {
+          case 'exec': {
             const rawCmd = String(args.command || '');
             const cmd = rawCmd.replace(/[\n\t]/g, ' ').trim().slice(0, 50);
-            return `[bash: ${cmd}${rawCmd.length > 50 ? '...' : ''}]`;
+            return `[exec: ${cmd}${rawCmd.length > 50 ? '...' : ''}]`;
           }
           case 'grep':
             return `[grep: /${args.pattern || ''}/ in ${shortenPath(String(args.path || '.'))}]`;
@@ -635,10 +634,6 @@
                 return labelHtml + `<span class="tree-role-tool">${escapeHtml(formatToolCall(toolCall.name, toolCall.arguments))}</span>`;
               }
               return labelHtml + `<span class="tree-role-tool">[${msg.toolName || 'tool'}]</span>`;
-            }
-            if (msg.role === 'bashExecution') {
-              const cmd = truncate(normalize(msg.command || ''));
-              return labelHtml + `<span class="tree-role-tool">[bash]:</span> ${escapeHtml(cmd)}`;
             }
             return labelHtml + `<span class="tree-muted">[${msg.role}]</span>`;
           }
@@ -891,7 +886,7 @@
         const invalidArg = '<span class="tool-error">[invalid arg]</span>';
 
         switch (name) {
-          case 'bash': {
+          case 'exec': {
             const command = str(args.command);
             const cmdDisplay = command === null ? invalidArg : escapeHtml(command || '...');
             html += `<div class="tool-command">$ ${cmdDisplay}</div>`;
@@ -1172,20 +1167,6 @@
               html += `<div class="error-text">Error: ${escapeHtml(msg.errorMessage || 'Unknown error')}</div>`;
             }
 
-            html += '</div>';
-            return html;
-          }
-
-          if (msg.role === 'bashExecution') {
-            const isError = msg.cancelled || (msg.exitCode !== 0 && msg.exitCode !== null);
-            let html = `<div class="tool-execution ${isError ? 'error' : 'success'}" id="${entryId}">${tsHtml}`;
-            html += `<div class="tool-command">$ ${escapeHtml(msg.command)}</div>`;
-            if (msg.output) html += formatExpandableOutput(msg.output, 10);
-            if (msg.cancelled) {
-              html += '<div style="color: var(--warning)">(cancelled)</div>';
-            } else if (msg.exitCode !== 0 && msg.exitCode !== null) {
-              html += `<div style="color: var(--error)">(exit ${msg.exitCode})</div>`;
-            }
             html += '</div>';
             return html;
           }

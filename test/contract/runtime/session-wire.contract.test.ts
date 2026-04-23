@@ -42,6 +42,11 @@ describe("runtime session wire compiler", () => {
             verdict: "pass",
             isError: false,
             text: "ok",
+            display: {
+              summaryText: "exec ok",
+              detailsText: "ok",
+              rawText: "ok",
+            },
           },
         ],
       },
@@ -67,6 +72,11 @@ describe("runtime session wire compiler", () => {
           verdict: "pass",
           isError: false,
           text: "ok",
+          display: {
+            summaryText: "exec ok",
+            detailsText: "ok",
+            rawText: "ok",
+          },
         },
       ],
     });
@@ -217,7 +227,7 @@ describe("runtime session wire compiler", () => {
       turn: 0,
       payload: {
         requestId: "approval-1",
-        toolName: "exec_command",
+        toolName: "exec",
         toolCallId: "tool-approval-1",
         subject: "run command",
         argsSummary: "echo hello",
@@ -276,7 +286,7 @@ describe("runtime session wire compiler", () => {
     expect(frames[1]).toMatchObject({
       type: "approval.requested",
       requestId: "approval-1",
-      toolName: "exec_command",
+      toolName: "exec",
       toolCallId: "tool-approval-1",
       subject: "run command",
       detail: "echo hello",
@@ -327,7 +337,7 @@ describe("runtime session wire compiler", () => {
       turn: 7,
       payload: {
         requestId: "approval-2",
-        toolName: "exec_command",
+        toolName: "exec",
         toolCallId: "tool-approval-2",
         subject: "unmapped",
       },

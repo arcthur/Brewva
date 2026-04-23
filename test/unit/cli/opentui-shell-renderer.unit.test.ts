@@ -115,6 +115,12 @@ function countOccurrences(text: string, needle: string): number {
   return text.split(needle).length - 1;
 }
 
+function findRenderedColumn(frame: string, needle: string): number {
+  const line = frame.split("\n").find((candidate) => candidate.includes(needle));
+  expect(line).toBeDefined();
+  return line?.indexOf(needle) ?? -1;
+}
+
 function createFakeBundle(
   options: {
     approvals?: number;
@@ -1625,7 +1631,7 @@ describe("opentui solid shell runtime", () => {
             toolOutputs: [
               {
                 toolCallId: asBrewvaToolCallId("tool-1"),
-                toolName: asBrewvaToolName("exec_command"),
+                toolName: asBrewvaToolName("exec"),
                 verdict: "pass",
                 isError: false,
                 text: "bun test\n1775 pass",
@@ -2241,7 +2247,7 @@ describe("opentui solid shell runtime", () => {
             {
               type: "toolCall",
               id: "tool-exec-1",
-              name: "exec_command",
+              name: "exec",
               arguments: {
                 command: "bun test",
                 workdir: "packages/brewva-cli",
@@ -2254,7 +2260,7 @@ describe("opentui solid shell runtime", () => {
         {
           role: "toolResult",
           toolCallId: "tool-exec-1",
-          toolName: "exec_command",
+          toolName: "exec",
           content: [{ type: "text", text: "1775 pass\n0 fail" }],
           details: { exitCode: 0 },
           isError: false,
@@ -2302,7 +2308,7 @@ describe("opentui solid shell runtime", () => {
             {
               type: "toolCall",
               id: "tool-exec-long",
-              name: "exec_command",
+              name: "exec",
               arguments: {
                 command: "bun test --verbose",
                 description: "Run verbose unit tests",
@@ -2314,7 +2320,7 @@ describe("opentui solid shell runtime", () => {
         {
           role: "toolResult",
           toolCallId: "tool-exec-long",
-          toolName: "exec_command",
+          toolName: "exec",
           content: [{ type: "text", text: output }],
           details: { exitCode: 0 },
           isError: false,
@@ -2346,14 +2352,220 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("Run verbose unit tests");
       expect(frame).toContain("line 10");
       expect(frame).not.toContain("line 11");
-      expect(frame).toContain("Click to expand 2 more line(s)");
+      expect(frame).toContain("Click to expand 2 more line(s) · 12 lines total");
+      expect(countOccurrences(frame, "Click to expand")).toBe(1);
     } finally {
       controller.dispose();
       testSetup.renderer.destroy();
     }
   });
 
-  test("keeps generic tools with diff-shaped details on the generic renderer", async () => {
+  test("uses exec display summaries for collapsed shell output when available", async () => {
+    const output = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n");
+    const { bundle } = createFakeBundle({
+      seedMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool-exec-summary",
+              name: "exec",
+              arguments: {
+                command: "bun test --verbose",
+                description: "Run verbose unit tests",
+              },
+            },
+          ],
+          stopReason: "toolUse",
+        },
+        {
+          role: "toolResult",
+          toolCallId: "tool-exec-summary",
+          toolName: "exec",
+          content: [{ type: "text", text: output }],
+          details: { exitCode: 1 },
+          display: {
+            summaryText: "[ExecDistilled]\nstatus: failed\n- error at step 7",
+            detailsText: output,
+            rawText: output,
+          },
+          isError: false,
+        },
+      ],
+    });
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 120,
+        height: 32,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+      const frame = testSetup.captureCharFrame();
+      expect(frame).toContain("[ExecDistilled]");
+      expect(frame).toContain("status: failed");
+      expect(frame).toContain("error at step 7");
+      expect(frame).not.toContain("line 10");
+      expect(frame).toContain("Click to expand 9 more line(s) · 12 lines total");
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("renders generic tool display summaries without dumping structured args", async () => {
+    const { bundle } = createFakeBundle({
+      seedMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool-generic-display",
+              name: "structured_process",
+              arguments: {
+                mode: "deep",
+                payload: {
+                  steps: [
+                    { id: "prepare", state: "done" },
+                    { id: "execute", state: "done" },
+                  ],
+                },
+              },
+            },
+          ],
+          stopReason: "toolUse",
+        },
+        {
+          role: "toolResult",
+          toolCallId: "tool-generic-display",
+          toolName: "structured_process",
+          content: [
+            {
+              type: "text",
+              text: '{\n  "steps": [\n    "prepare",\n    "execute"\n  ]\n}',
+            },
+          ],
+          details: { status: "completed" },
+          display: {
+            summaryText: "Structured process completed",
+            detailsText: "prepare: done\nexecute: done\ncleanup: skipped",
+            rawText: '{\n  "steps": [\n    "prepare",\n    "execute"\n  ]\n}',
+          },
+          isError: false,
+        },
+      ],
+    });
+
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 120,
+        height: 32,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+      const frame = testSetup.captureCharFrame();
+      expect(frame).toContain("structured_process · completed");
+      expect(frame).toContain("[mode=deep]");
+      expect(frame).toContain("Structured process completed");
+      expect(findRenderedColumn(frame, "structured_process · completed")).toBe(
+        findRenderedColumn(frame, "[mode=deep]"),
+      );
+      expect(findRenderedColumn(frame, "Structured process completed")).toBe(
+        findRenderedColumn(frame, "[mode=deep]"),
+      );
+      expect(frame).toContain("Click to expand 2 more line(s) · 3 lines total");
+      expect(countOccurrences(frame, "Click to expand")).toBe(1);
+      expect(frame).not.toContain('"payload"');
+      expect(frame).not.toContain('"steps"');
+      expect(frame).not.toContain("cleanup: skipped");
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("collapses generic raw output with total line count when display summary is absent", async () => {
+    const output = Array.from({ length: 8 }, (_, index) => `raw line ${index + 1}`).join("\n");
+    const { bundle } = createFakeBundle({
+      seedMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool-generic-raw",
+              name: "raw_process",
+              arguments: { mode: "raw" },
+            },
+          ],
+          stopReason: "toolUse",
+        },
+        {
+          role: "toolResult",
+          toolCallId: "tool-generic-raw",
+          toolName: "raw_process",
+          content: [{ type: "text", text: output }],
+          details: { status: "completed" },
+          isError: false,
+        },
+      ],
+    });
+
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 120,
+        height: 32,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+      const frame = testSetup.captureCharFrame();
+      expect(frame).toContain("raw line 5");
+      expect(frame).not.toContain("raw line 6");
+      expect(frame).toContain("Click to expand 3 more line(s) · 8 lines total");
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("renders generic tools with diff-shaped details through DiffView", async () => {
     const { bundle } = createFakeBundle({
       seedMessages: [
         {
@@ -2403,8 +2615,9 @@ describe("opentui solid shell runtime", () => {
       const frame = testSetup.captureCharFrame();
       expect(frame).toContain("git_diff · completed");
       expect(frame).toContain("Repository diff generated.");
-      expect(frame).not.toContain("Patch file");
-      expect(frame).not.toContain("1 + new");
+      expect(frame).toContain("Diff");
+      expect(frame).toContain("old");
+      expect(frame).toContain("new");
     } finally {
       controller.dispose();
       testSetup.renderer.destroy();
