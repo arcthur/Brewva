@@ -29,6 +29,7 @@ import type {
   BrewvaToolUiPort,
 } from "@brewva/brewva-substrate";
 import type { BrewvaSessionResult } from "../session.js";
+import type { ShellCompletionUsageEntry } from "./completion-provider.js";
 
 export interface CliShellSessionBundle {
   session: BrewvaManagedPromptSession;
@@ -53,6 +54,15 @@ export interface CliShellPromptFilePart {
   };
 }
 
+export interface CliShellPromptAgentPart {
+  id: string;
+  type: "agent";
+  agentId: string;
+  source: {
+    text: CliShellPromptSourceText;
+  };
+}
+
 export interface CliShellPromptTextPart {
   id: string;
   type: "text";
@@ -62,7 +72,10 @@ export interface CliShellPromptTextPart {
   };
 }
 
-export type CliShellPromptPart = CliShellPromptFilePart | CliShellPromptTextPart;
+export type CliShellPromptPart =
+  | CliShellPromptFilePart
+  | CliShellPromptAgentPart
+  | CliShellPromptTextPart;
 
 export interface CliShellPromptSnapshot {
   text: string;
@@ -80,6 +93,8 @@ export interface CliShellPromptStorePort {
   pushStash(entry: CliShellPromptSnapshot): CliShellPromptStashEntry;
   popStash(): CliShellPromptStashEntry | undefined;
   removeStash(index: number): void;
+  loadCompletionUsage(): ShellCompletionUsageEntry[];
+  recordCompletionUsage(entry: ShellCompletionUsageEntry): void;
 }
 
 export interface SessionViewPort {
@@ -351,23 +366,6 @@ export type {
   ProviderConnection,
   ProviderOAuthAuthorization,
 };
-
-export interface SlashCommandEntry {
-  command: string;
-  aliases?: readonly string[];
-  description: string;
-  argumentMode?: "none" | "optional" | "required";
-}
-
-export interface PathCompletionEntry {
-  value: string;
-  kind: "file" | "directory";
-  description?: string;
-}
-
-export interface WorkspaceCompletionPort {
-  listPaths(prefix: string): readonly PathCompletionEntry[];
-}
 
 export interface ShellConfigPort {
   getEditorCommand(): string | undefined;

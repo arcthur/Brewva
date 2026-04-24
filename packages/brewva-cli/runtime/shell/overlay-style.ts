@@ -12,7 +12,7 @@ export const DIALOG_Z_INDEX = 3000;
 export const DIALOG_BACKDROP = RGBA.fromInts(0, 0, 0, 150);
 export const DIALOG_HORIZONTAL_PADDING = 4;
 export const DIALOG_FOOTER_RIGHT_PADDING = 2;
-export const COMPLETION_Z_INDEX = 100;
+export const COMPLETION_Z_INDEX = DIALOG_Z_INDEX + 10;
 export const TOAST_Z_INDEX = 20;
 export const TOAST_MAX_WIDTH = 60;
 

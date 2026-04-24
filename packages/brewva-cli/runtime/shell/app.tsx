@@ -75,6 +75,7 @@ export function BrewvaOpenTuiShell(input: {
   const promptPartStyle = createMemo(() => createPromptPartStyle(theme()));
   const filePromptPartStyleId = createMemo(() => promptPartStyle().getStyleId("extmark.file"));
   const textPromptPartStyleId = createMemo(() => promptPartStyle().getStyleId("extmark.text"));
+  const agentPromptPartStyleId = createMemo(() => promptPartStyle().getStyleId("extmark.agent"));
   const [promptPartTypeId, setPromptPartTypeId] = createSignal<number | null>(null);
   const [promptPartIdByExtmarkId, setPromptPartIdByExtmarkId] = createSignal(
     new Map<number, string>(),
@@ -98,7 +99,12 @@ export function BrewvaOpenTuiShell(input: {
       if (source.end <= source.start) {
         continue;
       }
-      const styleId = part.type === "file" ? filePromptPartStyleId() : textPromptPartStyleId();
+      const styleId =
+        part.type === "file"
+          ? filePromptPartStyleId()
+          : part.type === "agent"
+            ? agentPromptPartStyleId()
+            : textPromptPartStyleId();
       const extmarkId = node.extmarks.create({
         start: source.start,
         end: source.end,

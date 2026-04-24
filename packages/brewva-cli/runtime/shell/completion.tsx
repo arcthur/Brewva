@@ -71,7 +71,19 @@ export function CompletionOverlay(input: {
   });
   const overlayContentHeight = createMemo(() => {
     const count = input.completion.items.length || 1;
-    return Math.min(10, count, Math.max(1, position().y));
+    const spaceAbove = Math.max(1, position().y);
+    const spaceBelow = Math.max(1, input.height - position().y - 1);
+    return Math.min(10, count, Math.max(spaceAbove, spaceBelow));
+  });
+  const overlayTop = createMemo(() => {
+    const pos = position();
+    const height = overlayContentHeight();
+    const spaceAbove = Math.max(1, pos.y);
+    const spaceBelow = Math.max(1, input.height - pos.y - 1);
+    if (spaceAbove >= height || spaceAbove >= spaceBelow) {
+      return Math.max(0, pos.y - height);
+    }
+    return Math.max(0, Math.min(input.height - height, pos.y + 1));
   });
   createEffect(() => {
     void input.completion.query;
@@ -98,7 +110,7 @@ export function CompletionOverlay(input: {
       position="absolute"
       zIndex={COMPLETION_Z_INDEX}
       left={position().x}
-      top={Math.max(0, position().y - overlayContentHeight())}
+      top={overlayTop()}
       width={position().width}
       border={["left", "right"]}
       customBorderChars={SPLIT_BORDER_CHARS}

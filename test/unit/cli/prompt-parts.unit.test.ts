@@ -41,6 +41,44 @@ describe("cli prompt parts", () => {
     }
   });
 
+  test("encodes file prompt line ranges into file URIs", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "brewva-prompt-parts-"));
+    try {
+      const attachmentPath = join(cwd, "note.txt");
+      writeFileSync(attachmentPath, "one\ntwo\nthree\n", "utf8");
+      const expectedUrl = pathToFileURL(realpathSync(attachmentPath));
+      expectedUrl.searchParams.set("start", "2");
+      expectedUrl.searchParams.set("end", "3");
+
+      expect(
+        buildCliShellPromptContentParts(cwd, "open @note.txt#L2-L3", [
+          {
+            id: "file-1",
+            type: "file",
+            path: "note.txt#L2-L3",
+            source: {
+              text: {
+                start: 5,
+                end: 20,
+                value: "@note.txt#L2-L3",
+              },
+            },
+          },
+        ]),
+      ).toMatchObject([
+        { type: "text", text: "open " },
+        {
+          type: "file",
+          uri: expectedUrl.toString(),
+          name: "note.txt",
+          displayText: "@note.txt#L2-L3",
+        },
+      ]);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   test("fails fast when a referenced file prompt part does not exist", () => {
     const cwd = mkdtempSync(join(tmpdir(), "brewva-prompt-parts-"));
     try {

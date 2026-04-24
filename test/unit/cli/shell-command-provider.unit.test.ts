@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { ShellCommandProvider } from "../../../packages/brewva-cli/src/shell/command-provider.js";
 
 describe("shell command provider", () => {
-  test("derives visible, slash, and keybound command surfaces from registered commands", () => {
+  test("derives visible and keybound command surfaces from registered commands", () => {
     const provider = new ShellCommandProvider();
     provider.register({
       id: "model.list",
@@ -32,13 +32,12 @@ describe("shell command provider", () => {
       run: () => {},
     });
 
-    expect(provider.visibleCommands().map((command) => command.id)).toEqual(["model.list"]);
-    expect(provider.slashCommands()).toEqual([
+    expect(provider.visibleCommands()).toMatchObject([
       {
-        command: "models",
-        aliases: ["model"],
+        id: "model.list",
+        slashName: "models",
+        slashAliases: ["model"],
         description: "Select a model.",
-        argumentMode: "optional",
       },
     ]);
     expect(provider.keyboundCommands()).toMatchObject([

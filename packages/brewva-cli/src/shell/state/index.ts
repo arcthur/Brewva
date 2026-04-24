@@ -1,5 +1,6 @@
 import { DEFAULT_TUI_THEME, type TuiTheme } from "@brewva/brewva-tui";
 import { FocusManager, OverlayManager, type OverlayEntry } from "@brewva/brewva-tui";
+import type { ShellCompletionCandidate, ShellCompletionRange } from "../completion-provider.js";
 import type { CliShellTranscriptMessage } from "../transcript.js";
 import type { CliShellOverlayPayload, CliShellPromptPart } from "../types.js";
 
@@ -43,20 +44,11 @@ export interface CliShellViewState {
   showThinking: boolean;
 }
 
-export interface CliShellCompletionItem {
-  label: string;
-  value: string;
-  insertText: string;
-  enterBehavior?: "insert" | "submit";
-  description?: string;
-  detail?: string;
-  kind: "slash" | "path";
-}
-
 export interface CliShellCompletionState {
-  kind: "slash" | "path";
+  trigger: "/" | "@";
   query: string;
-  items: CliShellCompletionItem[];
+  range: ShellCompletionRange;
+  items: ShellCompletionCandidate[];
   selectedIndex: number;
 }
 

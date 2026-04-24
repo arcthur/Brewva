@@ -556,8 +556,12 @@ describe("shell controller", () => {
 
     controller.ui.setEditorText("/mo");
     expect(controller.getState().composer.completion?.items[0]).toMatchObject({
+      kind: "command",
       value: "models",
-      enterBehavior: "submit",
+      accept: {
+        type: "runCommand",
+        commandId: "agent.models",
+      },
     });
 
     await controller.handleSemanticInput({
@@ -589,8 +593,12 @@ describe("shell controller", () => {
 
     const completion = controller.getState().composer.completion;
     expect(completion?.items[completion.selectedIndex]).toMatchObject({
+      kind: "command",
       value: "connect",
-      enterBehavior: "submit",
+      accept: {
+        type: "runCommand",
+        commandId: "agent.connect",
+      },
     });
 
     await controller.handleSemanticInput({
@@ -618,8 +626,13 @@ describe("shell controller", () => {
 
     controller.ui.setEditorText("/ans");
     expect(controller.getState().composer.completion?.items[0]).toMatchObject({
+      kind: "command",
       value: "answer",
-      enterBehavior: "insert",
+      accept: {
+        type: "runCommand",
+        commandId: "operator.answer",
+        argumentMode: "required",
+      },
     });
 
     await controller.handleSemanticInput({
@@ -2095,7 +2108,7 @@ describe("shell controller", () => {
     // Fuzzy sort: "/quit" (prefix score 1000-4=996) ranks above "/questions" (1000-9=991).
     const initialCompletion = controller.getState().composer.completion;
     expect(initialCompletion).toMatchObject({
-      kind: "slash",
+      trigger: "/",
       query: "qu",
       selectedIndex: 0,
     });
@@ -2244,7 +2257,7 @@ describe("shell controller", () => {
 
     controller.ui.setEditorText("/qu");
     expect(controller.getState().composer.completion).toMatchObject({
-      kind: "slash",
+      trigger: "/",
       query: "qu",
     });
 
@@ -2271,7 +2284,7 @@ describe("shell controller", () => {
     // After clearing, the user can type a new slash command and completion reopens.
     controller.ui.setEditorText("/qui");
     const afterReopen = controller.getState().composer.completion;
-    expect(afterReopen).toMatchObject({ kind: "slash", query: "qui" });
+    expect(afterReopen).toMatchObject({ trigger: "/", query: "qui" });
     // "/quit" is the best match for "qui" (prefix: 1000-4=996).
     expect(afterReopen?.items[0]).toMatchObject({ value: "quit" });
 
@@ -2292,12 +2305,12 @@ describe("shell controller", () => {
     controller.ui.setEditorText("@pack");
     const completion = controller.getState().composer.completion;
     expect(completion).toMatchObject({
-      kind: "path",
+      trigger: "@",
     });
 
     const directoryIndex =
       completion?.items.findIndex(
-        (item) => item.kind === "path" && item.detail === "directory" && item.value === "packages/",
+        (item) => item.kind === "directory" && item.value === "packages/",
       ) ?? -1;
     expect(directoryIndex).toBeGreaterThanOrEqual(0);
 
@@ -2311,7 +2324,7 @@ describe("shell controller", () => {
 
     expect(controller.ui.getEditorText()).toBe("@packages/");
     expect(controller.getState().composer.completion).toMatchObject({
-      kind: "path",
+      trigger: "@",
       query: "packages/",
     });
 
@@ -2339,9 +2352,8 @@ describe("shell controller", () => {
       controller.ui.setEditorText("review @READ");
       const completion = controller.getState().composer.completion;
       const fileIndex =
-        completion?.items.findIndex(
-          (item) => item.kind === "path" && item.detail === "file" && item.value === "README.md",
-        ) ?? -1;
+        completion?.items.findIndex((item) => item.kind === "file" && item.value === "README.md") ??
+        -1;
       expect(fileIndex).toBeGreaterThanOrEqual(0);
 
       controller.setCompletionSelection(fileIndex);
@@ -2431,6 +2443,66 @@ describe("shell controller", () => {
     }
   });
 
+  test("accepting agent completion creates an agent part and submits it as text", async () => {
+    const prompts: string[] = [];
+    const { bundle } = createFakeBundle({
+      promptHandler: async (text) => {
+        prompts.push(text);
+      },
+    });
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      completionAgents: [{ agentId: "reviewer", description: "Code review agent" }],
+    });
+
+    controller.ui.setEditorText("ask @rev");
+    const completion = controller.getState().composer.completion;
+    expect(completion).toMatchObject({
+      trigger: "@",
+    });
+
+    const agentIndex =
+      completion?.items.findIndex((item) => item.kind === "agent" && item.value === "reviewer") ??
+      -1;
+    expect(agentIndex).toBeGreaterThanOrEqual(0);
+
+    controller.setCompletionSelection(agentIndex);
+    await controller.handleSemanticInput({
+      key: "tab",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(controller.ui.getEditorText()).toBe("ask @reviewer");
+    expect(controller.getState().composer.parts).toEqual([
+      {
+        id: expect.any(String),
+        type: "agent",
+        agentId: "reviewer",
+        source: {
+          text: {
+            start: 4,
+            end: "ask @reviewer".length,
+            value: "@reviewer",
+          },
+        },
+      },
+    ]);
+
+    await controller.handleSemanticInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(prompts).toEqual(["ask @reviewer"]);
+    controller.dispose();
+  });
+
   test("stashing the current prompt persists it and ctrl+y restores the latest stashed prompt", async () => {
     const promptRoot = mkdtempSync(join(tmpdir(), "brewva-cli-prompt-stash-"));
     const promptStore = createCliShellPromptStore({ rootDir: promptRoot });
@@ -2447,9 +2519,8 @@ describe("shell controller", () => {
       controller.ui.setEditorText("stash @READ");
       const completion = controller.getState().composer.completion;
       const fileIndex =
-        completion?.items.findIndex(
-          (item) => item.kind === "path" && item.detail === "file" && item.value === "README.md",
-        ) ?? -1;
+        completion?.items.findIndex((item) => item.kind === "file" && item.value === "README.md") ??
+        -1;
       expect(fileIndex).toBeGreaterThanOrEqual(0);
 
       controller.setCompletionSelection(fileIndex);

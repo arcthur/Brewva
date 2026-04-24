@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   asBrewvaSessionId,
   asBrewvaToolCallId,
@@ -24,6 +27,8 @@ import { createTestRenderer } from "@opentui/core/testing";
 import { BrewvaOpenTuiShell } from "../../../packages/brewva-cli/runtime/opentui-shell-renderer.js";
 import { resolveDiffView } from "../../../packages/brewva-cli/runtime/shell/diff-view.js";
 import {
+  COMPLETION_Z_INDEX,
+  DIALOG_Z_INDEX,
   resolveDialogContentWidth,
   resolveDialogSurfaceDimensions,
   resolveDialogWidth,
@@ -310,6 +315,10 @@ function createFakeBundle(
 }
 
 describe("opentui solid shell runtime", () => {
+  test("renders completion above dialog backdrops", () => {
+    expect(COMPLETION_Z_INDEX).toBeGreaterThan(DIALOG_Z_INDEX);
+  });
+
   test("keeps shared overlay geometry positive on tiny terminals", () => {
     expect(resolveDialogWidth(4)).toBe(2);
     expect(resolveDialogWidth(1)).toBe(1);
@@ -597,6 +606,47 @@ describe("opentui solid shell runtime", () => {
       ).toMatchObject({
         value: "questions",
       });
+    } finally {
+      controller.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("renders mixed reference completion kinds", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "brewva-render-completion-"));
+    mkdirSync(join(cwd, "packages"), { recursive: true });
+    writeFileSync(join(cwd, "README.md"), "# Test\n");
+    const { bundle } = createFakeBundle();
+
+    const controller = new CliShellController(bundle, {
+      cwd,
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      completionAgents: [{ agentId: "reviewer", description: "Code review agent" }],
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await controller.start();
+    controller.ui.setEditorText("@");
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      {
+        width: 80,
+        height: 18,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+      const frame = testSetup.captureCharFrame();
+      expect(frame).toContain("@reviewer");
+      expect(frame).toContain("agent");
+      expect(frame).toContain("@README.md");
+      expect(frame).toContain("file");
+      expect(frame).toContain("@packages/");
+      expect(frame).toContain("directory");
+      expect(frame).not.toContain("No matching items");
     } finally {
       controller.dispose();
       testSetup.renderer.destroy();

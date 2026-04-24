@@ -39,13 +39,20 @@ import {
   createCliShellPromptStore,
   createSessionViewPort,
   createShellConfigPort,
-  createWorkspaceCompletionPort,
 } from "./adapters/ports.js";
 import {
   formatKeybindingLabel,
   ShellCommandProvider,
   type ShellCommandListItem,
 } from "./command-provider.js";
+import {
+  ShellCompletionProvider,
+  createAgentCompletionSource,
+  createCommandCompletionSource,
+  createInMemoryCompletionUsageStore,
+  createWorkspaceReferenceCompletionSource,
+  type ShellCompletionAgent,
+} from "./completion-provider.js";
 import {
   acceptComposerCompletion,
   appendPromptHistoryEntry,
@@ -124,6 +131,7 @@ export interface CliShellControllerOptions {
   openExternalPager?(title: string, lines: readonly string[]): Promise<boolean>;
   operatorPollIntervalMs?: number;
   promptStore?: CliShellPromptStorePort;
+  completionAgents?: readonly ShellCompletionAgent[] | (() => readonly ShellCompletionAgent[]);
 }
 
 export interface CliShellSemanticInput {
@@ -441,9 +449,9 @@ function modelPickerDetail(input: {
 export class CliShellController {
   static readonly PROMPT_HISTORY_LIMIT = 50;
   static readonly STATUS_DEBOUNCE_MS = 120;
-  readonly #completionPort;
   readonly #configPort = createShellConfigPort();
   readonly #commandProvider = new ShellCommandProvider();
+  readonly #completionProvider: ShellCompletionProvider;
   readonly #keybindings: KeybindingResolver;
 
   private buildLocalKeybindings(): KeybindingDefinition[] {
@@ -642,7 +650,6 @@ export class CliShellController {
   ) {
     this.#bundle = bundle;
     this.#sessionPort = createSessionViewPort(bundle);
-    this.#completionPort = createWorkspaceCompletionPort(options.cwd);
     this.#promptStore = options.promptStore ?? createCliShellPromptStore();
     this.#promptHistory = createPromptHistoryState(this.#promptStore.loadHistory());
     this.#promptStashEntries = this.#promptStore
@@ -654,6 +661,18 @@ export class CliShellController {
       createSession: () => options.createSession(),
     });
     this.registerShellCommands();
+    const completionUsageStore = createInMemoryCompletionUsageStore(
+      this.#promptStore.loadCompletionUsage(),
+      (entry) => this.#promptStore.recordCompletionUsage(entry),
+    );
+    this.#completionProvider = new ShellCompletionProvider({
+      sources: [
+        createCommandCompletionSource(this.#commandProvider),
+        createAgentCompletionSource(() => this.listCompletionAgents()),
+        createWorkspaceReferenceCompletionSource({ cwd: options.cwd }),
+      ],
+      usageStore: completionUsageStore,
+    });
     this.#keybindings = createKeybindingResolver([
       ...this.buildLocalKeybindings(),
       ...this.#commandProvider.keyboundCommands(),
@@ -671,6 +690,35 @@ export class CliShellController {
       this.#resolveExit = resolve;
     });
     bundle.session.setUiPort(this.ui);
+  }
+
+  private listCompletionAgents(): ShellCompletionAgent[] {
+    const configured =
+      typeof this.options.completionAgents === "function"
+        ? this.options.completionAgents()
+        : (this.options.completionAgents ?? []);
+    const currentAgentId =
+      typeof this.#bundle.runtime.agentId === "string" ? this.#bundle.runtime.agentId : "";
+    const agents: ShellCompletionAgent[] = [
+      ...(currentAgentId
+        ? [{ agentId: currentAgentId, description: "Current session agent" }]
+        : []),
+      ...configured,
+    ];
+    const seen = new Set<string>();
+    const result: ShellCompletionAgent[] = [];
+    for (const agent of agents) {
+      if (!agent) {
+        continue;
+      }
+      const agentId = agent.agentId.trim();
+      if (!agentId || seen.has(agentId)) {
+        continue;
+      }
+      seen.add(agentId);
+      result.push(agent.description ? { agentId, description: agent.description } : { agentId });
+    }
+    return result;
   }
 
   get ui(): CliShellUiPort {
@@ -2458,8 +2506,7 @@ export class CliShellController {
       cursor: this.#state.composer.cursor,
       current: this.#state.composer.completion,
       dismissed: this.getDismissedCompletionState(),
-      slashCommands: this.#commandProvider.slashCommands(),
-      pathEntries: (query) => this.#completionPort.listPaths(query),
+      provider: this.#completionProvider,
     });
     if (result.clearDismissed) {
       this.clearDismissedCompletionState();
@@ -2491,6 +2538,7 @@ export class CliShellController {
     if (!completion) {
       return;
     }
+    const selected = completion.items[completion.selectedIndex];
     const nextState = acceptComposerCompletion({
       completion,
       composer: {
@@ -2504,6 +2552,9 @@ export class CliShellController {
     if (!nextState) {
       return;
     }
+    if (selected) {
+      this.#completionProvider.recordAccepted(selected);
+    }
     this.dispatch(
       {
         type: "composer.setPromptState",
@@ -2513,6 +2564,14 @@ export class CliShellController {
       },
       false,
     );
+    if (selected && selected.accept.type !== "insertDirectoryText") {
+      this.#dismissedCompletionBySessionId.set(this.#sessionPort.getSessionId(), {
+        trigger: completion.trigger,
+        text: nextState.text,
+        cursor: nextState.cursor,
+      });
+      this.setCompletionState(undefined);
+    }
   }
 
   private async submitCompletion(): Promise<void> {
@@ -2521,11 +2580,17 @@ export class CliShellController {
       return;
     }
     const selected = completion.items[completion.selectedIndex];
-    if (!selected || completion.kind !== "slash" || selected.enterBehavior !== "submit") {
+    if (!selected || selected.accept.type !== "runCommand") {
       this.acceptCompletion();
       return;
     }
 
+    if (selected.accept.argumentMode === "required") {
+      this.acceptCompletion();
+      return;
+    }
+
+    this.#completionProvider.recordAccepted(selected);
     const commandText = `/${selected.value}`;
     this.dispatch(
       {
@@ -2548,7 +2613,7 @@ export class CliShellController {
     // rather than leaving a dangling partial "/command" in the composer. This also avoids the
     // dismissed-state bug where backspace back to the same (text, cursor) would keep the
     // completion suppressed.
-    if (completion.kind === "slash") {
+    if (completion.trigger === "/") {
       const text = this.#state.composer.text;
       if (text.startsWith("/") && !text.includes(" ")) {
         this.dispatch({ type: "composer.setText", text: "", cursor: 0 });
@@ -2556,7 +2621,7 @@ export class CliShellController {
       }
     }
     this.#dismissedCompletionBySessionId.set(this.#sessionPort.getSessionId(), {
-      kind: completion.kind,
+      trigger: completion.trigger,
       text: this.#state.composer.text,
       cursor: this.#state.composer.cursor,
     });

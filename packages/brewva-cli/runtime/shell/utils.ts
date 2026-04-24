@@ -5,12 +5,9 @@ import type {
 } from "@brewva/brewva-tui/internal-opentui-runtime";
 import { onCleanup } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
+import type { ShellCompletionCandidate } from "../../src/shell/completion-provider.js";
 import type { CliShellController, CliShellSemanticInput } from "../../src/shell/controller.js";
-import type {
-  CliShellCompletionItem,
-  CliShellNotification,
-  CliShellState,
-} from "../../src/shell/state/index.js";
+import type { CliShellNotification, CliShellState } from "../../src/shell/state/index.js";
 import type {
   CliApprovalOverlayPayload,
   CliConfirmOverlayPayload,
@@ -186,12 +183,12 @@ export function renderNotificationSummary(notification: CliShellNotification): s
 }
 
 export function completionKindLabel(
-  kind: NonNullable<CliShellState["composer"]["completion"]>["kind"],
+  trigger: NonNullable<CliShellState["composer"]["completion"]>["trigger"],
 ): string {
-  return kind === "slash" ? "command" : "path";
+  return trigger === "/" ? "command" : "reference";
 }
 
-export function completionItemAuxText(item: CliShellCompletionItem): string | undefined {
+export function completionItemAuxText(item: ShellCompletionCandidate): string | undefined {
   return item.description ?? item.detail;
 }
 
@@ -313,5 +310,4 @@ export type {
   CliShellOverlayPayload,
   CliTasksOverlayPayload,
   CliShellNotification,
-  CliShellCompletionItem,
 };

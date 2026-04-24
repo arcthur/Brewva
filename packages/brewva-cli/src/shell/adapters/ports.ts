@@ -1,5 +1,3 @@
-import { readdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
 import {
   OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
   buildOperatorQuestionAnswerPrompt,
@@ -20,27 +18,8 @@ import type {
   OperatorSurfacePort,
   SessionViewPort,
   ShellConfigPort,
-  WorkspaceCompletionPort,
 } from "../types.js";
 export { createCliShellPromptStore } from "../prompt-store.js";
-
-function resolvePathBase(cwd: string, prefix: string): { directory: string; search: string } {
-  const normalized = prefix.replace(/^@/u, "");
-  const resolved = resolve(cwd, normalized);
-  const directory =
-    normalized.endsWith("/") || normalized.endsWith("\\") ? resolved : dirname(resolved);
-  const search =
-    normalized.endsWith("/") || normalized.endsWith("\\")
-      ? ""
-      : resolved.slice(directory.length + 1);
-  return { directory, search };
-}
-
-function formatPathSuggestion(cwd: string, fullPath: string): string {
-  const rel = relative(cwd, fullPath);
-  const normalized = rel.length > 0 ? rel : ".";
-  return normalized.includes(" ") ? `"${normalized}"` : normalized;
-}
 
 function buildReasoningSummaryDetails(input: {
   revertId: string;
@@ -373,30 +352,6 @@ export function createOperatorSurfacePort(input: {
     },
     createSession() {
       return input.createSession();
-    },
-  };
-}
-
-export function createWorkspaceCompletionPort(cwd: string): WorkspaceCompletionPort {
-  return {
-    listPaths(prefix) {
-      const { directory, search } = resolvePathBase(cwd, prefix);
-      try {
-        return readdirSync(directory, { withFileTypes: true })
-          .filter((entry) => entry.name.startsWith(search))
-          .map((entry) => {
-            const isDirectory = entry.isDirectory();
-            const suggestion = formatPathSuggestion(cwd, join(directory, entry.name));
-            return {
-              value: isDirectory ? `${suggestion}/` : suggestion,
-              kind: isDirectory ? ("directory" as const) : ("file" as const),
-              description: isDirectory ? "directory" : "file",
-            };
-          })
-          .slice(0, 20);
-      } catch {
-        return [];
-      }
     },
   };
 }

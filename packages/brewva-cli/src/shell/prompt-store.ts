@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import type { ShellCompletionUsageEntry } from "./completion-provider.js";
 import { cloneCliShellPromptSnapshot, cloneCliShellPromptStashEntry } from "./prompt-parts.js";
 import type {
   CliShellPromptSnapshot,
@@ -11,6 +12,7 @@ import type {
 
 const MAX_PROMPT_HISTORY_ENTRIES = 50;
 const MAX_PROMPT_STASH_ENTRIES = 50;
+const MAX_COMPLETION_USAGE_ENTRIES = 500;
 
 function normalizePathInput(input: string): string {
   const trimmed = input.trim();
@@ -76,6 +78,21 @@ function parseJsonlFile<T>(filePath: string, maxEntries: number): T[] {
   return entries;
 }
 
+function parseJsonArrayFile<T>(filePath: string, maxEntries: number): T[] {
+  if (!existsSync(filePath)) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.slice(-maxEntries) as T[];
+  } catch {
+    return [];
+  }
+}
+
 async function writeJsonlFileAsync(filePath: string, entries: readonly unknown[]): Promise<void> {
   await mkdir(dirname(filePath), { recursive: true });
   const payload =
@@ -86,6 +103,11 @@ async function writeJsonlFileAsync(filePath: string, entries: readonly unknown[]
 async function appendJsonlAsync(filePath: string, entry: unknown): Promise<void> {
   await mkdir(dirname(filePath), { recursive: true });
   await appendFile(filePath, `${JSON.stringify(entry)}\n`, "utf8");
+}
+
+async function writeJsonFileAsync(filePath: string, entries: readonly unknown[]): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(entries, null, 2)}\n`, "utf8");
 }
 
 function scheduleJsonlWrite(filePath: string, entries: readonly unknown[]): void {
@@ -100,6 +122,12 @@ function scheduleJsonlAppend(filePath: string, entry: unknown): void {
   });
 }
 
+function scheduleJsonWrite(filePath: string, entries: readonly unknown[]): void {
+  void writeJsonFileAsync(filePath, entries).catch(() => {
+    // Persistence is best-effort; in-memory state is the source of truth.
+  });
+}
+
 export function createCliShellPromptStore(
   input: {
     env?: NodeJS.ProcessEnv;
@@ -109,11 +137,16 @@ export function createCliShellPromptStore(
   const rootDir = resolveCliPromptStoreRoot(input);
   const historyPath = join(rootDir, "prompt-history.jsonl");
   const stashPath = join(rootDir, "prompt-stash.jsonl");
+  const completionUsagePath = join(rootDir, "completion-usage.json");
   let history = parseJsonlFile<CliShellPromptSnapshot>(historyPath, MAX_PROMPT_HISTORY_ENTRIES).map(
     (entry) => cloneCliShellPromptSnapshot(entry),
   );
   let stash = parseJsonlFile<CliShellPromptStashEntry>(stashPath, MAX_PROMPT_STASH_ENTRIES).map(
     (entry) => cloneCliShellPromptStashEntry(entry),
+  );
+  let completionUsage = parseJsonArrayFile<ShellCompletionUsageEntry>(
+    completionUsagePath,
+    MAX_COMPLETION_USAGE_ENTRIES,
   );
 
   return {
@@ -156,6 +189,17 @@ export function createCliShellPromptStore(
       }
       stash = stash.filter((_entry, candidateIndex) => candidateIndex !== index);
       scheduleJsonlWrite(stashPath, stash);
+    },
+    loadCompletionUsage() {
+      return completionUsage.map((entry) => ({ ...entry }));
+    },
+    recordCompletionUsage(entry) {
+      const key = `${entry.kind}:${entry.value}`;
+      completionUsage = [
+        ...completionUsage.filter((candidate) => `${candidate.kind}:${candidate.value}` !== key),
+        { ...entry },
+      ].slice(-MAX_COMPLETION_USAGE_ENTRIES);
+      scheduleJsonWrite(completionUsagePath, completionUsage);
     },
   };
 }

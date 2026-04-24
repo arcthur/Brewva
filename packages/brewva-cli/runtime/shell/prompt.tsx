@@ -31,6 +31,13 @@ export function createPromptPartStyle(theme: SessionPalette): SyntaxStyle {
         foreground: theme.warning,
       },
     },
+    {
+      scope: ["extmark.agent"],
+      style: {
+        foreground: theme.accentSoft,
+        underline: true,
+      },
+    },
   ]);
 }
 
@@ -39,7 +46,7 @@ export function summarizePastedText(text: string): string {
   return lineCount >= 2 ? `[Pasted ~${lineCount} lines]` : "[Pasted text]";
 }
 
-export function createPromptPartTokenId(prefix: "file" | "text"): string {
+export function createPromptPartTokenId(prefix: "agent" | "file" | "text"): string {
   return `${prefix}-part:${Date.now()}:${Math.random().toString(16).slice(2, 10)}`;
 }
 
@@ -100,23 +107,22 @@ export function PromptPanel(input: {
     if (!completion || !selected) {
       return undefined;
     }
-    return `${completionKindLabel(completion.kind)} ${selected.label}`;
+    return `${completionKindLabel(completion.trigger)} ${selected.label}`;
   });
   const footerStatus = createMemo(() => {
     const completion = input.composer.completion;
     const selected = selectedCompletion();
-    const auxText =
-      completion?.kind === "path" && selected ? completionItemAuxText(selected) : undefined;
+    const auxText = completion && selected ? completionItemAuxText(selected) : undefined;
     return auxText ?? promptStatus();
   });
   const showFooterStatus = createMemo(
-    () => input.composer.completion?.kind !== "slash" || input.overlayActive,
+    () => input.composer.completion?.trigger !== "/" || input.overlayActive,
   );
   const completionHints = createMemo(() =>
     input.composer.completion
-      ? input.composer.completion.kind === "slash"
+      ? input.composer.completion.trigger === "/"
         ? "enter run · tab complete · esc close"
-        : selectedCompletion()?.detail === "directory"
+        : selectedCompletion()?.kind === "directory"
           ? "tab expand · enter accept · esc close"
           : "tab insert · enter accept · esc close"
       : undefined,

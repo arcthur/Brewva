@@ -1,6 +1,5 @@
 import type { KeybindingDefinition, KeybindingTrigger } from "@brewva/brewva-tui";
 import { fuzzyScore, normalizeSearchQuery } from "./search-scoring.js";
-import type { SlashCommandEntry } from "./types.js";
 
 export interface ShellCommandRunInput {
   readonly args: string;
@@ -136,20 +135,6 @@ export class ShellCommandProvider {
           left.category.localeCompare(right.category) ||
           left.title.localeCompare(right.title),
       );
-  }
-
-  slashCommands(): SlashCommandEntry[] {
-    return this.visibleCommands()
-      .filter((command) => command.slashName)
-      .map((command) => {
-        const source = this.#commands.get(command.id);
-        return {
-          command: command.slashName ?? command.id,
-          aliases: command.slashAliases,
-          description: command.description ?? command.title,
-          argumentMode: source?.slash?.argumentMode ?? "none",
-        };
-      });
   }
 
   keyboundCommands(): KeybindingDefinition[] {

@@ -9,6 +9,14 @@ import type {
   CliShellPromptStashEntry,
 } from "./types.js";
 
+interface PromptFileReference {
+  readonly path: string;
+  readonly lineRange?: {
+    readonly startLine: number;
+    readonly endLine?: number;
+  };
+}
+
 function clonePromptSourceText(source: CliShellPromptSourceText): CliShellPromptSourceText {
   return {
     start: source.start,
@@ -36,8 +44,36 @@ function normalizePromptFilePath(path: string): string {
   return path.replace(/^"(.*)"$/u, "$1");
 }
 
-function resolvePromptFilePath(cwd: string, path: string): string {
-  const normalizedPath = normalizePromptFilePath(path).replace(/[\\/]+$/u, "");
+function parsePromptFileReference(path: string): PromptFileReference {
+  const normalized = normalizePromptFilePath(path);
+  const hashIndex = normalized.lastIndexOf("#");
+  if (hashIndex < 0) {
+    return { path: normalized };
+  }
+
+  const linePart = normalized.slice(hashIndex + 1);
+  const lineMatch = /^L?([1-9]\d*)(?:-L?([1-9]\d*))?$/iu.exec(linePart);
+  if (!lineMatch) {
+    return { path: normalized };
+  }
+
+  const startLine = Number(lineMatch[1]);
+  const endLine = lineMatch[2] ? Number(lineMatch[2]) : undefined;
+  return {
+    path: normalized.slice(0, hashIndex),
+    lineRange: {
+      startLine,
+      endLine: endLine !== undefined && endLine > startLine ? endLine : undefined,
+    },
+  };
+}
+
+function resolvePromptFilePath(
+  cwd: string,
+  reference: PromptFileReference,
+  displayPath: string,
+): string {
+  const normalizedPath = reference.path.replace(/[\\/]+$/u, "");
   if (normalizedPath.length === 0) {
     throw new Error("Prompt attachment path cannot be empty.");
   }
@@ -46,21 +82,21 @@ function resolvePromptFilePath(cwd: string, path: string): string {
   try {
     resolvedPath = realpathSync(candidatePath);
   } catch {
-    throw new Error(`Prompt attachment not found: ${path}`);
+    throw new Error(`Prompt attachment not found: ${displayPath}`);
   }
   let stats: ReturnType<typeof statSync>;
   try {
     stats = statSync(resolvedPath);
   } catch {
-    throw new Error(`Prompt attachment not found: ${path}`);
+    throw new Error(`Prompt attachment not found: ${displayPath}`);
   }
   if (!stats.isFile()) {
-    throw new Error(`Prompt attachment must be a readable file: ${path}`);
+    throw new Error(`Prompt attachment must be a readable file: ${displayPath}`);
   }
   try {
     accessSync(resolvedPath, constants.R_OK);
   } catch {
-    throw new Error(`Prompt attachment is not readable: ${path}`);
+    throw new Error(`Prompt attachment is not readable: ${displayPath}`);
   }
   return resolvedPath;
 }
@@ -127,6 +163,9 @@ export function promptPartArraysEqual(
     if (part.type === "file" && candidate.type === "file") {
       return part.path === candidate.path;
     }
+    if (part.type === "agent" && candidate.type === "agent") {
+      return part.agentId === candidate.agentId;
+    }
     if (part.type === "text" && candidate.type === "text") {
       return part.text === candidate.text;
     }
@@ -140,6 +179,7 @@ export function buildPromptPartSignature(parts: readonly CliShellPromptPart[]): 
       id: part.id,
       type: part.type,
       path: part.type === "file" ? part.path : undefined,
+      agentId: part.type === "agent" ? part.agentId : undefined,
       text: part.type === "text" ? part.text : undefined,
       source: readPromptPartSource(part),
     })),
@@ -182,13 +222,23 @@ export function buildCliShellPromptContentParts(
       pushText(text.slice(cursor, source.start));
     }
     if (part.type === "file") {
-      const absolutePath = resolvePromptFilePath(cwd, part.path);
+      const reference = parsePromptFileReference(part.path);
+      const absolutePath = resolvePromptFilePath(cwd, reference, part.path);
+      const uri = pathToFileURL(absolutePath);
+      if (reference.lineRange) {
+        uri.searchParams.set("start", String(reference.lineRange.startLine));
+        if (reference.lineRange.endLine !== undefined) {
+          uri.searchParams.set("end", String(reference.lineRange.endLine));
+        }
+      }
       content.push({
         type: "file",
-        uri: pathToFileURL(absolutePath).toString(),
+        uri: uri.toString(),
         name: basename(absolutePath) || undefined,
         displayText: source.value,
       });
+    } else if (part.type === "agent") {
+      pushText(source.value || `@${part.agentId}`);
     } else {
       pushText(part.text);
     }
