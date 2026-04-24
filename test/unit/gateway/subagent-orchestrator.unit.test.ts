@@ -590,7 +590,32 @@ describe("hosted subagent orchestrator", () => {
                               "The public ownership boundary remains stable across this change.",
                             strongestCounterpoint:
                               "A later export map change could still widen the surface unexpectedly.",
-                            openQuestions: ["No release artifact diff was attached for this lane."],
+                            followUpQuestions: [
+                              "No release artifact diff was attached for this lane.",
+                            ],
+                            questionRequests: [
+                              {
+                                title: "Release evidence",
+                                questions: [
+                                  {
+                                    header: "Dist",
+                                    question:
+                                      "Should this lane wait for a dist smoke result before clearing?",
+                                    options: [
+                                      {
+                                        label: "Yes",
+                                        description: "Block until dist smoke evidence exists.",
+                                      },
+                                      {
+                                        label: "No",
+                                        description: "Proceed without dist smoke evidence.",
+                                      },
+                                    ],
+                                    custom: false,
+                                  },
+                                ],
+                              },
+                            ],
                             missingEvidence: ["No dist smoke result was attached."],
                             confidence: "medium",
                           }),
@@ -653,7 +678,29 @@ describe("hosted subagent orchestrator", () => {
       primaryClaim: "The public ownership boundary remains stable across this change.",
       strongestCounterpoint:
         "A later export map change could still widen the surface unexpectedly.",
-      openQuestions: ["No release artifact diff was attached for this lane."],
+      followUpQuestions: ["No release artifact diff was attached for this lane."],
+      questionRequests: [
+        {
+          title: "Release evidence",
+          questions: [
+            {
+              header: "Dist",
+              question: "Should this lane wait for a dist smoke result before clearing?",
+              options: [
+                {
+                  label: "Yes",
+                  description: "Block until dist smoke evidence exists.",
+                },
+                {
+                  label: "No",
+                  description: "Proceed without dist smoke evidence.",
+                },
+              ],
+              custom: false,
+            },
+          ],
+        },
+      ],
       missingEvidence: ["No dist smoke result was attached."],
       confidence: "medium",
     });

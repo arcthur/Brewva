@@ -74,7 +74,23 @@ describe("skill script protocol contracts", () => {
     });
   });
 
-  test("review lane validator accepts snake_case compatibility aliases", () => {
+  test("review lane validator accepts canonical followUpQuestions", () => {
+    const result = runJsonScript<{ valid: boolean; errors: string[] }>({
+      scriptPath: validateLaneScript,
+      cwd: repoRoot,
+      payload: {
+        lane: "review-boundaries",
+        disposition: "clear",
+        primaryClaim: "The boundary remains stable.",
+        followUpQuestions: ["Should the lane wait for release evidence before clearing?"],
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toEqual({ valid: true, errors: [] });
+  });
+
+  test("review lane validator rejects removed legacy aliases", () => {
     const result = runJsonScript<{ valid: boolean; errors: string[] }>({
       scriptPath: validateLaneScript,
       cwd: repoRoot,
@@ -87,7 +103,10 @@ describe("skill script protocol contracts", () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toEqual({ valid: true, errors: [] });
+    expect(result.stdout.valid).toBe(false);
+    expect(result.stdout.errors).toEqual(
+      expect.arrayContaining(["Removed field 'missing_evidence'. Use 'missingEvidence' instead."]),
+    );
   });
 
   test("lane synthesis treats canonical missingEvidence as unresolved evidence", () => {

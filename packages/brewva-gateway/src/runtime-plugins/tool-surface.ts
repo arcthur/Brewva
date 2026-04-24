@@ -45,6 +45,7 @@ const REPAIR_ALLOWED_TOOL_NAME_SET = new Set<string>(SKILL_REPAIR_ALLOWED_TOOL_N
 const PRE_SKILL_CONTROL_PLANE_TOOL_NAMES = [
   "skill_load",
   "workflow_status",
+  "question",
   "session_compact",
   "task_set_spec",
   "task_view_state",
@@ -158,6 +159,10 @@ export interface ToolSurfaceRuntime {
 
 function normalizeToolName(name: string): string {
   return name.trim().toLowerCase();
+}
+
+function toolRequiresInteractiveUi(toolName: string): boolean {
+  return toolName === "question";
 }
 
 function getSessionId(ctx: unknown): string | null {
@@ -533,11 +538,15 @@ function resolveVisibleActiveToolNames(input: {
   active: ReadonlySet<string>;
   runtime: ToolSurfaceRuntime;
   turnPlan: TurnSurfacePlan;
+  hasUI: boolean;
   dynamicToolDefinitions?: ReadonlyMap<string, ToolDefinition>;
 }): string[] {
   const lifecycleManagedToolNames = new Set(input.turnPlan.lifecycleManagedToolNames);
   return input.allToolNames.filter((toolName) => {
     if (!input.active.has(toolName)) {
+      return false;
+    }
+    if (!input.hasUI && toolRequiresInteractiveUi(toolName)) {
       return false;
     }
     if (input.turnPlan.repairRequired && !REPAIR_ALLOWED_TOOL_NAME_SET.has(toolName)) {
@@ -660,6 +669,7 @@ function resolveActiveToolNames(input: {
   activeToolNames: string[];
   turnPlan: TurnSurfacePlan;
   runtime: ToolSurfaceRuntime;
+  hasUI: boolean;
   dynamicToolDefinitions?: ReadonlyMap<string, ToolDefinition>;
 }): ResolvedToolSurface {
   const allToolNames = input.allTools.map((tool) => normalizeToolName(tool.name));
@@ -716,6 +726,7 @@ function resolveActiveToolNames(input: {
       active,
       runtime: input.runtime,
       turnPlan,
+      hasUI: input.hasUI,
       dynamicToolDefinitions: input.dynamicToolDefinitions,
     });
 
@@ -747,6 +758,7 @@ function resolveActiveToolNames(input: {
       active,
       runtime: input.runtime,
       turnPlan,
+      hasUI: input.hasUI,
       dynamicToolDefinitions: input.dynamicToolDefinitions,
     });
 
@@ -819,6 +831,7 @@ function resolveActiveToolNames(input: {
     active,
     runtime: input.runtime,
     turnPlan,
+    hasUI: input.hasUI,
     dynamicToolDefinitions: input.dynamicToolDefinitions,
   });
 
@@ -873,6 +886,7 @@ function resolveAndActivateToolSurface(input: {
   runtime: ToolSurfaceRuntime;
   sessionId: string;
   prompt: string;
+  hasUI: boolean;
   dynamicToolDefinitions?: ReadonlyMap<string, ToolDefinition>;
   resolveClassificationHints?: (sessionId: string) => readonly SkillClassificationHint[];
 }): ResolvedToolSurface | undefined {
@@ -918,6 +932,7 @@ function resolveAndActivateToolSurface(input: {
     activeToolNames: activeToolsGetter.call(input.extensionApi),
     turnPlan,
     runtime: input.runtime,
+    hasUI: input.hasUI,
     dynamicToolDefinitions: input.dynamicToolDefinitions,
   });
   setActiveTools.call(input.extensionApi, resolved.activeToolNames);
@@ -1038,6 +1053,7 @@ export function createToolSurfaceLifecycle(
         runtime,
         sessionId,
         prompt,
+        hasUI: (ctx as { hasUI?: boolean }).hasUI === true,
         dynamicToolDefinitions: options.dynamicToolDefinitions,
         resolveClassificationHints: options.resolveClassificationHints,
       });
@@ -1084,6 +1100,7 @@ export function createToolSurfaceLifecycle(
         runtime,
         sessionId,
         prompt,
+        hasUI: (ctx as { hasUI?: boolean }).hasUI === true,
         dynamicToolDefinitions: options.dynamicToolDefinitions,
         resolveClassificationHints: options.resolveClassificationHints,
       });

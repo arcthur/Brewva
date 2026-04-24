@@ -13,6 +13,7 @@ import {
   buildOperatorQuestionAnswerPrompt,
   buildOperatorQuestionAnsweredPayload,
   resolveOpenQuestionInSessions,
+  validateSingleQuestionAnswer,
 } from "../operator-questions.js";
 import { buildBrewvaUpdatePrompt } from "../update-workflow.js";
 import { toErrorMessage } from "../utils/errors.js";
@@ -306,7 +307,7 @@ export function createChannelControlRouter(input: {
           await input.replyWriter.sendControllerReply(
             turn,
             scopeKey,
-            `Questions unavailable: agent @${targetAgentId} is not active in this workspace.`,
+            `Operator inbox unavailable: agent @${targetAgentId} is not active in this workspace.`,
             {
               command: "questions",
               agentId: targetAgentId,
@@ -322,7 +323,7 @@ export function createChannelControlRouter(input: {
           await input.replyWriter.sendControllerReply(
             turn,
             scopeKey,
-            `Questions unavailable: failed to load durable session history for @${targetAgentId} (${toErrorMessage(error)}).`,
+            `Operator inbox unavailable: failed to load durable session history for @${targetAgentId} (${toErrorMessage(error)}).`,
             {
               command: "questions",
               agentId: targetAgentId,
@@ -340,7 +341,7 @@ export function createChannelControlRouter(input: {
               questionSurface,
             })
           : {
-              text: "Questions are unavailable in this host.",
+              text: "Operator inbox is unavailable in this host.",
             };
         await input.replyWriter.sendControllerReply(turn, scopeKey, result.text, result.meta);
         return { handled: true };
@@ -403,7 +404,7 @@ export function createChannelControlRouter(input: {
           await input.replyWriter.sendControllerReply(
             turn,
             scopeKey,
-            `Answer unavailable: no open question '${operatorAction.questionId}' was found for @${targetAgentId}. Use /questions${targetAgentId === focusedAgentId ? "" : ` @${targetAgentId}`} first.`,
+            `Answer unavailable: no pending operator prompt '${operatorAction.questionId}' was found for @${targetAgentId}. Use /questions${targetAgentId === focusedAgentId ? "" : ` @${targetAgentId}`} first.`,
             {
               command: "answer",
               agentId: targetAgentId,
@@ -413,22 +414,42 @@ export function createChannelControlRouter(input: {
           );
           return { handled: true };
         }
-        recordRuntimeEvent(questionSurface.runtime, {
-          sessionId: question.sessionId,
-          type: OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
-          payload: buildOperatorQuestionAnsweredPayload({
-            question,
-            answerText: operatorAction.answerText,
-            source: "channel",
-          }),
+        const validatedAnswer = validateSingleQuestionAnswer({
+          question,
+          answerText: operatorAction.answerText,
         });
+        if (!validatedAnswer.ok) {
+          await input.replyWriter.sendControllerReply(
+            turn,
+            scopeKey,
+            `Answer rejected: ${validatedAnswer.error}`,
+            {
+              command: "answer",
+              agentId: targetAgentId,
+              questionId: operatorAction.questionId,
+              status: "invalid_answer",
+            },
+          );
+          return { handled: true };
+        }
         return {
           handled: false,
           routeAgentId: targetAgentId,
           routeTask: buildOperatorQuestionAnswerPrompt({
             question,
-            answerText: operatorAction.answerText,
+            answerText: validatedAnswer.answerText,
           }),
+          afterRouteSuccess: () => {
+            recordRuntimeEvent(questionSurface.runtime, {
+              sessionId: question.sessionId,
+              type: OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
+              payload: buildOperatorQuestionAnsweredPayload({
+                question,
+                answerText: validatedAnswer.answerText,
+                source: "channel",
+              }),
+            });
+          },
         };
       }
 

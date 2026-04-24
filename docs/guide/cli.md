@@ -324,8 +324,9 @@ include:
 These are thin control-plane veneers over replay-visible session state. They do
 not create hidden planner state or a second command authority model.
 
-`/questions` inspects unresolved questions derived from `skill_completed` and
-delegated consult outcomes. `/answer` records
+`/questions` inspects the operator inbox derived from `skill_completed` and
+delegated consult outcomes. The shell presents that inbox as pending input
+requests plus follow-up questions. `/answer` records
 `operator_question_answered` before routing the answer back into the target
 session as explicit operator input.
 

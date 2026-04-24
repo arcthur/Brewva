@@ -191,6 +191,7 @@ export function createChannelTurnDispatcher(input: {
           const rewrittenTurn = rewriteTurnText(turn, commandOutcome.routeTask);
           try {
             await input.processUserTurnOnAgent(rewrittenTurn, walId, scopeKey, routeAgentId);
+            await commandOutcome.afterRouteSuccess?.();
             input.recoveryWalStore.markDone(walId);
           } finally {
             preparedCommand?.release?.();

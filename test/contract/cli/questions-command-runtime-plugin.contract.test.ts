@@ -111,8 +111,10 @@ describe("questions interactive command runtime plugin", () => {
 
     expect(runtime.inspect.events.query(sessionId)).toHaveLength(beforeEventCount);
     const rendered = notifications.at(-1)?.message ?? "";
-    expect(rendered).toContain("Questions updated (1 open).");
-    expect(rendered).toContain("Open questions: 1");
+    expect(rendered).toContain("Operator inbox updated (1 pending).");
+    expect(rendered).toContain("Operator inbox: 1");
+    expect(rendered).toContain("Input requests: 0 · Follow-up questions: 1");
+    expect(rendered).toContain("Follow-up questions:");
     expect(rendered).toContain(questionEventId);
     expect(rendered).toContain("Which deployment target should the gateway use?");
     expect(notifications.at(-1)?.level).toBe("info");

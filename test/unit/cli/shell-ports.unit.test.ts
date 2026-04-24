@@ -3,14 +3,23 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
+import { OPERATOR_QUESTION_ANSWERED_EVENT_TYPE } from "@brewva/brewva-runtime";
 import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   buildBrewvaPromptText,
   type BrewvaPromptContentPart,
   type BrewvaPromptSessionEvent,
 } from "@brewva/brewva-substrate";
-import { createSessionViewPort } from "../../../packages/brewva-cli/src/shell/adapters/ports.js";
+import {
+  createOperatorSurfacePort,
+  createSessionViewPort,
+} from "../../../packages/brewva-cli/src/shell/adapters/ports.js";
 import type { CliShellSessionBundle } from "../../../packages/brewva-cli/src/shell/types.js";
+import {
+  buildOperatorQuestionAnsweredPayload,
+  flattenQuestionRequest,
+  resolveOpenSessionQuestionRequest,
+} from "../../../packages/brewva-gateway/src/operator-questions.js";
 
 describe("cli shell session port", () => {
   test("routes non-streaming interactive prompts through the hosted thread loop", async () => {
@@ -93,5 +102,118 @@ describe("cli shell session port", () => {
     expect(sentMessages).toHaveLength(2);
     expect(sentMessages[0]).toBe("hello shell");
     expect(sentMessages[1]).toContain("Context compaction completed");
+  });
+
+  test("operator question request answers record receipts from the resolved request without recollecting", async () => {
+    const runtime = new BrewvaRuntime({
+      cwd: mkdtempSync(join(tmpdir(), "brewva-shell-port-question-request-")),
+    });
+    const sessionId = "shell-port-question-session";
+    const skillCompleted = recordRuntimeEvent(runtime, {
+      sessionId,
+      type: "skill_completed",
+      payload: {
+        skillName: "design",
+        outputs: {
+          question_requests: [
+            {
+              title: "Deployment",
+              questions: [
+                {
+                  header: "Deploy",
+                  question: "Proceed with deployment?",
+                  options: [{ label: "Yes" }, { label: "No" }],
+                  custom: false,
+                },
+                {
+                  header: "Smoke",
+                  question: "Wait for dist smoke?",
+                  options: [{ label: "Yes" }, { label: "No" }],
+                  custom: false,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    if (!skillCompleted) {
+      throw new Error("expected skill_completed event");
+    }
+    const requestId = `skill:${skillCompleted.id}:request:1`;
+    const request = await resolveOpenSessionQuestionRequest(runtime, sessionId, requestId);
+    if (!request) {
+      throw new Error("expected open question request");
+    }
+    const flatQuestions = flattenQuestionRequest(request);
+    const sentMessages: string[] = [];
+
+    const session = {
+      model: {
+        provider: "openai",
+        id: "gpt-5.4-mini",
+      },
+      thinkingLevel: "high",
+      isStreaming: true,
+      sessionManager: {
+        getSessionId() {
+          return sessionId;
+        },
+        buildSessionContext() {
+          return { messages: [] };
+        },
+      },
+      subscribe() {
+        return () => undefined;
+      },
+      async prompt(parts: readonly BrewvaPromptContentPart[]) {
+        sentMessages.push(buildBrewvaPromptText(parts));
+        const firstQuestion = flatQuestions[0];
+        if (!firstQuestion) {
+          return;
+        }
+        recordRuntimeEvent(runtime, {
+          sessionId,
+          type: OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
+          payload: buildOperatorQuestionAnsweredPayload({
+            question: firstQuestion,
+            answerText: "Yes",
+            source: "runtime_plugin",
+          }),
+        });
+      },
+      async waitForIdle() {},
+      async abort() {},
+      dispose() {},
+      getRegisteredTools() {
+        return [];
+      },
+    };
+
+    const bundle = {
+      session,
+      runtime,
+      toolDefinitions: new Map(),
+    } as unknown as CliShellSessionBundle;
+    const port = createOperatorSurfacePort({
+      getBundle: () => bundle,
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    await port.answerQuestionRequest(requestId, [["Yes"], ["No"]]);
+
+    expect(sentMessages).toHaveLength(1);
+    const answeredEvents = runtime.inspect.events
+      .query(sessionId)
+      .filter((event) => event.type === OPERATOR_QUESTION_ANSWERED_EVENT_TYPE);
+    expect(answeredEvents).toHaveLength(3);
+    expect(
+      answeredEvents.map((event) => (event.payload as { questionId?: string }).questionId),
+    ).toEqual([
+      flatQuestions[0]?.questionId,
+      flatQuestions[0]?.questionId,
+      flatQuestions[1]?.questionId,
+    ]);
   });
 });

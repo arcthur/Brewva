@@ -126,11 +126,17 @@ export {
   type HostUIPort,
 } from "./host-api/plugin.js";
 export {
+  type BrewvaInteractiveQuestionRequest,
+  normalizeQuestionPrompt,
+  type BrewvaQuestionOption,
+  type BrewvaQuestionAnswerSpec,
+  type BrewvaQuestionPrompt,
   type BrewvaThemeSelectionResult,
   type BrewvaToolUiPort as BrewvaUiPort,
   type BrewvaUiDialogOptions,
   type BrewvaUiThemeDescriptor,
   type BrewvaUiThemeEntry,
+  validateQuestionAnswers,
 } from "./host-api/ui.js";
 export {
   assertSessionBundleManifest,

@@ -1,6 +1,12 @@
 import { asBrewvaSessionId } from "@brewva/brewva-runtime";
 import { formatInspectAnalysisText } from "../inspect-analysis.js";
 import { buildSessionInspectReport } from "../inspect.js";
+import {
+  countQuestionRequestKinds,
+  describeQuestionRequestSummary,
+  questionRequestsFromOverlay,
+  resolveQuestionOverlayTitle,
+} from "./question-utils.js";
 import { buildTaskRunListLabel, buildTaskRunPreviewLines } from "./task-details.js";
 import type {
   CliNotificationsOverlayPayload,
@@ -244,18 +250,23 @@ export function buildOverlayView(payload: CliShellOverlayPayload): {
       return { title: "Approvals", lines };
     }
     case "question": {
+      const requests = questionRequestsFromOverlay(payload);
+      const { inputRequestCount, followUpCount } = countQuestionRequestKinds(requests);
       const lines = [
-        `Open questions: ${payload.snapshot.questions.length}`,
-        "Use ↑/↓ to choose, Enter to answer from the composer, Esc to close.",
+        `${payload.mode === "interactive" ? "Pending input requests" : "Operator inbox"}: ${requests.length}`,
+        `Input requests: ${inputRequestCount} · Follow-up questions: ${followUpCount}`,
+        "Use ←/→ or Tab to switch tabs, ↑/↓ to choose options, Enter to submit, Esc to dismiss.",
       ];
-      for (const [index, item] of payload.snapshot.questions.entries()) {
+      for (const [index, item] of requests.entries()) {
         const marker = index === payload.selectedIndex ? ">" : " ";
-        lines.push(`${marker} [${item.questionId}] ${item.sourceLabel} :: ${item.questionText}`);
+        lines.push(
+          `${marker} [${item.requestId}] ${item.sourceLabel} :: ${describeQuestionRequestSummary(item)}`,
+        );
       }
-      if (payload.snapshot.questions.length === 0) {
-        lines.push("No open questions.");
+      if (requests.length === 0) {
+        lines.push("No pending operator input.");
       }
-      return { title: "Questions", lines };
+      return { title: resolveQuestionOverlayTitle(payload), lines };
     }
     case "tasks": {
       const lines = [

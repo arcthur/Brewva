@@ -36,7 +36,7 @@ intent:
       min_length: 18
     open_questions:
       kind: json
-      min_items: 1
+      min_items: 0
 effects:
   allowed_effects:
     - workspace_read
@@ -93,11 +93,18 @@ Do NOT use when:
 
 ## Workflow
 
+### Question Escalation Rule
+
+- If the current turn is blocked on missing operator or user input, use the `question` tool now.
+- Use `open_questions` only for unresolved items that still matter for downstream design quality but do not block the current turn.
+- Do not emit `open_questions` just to satisfy formatting. An empty list is valid when no non-blocking questions remain.
+
 ### Phase 1: Reconstruct the real problem
 
 Identify the user pain, current workaround, and why the stated request may be a proxy for a deeper need.
 
-**If no concrete pain or workaround can be inferred**: Stop. Record the gap in `open_questions`. Do not invent a problem frame from thin air.
+**If no concrete pain or workaround can be inferred and the current turn cannot proceed without operator input**: Use the `question` tool. Do not invent a problem frame from thin air.
+**If no concrete pain or workaround can be inferred but the current turn can still hand off useful framing context**: Record the gap in `open_questions`. Do not invent a problem frame from thin air.
 **If pain is clear**: Proceed to Phase 2.
 
 ### Phase 2: Challenge assumptions and scope
@@ -183,7 +190,8 @@ Output:
 - `user_pains` are concrete enough that downstream skills can judge tradeoffs against real user friction.
 - `scope_recommendation` makes the recommended wedge and deferred scope explicit.
 - `design_seed` is the shortest useful handoff into execution planning.
-- `open_questions` include only questions that still affect design quality, not generic curiosity.
+- `open_questions` include only non-blocking questions that still affect design quality, not generic curiosity.
+- Blocking questions belong in the `question` tool, not in `open_questions`.
 
 ## Stop Conditions
 

@@ -1,4 +1,4 @@
-import type { SessionOpenQuestion } from "@brewva/brewva-gateway";
+import type { SessionOpenQuestion, SessionQuestionRequest } from "@brewva/brewva-gateway";
 import type {
   ProviderAuthMethod,
   ProviderAuthPrompt,
@@ -16,6 +16,7 @@ import type {
   PendingEffectCommitmentRequest,
 } from "@brewva/brewva-runtime";
 import type { DelegationRunRecord } from "@brewva/brewva-runtime";
+import type { BrewvaInteractiveQuestionRequest } from "@brewva/brewva-substrate";
 import type {
   BrewvaManagedPromptSession,
   BrewvaDiffPreferences,
@@ -120,9 +121,18 @@ export interface OperatorSurfacePort {
   getSnapshot(): Promise<OperatorSurfaceSnapshot>;
   decideApproval(requestId: string, input: DecideEffectCommitmentInput): Promise<void>;
   answerQuestion(questionId: string, answerText: string): Promise<void>;
+  answerQuestionRequest(requestId: string, answers: readonly (readonly string[])[]): Promise<void>;
   stopTask(runId: string): Promise<void>;
   openSession(sessionId: string): Promise<CliShellSessionBundle>;
   createSession(): Promise<CliShellSessionBundle>;
+}
+
+export interface CliQuestionDraftState {
+  activeTabIndex: number;
+  selectedOptionIndex: number;
+  editingCustom: boolean;
+  answers: string[][];
+  customAnswers: string[];
 }
 
 export interface CliApprovalOverlayPayload {
@@ -135,8 +145,17 @@ export interface CliApprovalOverlayPayload {
 
 export interface CliQuestionOverlayPayload {
   kind: "question";
+  mode: "operator" | "interactive";
   selectedIndex: number;
   snapshot: OperatorSurfaceSnapshot;
+  draftsByRequestId?: Record<string, CliQuestionDraftState>;
+  requestTitle?: string;
+  interactiveRequest?: BrewvaInteractiveQuestionRequest;
+  onSubmit?(
+    request: SessionQuestionRequest,
+    answers: readonly (readonly string[])[],
+  ): Promise<void>;
+  onDismiss?(): Promise<void>;
 }
 
 export interface CliTasksOverlayPayload {

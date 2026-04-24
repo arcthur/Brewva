@@ -672,10 +672,12 @@ describe("gateway contract: telegram channel dispatch", () => {
       }),
     );
     const text = questionsText && "text" in questionsText ? questionsText.text : "";
-    expect(text).toContain("Questions @default");
-    expect(text).toContain("Open questions:");
+    expect(text).toContain("Operator inbox @default");
+    expect(text).toContain("Follow-up questions:");
     expect(text).toContain("Should the update target the daemon or the print path?");
-    expect(text).toContain("Use /answer [@agent] <question-id> <answer> to resolve one.");
+    expect(text).toContain(
+      "Use /answer [@agent] <question-id> <answer> to resolve one prompt at a time.",
+    );
   });
 
   test("channel orchestration routes /answer through the focused agent and records the answer event", async () => {
@@ -978,7 +980,7 @@ describe("gateway contract: telegram channel dispatch", () => {
     }
 
     const questionsReply = outboundTurns.find((turn) =>
-      readTurnText(turn).includes("Questions @default"),
+      readTurnText(turn).includes("Operator inbox @default"),
     );
     expect(readTurnText(questionsReply)).toContain(
       "Should the update target the daemon or the print path?",
@@ -993,7 +995,7 @@ describe("gateway contract: telegram channel dispatch", () => {
     expect(observedAnswerEventCount).toBe(1);
   });
 
-  test("channel orchestration records answer receipts before a routed answer turn fails", async () => {
+  test("channel orchestration does not record answer receipts before a routed answer turn fails", async () => {
     const workspace = createTestWorkspace("channel-telegram-answer-receipt-before-route-failure");
     const configPath = writeChannelConfig(workspace, { orchestrationEnabled: true });
     const channelConfig = {
@@ -1046,14 +1048,9 @@ describe("gateway contract: telegram channel dispatch", () => {
             }),
           );
           await waitUntil(
-            () =>
-              promptCount >= 2 &&
-              (defaultSession?.runtime.inspect.events
-                .query(defaultSession.sessionId)
-                .filter((event) => event.type === OPERATOR_QUESTION_ANSWERED_EVENT_TYPE).length ??
-                0) >= 1,
+            () => promptCount >= 2,
             5_000,
-            "timed out waiting for durable answer receipt after route failure",
+            "timed out waiting for routed answer failure",
           );
           observedAnswerEventCount =
             defaultSession?.runtime.inspect.events
@@ -1117,7 +1114,7 @@ describe("gateway contract: telegram channel dispatch", () => {
 
     expect(promptCount).toBe(2);
     expect(outboundTurns).toHaveLength(1);
-    expect(observedAnswerEventCount).toBe(1);
+    expect(observedAnswerEventCount).toBe(0);
   });
 
   test("channel orchestration lets /inspect target an explicit agent instead of the current focus", async () => {

@@ -262,7 +262,9 @@ from the caller. The runtime recomputes merge state from the session's recorded
 Slash-command syntax such as `/models`, `/connect`, `/think`, `/inspect`,
 `/insights`, `/questions`, and `/answer` is documented in
 `docs/reference/commands.md`. This page defines the underlying replay-first
-contracts those operator products read from.
+contracts those operator products read from. `/questions` is the operator inbox
+view over pending input requests and follow-up questions, not a separate
+runtime state machine.
 
 ### `inspect.skills`
 

@@ -15,7 +15,10 @@ import type {
   ToolActionClass,
   ToolExecutionBoundary,
 } from "@brewva/brewva-runtime";
-import type { BrewvaToolDefinition as ToolDefinition } from "@brewva/brewva-substrate";
+import type {
+  BrewvaQuestionPrompt,
+  BrewvaToolDefinition as ToolDefinition,
+} from "@brewva/brewva-substrate";
 import type { TSchema } from "@sinclair/typebox";
 import type { BrewvaSemanticReranker } from "./semantic-reranker.js";
 
@@ -300,6 +303,11 @@ export interface DelegationOutcomeChange {
 
 export type AdvisorConsultConfidence = "low" | "medium" | "high";
 
+export interface DelegatedQuestionRequest {
+  title?: string;
+  questions: BrewvaQuestionPrompt[];
+}
+
 export interface AdvisorConsultOutcomeBase {
   kind: "consult";
   consultKind: AdvisorConsultKind;
@@ -308,7 +316,8 @@ export interface AdvisorConsultOutcomeBase {
   evidence?: string[];
   counterevidence?: string[];
   risks?: string[];
-  openQuestions?: string[];
+  followUpQuestions?: string[];
+  questionRequests?: DelegatedQuestionRequest[];
   recommendedNextSteps?: string[];
 }
 

@@ -106,6 +106,7 @@ export {
   type StringEnumContractMetadata,
   type StringEnumContractMismatch,
 } from "./utils/input-alias.js";
+export type { DelegatedQuestionRequest } from "./types.js";
 // A2A tools require an orchestration adapter and are typically registered by channel runtime plugins
 // (for example `createChannelA2ARuntimePlugin` in `@brewva/brewva-gateway`), not by the default bundle.
 export { createA2ATools } from "./a2a.js";
@@ -114,6 +115,7 @@ export { createGrepTool } from "./grep.js";
 export { createGitStatusTool, createGitDiffTool, createGitLogTool } from "./git-observe.js";
 export { createExecTool } from "./exec.js";
 export { createProcessTool } from "./process.js";
+export { createQuestionTool } from "./question.js";
 export { createReadSpansTool } from "./read-spans.js";
 export {
   buildReadPathDiscoveryObservationPayload,

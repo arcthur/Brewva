@@ -14,14 +14,15 @@ Canonical child fields:
   - primaryClaim (str, required)
   - findings ([object], required when disposition != "clear")
   - missingEvidence ([str], optional)
-  - openQuestions ([str], optional)
+  - followUpQuestions ([str], optional)
   - strongestCounterpoint (str, optional)
   - confidence (number 0-1 or str, optional)
 
-Compatibility aliases accepted on input:
+Removed legacy fields are rejected on input:
     - primary_claim -> primaryClaim
     - missing_evidence -> missingEvidence
-    - open_questions -> openQuestions
+    - openQuestions -> followUpQuestions
+    - open_questions -> followUpQuestions
     - strongest_counterpoint -> strongestCounterpoint
 
 Fail-closed: missing required fields or invalid disposition = invalid.
@@ -34,29 +35,21 @@ import sys
 
 REQUIRED_FIELDS = {"lane", "disposition", "primaryClaim"}
 VALID_DISPOSITIONS = {"clear", "concern", "blocked", "inconclusive"}
-FIELD_ALIASES = {
+REMOVED_FIELDS = {
     "primary_claim": "primaryClaim",
     "missing_evidence": "missingEvidence",
-    "open_questions": "openQuestions",
+    "openQuestions": "followUpQuestions",
+    "open_questions": "followUpQuestions",
     "strongest_counterpoint": "strongestCounterpoint",
 }
 
 
-def canonicalize(outcome: dict) -> tuple[dict, list[str]]:
-    normalized = dict(outcome)
+def reject_removed_fields(outcome: dict) -> list[str]:
     errors: list[str] = []
-
-    for alias, canonical in FIELD_ALIASES.items():
-        if alias not in outcome:
-            continue
-        if canonical in outcome and outcome[canonical] != outcome[alias]:
-            errors.append(
-                f"Conflicting field values for '{canonical}' and compatibility alias '{alias}'"
-            )
-            continue
-        normalized.setdefault(canonical, outcome[alias])
-
-    return normalized, errors
+    for removed, canonical in REMOVED_FIELDS.items():
+        if removed in outcome:
+            errors.append(f"Removed field '{removed}'. Use '{canonical}' instead.")
+    return errors
 
 
 def validate_string_list(value: object, field: str, errors: list[str]) -> None:
@@ -69,7 +62,8 @@ def validate_string_list(value: object, field: str, errors: list[str]) -> None:
 
 
 def validate(outcome: dict) -> dict:
-    normalized, errors = canonicalize(outcome)
+    normalized = dict(outcome)
+    errors = reject_removed_fields(outcome)
 
     for field in REQUIRED_FIELDS:
         if field not in normalized:
@@ -97,8 +91,8 @@ def validate(outcome: dict) -> dict:
     if "missingEvidence" in normalized:
         validate_string_list(normalized["missingEvidence"], "missingEvidence", errors)
 
-    if "openQuestions" in normalized:
-        validate_string_list(normalized["openQuestions"], "openQuestions", errors)
+    if "followUpQuestions" in normalized:
+        validate_string_list(normalized["followUpQuestions"], "followUpQuestions", errors)
 
     if "strongestCounterpoint" in normalized and (
         not isinstance(normalized["strongestCounterpoint"], str)

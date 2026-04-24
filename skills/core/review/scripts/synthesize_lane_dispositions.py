@@ -34,8 +34,6 @@ import sys
 
 def read_missing_evidence(outcome: dict) -> list[str]:
     value = outcome.get("missingEvidence")
-    if value is None:
-        value = outcome.get("missing_evidence")
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, str) and item.strip()]

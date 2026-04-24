@@ -127,6 +127,7 @@ export const MANAGED_BREWVA_TOOL_METADATA_BY_NAME = {
     "inspect.task.getTargetDescriptor",
     "internal.recordEvent",
   ]),
+  question: metadata("base", "runtime_observe"),
   skill_load: metadata("control_plane", "control_state_mutation", [
     "authority.skills.activate",
     "inspect.skills.getConsumedOutputs",

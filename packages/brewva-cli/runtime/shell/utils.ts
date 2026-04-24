@@ -78,11 +78,29 @@ export function visibleLineWindow(
 export function cloneOverlayPayload(payload: CliShellOverlayPayload): CliShellOverlayPayload {
   switch (payload.kind) {
     case "approval":
-    case "question":
     case "tasks":
       return {
         ...payload,
         snapshot: payload.snapshot,
+      };
+    case "question":
+      return {
+        ...payload,
+        snapshot: payload.snapshot,
+        draftsByRequestId: payload.draftsByRequestId
+          ? Object.fromEntries(
+              Object.entries(payload.draftsByRequestId).map(([requestId, draft]) => [
+                requestId,
+                {
+                  activeTabIndex: draft.activeTabIndex,
+                  selectedOptionIndex: draft.selectedOptionIndex,
+                  editingCustom: draft.editingCustom,
+                  answers: draft.answers.map((answer) => [...answer]),
+                  customAnswers: [...draft.customAnswers],
+                },
+              ]),
+            )
+          : undefined,
       };
     case "inspect":
       return {

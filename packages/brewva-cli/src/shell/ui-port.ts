@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
+import type { BrewvaUiDialogOptions } from "@brewva/brewva-substrate";
 import {
   DEFAULT_TUI_THEME,
   getTuiTheme,
@@ -35,6 +36,7 @@ export function createCliShellUiPortController(input: {
   dispatch(action: CliShellAction): void;
   getState(): CliShellState;
   requestDialog<T>(request: CliShellDialogRequest<T>): Promise<T>;
+  requestCustom<T>(kind: string, payload: unknown, opts?: BrewvaUiDialogOptions): Promise<T>;
   openExternalEditor(title: string, prefill?: string): Promise<string | undefined>;
   requestRender(): void;
 }): {
@@ -107,8 +109,8 @@ export function createCliShellUiPortController(input: {
         text: label,
       });
     },
-    async custom() {
-      return undefined as never;
+    async custom<T>(kind: string, payload: unknown, opts?: BrewvaUiDialogOptions) {
+      return await input.requestCustom<T>(kind, payload, opts);
     },
     async copyText(text) {
       await copyTextToClipboard(text);

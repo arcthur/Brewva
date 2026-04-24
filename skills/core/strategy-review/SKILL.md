@@ -86,28 +86,43 @@ Use when:
 
 - the user has a plausible wedge but scope quality is still uncertain
 - a plan needs strategic pressure before implementation planning
-- product value, leverage, or sequencing matters more than local technical detail
+- product value, leverage, or sequencing matters more than local technical
+  detail
 
 Do NOT use when:
 
 - the request is a purely local implementation or debugging task
 - the problem itself is still fuzzy (use `discovery` first)
-- repository understanding is missing and blocks scope judgment (use `repository-analysis`)
+- repository understanding is missing and blocks scope judgment (use
+  `repository-analysis`)
 
 ## Workflow
+
+### Question Escalation Rule
+
+- If scope posture depends on a missing operator decision and the current turn
+  cannot justify a strategy posture without it, use the `question` tool.
+- Record uncertainty in `strategic_risks` only when it is non-blocking for the
+  current turn's recommendation.
+- Do not convert a blocking scope ambiguity into vague prose and call it
+  strategic judgment.
 
 ### Phase 1: Reconstruct the bet and the clock
 
 Restate the wedge, intended user value, and why this work matters now.
 
-**If the timing argument is weak or absent**: Record it as a strategic risk. Do not default to "now is fine."
+**If the timing argument is weak or absent**: Record it as a strategic risk. Do
+not default to "now is fine."
 **If timing is clear**: Proceed to Phase 2.
 
 ### Phase 2: Pressure-test leverage and scope
 
-Interrogate: what becomes true for the user if this lands next cycle? What stays false if it slips or narrows? Which adjacent scope is leverage versus drag?
+Interrogate: what becomes true for the user if this lands next cycle? What
+stays false if it slips or narrows? Which adjacent scope is leverage versus
+drag?
 
-**If no user-visible value can be articulated**: Stop. The wedge is not ready for strategy review. Return to `discovery`.
+**If no user-visible value can be articulated**: Stop. The wedge is not ready
+for strategy review. Return to `discovery`.
 **If leverage is clear**: Proceed to Phase 3.
 
 ### Phase 3: Choose the scope posture
@@ -116,14 +131,19 @@ Decide whether scope should expand, hold, or narrow. Record an accepted /
 deferred / non-goals scope ledger so downstream planning inherits the exact
 decision boundary rather than a vague recommendation.
 
-**If the scope posture cannot be justified without speculation**: Stop. Record the gap and the missing evidence.
+**If the scope posture cannot be justified without speculation and the missing
+decision blocks the current turn**: Use the `question` tool.
+**If the scope posture cannot be justified without speculation but the
+uncertainty is non-blocking for a conservative recommendation**: Record the gap
+and the missing evidence.
 **If posture is justified**: Proceed to Phase 4.
 
 ### Phase 4: Emit strategy artifacts
 
 Produce `strategy_review`, `scope_decision`, `planning_posture`, and `strategic_risks`.
 
-**If the scope decision lacks "why not larger" and "why not smaller" reasoning**: Return to Phase 3.
+**If the scope decision lacks "why not larger" and "why not smaller"
+reasoning**: Return to Phase 3.
 **If artifacts are complete**: Hand off to downstream skills.
 
 ## Decision Protocol
@@ -146,13 +166,14 @@ If you catch yourself thinking any of these, STOP and return to Phase 1:
 
 ## Common Rationalizations
 
-| Excuse                                            | Reality                                                                               |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| "The timing is obvious — we should just build it" | If you cannot articulate what changes for the user next cycle, timing is not obvious. |
-| "Expanding scope captures more leverage"          | Expansion without evidence is roadmap drag, not leverage.                             |
-| "Narrowing feels like giving up"                  | Narrowing to the credible bet is strategic discipline, not retreat.                   |
-| "We can sort scope out during design"             | Design inherits your scope decision. Ambiguity here multiplies downstream.            |
-| "The user wants all of it"                        | Wanting all of it and building all of it now are different decisions.                 |
+| Excuse                                                           | Reality                                                                               |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| "The timing is obvious — we should just build it"                | If you cannot articulate what changes for the user next cycle, timing is not obvious. |
+| "Expanding scope captures more leverage"                         | Expansion without evidence is roadmap drag, not leverage.                             |
+| "Narrowing feels like giving up"                                 | Narrowing to the credible bet is strategic discipline, not retreat.                   |
+| "We can sort scope out during design"                            | Design inherits your scope decision. Ambiguity here multiplies downstream.            |
+| "The user wants all of it"                                       | Wanting all of it and building all of it now are different decisions.                 |
+| "I'll leave the ambiguity in prose and let downstream ask later" | If the ambiguity blocks today's posture, ask now with the `question` tool.            |
 
 ## Concrete Example
 
@@ -187,11 +208,16 @@ Output:
 
 ## Handoff Expectations
 
-- `strategy_review` tells `design` what kind of bet this is, why this scope posture was chosen, and what leverage the plan must preserve.
-- `scope_decision` makes accepted wedge, deferred surface, and non-goals explicit enough that downstream planning does not re-litigate them.
-- `planning_posture` is conservative and explicit; `learning-research` and `design` use it to decide precedent retrieval and planning rigor.
-- `strategic_risks` rank how the bet can fail, including timing, complexity, adoption, and hidden scope drag.
-- The handoff includes "why not larger" and "why not smaller" reasoning so `design` inherits decision boundaries, not just conclusions.
+- `strategy_review` tells `design` what kind of bet this is, why this scope
+  posture was chosen, and what leverage the plan must preserve.
+- `scope_decision` makes accepted wedge, deferred surface, and non-goals
+  explicit enough that downstream planning does not re-litigate them.
+- `planning_posture` is conservative and explicit; `learning-research` and
+  `design` use it to decide precedent retrieval and planning rigor.
+- `strategic_risks` rank how the bet can fail, including timing, complexity,
+  adoption, and hidden scope drag.
+- The handoff includes "why not larger" and "why not smaller" reasoning so
+  `design` inherits decision boundaries, not just conclusions.
 
 ## Stop Conditions
 

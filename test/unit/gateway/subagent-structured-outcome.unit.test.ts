@@ -30,7 +30,9 @@ describe("subagent structured outcome normalization", () => {
         ],
         counterevidence: ["The cutover touches routing, parsing, and overlay contracts at once."],
         risks: ["A partial migration could leave review lanes on a split contract family."],
-        openQuestions: ["Whether any workspace overlays still rely on public review agent names."],
+        followUpQuestions: [
+          "Whether any workspace overlays still rely on public review agent names.",
+        ],
         recommendedNextSteps: ["Cut the public taxonomy in one pass and rebase internal lanes."],
         options: [
           {
@@ -60,6 +62,9 @@ describe("subagent structured outcome normalization", () => {
       kind: "consult",
       consultKind: "design",
       recommendedOption: "Unify read-only public delegation under advisor.",
+      followUpQuestions: [
+        "Whether any workspace overlays still rely on public review agent names.",
+      ],
     });
     expect(outcome.skillOutputs).toBeUndefined();
   });
@@ -76,7 +81,7 @@ describe("subagent structured outcome normalization", () => {
         evidence: ["Parser acceptance depends on the canonical design consult fields."],
         counterevidence: ["Some historical outcomes used plan-specific field names."],
         risks: ["Drifted contracts can silently bypass downstream consumers."],
-        openQuestions: ["Which workspace overlays still emit legacy plan payloads?"],
+        followUpQuestions: ["Which workspace overlays still emit legacy plan payloads?"],
         recommendedNextSteps: ["Reject non-canonical design consult payloads during parsing."],
         options: [
           {
@@ -92,6 +97,65 @@ describe("subagent structured outcome normalization", () => {
 
     expect(outcome.data).toBeUndefined();
     expect(outcome.parseError).toBe("invalid_structured_outcome_payload");
+  });
+
+  test("reads legacy openQuestions into canonical followUpQuestions", () => {
+    const outcome = extractStructuredOutcomeData({
+      resultMode: "consult",
+      consultKind: "review",
+      assistantText: buildAssistantText({
+        kind: "consult",
+        consultKind: "review",
+        conclusion: "Legacy review outcomes should still surface follow-up questions.",
+        openQuestions: ["Should the lane wait for a replay receipt audit?"],
+      }),
+    });
+
+    expect(outcome.data).toMatchObject({
+      kind: "consult",
+      consultKind: "review",
+      followUpQuestions: ["Should the lane wait for a replay receipt audit?"],
+    });
+  });
+
+  test("reads legacy open_questions into canonical followUpQuestions", () => {
+    const outcome = extractStructuredOutcomeData({
+      resultMode: "consult",
+      consultKind: "review",
+      assistantText: buildAssistantText({
+        kind: "consult",
+        consultKind: "review",
+        conclusion: "Snake-case legacy review outcomes should still surface follow-up questions.",
+        open_questions: ["Should the lane wait for a channel replay audit?"],
+      }),
+    });
+
+    expect(outcome.data).toMatchObject({
+      kind: "consult",
+      consultKind: "review",
+      followUpQuestions: ["Should the lane wait for a channel replay audit?"],
+    });
+  });
+
+  test("prefers canonical followUpQuestions over legacy aliases", () => {
+    const outcome = extractStructuredOutcomeData({
+      resultMode: "consult",
+      consultKind: "review",
+      assistantText: buildAssistantText({
+        kind: "consult",
+        consultKind: "review",
+        conclusion: "Canonical follow-up questions should win when both names are present.",
+        followUpQuestions: ["Use the canonical follow-up question."],
+        openQuestions: ["This legacy field should stay ignored."],
+        open_questions: ["This snake-case legacy field should stay ignored."],
+      }),
+    });
+
+    expect(outcome.data).toMatchObject({
+      kind: "consult",
+      consultKind: "review",
+      followUpQuestions: ["Use the canonical follow-up question."],
+    });
   });
 
   test("rejects QA structured outcomes when the only command check omits exit_code", () => {

@@ -83,13 +83,13 @@ parent-side synthesis. The canonical child review fields are:
 - `primaryClaim`
 - `findings`
 - `missingEvidence`
-- `openQuestions`
+- `followUpQuestions`
 - `strongestCounterpoint`
 - `confidence`
 
-Compatibility aliases (`missing_evidence`, `open_questions`,
-`strongest_counterpoint`, `primary_claim`) may be accepted at ingestion time,
-but delegated review lanes should emit the canonical camelCase child fields.
+If a delegated review lane is blocked on missing operator input, emit
+`questionRequests` in the delegated consult outcome. Use `followUpQuestions`
+only for non-blocking residual questions that can wait for a later turn.
 
 Lane synthesis rules:
 

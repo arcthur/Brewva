@@ -1,4 +1,5 @@
 import { normalizeReviewLaneName } from "@brewva/brewva-runtime";
+import type { BrewvaQuestionOption, BrewvaQuestionPrompt } from "@brewva/brewva-substrate";
 import type {
   AdvisorConsultConfidence,
   AdvisorConsultKind,
@@ -8,6 +9,7 @@ import type {
   AdvisorDiagnoseSubagentOutcomeData,
   AdvisorInvestigateSubagentOutcomeData,
   AdvisorReviewSubagentOutcomeData,
+  DelegatedQuestionRequest,
   DelegationOutcomeChange,
   DelegationOutcomeFinding,
   PatchSubagentOutcomeData,
@@ -26,6 +28,10 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function readStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
@@ -36,8 +42,86 @@ function readStringArray(value: unknown): string[] | undefined {
   return items.length > 0 ? items : undefined;
 }
 
+function readCanonicalStringArray(
+  payload: Record<string, unknown>,
+  canonicalKey: string,
+  legacyKeys: readonly string[] = [],
+): string[] | undefined {
+  if (Object.prototype.hasOwnProperty.call(payload, canonicalKey)) {
+    return readStringArray(payload[canonicalKey]);
+  }
+  for (const key of legacyKeys) {
+    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+      return readStringArray(payload[key]);
+    }
+  }
+  return undefined;
+}
+
 function readObject(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? { ...value } : undefined;
+}
+
+function readQuestionOption(value: unknown): BrewvaQuestionOption | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const label = readString(value.label);
+  if (!label) {
+    return undefined;
+  }
+  const description = readString(value.description);
+  return description ? { label, description } : { label };
+}
+
+function readQuestionPrompt(value: unknown): BrewvaQuestionPrompt | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const header = readString(value.header);
+  const question = readString(value.question);
+  if (!header || !question) {
+    return undefined;
+  }
+  const options = Array.isArray(value.options)
+    ? value.options
+        .map((entry) => readQuestionOption(entry))
+        .filter((entry): entry is BrewvaQuestionOption => Boolean(entry))
+    : [];
+  const custom = readBoolean(value.custom);
+  if (options.length === 0 && custom !== true) {
+    return undefined;
+  }
+  return {
+    header,
+    question,
+    options,
+    ...(readBoolean(value.multiple) === true ? { multiple: true } : {}),
+    ...(custom !== undefined ? { custom } : {}),
+  };
+}
+
+function readQuestionRequest(value: unknown): DelegatedQuestionRequest | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const questions = Array.isArray(value.questions)
+    ? value.questions
+        .map((entry) => readQuestionPrompt(entry))
+        .filter((entry): entry is BrewvaQuestionPrompt => Boolean(entry))
+    : [];
+  if (questions.length === 0) {
+    return undefined;
+  }
+  const title = readString(value.title);
+  return title ? { title, questions } : { questions };
+}
+
+function readQuestionRequests(value: unknown): DelegatedQuestionRequest[] | undefined {
+  const requests = (Array.isArray(value) ? value : isRecord(value) ? [value] : [])
+    .map((entry) => readQuestionRequest(entry))
+    .filter((entry): entry is DelegatedQuestionRequest => Boolean(entry));
+  return requests.length > 0 ? requests : undefined;
 }
 
 function readFinding(value: unknown): DelegationOutcomeFinding | undefined {
@@ -293,7 +377,11 @@ function readBaseConsultPayload(payload: Record<string, unknown>) {
     evidence: readStringArray(payload.evidence),
     counterevidence: readStringArray(payload.counterevidence),
     risks: readStringArray(payload.risks),
-    openQuestions: readStringArray(payload.openQuestions),
+    followUpQuestions: readCanonicalStringArray(payload, "followUpQuestions", [
+      "openQuestions",
+      "open_questions",
+    ]),
+    questionRequests: readQuestionRequests(payload.questionRequests),
     recommendedNextSteps: readStringArray(payload.recommendedNextSteps),
   };
 }
@@ -418,6 +506,8 @@ function parseConsultOutcomeData(
   const strongestCounterpoint = readString(payload.strongestCounterpoint);
   const missingEvidence = readStringArray(payload.missingEvidence);
   const findings = readFindings(payload.findings);
+  const followUpQuestions = base.followUpQuestions;
+  const questionRequests = base.questionRequests;
   if (
     !lane &&
     disposition !== "clear" &&
@@ -426,6 +516,8 @@ function parseConsultOutcomeData(
     disposition !== "inconclusive" &&
     !primaryClaim &&
     !strongestCounterpoint &&
+    !followUpQuestions &&
+    !questionRequests &&
     !missingEvidence &&
     !(findings && findings.length > 0)
   ) {

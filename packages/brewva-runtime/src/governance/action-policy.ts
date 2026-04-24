@@ -449,6 +449,7 @@ export const TOOL_ACTION_POLICY_BY_NAME: Record<string, ToolActionPolicy> = {
   obs_slo_assert: runtimeObserve(),
   obs_snapshot: runtimeObserve(),
   optimization_continuity: runtimeObserve(),
+  question: runtimeObserve(),
   exec: localExecEffectful(),
   local_exec_readonly: localExecReadonly(),
   browser_open: localExecEffectful({ riskLevel: "medium" }),

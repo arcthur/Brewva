@@ -1,11 +1,18 @@
-import { recordSessionShutdownIfMissing } from "@brewva/brewva-gateway";
+import {
+  recordSessionShutdownIfMissing,
+  validateQuestionRequestAnswers,
+  type SessionQuestionRequest,
+} from "@brewva/brewva-gateway";
 import { createOperatorRuntimePort } from "@brewva/brewva-runtime";
+import { normalizeQuestionPrompt } from "@brewva/brewva-substrate";
 import type {
   BrewvaDiffPreferences,
+  BrewvaInteractiveQuestionRequest,
   BrewvaShellViewPreferences,
   BrewvaModelPreferences,
   BrewvaPromptSessionEvent,
   BrewvaSessionModelDescriptor,
+  BrewvaUiDialogOptions,
 } from "@brewva/brewva-substrate";
 import {
   createKeybindingResolver,
@@ -58,6 +65,15 @@ import {
   summarizePromptSnapshot,
 } from "./prompt-parts.js";
 import {
+  buildOpenQuestionsFromRequest,
+  cloneQuestionDraftState,
+  isImmediateQuestionRequest,
+  normalizeQuestionAnswers,
+  normalizeQuestionDraftState,
+  questionRequestsFromSnapshot,
+  questionTabCount,
+} from "./question-utils.js";
+import {
   createCliShellState,
   reduceCliShellState,
   type CliShellAction,
@@ -73,6 +89,7 @@ import {
   type CliShellTranscriptMessage,
 } from "./transcript.js";
 import type {
+  CliQuestionDraftState,
   CliShellOverlayPayload,
   CliOAuthWaitOverlayPayload,
   CliShellPromptPart,
@@ -130,12 +147,70 @@ function hasDiffPreviewPayload(value: unknown): boolean {
   return Array.isArray(files) && files.length > 0;
 }
 
+function readQuestionOption(value: unknown): { label: string; description?: string } | null {
+  const record = asRecord(value);
+  const label =
+    typeof record?.label === "string" && record.label.trim().length > 0
+      ? record.label.trim()
+      : null;
+  if (!label) {
+    return null;
+  }
+  const description =
+    typeof record?.description === "string" && record.description.trim().length > 0
+      ? record.description.trim()
+      : undefined;
+  return description ? { label, description } : { label };
+}
+
+function buildInteractiveQuestionRequest(input: {
+  sessionId: string;
+  request: BrewvaInteractiveQuestionRequest;
+}): SessionQuestionRequest | null {
+  const questions: SessionQuestionRequest["questions"] = [];
+  for (const [index, question] of input.request.questions.entries()) {
+    const normalizedQuestion = normalizeQuestionPrompt(question);
+    if (!normalizedQuestion) {
+      return null;
+    }
+    questions.push({
+      questionId: `tool:${input.request.toolCallId}:question:${index + 1}`,
+      header: normalizedQuestion.header,
+      questionText: normalizedQuestion.question,
+      options: normalizedQuestion.options
+        .map((option) => readQuestionOption(option))
+        .filter((option): option is { label: string; description?: string } => option !== null),
+      ...(normalizedQuestion.multiple === true ? { multiple: true } : {}),
+      custom: normalizedQuestion.custom,
+    });
+  }
+  if (questions.length === 0) {
+    return null;
+  }
+  return {
+    requestId: `tool:${input.request.toolCallId}`,
+    sessionId: input.sessionId,
+    createdAt: Date.now(),
+    presentationKind: "input_request",
+    sourceKind: "skill",
+    sourceEventId: `tool:${input.request.toolCallId}`,
+    sourceLabel: "tool:question",
+    questions,
+  };
+}
+
 function toolResultStatus(input: { result?: unknown; isError?: boolean }): "completed" | "error" {
   if (input.isError === true) {
     return "error";
   }
   const details = asRecord(asRecord(input.result)?.details);
   return details?.verdict === "fail" ? "error" : "completed";
+}
+
+interface PendingInteractiveQuestionRequest {
+  overlayId: string;
+  sessionId: string;
+  settle(value: readonly (readonly string[])[] | undefined): void;
 }
 
 function normalizeBindingKey(key: string): string {
@@ -384,7 +459,7 @@ export class CliShellController {
       id: "global.questions",
       context: "global",
       trigger: { key: "o", ctrl: true, meta: false, shift: false },
-      action: "openQuestions",
+      action: "openOperatorInbox",
     },
     {
       id: "global.tasks",
@@ -611,6 +686,7 @@ export class CliShellController {
   };
   #promptStashEntries: CliShellPromptStashEntry[] = [];
   #dismissedCompletionBySessionId = new Map<string, DismissedCompletionState>();
+  #pendingInteractiveQuestionRequests = new Map<string, PendingInteractiveQuestionRequest>();
   #started = false;
   #disposed = false;
 
@@ -635,6 +711,8 @@ export class CliShellController {
       dispatch: (action) => this.dispatch(action),
       getState: () => this.#state,
       requestDialog: (request) => this.requestDialog(request),
+      requestCustom: (kind, payload, dialogOptions) =>
+        this.requestCustom(kind, payload, dialogOptions),
       openExternalEditor: (title, prefill) => this.openExternalEditor(title, prefill),
       requestRender: () => this.emitChange(),
     });
@@ -734,6 +812,7 @@ export class CliShellController {
     }
     this.#disposed = true;
     this.#started = false;
+    this.dismissPendingInteractiveQuestionRequests();
     if (this.#pollTimer) {
       clearInterval(this.#pollTimer);
     }
@@ -841,13 +920,14 @@ export class CliShellController {
       priority?: OverlayPriority;
       suspendCurrent?: boolean;
     } = {},
-  ): void {
+  ): string {
     const view = buildOverlayView(payload);
     const activeOverlay = this.#state.overlay.active;
+    const overlayId = `${payload.kind}:${Date.now()}`;
     this.dispatch({
       type: "overlay.open",
       overlay: {
-        id: `${payload.kind}:${Date.now()}`,
+        id: overlayId,
         kind: payload.kind,
         focusOwner: resolveOverlayFocusOwner(payload),
         priority: options.priority ?? "normal",
@@ -857,6 +937,7 @@ export class CliShellController {
         payload,
       },
     });
+    return overlayId;
   }
 
   wantsSemanticInput(input: CliShellSemanticInput): boolean {
@@ -898,6 +979,12 @@ export class CliShellController {
     try {
       if (activeOverlay?.kind === "input") {
         return this.handleInputOverlayInput(activeOverlay, input);
+      }
+      if (activeOverlay?.kind === "question") {
+        const handled = await this.handleQuestionOverlayInput(activeOverlay, input);
+        if (handled) {
+          return true;
+        }
       }
 
       const binding = this.#keybindings.resolve(this.getInputContexts(), {
@@ -1432,9 +1519,13 @@ export class CliShellController {
       return;
     }
     if (active.kind === "question") {
+      if (active.mode === "interactive") {
+        return;
+      }
+      const requestCount = questionRequestsFromSnapshot(snapshot).length;
       this.replaceActiveOverlay({
         ...active,
-        selectedIndex: Math.max(0, Math.min(active.selectedIndex, snapshot.questions.length - 1)),
+        selectedIndex: Math.max(0, Math.min(active.selectedIndex, requestCount - 1)),
         snapshot,
       });
       return;
@@ -1496,18 +1587,20 @@ export class CliShellController {
       );
     }
 
-    const newQuestion = snapshot.questions.find(
-      (item) => !this.#seenQuestions.has(item.questionId),
+    const questionRequests = questionRequestsFromSnapshot(snapshot);
+    const newQuestionRequest = questionRequests.find(
+      (item) => !this.#seenQuestions.has(item.requestId),
     );
-    if (newQuestion) {
-      for (const item of snapshot.questions) {
-        this.#seenQuestions.add(item.questionId);
+    if (newQuestionRequest) {
+      for (const item of questionRequests) {
+        this.#seenQuestions.add(item.requestId);
       }
       this.openOverlay(
         {
           kind: "question",
-          selectedIndex: snapshot.questions.findIndex(
-            (item) => item.questionId === newQuestion.questionId,
+          mode: "operator",
+          selectedIndex: questionRequests.findIndex(
+            (item) => item.requestId === newQuestionRequest.requestId,
           ),
           snapshot,
         },
@@ -1565,6 +1658,284 @@ export class CliShellController {
       return true;
     }
     return true;
+  }
+
+  private async handleQuestionOverlayInput(
+    active: Extract<CliShellOverlayPayload, { kind: "question" }>,
+    input: CliShellSemanticInput,
+  ): Promise<boolean> {
+    if (input.ctrl || input.meta) {
+      return false;
+    }
+
+    const requests = questionRequestsFromSnapshot(active.snapshot);
+    const selectedIndex =
+      requests.length > 0 ? Math.max(0, Math.min(active.selectedIndex, requests.length - 1)) : 0;
+    const request = requests[selectedIndex];
+    const key = normalizeBindingKey(input.key);
+
+    if (!request) {
+      if (key === "escape") {
+        this.closeActiveOverlay(true);
+        return true;
+      }
+      return typeof input.text === "string" || input.key.length > 0;
+    }
+
+    const replaceRequestDraft = (draft: CliQuestionDraftState): CliQuestionDraftState => {
+      const nextDraft = normalizeQuestionDraftState(request, draft);
+      this.replaceActiveOverlay({
+        ...active,
+        selectedIndex,
+        draftsByRequestId: {
+          ...active.draftsByRequestId,
+          [request.requestId]: nextDraft,
+        },
+      });
+      return nextDraft;
+    };
+
+    const replaceSelectedRequest = (nextIndex: number): void => {
+      if (requests.length === 0) {
+        return;
+      }
+      this.replaceActiveOverlay({
+        ...active,
+        selectedIndex: (nextIndex + requests.length) % requests.length,
+      });
+    };
+
+    const draft = normalizeQuestionDraftState(
+      request,
+      active.draftsByRequestId?.[request.requestId],
+    );
+    const confirmTab =
+      !isImmediateQuestionRequest(request) && draft.activeTabIndex === request.questions.length;
+    const questionIndex = Math.min(draft.activeTabIndex, Math.max(0, request.questions.length - 1));
+    const question = request.questions[questionIndex];
+    const optionCount = question
+      ? question.options.length + (question.custom !== false ? 1 : 0)
+      : 0;
+    const customIndex = question ? question.options.length : -1;
+
+    const submitRequest = async (nextDraft: CliQuestionDraftState): Promise<void> => {
+      const validatedAnswers = validateQuestionRequestAnswers({
+        request,
+        answers: nextDraft.answers,
+      });
+      if (!validatedAnswers.ok) {
+        this.ui.notify(validatedAnswers.error, "warning");
+        return;
+      }
+      if (active.onSubmit) {
+        await active.onSubmit(request, validatedAnswers.answers);
+        this.ui.notify("Operator input submitted.", "info");
+      } else {
+        await this.#operatorPort.answerQuestionRequest(request.requestId, validatedAnswers.answers);
+        this.ui.notify(`Submitted input for ${request.requestId}.`, "info");
+      }
+      this.closeActiveOverlay(false);
+      if (active.mode === "operator") {
+        await this.refreshOperatorSnapshot();
+      }
+    };
+
+    const advanceAfterSingleChoice = async (
+      nextDraft: CliQuestionDraftState,
+      nextQuestionIndex: number,
+    ): Promise<void> => {
+      if (isImmediateQuestionRequest(request)) {
+        await submitRequest(nextDraft);
+        return;
+      }
+      replaceRequestDraft({
+        ...nextDraft,
+        activeTabIndex: Math.min(nextQuestionIndex + 1, questionTabCount(request) - 1),
+        selectedOptionIndex: 0,
+        editingCustom: false,
+      });
+    };
+
+    const commitCustomAnswer = async (): Promise<void> => {
+      if (!question) {
+        return;
+      }
+      const nextDraft = cloneQuestionDraftState(draft);
+      const previousValue = (draft.customAnswers[questionIndex] ?? "").trim();
+      const nextValue = (nextDraft.customAnswers[questionIndex] ?? "").trim();
+      nextDraft.customAnswers[questionIndex] = nextValue;
+      nextDraft.editingCustom = false;
+
+      if (question.multiple) {
+        const values = normalizeQuestionAnswers(nextDraft.answers[questionIndex]).filter(
+          (value) => value !== previousValue,
+        );
+        nextDraft.answers[questionIndex] = nextValue ? [...values, nextValue] : values;
+        replaceRequestDraft(nextDraft);
+        return;
+      }
+
+      nextDraft.answers[questionIndex] = nextValue ? [nextValue] : [];
+      const normalized = replaceRequestDraft(nextDraft);
+      if (nextValue) {
+        await advanceAfterSingleChoice(normalized, questionIndex);
+      }
+    };
+
+    const selectOption = async (optionIndex: number): Promise<void> => {
+      if (!question) {
+        return;
+      }
+      if (question.custom !== false && optionIndex === customIndex) {
+        replaceRequestDraft({
+          ...draft,
+          selectedOptionIndex: optionIndex,
+          editingCustom: true,
+        });
+        return;
+      }
+
+      const option = question.options[optionIndex];
+      if (!option) {
+        return;
+      }
+
+      if (question.multiple) {
+        const nextDraft = cloneQuestionDraftState(draft);
+        const values = normalizeQuestionAnswers(nextDraft.answers[questionIndex]);
+        nextDraft.answers[questionIndex] = values.includes(option.label)
+          ? values.filter((value) => value !== option.label)
+          : [...values, option.label];
+        nextDraft.selectedOptionIndex = optionIndex;
+        replaceRequestDraft(nextDraft);
+        return;
+      }
+
+      const nextDraft = cloneQuestionDraftState(draft);
+      nextDraft.answers[questionIndex] = [option.label];
+      nextDraft.selectedOptionIndex = optionIndex;
+      const normalized = replaceRequestDraft(nextDraft);
+      await advanceAfterSingleChoice(normalized, questionIndex);
+    };
+
+    if (key === "escape") {
+      if (draft.editingCustom) {
+        replaceRequestDraft({
+          ...draft,
+          editingCustom: false,
+        });
+      } else {
+        this.closeActiveOverlay(true);
+      }
+      return true;
+    }
+
+    if (key === "pageup" && requests.length > 1) {
+      replaceSelectedRequest(selectedIndex - 1);
+      return true;
+    }
+    if (key === "pagedown" && requests.length > 1) {
+      replaceSelectedRequest(selectedIndex + 1);
+      return true;
+    }
+
+    if (draft.editingCustom) {
+      if (key === "backspace") {
+        const value = draft.customAnswers[questionIndex] ?? "";
+        replaceRequestDraft({
+          ...draft,
+          customAnswers: draft.customAnswers.map((item, index) =>
+            index === questionIndex ? value.slice(0, -1) : item,
+          ),
+        });
+        return true;
+      }
+      if (key === "enter") {
+        await commitCustomAnswer();
+        return true;
+      }
+      if (key === "character" && typeof input.text === "string") {
+        replaceRequestDraft({
+          ...draft,
+          customAnswers: draft.customAnswers.map((item, index) =>
+            index === questionIndex ? `${item}${input.text}` : item,
+          ),
+        });
+        return true;
+      }
+      return true;
+    }
+
+    if (typeof input.text === "string") {
+      const lowered = input.text.toLowerCase();
+      if ((lowered === "h" || lowered === "l") && questionTabCount(request) > 1) {
+        replaceRequestDraft({
+          ...draft,
+          activeTabIndex:
+            (draft.activeTabIndex + (lowered === "l" ? 1 : -1) + questionTabCount(request)) %
+            questionTabCount(request),
+          selectedOptionIndex: 0,
+          editingCustom: false,
+        });
+        return true;
+      }
+      if ((lowered === "j" || lowered === "k") && !confirmTab && optionCount > 0) {
+        replaceRequestDraft({
+          ...draft,
+          selectedOptionIndex:
+            (draft.selectedOptionIndex + (lowered === "j" ? 1 : -1) + optionCount) % optionCount,
+        });
+        return true;
+      }
+      if (/^[1-9]$/u.test(lowered) && !confirmTab) {
+        const optionIndex = Number(lowered) - 1;
+        if (optionIndex < optionCount) {
+          await selectOption(optionIndex);
+        }
+        return true;
+      }
+    }
+
+    if ((key === "left" || key === "right" || key === "tab") && questionTabCount(request) > 1) {
+      const delta = key === "left" || (key === "tab" && input.shift) ? -1 : 1;
+      replaceRequestDraft({
+        ...draft,
+        activeTabIndex:
+          (draft.activeTabIndex + delta + questionTabCount(request)) % questionTabCount(request),
+        selectedOptionIndex: 0,
+        editingCustom: false,
+      });
+      return true;
+    }
+
+    if (!confirmTab && optionCount > 0 && (key === "up" || key === "down")) {
+      replaceRequestDraft({
+        ...draft,
+        selectedOptionIndex:
+          (draft.selectedOptionIndex + (key === "down" ? 1 : -1) + optionCount) % optionCount,
+      });
+      return true;
+    }
+
+    if (key === "enter") {
+      if (confirmTab) {
+        await submitRequest(draft);
+        return true;
+      }
+      if (optionCount > 0) {
+        await selectOption(draft.selectedOptionIndex);
+        return true;
+      }
+      if (question?.custom !== false) {
+        replaceRequestDraft({
+          ...draft,
+          editingCustom: true,
+        });
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private async handleOverlayShortcut(
@@ -1756,8 +2127,13 @@ export class CliShellController {
       case "openApprovals":
         this.openOverlay({ kind: "approval", selectedIndex: 0, snapshot: this.#operatorSnapshot });
         return;
-      case "openQuestions":
-        this.openOverlay({ kind: "question", selectedIndex: 0, snapshot: this.#operatorSnapshot });
+      case "openOperatorInbox":
+        this.openOverlay({
+          kind: "question",
+          mode: "operator",
+          selectedIndex: 0,
+          snapshot: this.#operatorSnapshot,
+        });
         return;
       case "openTasks":
         this.openOverlay({ kind: "tasks", selectedIndex: 0, snapshot: this.#operatorSnapshot });
@@ -3109,7 +3485,12 @@ export class CliShellController {
       return true;
     }
     if (prompt === "/questions") {
-      this.openOverlay({ kind: "question", selectedIndex: 0, snapshot: this.#operatorSnapshot });
+      this.openOverlay({
+        kind: "question",
+        mode: "operator",
+        selectedIndex: 0,
+        snapshot: this.#operatorSnapshot,
+      });
       return true;
     }
     if (prompt === "/approvals") {
@@ -3324,7 +3705,7 @@ export class CliShellController {
         active.kind === "approval"
           ? active.snapshot.approvals
           : active.kind === "question"
-            ? active.snapshot.questions
+            ? questionRequestsFromSnapshot(active.snapshot)
             : active.kind === "tasks"
               ? active.snapshot.taskRuns
               : active.kind === "sessions"
@@ -3430,6 +3811,8 @@ export class CliShellController {
         payload.resolve(undefined);
       } else if (payload.kind === "authMethodPicker") {
         payload.resolve(undefined);
+      } else if (payload.kind === "question" && payload.mode === "interactive") {
+        void payload.onDismiss?.();
       }
     }
     this.dispatch(
@@ -3462,17 +3845,12 @@ export class CliShellController {
         return;
       }
       case "question": {
-        const item = active.snapshot.questions[active.selectedIndex];
-        if (!item) {
-          return;
-        }
-        const answerPrefix = `/answer ${item.questionId} `;
-        this.dispatch({
-          type: "composer.setText",
-          text: answerPrefix,
-          cursor: answerPrefix.length,
+        await this.handleQuestionOverlayInput(active, {
+          key: "enter",
+          ctrl: false,
+          meta: false,
+          shift: false,
         });
-        this.closeActiveOverlay(false);
         return;
       }
       case "tasks": {
@@ -3652,6 +4030,9 @@ export class CliShellController {
 
   private async switchBundle(bundle: CliShellSessionBundle): Promise<void> {
     this.snapshotCurrentDraft();
+    this.dismissPendingInteractiveQuestionRequests({
+      sessionId: this.#sessionPort.getSessionId(),
+    });
     try {
       recordSessionShutdownIfMissing(this.#bundle.runtime, {
         sessionId: this.#sessionPort.getSessionId(),
@@ -3684,6 +4065,27 @@ export class CliShellController {
       parts: cloneCliShellPromptParts(this.#state.composer.parts),
       updatedAt: Date.now(),
     });
+  }
+
+  private closeOverlayById(overlayId: string): void {
+    this.dispatch(
+      {
+        type: "overlay.close",
+        id: overlayId,
+      },
+      false,
+    );
+  }
+
+  private dismissPendingInteractiveQuestionRequests(input?: { sessionId?: string }): void {
+    for (const [requestId, pending] of this.#pendingInteractiveQuestionRequests.entries()) {
+      if (input?.sessionId && pending.sessionId !== input.sessionId) {
+        continue;
+      }
+      this.#pendingInteractiveQuestionRequests.delete(requestId);
+      pending.settle(undefined);
+      this.closeOverlayById(pending.overlayId);
+    }
   }
 
   private async requestDialog<T>(
@@ -3734,6 +4136,84 @@ export class CliShellController {
       this.openOverlayWithOptions(payload, {
         priority: options.priority ?? "queued",
         suspendCurrent: options.suspendCurrent,
+      });
+    });
+  }
+
+  private async requestCustom<T>(
+    kind: string,
+    payload: unknown,
+    options?: BrewvaUiDialogOptions,
+  ): Promise<T> {
+    if (kind !== "question" || !payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw new Error("Unsupported UI custom request.");
+    }
+    const interactiveRequest = payload as BrewvaInteractiveQuestionRequest;
+    const request = buildInteractiveQuestionRequest({
+      sessionId: this.#sessionPort.getSessionId(),
+      request: interactiveRequest,
+    });
+    if (!request) {
+      throw new Error("Invalid interactive question request.");
+    }
+    if (options?.signal?.aborted) {
+      return undefined as T;
+    }
+
+    return await new Promise<T>((resolve) => {
+      let settled = false;
+      let overlayId = "";
+      const settle = (value: readonly (readonly string[])[] | undefined): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        options?.signal?.removeEventListener("abort", handleAbort);
+        this.#pendingInteractiveQuestionRequests.delete(request.requestId);
+        resolve(value as T);
+      };
+      const handleAbort = (): void => {
+        settle(undefined);
+        if (overlayId) {
+          this.closeOverlayById(overlayId);
+        }
+      };
+      if (options?.signal) {
+        options.signal.addEventListener("abort", handleAbort, { once: true });
+      }
+      overlayId = this.openOverlayWithOptions(
+        {
+          kind: "question",
+          mode: "interactive",
+          selectedIndex: 0,
+          requestTitle:
+            typeof interactiveRequest.title === "string" &&
+            interactiveRequest.title.trim().length > 0
+              ? interactiveRequest.title.trim()
+              : "Agent needs input",
+          interactiveRequest,
+          snapshot: {
+            approvals: [],
+            questions: buildOpenQuestionsFromRequest(request),
+            taskRuns: [],
+            sessions: [],
+          },
+          onSubmit: async (_resolvedRequest, answers) => {
+            settle(answers);
+          },
+          onDismiss: async () => {
+            settle(undefined);
+          },
+        },
+        {
+          priority: "normal",
+          suspendCurrent: true,
+        },
+      );
+      this.#pendingInteractiveQuestionRequests.set(request.requestId, {
+        overlayId,
+        sessionId: request.sessionId,
+        settle,
       });
     });
   }

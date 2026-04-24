@@ -2,8 +2,11 @@ import {
   OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
   buildOperatorQuestionAnswerPrompt,
   buildOperatorQuestionAnsweredPayload,
+  classifyQuestionRequest,
   collectOpenSessionQuestions,
+  listOpenQuestionRequests,
   resolveOpenSessionQuestion,
+  validateSingleQuestionAnswer,
 } from "@brewva/brewva-gateway";
 import {
   defineInternalRuntimePlugin,
@@ -27,20 +30,57 @@ function toNotificationMessage(summary: string, text: string): string {
   return [summary, "", ...rawLines].join("\n");
 }
 
+function formatPromptCount(count: number): string {
+  return `${count} input prompt${count === 1 ? "" : "s"}`;
+}
+
 function formatQuestionsText(input: {
   questions: Awaited<ReturnType<typeof collectOpenSessionQuestions>>["questions"];
   warnings: string[];
 }): string {
-  const lines = [`Open questions: ${input.questions.length}`];
-  if (input.questions.length === 0) {
-    lines.push("No open questions.");
+  const requests = listOpenQuestionRequests(input.questions);
+  const inputRequests = requests.filter(
+    (request) => classifyQuestionRequest(request) === "input_request",
+  );
+  const followUpQuestions = requests.filter(
+    (request) => classifyQuestionRequest(request) === "follow_up",
+  );
+  const lines = [
+    `Operator inbox: ${requests.length}`,
+    `Input requests: ${inputRequests.length} · Follow-up questions: ${followUpQuestions.length}`,
+  ];
+  if (requests.length === 0) {
+    lines.push("No pending operator input.");
   } else {
-    for (const question of input.questions) {
-      lines.push(
-        `- [${question.questionId}] ${question.sourceLabel} :: ${clampText(question.questionText, 180)}`,
-      );
+    if (inputRequests.length > 0) {
+      lines.push("Pending input requests:");
+      for (const request of inputRequests) {
+        lines.push(
+          `- [${request.requestId}] ${request.sourceLabel} :: ${formatPromptCount(request.questions.length)}`,
+        );
+      }
     }
-    lines.push("Use /answer <question-id> <answer> to resolve one.");
+    if (followUpQuestions.length > 0) {
+      lines.push("Follow-up questions:");
+      for (const request of followUpQuestions) {
+        const question = request.questions[0];
+        if (!question) {
+          continue;
+        }
+        lines.push(
+          `- [${question.questionId}] ${request.sourceLabel} :: ${clampText(question.questionText, 180)}`,
+        );
+      }
+    }
+    if (inputRequests.length > 0 && followUpQuestions.length > 0) {
+      lines.push(
+        "Use /answer <question-id> <answer> for a single follow-up, or open the operator inbox overlay for a full input request.",
+      );
+    } else if (inputRequests.length > 0) {
+      lines.push("Open the operator inbox overlay to resolve the pending input request.");
+    } else {
+      lines.push("Use /answer <question-id> <answer> to resolve one.");
+    }
   }
   if (input.warnings.length > 0) {
     lines.push("Warnings:");
@@ -78,8 +118,7 @@ export function createQuestionsCommandRuntimePlugin(runtime: BrewvaRuntime): Int
     capabilities: ["tool_registration.write", "user_message.enqueue"],
     register(runtimePluginApi: InternalRuntimePluginApi) {
       runtimePluginApi.registerCommand("questions", {
-        description:
-          "Inspect unresolved session questions without entering a model turn (usage: /questions)",
+        description: "Inspect the operator inbox without entering a model turn (usage: /questions)",
         handler: async (args, ctx) => {
           const normalizedArgs = normalizeArgs(args);
           if (normalizedArgs) {
@@ -90,14 +129,15 @@ export function createQuestionsCommandRuntimePlugin(runtime: BrewvaRuntime): Int
           }
           const sessionId = ctx.sessionManager.getSessionId();
           const collection = await collectOpenSessionQuestions(runtime, sessionId);
+          const requestCount = listOpenQuestionRequests(collection.questions).length;
           if (ctx.hasUI) {
             const summary =
-              collection.questions.length > 0
-                ? `Questions updated (${collection.questions.length} open).`
-                : "No open questions found.";
+              requestCount > 0
+                ? `Operator inbox updated (${requestCount} pending).`
+                : "Operator inbox is empty.";
             ctx.ui.notify(
               toNotificationMessage(summary, formatQuestionsText(collection)),
-              collection.questions.length > 0 ? "info" : "warning",
+              requestCount > 0 ? "info" : "warning",
             );
           }
         },
@@ -118,13 +158,23 @@ export function createQuestionsCommandRuntimePlugin(runtime: BrewvaRuntime): Int
           const question = await resolveOpenSessionQuestion(runtime, sessionId, parsed.questionId);
           if (!question) {
             if (ctx.hasUI) {
-              ctx.ui.notify(`Open question not found: ${parsed.questionId}`, "warning");
+              ctx.ui.notify(`Pending operator prompt not found: ${parsed.questionId}`, "warning");
+            }
+            return;
+          }
+          const validatedAnswer = validateSingleQuestionAnswer({
+            question,
+            answerText: parsed.answerText,
+          });
+          if (!validatedAnswer.ok) {
+            if (ctx.hasUI) {
+              ctx.ui.notify(validatedAnswer.error, "warning");
             }
             return;
           }
           const prompt = buildOperatorQuestionAnswerPrompt({
             question,
-            answerText: parsed.answerText,
+            answerText: validatedAnswer.answerText,
           });
           if (ctx.isIdle()) {
             runtimePluginApi.sendUserMessage([{ type: "text", text: prompt }]);
@@ -138,7 +188,7 @@ export function createQuestionsCommandRuntimePlugin(runtime: BrewvaRuntime): Int
             type: OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
             payload: buildOperatorQuestionAnsweredPayload({
               question,
-              answerText: parsed.answerText,
+              answerText: validatedAnswer.answerText,
               source: "runtime_plugin",
             }),
           });

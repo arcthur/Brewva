@@ -5,6 +5,14 @@ import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "solid-js";
 import { For, Show, createEffect, createMemo } from "solid-js";
 import type { CliShellController } from "../../src/shell/controller.js";
+import {
+  countQuestionRequestKinds,
+  isImmediateQuestionRequest,
+  normalizeQuestionDraftState,
+  resolveQuestionOverlayTitle,
+  questionRequestsFromOverlay,
+  questionTabCount,
+} from "../../src/shell/question-utils.js";
 import type {
   CliApprovalOverlayPayload,
   CliQuestionOverlayPayload,
@@ -362,21 +370,83 @@ export function InlineQuestionPrompt(input: {
   payload: CliQuestionOverlayPayload;
   theme: SessionPalette;
 }) {
-  const question = createMemo(() => input.payload.snapshot.questions[input.payload.selectedIndex]);
-  const total = createMemo(() => input.payload.snapshot.questions.length);
+  const requests = createMemo(() => questionRequestsFromOverlay(input.payload));
+  const request = createMemo(() => {
+    const items = requests();
+    if (items.length === 0) {
+      return undefined;
+    }
+    const index = Math.max(0, Math.min(input.payload.selectedIndex, items.length - 1));
+    return items[index];
+  });
+  const draft = createMemo(() => {
+    const current = request();
+    if (!current) {
+      return undefined;
+    }
+    return normalizeQuestionDraftState(
+      current,
+      input.payload.draftsByRequestId?.[current.requestId],
+    );
+  });
+  const confirmTab = createMemo(() => {
+    const current = request();
+    const currentDraft = draft();
+    if (!current || !currentDraft) {
+      return false;
+    }
+    return (
+      !isImmediateQuestionRequest(current) &&
+      currentDraft.activeTabIndex === current.questions.length
+    );
+  });
+  const question = createMemo(() => {
+    const current = request();
+    const currentDraft = draft();
+    if (!current || !currentDraft || confirmTab()) {
+      return undefined;
+    }
+    const index = Math.min(currentDraft.activeTabIndex, Math.max(0, current.questions.length - 1));
+    return current.questions[index];
+  });
+  const answerSummary = createMemo(() => {
+    const current = request();
+    const currentDraft = draft();
+    if (!current || !currentDraft) {
+      return [];
+    }
+    return current.questions.map((entry, index) => ({
+      header: entry.header,
+      answer:
+        (currentDraft.answers[index] ?? []).filter((value) => value.trim().length > 0).join(", ") ||
+        "Pending",
+    }));
+  });
+  const optionCount = createMemo(() => {
+    const current = question();
+    return current ? current.options.length + (current.custom !== false ? 1 : 0) : 0;
+  });
+  const customIndex = createMemo(() => {
+    const current = question();
+    return current ? current.options.length : -1;
+  });
+  const total = createMemo(() => requests().length);
+  const requestKindCounts = createMemo(() => countQuestionRequestKinds(requests()));
   return (
     <Show
-      when={question()}
+      when={request()}
       fallback={
         <InlinePromptCard
-          title="Questions"
+          title={resolveQuestionOverlayTitle(input.payload)}
           theme={input.theme}
           accentColor={input.theme.borderActive}
           body={
             <box paddingLeft={1} flexDirection="column" gap={1}>
-              <text fg={input.theme.text}>No open questions.</text>
+              <text fg={input.theme.text}>No pending operator input.</text>
               <text fg={input.theme.textMuted}>
-                Brewva will show delegated questions here when a run needs your input.
+                {input.payload.mode === "interactive"
+                  ? "The active tool will pause here until you answer or dismiss this request."
+                  : "Brewva will show pending input requests and follow-up questions here when a run needs your input."}
               </text>
             </box>
           }
@@ -385,19 +455,19 @@ export function InlineQuestionPrompt(input: {
         />
       }
     >
-      {(entry) => (
+      {(currentRequest) => (
         <InlinePromptCard
-          title="Question"
+          title={resolveQuestionOverlayTitle(input.payload)}
           theme={input.theme}
           accentColor={input.theme.warning}
           header={
             <box flexDirection="column" gap={1}>
               <Show when={total() > 1}>
                 <box flexDirection="row" gap={1}>
-                  <For each={input.payload.snapshot.questions}>
-                    {(_candidate, index) => (
+                  <For each={requests()}>
+                    {(candidate, index) => (
                       <PromptActionChip
-                        label={`Q${index() + 1}`}
+                        label={candidate.questions[0]?.header ?? `R${index() + 1}`}
                         active={index() === input.payload.selectedIndex}
                         theme={input.theme}
                       />
@@ -405,39 +475,179 @@ export function InlineQuestionPrompt(input: {
                   </For>
                 </box>
               </Show>
+              <Show when={!isImmediateQuestionRequest(currentRequest())}>
+                <box flexDirection="row" gap={1}>
+                  <For each={currentRequest().questions}>
+                    {(candidate, index) => (
+                      <PromptActionChip
+                        label={candidate.header}
+                        active={draft()?.activeTabIndex === index()}
+                        theme={input.theme}
+                      />
+                    )}
+                  </For>
+                  <PromptActionChip label="Review" active={confirmTab()} theme={input.theme} />
+                </box>
+              </Show>
+              <Show when={input.payload.mode === "operator"}>
+                <text fg={input.theme.textMuted}>
+                  {`Input requests ${requestKindCounts().inputRequestCount} · Follow-up questions ${requestKindCounts().followUpCount}`}
+                </text>
+              </Show>
               <box flexDirection="row" gap={1}>
                 <text fg={input.theme.warning}>△</text>
-                <text fg={input.theme.text}>Question</text>
+                <text fg={input.theme.text}>
+                  {confirmTab() ? "Review answers" : currentRequest().sourceLabel}
+                </text>
               </box>
             </box>
           }
           body={
             <box paddingLeft={1} flexDirection="column" gap={1}>
-              <text fg={input.theme.text}>{entry().questionText}</text>
-              <text fg={input.theme.textMuted}>{entry().sourceLabel}</text>
-              <Show when={entry().delegate}>
-                <text fg={input.theme.textMuted}>delegate={entry().delegate}</text>
-              </Show>
-              <Show when={entry().runId}>
-                <text fg={input.theme.textMuted}>runId={entry().runId}</text>
+              <Show
+                when={!confirmTab()}
+                fallback={
+                  <box flexDirection="column" gap={1}>
+                    <text fg={input.theme.text}>Review the answers before continuing.</text>
+                    <For each={answerSummary()}>
+                      {(entry) => (
+                        <box flexDirection="column" gap={0}>
+                          <text fg={input.theme.text}>{entry.header}</text>
+                          <text fg={input.theme.textMuted}>{entry.answer}</text>
+                        </box>
+                      )}
+                    </For>
+                  </box>
+                }
+              >
+                <box flexDirection="column" gap={1}>
+                  <text fg={input.theme.text}>
+                    {question()?.questionText}
+                    {question()?.multiple ? " (select all that apply)" : ""}
+                  </text>
+                  <text fg={input.theme.textMuted}>
+                    {question()?.multiple
+                      ? "Select one or more answers, then move to Review."
+                      : "Select one answer to continue."}
+                  </text>
+                  <For each={question()?.options ?? []}>
+                    {(option, index) => {
+                      const selected = (
+                        draft()?.answers[draft()?.activeTabIndex ?? 0] ?? []
+                      ).includes(option.label);
+                      const focused = draft()?.selectedOptionIndex === index();
+                      const marker = question()?.multiple
+                        ? selected
+                          ? "[x]"
+                          : "[ ]"
+                        : selected
+                          ? "(*)"
+                          : "( )";
+                      return (
+                        <box flexDirection="column" gap={0}>
+                          <box backgroundColor={focused ? input.theme.warning : undefined}>
+                            <text
+                              fg={
+                                focused
+                                  ? input.theme.selectionText
+                                  : selected
+                                    ? input.theme.text
+                                    : input.theme.textMuted
+                              }
+                            >
+                              {`${index() + 1}. ${marker} ${option.label}`}
+                            </text>
+                          </box>
+                          <Show when={option.description}>
+                            <text fg={input.theme.textMuted}>{option.description}</text>
+                          </Show>
+                        </box>
+                      );
+                    }}
+                  </For>
+                  <Show when={question()?.custom !== false}>
+                    <box flexDirection="column" gap={0}>
+                      <box
+                        backgroundColor={
+                          draft()?.selectedOptionIndex === customIndex()
+                            ? input.theme.warning
+                            : undefined
+                        }
+                      >
+                        <text
+                          fg={
+                            draft()?.selectedOptionIndex === customIndex()
+                              ? input.theme.selectionText
+                              : input.theme.textMuted
+                          }
+                        >
+                          {`${(question()?.options.length ?? 0) + 1}. ${
+                            question()?.multiple
+                              ? (draft()?.answers[draft()?.activeTabIndex ?? 0] ?? []).includes(
+                                  draft()?.customAnswers[draft()?.activeTabIndex ?? 0] ?? "",
+                                )
+                                ? "[x]"
+                                : "[ ]"
+                              : (draft()?.answers[draft()?.activeTabIndex ?? 0]?.[0] ?? "") ===
+                                  (draft()?.customAnswers[draft()?.activeTabIndex ?? 0] ?? "")
+                                ? "(*)"
+                                : "( )"
+                          } Custom`}
+                        </text>
+                      </box>
+                      <text fg={input.theme.textMuted}>
+                        {draft()?.editingCustom
+                          ? `> ${draft()?.customAnswers[draft()?.activeTabIndex ?? 0] ?? ""}_`
+                          : draft()?.customAnswers[draft()?.activeTabIndex ?? 0] ||
+                            "Type your own answer"}
+                      </text>
+                    </box>
+                  </Show>
+                </box>
               </Show>
             </box>
           }
-          actions={[
-            {
-              label: "Prefill answer",
-              active: true,
-              onSelect: () => {
-                void input.controller.handleSemanticInput({
-                  key: "enter",
-                  ctrl: false,
-                  meta: false,
-                  shift: false,
-                });
-              },
-            },
-          ]}
-          hints={["enter answer", total() > 1 ? "j/k switch" : "", "esc close"].filter(Boolean)}
+          actions={
+            confirmTab()
+              ? [
+                  {
+                    label: "Submit",
+                    active: true,
+                    onSelect: () => {
+                      void input.controller.handleSemanticInput({
+                        key: "enter",
+                        ctrl: false,
+                        meta: false,
+                        shift: false,
+                      });
+                    },
+                  },
+                ]
+              : draft()?.editingCustom
+                ? [
+                    {
+                      label: "Save custom",
+                      active: true,
+                      onSelect: () => {
+                        void input.controller.handleSemanticInput({
+                          key: "enter",
+                          ctrl: false,
+                          meta: false,
+                          shift: false,
+                        });
+                      },
+                    },
+                  ]
+                : []
+          }
+          hints={[
+            total() > 1 ? "pgup/pgdn request" : "",
+            questionTabCount(currentRequest()) > 1 ? "tab switch" : "",
+            !confirmTab() ? "↑↓ choose" : "",
+            !confirmTab() && optionCount() > 0 ? "1-9 pick" : "",
+            !confirmTab() ? "enter select" : "enter submit",
+            "esc dismiss",
+          ].filter(Boolean)}
         />
       )}
     </Show>

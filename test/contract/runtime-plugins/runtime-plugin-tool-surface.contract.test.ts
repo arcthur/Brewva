@@ -543,6 +543,72 @@ describe("tool surface runtime plugin", () => {
     expect(extensionApi.activeTools).toContain("narrative_memory");
   });
 
+  test("interactive hosts keep question visible on the bootstrap surface without an active skill", async () => {
+    const extensionApi = createMockRuntimePluginApi();
+    registerTools(extensionApi.api, [
+      "read",
+      "edit",
+      "write",
+      "session_compact",
+      "skill_load",
+      "workflow_status",
+      "question",
+    ]);
+
+    const runtime = createToolSurfaceRuntime();
+
+    registerToolSurface(extensionApi.api, runtime);
+    await invokeHandlerAsync(
+      extensionApi.handlers,
+      "before_agent_start",
+      {
+        type: "before_agent_start",
+        prompt: "Inspect the workspace state and clarify requirements if they are ambiguous.",
+      },
+      {
+        hasUI: true,
+        sessionManager: {
+          getSessionId: () => "tool-surface-question-interactive",
+        },
+      },
+    );
+
+    expect(extensionApi.activeTools).toContain("question");
+  });
+
+  test("non-interactive hosts hide question even when it is registered on the bootstrap surface", async () => {
+    const extensionApi = createMockRuntimePluginApi();
+    registerTools(extensionApi.api, [
+      "read",
+      "edit",
+      "write",
+      "session_compact",
+      "skill_load",
+      "workflow_status",
+      "question",
+    ]);
+
+    const runtime = createToolSurfaceRuntime();
+
+    registerToolSurface(extensionApi.api, runtime);
+    await invokeHandlerAsync(
+      extensionApi.handlers,
+      "before_agent_start",
+      {
+        type: "before_agent_start",
+        prompt: "Inspect the workspace state and clarify requirements if they are ambiguous.",
+      },
+      {
+        hasUI: false,
+        sessionManager: {
+          getSessionId: () => "tool-surface-question-noninteractive",
+        },
+      },
+    );
+
+    expect(extensionApi.activeTools).not.toContain("question");
+  });
+
   test("explicit requests do not surface operator-gated tools without an operator profile", async () => {
     const extensionApi = createMockRuntimePluginApi();
     registerTools(extensionApi.api, [

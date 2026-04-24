@@ -277,7 +277,7 @@ function coerceStoredReviewOutcomeData(
   const disposition = readString(value.disposition);
   const primaryClaim = readString(value.primaryClaim);
   const strongestCounterpoint = readString(value.strongestCounterpoint);
-  const openQuestions = readStringArray(value.openQuestions);
+  const followUpQuestions = readStringArray(value.followUpQuestions);
   const missingEvidence = readStringArray(value.missingEvidence);
   const confidence = readString(value.confidence);
   const findings = Array.isArray(value.findings)
@@ -293,7 +293,7 @@ function coerceStoredReviewOutcomeData(
     disposition !== "inconclusive" &&
     !primaryClaim &&
     !strongestCounterpoint &&
-    !openQuestions &&
+    !followUpQuestions &&
     !missingEvidence &&
     !(findings && findings.length > 0)
   ) {
@@ -317,7 +317,7 @@ function coerceStoredReviewOutcomeData(
     ...(primaryClaim ? { primaryClaim } : {}),
     ...(findings && findings.length > 0 ? { findings } : {}),
     ...(strongestCounterpoint ? { strongestCounterpoint } : {}),
-    ...(openQuestions ? { openQuestions } : {}),
+    ...(followUpQuestions ? { followUpQuestions } : {}),
     ...(missingEvidence ? { missingEvidence } : {}),
     ...(confidence === "low" || confidence === "medium" || confidence === "high"
       ? { confidence }
@@ -498,7 +498,7 @@ export function buildReviewLaneDelegationTasks(input: {
 }): DelegationTaskPacket[] {
   const deliverable =
     input.packet.deliverable ??
-    "Emit a structured lane review with disposition, evidence-backed findings, missing evidence, and open questions.";
+    "Emit a structured lane review with disposition, evidence-backed findings, missing evidence, and non-blocking follow-up questions when needed.";
   const executionHints = mergeExecutionHints(input.packet.executionHints);
 
   return input.activationPlan.activatedLanes.map((lane) => ({
@@ -513,6 +513,8 @@ export function buildReviewLaneDelegationTasks(input: {
       "Set the structured review outcome lane field to the active review lane.",
       "If the lane clears, emit disposition=clear instead of inventing findings.",
       "If evidence is missing, record it in missingEvidence rather than guessing.",
+      "If the lane is blocked on operator input, emit questionRequests instead of burying the blocker in prose.",
+      "Use followUpQuestions only for non-blocking residual questions that can wait for a later turn.",
       ...input.activationPlan.activationBasis.map((reason) => `Activation basis: ${reason}`),
     ]),
     activeSkillName: input.packet.activeSkillName ?? "review",
@@ -749,7 +751,7 @@ export function synthesizeReviewEnsemble(
     for (const item of data?.missingEvidence ?? []) {
       missingEvidence.push(`${lane}: ${item}`);
     }
-    for (const item of data?.openQuestions ?? []) {
+    for (const item of data?.followUpQuestions ?? []) {
       residualBlindSpots.push(`${lane}: ${item}`);
     }
     if (data?.strongestCounterpoint) {

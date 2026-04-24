@@ -154,4 +154,121 @@ describe("channel turn dispatcher ingress routing", () => {
     expect(dispatcher.getLastTurn("scope-a")?.turnId).toBe("turn-a");
     expect(dispatcher.getLastTurn("scope-c")?.turnId).toBe("turn-c");
   });
+
+  test("given a routed command with a deferred receipt, when the routed turn succeeds, then the dispatcher records the receipt after the agent turn", async () => {
+    const steps: string[] = [];
+    const dispatcher = createChannelTurnDispatcher({
+      runtime: createRuntimeFixture(),
+      recoveryWalStore: {
+        appendPending: () => ({ walId: "wal-1" }),
+        markInflight: () => {
+          steps.push("inflight");
+        },
+        markDone: () => {
+          steps.push("done");
+        },
+        markFailed: () => {
+          steps.push("failed");
+        },
+      } as unknown as RecoveryWalStore,
+      orchestrationEnabled: true,
+      defaultAgentId: "default",
+      commandRouter: {
+        match: () => ({ kind: "questions" }),
+      } as never,
+      replyWriter: {
+        sendControllerReply: async () => undefined,
+        sendAgentOutputs: async () => 0,
+      },
+      resolveScopeKey: () => "telegram:12345",
+      resolveFocusedAgentId: () => "default",
+      isAgentActive: () => true,
+      resolveLiveSessionId: () => "agent-session:default",
+      resolveApprovalTargetAgentId: () => undefined,
+      processUserTurnOnAgent: async (turn) => {
+        steps.push(`process:${turn.parts[0]?.type === "text" ? turn.parts[0].text : "unknown"}`);
+      },
+      handleCommand: async () => ({
+        handled: false,
+        routeAgentId: "reviewer",
+        routeTask: "Use the operator answer and continue.",
+        afterRouteSuccess: () => {
+          steps.push("receipt");
+        },
+      }),
+      prepareCommand: async (match) => ({ match, handled: false }),
+      isShuttingDown: () => false,
+    });
+
+    await dispatcher.enqueueInboundTurn(createUserTurn("/questions"), {
+      awaitCompletion: true,
+    });
+
+    expect(steps).toEqual([
+      "inflight",
+      "process:Use the operator answer and continue.",
+      "receipt",
+      "done",
+    ]);
+  });
+
+  test("given a routed command with a deferred receipt, when the routed turn fails, then the dispatcher does not record the receipt", async () => {
+    const steps: string[] = [];
+    const dispatcher = createChannelTurnDispatcher({
+      runtime: createRuntimeFixture(),
+      recoveryWalStore: {
+        appendPending: () => ({ walId: "wal-1" }),
+        markInflight: () => {
+          steps.push("inflight");
+        },
+        markDone: () => {
+          steps.push("done");
+        },
+        markFailed: () => {
+          steps.push("failed");
+        },
+      } as unknown as RecoveryWalStore,
+      orchestrationEnabled: true,
+      defaultAgentId: "default",
+      commandRouter: {
+        match: () => ({ kind: "questions" }),
+      } as never,
+      replyWriter: {
+        sendControllerReply: async () => undefined,
+        sendAgentOutputs: async () => 0,
+      },
+      resolveScopeKey: () => "telegram:12345",
+      resolveFocusedAgentId: () => "default",
+      isAgentActive: () => true,
+      resolveLiveSessionId: () => "agent-session:default",
+      resolveApprovalTargetAgentId: () => undefined,
+      processUserTurnOnAgent: async () => {
+        steps.push("process");
+        throw new Error("route failed");
+      },
+      handleCommand: async () => ({
+        handled: false,
+        routeAgentId: "reviewer",
+        routeTask: "Use the operator answer and continue.",
+        afterRouteSuccess: () => {
+          steps.push("receipt");
+        },
+      }),
+      prepareCommand: async (match) => ({ match, handled: false }),
+      isShuttingDown: () => false,
+    });
+
+    let caught: unknown;
+    try {
+      await dispatcher.enqueueInboundTurn(createUserTurn("/questions"), {
+        awaitCompletion: true,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toBe("route failed");
+    expect(steps).toEqual(["inflight", "process", "failed"]);
+  });
 });

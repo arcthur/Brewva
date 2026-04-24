@@ -22,6 +22,7 @@ import { createOutputSearchTool } from "./output-search.js";
 import { createPrecedentAuditTool } from "./precedent-audit.js";
 import { createPrecedentSweepTool } from "./precedent-sweep.js";
 import { createProcessTool } from "./process.js";
+import { createQuestionTool } from "./question.js";
 import { createReadSpansTool } from "./read-spans.js";
 import { createReasoningCheckpointTool } from "./reasoning-checkpoint.js";
 import { createReasoningRevertTool } from "./reasoning-revert.js";
@@ -63,6 +64,7 @@ export function buildDefaultBundledBrewvaTools(
     createExecTool({ runtime }),
     ...createBrowserTools({ runtime }),
     createProcessTool(),
+    createQuestionTool(),
     createCostViewTool({ runtime }),
     createDeliberationMemoryTool({ runtime }),
     createNarrativeMemoryTool({ runtime }),

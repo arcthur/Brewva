@@ -172,7 +172,7 @@ changing the inspection contract.
 The overlay/operator RFC is now closed through thin command veneers rather than
 new kernel state:
 
-- `/questions` inspects unresolved session questions derived from durable
+- `/questions` inspects the operator inbox derived from durable
   `skill_completed` outputs and delegated consult outcome artifacts
 - `/answer` records `operator_question_answered` and routes the answer back into
   the active session as explicit operator input

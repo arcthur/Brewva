@@ -1847,8 +1847,9 @@ describe("shell controller", () => {
     controller.dispose();
   });
 
-  test("question overlays seed an answer command into the composer on primary action", async () => {
+  test("interactive question overlays submit the selected answer on primary action", async () => {
     const { bundle } = createFakeBundle();
+    const submissions: Array<readonly (readonly string[])[]> = [];
 
     const controller = new CliShellController(bundle, {
       cwd: process.cwd(),
@@ -1859,7 +1860,9 @@ describe("shell controller", () => {
     controller.openOverlay(
       {
         kind: "question",
+        mode: "interactive",
         selectedIndex: 0,
+        requestTitle: "Agent needs input",
         snapshot: {
           approvals: [],
           questions: [
@@ -1869,13 +1872,26 @@ describe("shell controller", () => {
               createdAt: Date.now(),
               sourceKind: "delegation",
               sourceEventId: "event-1",
+              requestId: "request-1",
+              requestPosition: 0,
+              requestSize: 1,
+              header: "Deploy",
               sourceLabel: "operator",
               questionText: "Proceed with deployment?",
+              options: [
+                { label: "Yes", description: "Continue with deployment" },
+                { label: "No", description: "Stop and revisit the plan" },
+              ],
+              custom: false,
             },
           ],
           taskRuns: [],
           sessions: [],
         },
+        onSubmit: async (_request, answers) => {
+          submissions.push(answers);
+        },
+        onDismiss: async () => {},
       },
       "queued",
     );
@@ -1889,7 +1905,74 @@ describe("shell controller", () => {
 
     expect(consumedEnter).toBe(true);
     expect(controller.getState().overlay.active).toBeUndefined();
-    expect(controller.ui.getEditorText()).toBe("/answer question-1 ");
+    expect(submissions).toEqual([[["Yes"]]]);
+    controller.dispose();
+  });
+
+  test("interactive question custom requests resolve dismissed on abort", async () => {
+    const { bundle, getAttachedUi } = createFakeBundle();
+    const controller = new CliShellController(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+    const ui = getAttachedUi();
+    expect(ui).toBeDefined();
+    const abortController = new AbortController();
+
+    const pending = ui!.custom<readonly (readonly string[])[] | undefined>(
+      "question",
+      {
+        toolCallId: "tool-call-abort",
+        questions: [
+          {
+            header: "Deploy",
+            question: "Proceed with deployment?",
+            options: [{ label: "Yes" }, { label: "No" }],
+            custom: false,
+          },
+        ],
+      },
+      { signal: abortController.signal },
+    );
+
+    expect(controller.getState().overlay.active?.payload?.kind).toBe("question");
+    abortController.abort();
+
+    expect(await pending).toBeUndefined();
+    expect(controller.getState().overlay.active).toBeUndefined();
+    controller.dispose();
+  });
+
+  test("interactive question custom requests resolve dismissed on session switch", async () => {
+    const first = createFakeBundle({ sessionId: "session-1" });
+    const second = createFakeBundle({ sessionId: "session-2" });
+    const controller = new CliShellController(first.bundle, {
+      cwd: process.cwd(),
+      openSession: async (sessionId) => (sessionId === "session-2" ? second.bundle : first.bundle),
+      createSession: async () => second.bundle,
+    });
+    const ui = first.getAttachedUi();
+    expect(ui).toBeDefined();
+
+    const pending = ui!.custom<readonly (readonly string[])[] | undefined>("question", {
+      toolCallId: "tool-call-switch",
+      questions: [
+        {
+          header: "Deploy",
+          question: "Proceed with deployment?",
+          options: [{ label: "Yes" }, { label: "No" }],
+          custom: false,
+        },
+      ],
+    });
+
+    expect(controller.getState().overlay.active?.payload?.kind).toBe("question");
+
+    await controller.openSessionById("session-2");
+
+    expect(await pending).toBeUndefined();
+    expect(controller.getBundle()).toBe(second.bundle);
     controller.dispose();
   });
 
@@ -1927,7 +2010,7 @@ describe("shell controller", () => {
     // After "down", selectedIndex moves to index 1 (questions).
     expect(controller.getState().composer.completion?.items.at(1)).toMatchObject({
       value: "questions",
-      description: "List unresolved operator questions.",
+      description: "Open the operator inbox for pending input.",
     });
     expect(controller.getState().composer.completion?.selectedIndex).toBe(1);
 
@@ -1949,7 +2032,7 @@ describe("shell controller", () => {
       ],
     ).toMatchObject({
       value: "questions",
-      description: "List unresolved operator questions.",
+      description: "Open the operator inbox for pending input.",
     });
 
     controller.dispose();

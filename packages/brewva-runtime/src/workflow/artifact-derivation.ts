@@ -263,16 +263,16 @@ function extractSkillCompletedArtifacts(event: BrewvaEventRecord): WorkflowDraft
   const userPains = outputs.user_pains;
   const scopeRecommendation = outputs.scope_recommendation;
   const designSeed = outputs.design_seed;
-  const openQuestions = outputs.open_questions;
+  const discoveryOpenQuestions = outputs.open_questions;
   if (
     problemFrame !== undefined ||
     userPains !== undefined ||
     scopeRecommendation !== undefined ||
     designSeed !== undefined ||
-    openQuestions !== undefined
+    discoveryOpenQuestions !== undefined
   ) {
     const painCount = readStringArray(userPains).length;
-    const questionCount = readStringArray(openQuestions).length;
+    const questionCount = readStringArray(discoveryOpenQuestions).length;
     const discoverySummaryParts = [
       compactJsonValue(problemFrame) ??
         compactJsonValue(scopeRecommendation) ??

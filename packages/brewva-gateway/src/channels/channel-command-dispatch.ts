@@ -10,4 +10,5 @@ export interface ChannelCommandDispatchResult {
   handled: boolean;
   routeAgentId?: string;
   routeTask?: string;
+  afterRouteSuccess?: () => Promise<void> | void;
 }

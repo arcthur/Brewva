@@ -22,7 +22,7 @@ function buildReviewOutcome(
       evidenceRefs?: string[];
     }>;
     missingEvidence?: string[];
-    openQuestions?: string[];
+    followUpQuestions?: string[];
     strongestCounterpoint?: string;
     summary?: string;
   } = {},
@@ -47,7 +47,7 @@ function buildReviewOutcome(
       ...(input.primaryClaim ? { primaryClaim: input.primaryClaim } : {}),
       ...(input.findings ? { findings: input.findings } : {}),
       ...(input.missingEvidence ? { missingEvidence: input.missingEvidence } : {}),
-      ...(input.openQuestions ? { openQuestions: input.openQuestions } : {}),
+      ...(input.followUpQuestions ? { followUpQuestions: input.followUpQuestions } : {}),
       ...(input.strongestCounterpoint
         ? { strongestCounterpoint: input.strongestCounterpoint }
         : {}),
@@ -174,7 +174,7 @@ describe("review ensemble protocol", () => {
         buildReviewOutcome("review-performance", {
           disposition: "clear",
           primaryClaim: "No hot-path regression signal is visible in the diff alone.",
-          openQuestions: [
+          followUpQuestions: [
             "No throughput regression evidence was attached for replay-heavy scenarios.",
           ],
         }),

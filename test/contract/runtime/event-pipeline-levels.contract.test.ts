@@ -452,7 +452,7 @@ describe("event pipeline level classification", () => {
     ).toBe("governance");
   });
 
-  test("classifies operator questionnaire receipts as governance at audit level", () => {
+  test("classifies operator inbox receipts as governance at audit level", () => {
     const runtime = new BrewvaRuntime({
       cwd: mkdtempSync(join(tmpdir(), "brewva-events-audit-operator-question-")),
       config: createAuditConfig(),

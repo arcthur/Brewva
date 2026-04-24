@@ -105,6 +105,12 @@ Every emitted plan names what was rejected and why.
 
 ## Workflow
 
+### Question Escalation Rule
+
+- If choosing a valid plan depends on a missing operator decision in the current turn, use the `question` tool.
+- Do not hide a blocking missing decision inside prose, `risk_register`, or inherited `open_questions`.
+- Treat consumed `open_questions` as carry-over context for non-blocking uncertainty, not as a substitute for live clarification.
+
 ### Phase 1: Classify planning posture
 
 Run `scripts/classify_planning_posture.py` with scope data. Use the returned posture
@@ -138,8 +144,8 @@ Make boundary ownership, migration posture, verification posture, rollback
 assumptions, and preventive checks explicit. Every deferred decision must be named
 as deferred and assigned to a downstream skill.
 
-**If a key decision cannot be made**: Stop at that decision. Do not paper over
-it with optimistic assumptions.
+**If a key decision cannot be made and the current turn is blocked on operator input**: Use the `question` tool.
+**If a key decision cannot be made but the plan can still proceed with an explicit deferred boundary**: Record it as deferred. Do not paper over it with optimistic assumptions.
 
 ### Phase 5: Emit bounded artifacts
 
@@ -160,6 +166,7 @@ areas.
 - What verification evidence would prove this path was the right one?
 - What migration, rollback, or operator cost is hidden by the most attractive option?
 - What was rejected, and would a downstream reader agree with the rejection?
+- Which missing decision is truly blocking now versus merely worth recording for follow-up?
 
 ## Red Flags — STOP
 

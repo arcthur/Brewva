@@ -750,7 +750,7 @@ Those surfaces are explicit inspection views. They do not become a default
 turn-time workflow brief or a hidden next-step controller.
 
 `operator_question_answered` is not a derived workflow artifact. It is the
-durable operator-input receipt for the questionnaire surface exposed through
+durable operator-input receipt for the operator inbox surface exposed through
 `/questions` and `/answer`. The answer itself remains explicit, replay-visible
 session input rather than hidden channel-local state.
 

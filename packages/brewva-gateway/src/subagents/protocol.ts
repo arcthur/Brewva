@@ -87,7 +87,7 @@ function buildJsonShapeExample(input: {
       evidence: ["Concrete observation anchored to a file, artifact, or logged behavior."],
       counterevidence: ["The strongest signal that could weaken the current conclusion."],
       risks: ["The main risk if the parent acts on the current recommendation."],
-      openQuestions: ["The highest-value unresolved question."],
+      followUpQuestions: ["The highest-value unresolved question that can wait."],
       recommendedNextSteps: ["The strongest next action for the parent agent."],
     } satisfies Record<string, unknown>;
 
@@ -271,7 +271,8 @@ export function buildStructuredOutcomeContract(input: {
             ? [
                 "For review consults, include kind=consult, consultKind=review, lane when applicable, disposition, findings, missingEvidence, and mergePosture.",
                 "If the lane clears, record disposition=clear instead of inventing findings.",
-                "Use missingEvidence and openQuestions for residual blind spots.",
+                "If the lane is blocked on missing operator input, include questionRequests with structured prompts.",
+                "Use missingEvidence and followUpQuestions for residual blind spots; followUpQuestions are non-blocking.",
               ]
             : [
                 "For investigate consults, include kind=consult, consultKind=investigate, conclusion, findings, ownershipHints, and recommendedReads.",
@@ -292,6 +293,12 @@ export function buildStructuredOutcomeContract(input: {
     `- opening marker: ${STRUCTURED_OUTCOME_OPEN}`,
     `- closing marker: ${STRUCTURED_OUTCOME_CLOSE}`,
     "The JSON must describe only the delegated result for this run.",
+    ...(input.resultMode === "consult"
+      ? [
+          "If the delegated work is blocked on missing operator input, include questionRequests as an array of structured requests (title optional, questions required).",
+          "Use followUpQuestions only for non-blocking questions that can wait for a later turn.",
+        ]
+      : []),
     ...skillLines,
     ...modeLines,
     "Use this shape:",

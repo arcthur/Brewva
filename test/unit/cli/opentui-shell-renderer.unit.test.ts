@@ -1329,7 +1329,7 @@ describe("opentui solid shell runtime", () => {
     }
   });
 
-  test("ctrl+o with no open questions renders a visible empty state instead of a blank overlay", async () => {
+  test("ctrl+o with no pending operator input renders a visible empty state instead of a blank overlay", async () => {
     const { bundle } = createFakeBundle();
     const controller = new CliShellController(bundle, {
       cwd: process.cwd(),
@@ -1359,10 +1359,9 @@ describe("opentui solid shell runtime", () => {
 
       const frame = testSetup.captureCharFrame();
       expect(controller.getState().overlay.active?.kind).toBe("question");
-      expect(frame).toContain("No open questions.");
-      expect(frame).toContain(
-        "Brewva will show delegated questions here when a run needs your input.",
-      );
+      expect(frame).toContain("No pending operator input.");
+      expect(frame).toContain("Brewva will show pending input requests and follow-up questions");
+      expect(frame).toContain("your input.");
     } finally {
       controller.dispose();
       testSetup.renderer.destroy();
@@ -1659,17 +1658,45 @@ describe("opentui solid shell runtime", () => {
     await controller.start();
     controller.openOverlay({
       kind: "question",
+      mode: "operator",
       selectedIndex: 0,
       snapshot: {
         approvals: [],
         questions: [
           {
-            questionId: "delegation:run-1:1",
+            questionId: "delegation:run-1:request:1:question:1",
             sessionId: "session-1",
             createdAt: Date.now(),
             sourceKind: "delegation",
             sourceEventId: "event-1",
+            requestId: "delegation:run-1:request:1",
+            requestPosition: 0,
+            requestSize: 2,
+            header: "Scope",
             questionText: "Should I update the config before continuing?",
+            options: [
+              { label: "Yes", description: "Update config first" },
+              { label: "No", description: "Keep the current config" },
+            ],
+            sourceLabel: "delegate label=worker-1 skill=review",
+            runId: "run-1",
+            delegate: "worker-1",
+          },
+          {
+            questionId: "delegation:run-1:request:1:question:2",
+            sessionId: "session-1",
+            createdAt: Date.now(),
+            sourceKind: "delegation",
+            sourceEventId: "event-1",
+            requestId: "delegation:run-1:request:1",
+            requestPosition: 1,
+            requestSize: 2,
+            header: "Risk",
+            questionText: "Which rollout shape should I use?",
+            options: [
+              { label: "Canary", description: "Lower blast radius" },
+              { label: "Full", description: "Fastest rollout" },
+            ],
             sourceLabel: "delegate label=worker-1 skill=review",
             runId: "run-1",
             delegate: "worker-1",
@@ -1692,9 +1719,10 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       await testSetup.renderOnce();
       const frame = testSetup.captureCharFrame();
-      expect(frame).toContain("Question");
+      expect(frame).toContain("Scope");
+      expect(frame).toContain("Review");
       expect(frame).toContain("Should I update the config");
-      expect(frame).toContain("delegate label=worker-1 skill=review");
+      expect(frame).toContain("Custom");
     } finally {
       controller.dispose();
       testSetup.renderer.destroy();

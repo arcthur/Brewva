@@ -3,9 +3,14 @@ import { dirname, join, relative, resolve } from "node:path";
 import {
   OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
   buildOperatorQuestionAnswerPrompt,
+  buildOperatorQuestionRequestAnswerPrompt,
   buildOperatorQuestionAnsweredPayload,
   collectOpenSessionQuestions,
+  flattenQuestionRequest,
   resolveOpenSessionQuestion,
+  resolveOpenSessionQuestionRequest,
+  validateQuestionRequestAnswers,
+  validateSingleQuestionAnswer,
 } from "@brewva/brewva-gateway";
 import { runHostedPromptTurn } from "@brewva/brewva-gateway/host";
 import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
@@ -97,7 +102,7 @@ const SLASH_COMMANDS = [
   },
   {
     command: "questions",
-    description: "List unresolved operator questions.",
+    description: "Open the operator inbox for pending input.",
     argumentMode: "none",
   },
   {
@@ -107,7 +112,7 @@ const SLASH_COMMANDS = [
   },
   {
     command: "answer",
-    description: "Answer a queued operator question.",
+    description: "Answer a pending operator prompt.",
     argumentMode: "required",
   },
   {
@@ -365,6 +370,30 @@ export function createOperatorSurfacePort(input: {
   openSession(sessionId: string): Promise<CliShellSessionBundle>;
   createSession(): Promise<CliShellSessionBundle>;
 }): OperatorSurfacePort {
+  async function deliverOperatorPrompt(inputValue: {
+    bundle: CliShellSessionBundle;
+    sessionId: string;
+    prompt: string;
+  }): Promise<void> {
+    if (inputValue.bundle.session.isStreaming) {
+      await inputValue.bundle.session.prompt([{ type: "text", text: inputValue.prompt }], {
+        source: "interactive",
+        streamingBehavior: "followUp",
+      });
+      return;
+    }
+    const output = await runHostedPromptTurn({
+      session: inputValue.bundle.session,
+      parts: [{ type: "text", text: inputValue.prompt }],
+      source: "interactive",
+      runtime: inputValue.bundle.runtime,
+      sessionId: inputValue.sessionId,
+    });
+    if (output.status === "failed") {
+      throw output.error instanceof Error ? output.error : new Error(String(output.error));
+    }
+  }
+
   return {
     async getSnapshot() {
       const bundle = input.getBundle();
@@ -398,33 +427,57 @@ export function createOperatorSurfacePort(input: {
       if (!question) {
         throw new Error(`question_not_found:${questionId}`);
       }
-      const prompt = buildOperatorQuestionAnswerPrompt({ question, answerText });
-      if (bundle.session.isStreaming) {
-        await bundle.session.prompt([{ type: "text", text: prompt }], {
-          source: "interactive",
-          streamingBehavior: "followUp",
-        });
-      } else {
-        const output = await runHostedPromptTurn({
-          session: bundle.session,
-          parts: [{ type: "text", text: prompt }],
-          source: "interactive",
-          runtime: bundle.runtime,
-          sessionId,
-        });
-        if (output.status === "failed") {
-          throw output.error instanceof Error ? output.error : new Error(String(output.error));
-        }
+      const validatedAnswer = validateSingleQuestionAnswer({ question, answerText });
+      if (!validatedAnswer.ok) {
+        throw new Error(validatedAnswer.error);
       }
+      const prompt = buildOperatorQuestionAnswerPrompt({
+        question,
+        answerText: validatedAnswer.answerText,
+      });
+      await deliverOperatorPrompt({ bundle, sessionId, prompt });
       recordRuntimeEvent(bundle.runtime, {
         sessionId,
         type: OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
         payload: buildOperatorQuestionAnsweredPayload({
           question,
-          answerText,
+          answerText: validatedAnswer.answerText,
           source: "runtime_plugin",
         }),
       });
+    },
+    async answerQuestionRequest(requestId, answers) {
+      const bundle = input.getBundle();
+      const sessionId = bundle.session.sessionManager.getSessionId();
+      const request = await resolveOpenSessionQuestionRequest(bundle.runtime, sessionId, requestId);
+      if (!request) {
+        throw new Error(`question_request_not_found:${requestId}`);
+      }
+      const validatedAnswers = validateQuestionRequestAnswers({ request, answers });
+      if (!validatedAnswers.ok) {
+        throw new Error(validatedAnswers.error);
+      }
+      const prompt = buildOperatorQuestionRequestAnswerPrompt({
+        request,
+        answers: validatedAnswers.answers,
+      });
+      await deliverOperatorPrompt({ bundle, sessionId, prompt });
+      const flatQuestions = flattenQuestionRequest(request);
+      for (const [index, question] of flatQuestions.entries()) {
+        const answerText = validatedAnswers.answers[index]?.join(", ");
+        if (!answerText) {
+          continue;
+        }
+        recordRuntimeEvent(bundle.runtime, {
+          sessionId,
+          type: OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
+          payload: buildOperatorQuestionAnsweredPayload({
+            question,
+            answerText,
+            source: "runtime_plugin",
+          }),
+        });
+      }
     },
     async stopTask(runId) {
       const bundle = input.getBundle();

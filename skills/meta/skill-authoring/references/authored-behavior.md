@@ -45,6 +45,15 @@ Good interaction rules are:
 - provide one recommended path plus one bounded alternative
 - avoid open-ended brainstorming once the task is execution-ready
 
+For interactive operator-facing skills, make the blocking path explicit:
+
+- if the current turn is blocked on a missing operator or user decision, use the
+  live `question` tool
+- reserve `open_questions` or similar output artifacts for non-blocking,
+  downstream uncertainty
+- do not hide a blocking decision inside prose, a risk register, or a deferred
+  follow-up list
+
 ### Decision Protocol
 
 Explain how the skill should make choices, not just what outputs it should

@@ -38,9 +38,15 @@ export function buildBrewvaSystemPrompt(options: BuildBrewvaSystemPromptOptions 
   const promptGuidelines = new Set<string>();
   const hasExec = selectedTools.includes("exec");
   const hasRead = selectedTools.includes("read");
+  const hasQuestion = selectedTools.includes("question");
 
   if (hasExec) {
     promptGuidelines.add("Prefer direct, deterministic tool usage over narration.");
+  }
+  if (hasQuestion) {
+    promptGuidelines.add(
+      "When progress depends on a blocking user choice or missing requirement, use the question tool instead of asking only in prose or deferring it into open_questions.",
+    );
   }
   promptGuidelines.add("Be concise in responses.");
   promptGuidelines.add("Show file paths clearly when working with files.");

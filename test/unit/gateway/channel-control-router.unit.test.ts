@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import {
+  OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
+  SKILL_COMPLETED_EVENT_TYPE,
+} from "@brewva/brewva-runtime";
 import type { TurnEnvelope } from "@brewva/brewva-runtime/channels";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import { createChannelControlRouter } from "../../../packages/brewva-gateway/src/channels/channel-control-router.js";
 import { createChannelUpdateLockManager } from "../../../packages/brewva-gateway/src/channels/channel-update-lock.js";
+import { collectOpenSessionQuestions } from "../../../packages/brewva-gateway/src/operator-questions.js";
 import { createRuntimeFixture } from "../../helpers/runtime.js";
 
 function createUserTurn(text: string): TurnEnvelope {
@@ -129,5 +135,91 @@ describe("channel control router ownership", () => {
     expect(replies[0]).toContain("Update already in progress");
 
     first.release?.();
+  });
+
+  test("given an answer command, when the router builds a routed task, then it defers the answer receipt until the post-success callback runs", async () => {
+    const runtime = createRuntimeFixture();
+    const sessionId = "agent-session:worker";
+
+    recordRuntimeEvent(runtime, {
+      sessionId,
+      type: SKILL_COMPLETED_EVENT_TYPE,
+      payload: {
+        skillName: "discovery",
+        outputs: {
+          open_questions: ["Which deployment target should the gateway use?"],
+        },
+      },
+    });
+
+    const collection = await collectOpenSessionQuestions(runtime, sessionId);
+    const questionId = collection.questions[0]?.questionId;
+    expect(questionId).toBeDefined();
+
+    const router = createChannelControlRouter({
+      runtime,
+      registry: {
+        resolveFocus: () => "worker",
+        isActive: () => true,
+      } as never,
+      orchestrationConfig: {
+        enabled: true,
+        owners: { telegram: [] },
+        aclModeWhenOwnersEmpty: "open",
+      } as never,
+      replyWriter: {
+        sendControllerReply: async () => undefined,
+        sendAgentOutputs: async () => 0,
+      },
+      coordinator: {
+        fanOut: async () => ({ ok: true, results: [] }),
+        discuss: async () => ({ ok: true, rounds: [], stoppedEarly: false }),
+      },
+      renderAgentsSnapshot: () => "active agents snapshot",
+      openLiveSession: () => undefined,
+      resolveQuestionSurface: async () => ({
+        runtime,
+        sessionIds: [sessionId],
+      }),
+      cleanupAgentSessions: async () => undefined,
+      disposeAgentRuntime: () => true,
+      updateLock: createChannelUpdateLockManager({
+        updateExecutionScope: {
+          lockKey: "workspace-update",
+          lockTarget: "workspace",
+        },
+      }),
+      updateExecutionScope: {
+        lockKey: "workspace-update",
+        lockTarget: "workspace",
+      },
+    });
+
+    const result = await router.handleCommand(
+      {
+        kind: "answer",
+        questionId: questionId!,
+        answerText: "Use the daemon path.",
+      },
+      createUserTurn(`/answer ${questionId!} Use the daemon path.`),
+      "scope-1",
+    );
+
+    expect(result.handled).toBe(false);
+    expect(result.routeTask).toContain("Use the daemon path.");
+    expect(result.afterRouteSuccess).toBeFunction();
+    expect(
+      runtime.inspect.events.query(sessionId, {
+        type: OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
+      }),
+    ).toHaveLength(0);
+
+    await result.afterRouteSuccess?.();
+
+    expect(
+      runtime.inspect.events.query(sessionId, {
+        type: OPERATOR_QUESTION_ANSWERED_EVENT_TYPE,
+      }),
+    ).toHaveLength(1);
   });
 });

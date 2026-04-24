@@ -133,10 +133,11 @@ channel session. It follows live conversation focus and does not perform the
 default "latest replayable session" selection used by the standalone
 `brewva inspect` subcommand.
 
-`/questions` and `/answer` expose the operator questionnaire UX. Only
-`/answer` records the durable `operator_question_answered` receipt described in
-`docs/reference/events.md`; listing or clearing questions is session-local
-presentation behavior.
+`/questions` and `/answer` expose the operator inbox UX. `/questions` presents
+pending operator input derived from durable session state, split product-side
+into input requests and follow-up questions. Only `/answer` records the durable
+`operator_question_answered` receipt described in `docs/reference/events.md`;
+listing or clearing inbox items is session-local presentation behavior.
 
 ## Channel Orchestration Commands
 
@@ -157,8 +158,8 @@ control-plane command set:
 - `/discuss @a,@b [maxRounds=N] <topic>`
 - `@agent <task>`
 
-`/questions` and `/answer` are the operator questionnaire surface described by
-the overlay RFC: open questions remain derived from durable session state, and
+`/questions` and `/answer` are the operator inbox surface described by the
+overlay RFC: pending inbox items remain derived from durable session state, and
 answering a question records `operator_question_answered` before the answer is
 routed back into the target session.
 

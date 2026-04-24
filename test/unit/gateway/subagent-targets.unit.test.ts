@@ -125,6 +125,8 @@ describe("delegation prompt and catalog composition", () => {
       '"primaryClaim": "The cutover still leaves one legacy replay branch reachable."',
     );
     expect(prompt).toContain('"missingEvidence": [');
+    expect(prompt).toContain('"followUpQuestions": [');
+    expect(prompt).toContain("include questionRequests as an array of structured requests");
   });
 
   test("injects QA anti-rationalization guidance into delegated prompts", () => {

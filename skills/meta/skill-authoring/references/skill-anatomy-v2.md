@@ -66,6 +66,11 @@ Bullet lists of concrete triggers and counter-triggers. Match the frontmatter
 
 Numbered phases with **explicit failure branches**.
 
+When a phase cannot proceed because the current turn is blocked on missing
+operator or user input, the failure branch should say so directly and route to
+the live `question` tool. Do not defer a blocking ambiguity into
+`open_questions` or another end-of-turn artifact.
+
 ### Phase 1: Reproduce the failure
 
 Capture the failing command, first error line, and affected boundary.
@@ -219,3 +224,5 @@ description: Use when a diff or change plan needs risk review, merge readiness, 
 - Examples that list artifact names without showing content
 - Workflow steps without failure branches
 - Description fields that summarize the workflow
+- `open_questions`-style artifacts used as a dumping ground for blocking
+  ambiguity that should have triggered the live `question` tool

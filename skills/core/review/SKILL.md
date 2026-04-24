@@ -151,9 +151,9 @@ Produce `review_findings`, `review_report`, `merge_decision`.
 - `scripts/validate_lane_outcome.py` — Input: lane outcome object or array.
   Output: valid, errors. Enforces canonical child schema (lane, disposition,
   primaryClaim, findings required when non-clear, optional missingEvidence /
-  openQuestions / strongestCounterpoint). Accepts snake_case compatibility
-  aliases on input, but child review lanes should emit camelCase fields. Run on
-  each lane result before synthesis.
+  followUpQuestions / strongestCounterpoint). Rejects removed legacy aliases and
+  old `openQuestions` naming; child review lanes must emit the canonical
+  camelCase fields. Run on each lane result before synthesis.
 - `scripts/detect_secret_exposure.py` — Input: files array with path + content.
   Output: clean (bool), findings. Security GATE — any finding = blocked.
   Run before Phase 4 synthesis.
