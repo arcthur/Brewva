@@ -19,8 +19,8 @@ import {
   type BrewvaToolUiPort,
 } from "@brewva/brewva-substrate";
 import { DEFAULT_TUI_THEME } from "@brewva/brewva-tui";
-import { CliShellController } from "../../../packages/brewva-cli/src/shell/controller.js";
 import { createCliShellPromptStore } from "../../../packages/brewva-cli/src/shell/prompt-store.js";
+import { CliShellRuntime } from "../../../packages/brewva-cli/src/shell/runtime.js";
 import type {
   CliShellSessionBundle,
   ProviderAuthMethod,
@@ -63,7 +63,7 @@ function createFakeBundle(
     },
   ];
   const runtime = new BrewvaRuntime({
-    cwd: mkdtempSync(join(tmpdir(), "brewva-shell-controller-")),
+    cwd: mkdtempSync(join(tmpdir(), "brewva-shell-runtime-")),
   });
   Object.assign(runtime.authority.proposals, {
     decideEffectCommitment(_sessionId: string, requestId: string, input: unknown) {
@@ -243,24 +243,24 @@ function createFakeBundle(
   };
 }
 
-describe("shell controller", () => {
+describe("shell runtime", () => {
   test("attaches the shell ui port to the managed session", () => {
     const { bundle, getAttachedUi } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    expect(getAttachedUi()).toBe(controller.ui);
-    controller.dispose();
+    expect(getAttachedUi()).toBe(runtime.ui);
+    runtime.dispose();
   });
 
   test("routes theme selection through shell state so the renderer can react to it", () => {
     const { bundle } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
@@ -273,77 +273,77 @@ describe("shell controller", () => {
       borderActive: "#7dd3fc",
     };
 
-    expect(controller.getState().theme).toEqual(DEFAULT_TUI_THEME);
-    expect(controller.ui.getTheme("default")).toEqual(DEFAULT_TUI_THEME);
-    expect(controller.ui.getAllThemes()).toEqual([
+    expect(runtime.getViewState().theme).toEqual(DEFAULT_TUI_THEME);
+    expect(runtime.ui.getTheme("default")).toEqual(DEFAULT_TUI_THEME);
+    expect(runtime.ui.getAllThemes()).toEqual([
       { name: "default" },
       { name: "graphite" },
       { name: "paper" },
     ]);
-    expect(controller.ui.setTheme(customTheme)).toEqual({ success: true });
-    expect(controller.getState().theme).toEqual(customTheme);
-    expect(controller.ui.theme).toEqual(customTheme);
-    controller.dispose();
+    expect(runtime.ui.setTheme(customTheme)).toEqual({ success: true });
+    expect(runtime.getViewState().theme).toEqual(customTheme);
+    expect(runtime.ui.theme).toEqual(customTheme);
+    runtime.dispose();
   });
 
   test("handles theme shell commands for listing and switching built-in themes", async () => {
     const { bundle } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/theme list");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/theme list");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().notifications.at(-1)).toMatchObject({
+    expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
       level: "info",
       message: "Available themes: default, graphite, paper",
     });
 
-    controller.ui.setEditorText("/theme paper");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/theme paper");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().theme.name).toBe("paper");
+    expect(runtime.getViewState().theme.name).toBe("paper");
 
-    controller.ui.setEditorText("/theme missing");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/theme missing");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().notifications.at(-1)).toMatchObject({
+    expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
       level: "warning",
       message: "Unknown theme selection.",
     });
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("slash completion exposes model and transcript view commands while omitting legacy auth commands", () => {
     const { bundle } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/");
-    const slashValues = controller.getState().composer.completion?.items.map((item) => item.value);
+    runtime.ui.setEditorText("/");
+    const slashValues = runtime.getViewState().composer.completion?.items.map((item) => item.value);
 
     expect(slashValues).toContain("models");
     expect(slashValues).toContain("connect");
@@ -355,58 +355,58 @@ describe("shell controller", () => {
     expect(slashValues).not.toContain("credentials");
     expect(slashValues).not.toContain("auth");
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("/help opens the help hub overlay", async () => {
     const { bundle } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/help");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/help");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "helpHub",
       title: "Help",
     });
-    expect(controller.getState().overlay.active?.lines?.join("\n") ?? "").toContain("Ctrl+K");
+    expect(runtime.getViewState().overlay.active?.lines?.join("\n") ?? "").toContain("Ctrl+K");
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("ctrl+k opens command palette and can run model search result", async () => {
     const { bundle } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "k",
       ctrl: true,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "commandPalette",
       title: "Commands",
     });
 
     for (const text of "model") {
-      await controller.handleSemanticInput({
+      await runtime.handleInput({
         key: "character",
         text,
         ctrl: false,
@@ -415,7 +415,7 @@ describe("shell controller", () => {
       });
     }
 
-    const palette = controller.getState().overlay.active?.payload;
+    const palette = runtime.getViewState().overlay.active?.payload;
     expect(palette).toMatchObject({
       kind: "commandPalette",
       query: "model",
@@ -424,32 +424,32 @@ describe("shell controller", () => {
       "Switch model",
     );
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "modelPicker",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("quit slash aliases resolve through the command provider", async () => {
     const { bundle } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    const exited = controller.waitForExit();
-    controller.ui.setEditorText("/exit");
-    await controller.handleSemanticInput({
+    const exited = runtime.waitForExit();
+    runtime.ui.setEditorText("/exit");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -457,105 +457,105 @@ describe("shell controller", () => {
     });
     await exited;
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("thinking and tool-details slash commands update durable shell view preferences", async () => {
     const fixture = createFakeBundle();
-    const controller = new CliShellController(fixture.bundle, {
+    const runtime = new CliShellRuntime(fixture.bundle, {
       cwd: process.cwd(),
       openSession: async () => fixture.bundle,
       createSession: async () => fixture.bundle,
     });
 
-    expect(controller.getState().view.showThinking).toBe(true);
-    expect(controller.getState().status.toolsExpanded).toBe(true);
+    expect(runtime.getViewState().view.showThinking).toBe(true);
+    expect(runtime.getViewState().view.toolDetails).toBe(true);
 
-    controller.ui.setEditorText("/thinking");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/thinking");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().view.showThinking).toBe(false);
+    expect(runtime.getViewState().view.showThinking).toBe(false);
     expect(fixture.getShellViewPreferences().showThinking).toBe(false);
     expect(fixture.getShellViewPreferences().toolDetails).toBe(true);
 
-    controller.ui.setEditorText("/tool-details");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/tool-details");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().status.toolsExpanded).toBe(false);
+    expect(runtime.getViewState().view.toolDetails).toBe(false);
     expect(fixture.getShellViewPreferences()).toEqual({
       showThinking: false,
       toolDetails: false,
     });
 
-    controller.dispose();
+    runtime.dispose();
 
-    const restored = new CliShellController(fixture.bundle, {
+    const restored = new CliShellRuntime(fixture.bundle, {
       cwd: process.cwd(),
       openSession: async () => fixture.bundle,
       createSession: async () => fixture.bundle,
       operatorPollIntervalMs: 60_000,
     });
     await restored.start();
-    expect(restored.getState().view.showThinking).toBe(false);
-    expect(restored.getState().status.toolsExpanded).toBe(false);
+    expect(restored.getViewState().view.showThinking).toBe(false);
+    expect(restored.getViewState().view.toolDetails).toBe(false);
     restored.dispose();
   });
 
   test("diff slash commands update and persist transcript diff preferences", async () => {
     const fixture = createFakeBundle();
-    const controller = new CliShellController(fixture.bundle, {
+    const runtime = new CliShellRuntime(fixture.bundle, {
       cwd: process.cwd(),
       openSession: async () => fixture.bundle,
       createSession: async () => fixture.bundle,
     });
 
-    expect(controller.getState().diff).toEqual({ style: "auto", wrapMode: "word" });
+    expect(runtime.getViewState().diff).toEqual({ style: "auto", wrapMode: "word" });
 
-    controller.ui.setEditorText("/diffwrap");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/diffwrap");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().diff.wrapMode).toBe("none");
+    expect(runtime.getViewState().diff.wrapMode).toBe("none");
     expect(fixture.getDiffPreferences().wrapMode).toBe("none");
 
-    controller.ui.setEditorText("/diffstyle");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/diffstyle");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().diff.style).toBe("stacked");
+    expect(runtime.getViewState().diff.style).toBe("stacked");
     expect(fixture.getDiffPreferences().style).toBe("stacked");
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("enter on no-argument slash completion executes the selected command", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/mo");
-    expect(controller.getState().composer.completion?.items[0]).toMatchObject({
+    runtime.ui.setEditorText("/mo");
+    expect(runtime.getViewState().composer.completion?.items[0]).toMatchObject({
       kind: "command",
       value: "models",
       accept: {
@@ -564,34 +564,34 @@ describe("shell controller", () => {
       },
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.ui.getEditorText()).toBe("");
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.ui.getEditorText()).toBe("");
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "modelPicker",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("typing a slash query resets selection to the best matching command", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
     for (const text of ["/", "/c", "/co", "/con"]) {
-      controller.ui.setEditorText(text);
+      runtime.ui.setEditorText(text);
     }
 
-    const completion = controller.getState().composer.completion;
+    const completion = runtime.getViewState().composer.completion;
     expect(completion?.items[completion.selectedIndex]).toMatchObject({
       kind: "command",
       value: "connect",
@@ -601,31 +601,31 @@ describe("shell controller", () => {
       },
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.ui.getEditorText()).toBe("");
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.ui.getEditorText()).toBe("");
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "providerPicker",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("enter on required-argument slash completion inserts the command for continued input", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/ans");
-    expect(controller.getState().composer.completion?.items[0]).toMatchObject({
+    runtime.ui.setEditorText("/ans");
+    expect(runtime.getViewState().composer.completion?.items[0]).toMatchObject({
       kind: "command",
       value: "answer",
       accept: {
@@ -635,39 +635,39 @@ describe("shell controller", () => {
       },
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.ui.getEditorText()).toBe("/answer ");
-    expect(controller.getState().overlay.active).toBeUndefined();
+    expect(runtime.ui.getEditorText()).toBe("/answer ");
+    expect(runtime.getViewState().overlay.active).toBeUndefined();
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("tab on slash completion still expands text for optional command arguments", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/mo");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/mo");
+    await runtime.handleInput({
       key: "tab",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.ui.getEditorText()).toBe("/models ");
-    expect(controller.getState().overlay.active).toBeUndefined();
+    expect(runtime.ui.getEditorText()).toBe("/models ");
+    expect(runtime.getViewState().overlay.active).toBeUndefined();
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("model picker selects models and persists recent/favorite preferences outside prompt turns", async () => {
@@ -691,25 +691,25 @@ describe("shell controller", () => {
     ];
     const fixture = createFakeBundle({ models });
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/models ");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/models ");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "modelPicker",
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "character",
       text: "f",
       ctrl: false,
@@ -721,7 +721,7 @@ describe("shell controller", () => {
       { provider: "anthropic", id: "claude-opus-4-6" },
     ]);
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -732,16 +732,16 @@ describe("shell controller", () => {
       provider: "anthropic",
       id: "claude-opus-4-6",
     });
-    expect(controller.getState().status.entries.model).toBe("anthropic/claude-opus-4-6");
+    expect(runtime.getViewState().status.entries.model).toBe("anthropic/claude-opus-4-6");
     expect(fixture.getModelPreferences().recent[0]).toEqual({
       provider: "anthropic",
       id: "claude-opus-4-6",
     });
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "thinkingPicker",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("model picker supports arrow and ctrl-n/ctrl-p navigation before selecting", async () => {
@@ -765,59 +765,59 @@ describe("shell controller", () => {
     ];
     const fixture = createFakeBundle({ models });
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/models ");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/models ");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "modelPicker",
       selectedIndex: 0,
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "n",
       ctrl: true,
       meta: false,
       shift: false,
     });
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "modelPicker",
       selectedIndex: 1,
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "p",
       ctrl: true,
       meta: false,
       shift: false,
     });
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "modelPicker",
       selectedIndex: 0,
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "arrowdown",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "modelPicker",
       selectedIndex: 1,
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -828,9 +828,9 @@ describe("shell controller", () => {
       provider: "openai",
       id: "gpt-5.4-beta",
     });
-    expect(controller.getState().overlay.active).toBeUndefined();
+    expect(runtime.getViewState().overlay.active).toBeUndefined();
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("model picker exposes disconnected providers when model search matches their catalog", async () => {
@@ -876,21 +876,21 @@ describe("shell controller", () => {
     ];
     const fixture = createFakeBundle({ models, availableModelKeys: [], providers });
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/models gpt");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/models gpt");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    const payload = controller.getState().overlay.active?.payload;
+    const payload = runtime.getViewState().overlay.active?.payload;
     expect(payload).toMatchObject({
       kind: "modelPicker",
       query: "gpt",
@@ -902,7 +902,7 @@ describe("shell controller", () => {
     expect(payload.items.map((item) => item.label)).toEqual(["OpenAI", "OpenAI Codex"]);
     expect(payload.items.every((item) => item.kind === "connect_provider")).toBe(true);
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("model picker rows keep long provider model ids out of inline details", async () => {
@@ -917,21 +917,21 @@ describe("shell controller", () => {
       },
     ];
     const { bundle } = createFakeBundle({ models });
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/models gemini");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/models gemini");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    const payload = controller.getState().overlay.active?.payload;
+    const payload = runtime.getViewState().overlay.active?.payload;
     if (payload?.kind !== "modelPicker") {
       throw new Error("Expected model picker payload.");
     }
@@ -944,7 +944,7 @@ describe("shell controller", () => {
       footer: undefined,
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("model picker routes disconnected OpenAI Codex models through the consolidated OpenAI connect flow", async () => {
@@ -1013,20 +1013,20 @@ describe("shell controller", () => {
       },
     });
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/models codex");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/models codex");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -1034,7 +1034,7 @@ describe("shell controller", () => {
     });
     await Bun.sleep(0);
 
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "authMethodPicker",
       items: [
         { id: "chatgpt_browser", label: "ChatGPT Pro/Plus (browser)", detail: "OAuth" },
@@ -1043,7 +1043,7 @@ describe("shell controller", () => {
       ],
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("model picker fuzzy search matches non-contiguous model names", async () => {
@@ -1066,21 +1066,21 @@ describe("shell controller", () => {
       },
     ];
     const { bundle } = createFakeBundle({ models });
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/models gmni");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/models gmni");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    const payload = controller.getState().overlay.active?.payload;
+    const payload = runtime.getViewState().overlay.active?.payload;
     if (payload?.kind !== "modelPicker") {
       throw new Error("Expected model picker payload.");
     }
@@ -1089,7 +1089,7 @@ describe("shell controller", () => {
       "Gemini 2.5 Flash Lite Preview 06-17",
     ]);
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("model picker c shortcut opens the provider connection picker", async () => {
@@ -1109,34 +1109,34 @@ describe("shell controller", () => {
     ];
     const fixture = createFakeBundle({ providers });
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/models ");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/models ");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "character",
       text: "codex",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "character",
       text: " ",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "character",
       text: "c",
       ctrl: false,
@@ -1144,12 +1144,12 @@ describe("shell controller", () => {
       shift: false,
     });
 
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "providerPicker",
       query: "codex ",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("picker backspace on an empty query does not rebuild the active overlay", async () => {
@@ -1167,33 +1167,33 @@ describe("shell controller", () => {
     ];
     const fixture = createFakeBundle({ providers });
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/connect ");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/connect ");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    const before = controller.getState().overlay.active?.payload;
+    const before = runtime.getViewState().overlay.active?.payload;
     expect(before).toMatchObject({ kind: "providerPicker", query: "" });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "backspace",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().overlay.active?.payload).toBe(before);
+    expect(runtime.getViewState().overlay.active?.payload).toBe(before);
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("provider picker supports ctrl-n/ctrl-p navigation before opening connect flow", async () => {
@@ -1221,54 +1221,54 @@ describe("shell controller", () => {
     ];
     const fixture = createFakeBundle({ providers });
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/connect ");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/connect ");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "providerPicker",
       selectedIndex: 0,
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "n",
       ctrl: true,
       meta: false,
       shift: false,
     });
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "providerPicker",
       selectedIndex: 1,
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "p",
       ctrl: true,
       meta: false,
       shift: false,
     });
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "providerPicker",
       selectedIndex: 0,
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "down",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -1276,20 +1276,20 @@ describe("shell controller", () => {
     });
     await Bun.sleep(0);
 
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "input",
       message: "API key for Anthropic (vault://anthropic/apiKey)",
       masked: true,
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "character",
       text: "sk-test",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -1298,12 +1298,12 @@ describe("shell controller", () => {
     await Bun.sleep(0);
 
     expect(fixture.providerConnects).toEqual([{ provider: "anthropic", key: "sk-test" }]);
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "modelPicker",
       providerFilter: "anthropic",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("provider connect flow warns when a provider exposes no in-TUI auth methods", async () => {
@@ -1326,20 +1326,20 @@ describe("shell controller", () => {
       },
     });
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/connect ");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/connect ");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -1347,13 +1347,13 @@ describe("shell controller", () => {
     });
     await Bun.sleep(0);
 
-    expect(controller.getState().notifications.at(-1)).toMatchObject({
+    expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
       level: "warning",
       message:
         "External Provider does not expose an in-TUI auth flow. Configure provider auth, then reopen /models.",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("provider connect flow supports OAuth method selection and auto completion", async () => {
@@ -1419,20 +1419,20 @@ describe("shell controller", () => {
       },
     });
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/connect ");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/connect ");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -1440,7 +1440,7 @@ describe("shell controller", () => {
     });
     await Bun.sleep(0);
 
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "authMethodPicker",
       items: [
         { id: "chatgpt_browser", label: "ChatGPT Pro/Plus (browser)", detail: "OAuth" },
@@ -1449,7 +1449,7 @@ describe("shell controller", () => {
       ],
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -1461,12 +1461,12 @@ describe("shell controller", () => {
     expect(completeCalls).toEqual([
       { provider: "openai", methodId: "chatgpt_browser", code: undefined },
     ]);
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "modelPicker",
       providerFilter: "openai-codex",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("provider connect flow lets browser OAuth paste a redirect URL from the wait dialog", async () => {
@@ -1521,25 +1521,25 @@ describe("shell controller", () => {
       },
     });
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/connect ");
-    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
-    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
-    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    runtime.ui.setEditorText("/connect ");
+    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
     await Bun.sleep(0);
 
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "input",
       title: "ChatGPT Pro/Plus (browser)",
     });
 
     for (const text of ["h", "t", "t", "p", "s", ":", "/", "/", "callback", "?", "code=abc"]) {
-      await controller.handleSemanticInput({
+      await runtime.handleInput({
         key: "character",
         text,
         ctrl: false,
@@ -1547,7 +1547,7 @@ describe("shell controller", () => {
         shift: false,
       });
     }
-    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
     finishBrowserWait?.();
     await Bun.sleep(0);
 
@@ -1555,12 +1555,12 @@ describe("shell controller", () => {
       { provider: "openai", methodId: "chatgpt_browser", code: undefined },
       { provider: "openai", methodId: "chatgpt_browser", code: "https://callback?code=abc" },
     ]);
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "modelPicker",
       providerFilter: "openai-codex",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("provider connect flow closes manual OAuth input when browser OAuth completes", async () => {
@@ -1614,19 +1614,19 @@ describe("shell controller", () => {
       },
     });
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/connect ");
-    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
-    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
-    await controller.handleSemanticInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    runtime.ui.setEditorText("/connect ");
+    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
     await Bun.sleep(0);
 
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "input",
       title: "ChatGPT Pro/Plus (browser)",
     });
@@ -1637,12 +1637,12 @@ describe("shell controller", () => {
     expect(completeCalls).toEqual([
       { provider: "openai", methodId: "chatgpt_browser", code: undefined },
     ]);
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "modelPicker",
       providerFilter: "openai-codex",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("provider connect flow does not switch auth methods when browser OAuth fails", async () => {
@@ -1715,20 +1715,20 @@ describe("shell controller", () => {
       },
     });
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/connect ");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/connect ");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -1736,7 +1736,7 @@ describe("shell controller", () => {
     });
     await Bun.sleep(0);
 
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "authMethodPicker",
       items: [
         { id: "chatgpt_browser", label: "ChatGPT Pro/Plus (browser)", detail: "OAuth" },
@@ -1745,7 +1745,7 @@ describe("shell controller", () => {
       ],
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -1756,8 +1756,8 @@ describe("shell controller", () => {
     expect(oauthCalls).toEqual([{ provider: "openai", methodId: "chatgpt_browser", inputs: {} }]);
     expect(completeCalls).toEqual([]);
     expect(
-      controller
-        .getState()
+      runtime
+        .getViewState()
         .notifications.some(
           (notification) =>
             notification.level === "error" &&
@@ -1766,7 +1766,7 @@ describe("shell controller", () => {
         ),
     ).toBe(true);
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("provider connect flow collects conditional OAuth prompts", async () => {
@@ -1830,46 +1830,46 @@ describe("shell controller", () => {
       async completeOAuth() {},
     });
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/connect ");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/connect ");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
     await Bun.sleep(0);
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "down",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "character",
       text: "company.ghe.com",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -1888,20 +1888,20 @@ describe("shell controller", () => {
       },
     ]);
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("modal approval overlays suspend composer input and support reject shortcuts", async () => {
     const { bundle, approvalDecisions } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("draft");
-    controller.openOverlay(
+    runtime.ui.setEditorText("draft");
+    runtime.openOverlay(
       {
         kind: "approval",
         selectedIndex: 0,
@@ -1929,7 +1929,7 @@ describe("shell controller", () => {
       "queued",
     );
 
-    const consumedCharacter = await controller.handleSemanticInput({
+    const consumedCharacter = await runtime.handleInput({
       key: "character",
       text: "x",
       ctrl: false,
@@ -1937,10 +1937,10 @@ describe("shell controller", () => {
       shift: false,
     });
     expect(consumedCharacter).toBe(true);
-    expect(controller.ui.getEditorText()).toBe("draft");
+    expect(runtime.ui.getEditorText()).toBe("draft");
     expect(approvalDecisions).toHaveLength(0);
 
-    const consumedReject = await controller.handleSemanticInput({
+    const consumedReject = await runtime.handleInput({
       key: "character",
       text: "r",
       ctrl: false,
@@ -1958,60 +1958,42 @@ describe("shell controller", () => {
         },
       },
     ]);
-    expect(controller.ui.getEditorText()).toBe("draft");
-    controller.dispose();
+    expect(runtime.ui.getEditorText()).toBe("draft");
+    runtime.dispose();
   });
 
   test("interactive question overlays submit the selected answer on primary action", async () => {
-    const { bundle } = createFakeBundle();
-    const submissions: Array<readonly (readonly string[])[]> = [];
+    const { bundle, getAttachedUi } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
+    const ui = getAttachedUi();
+    expect(ui).toBeDefined();
 
-    controller.openOverlay(
+    const submission = ui!.custom<readonly (readonly string[])[] | undefined>(
+      "question",
       {
-        kind: "question",
-        mode: "interactive",
-        selectedIndex: 0,
-        requestTitle: "Agent needs input",
-        snapshot: {
-          approvals: [],
-          questions: [
-            {
-              questionId: "question-1",
-              sessionId: "session-1",
-              createdAt: Date.now(),
-              sourceKind: "delegation",
-              sourceEventId: "event-1",
-              requestId: "request-1",
-              requestPosition: 0,
-              requestSize: 1,
-              header: "Deploy",
-              sourceLabel: "operator",
-              questionText: "Proceed with deployment?",
-              options: [
-                { label: "Yes", description: "Continue with deployment" },
-                { label: "No", description: "Stop and revisit the plan" },
-              ],
-              custom: false,
-            },
-          ],
-          taskRuns: [],
-          sessions: [],
-        },
-        onSubmit: async (_request, answers) => {
-          submissions.push(answers);
-        },
-        onDismiss: async () => {},
+        toolCallId: "tool-call-submit",
+        title: "Agent needs input",
+        questions: [
+          {
+            header: "Deploy",
+            question: "Proceed with deployment?",
+            options: [
+              { label: "Yes", description: "Continue with deployment" },
+              { label: "No", description: "Stop and revisit the plan" },
+            ],
+            custom: false,
+          },
+        ],
       },
-      "queued",
+      {},
     );
 
-    const consumedEnter = await controller.handleSemanticInput({
+    const consumedEnter = await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -2019,14 +2001,14 @@ describe("shell controller", () => {
     });
 
     expect(consumedEnter).toBe(true);
-    expect(controller.getState().overlay.active).toBeUndefined();
-    expect(submissions).toEqual([[["Yes"]]]);
-    controller.dispose();
+    expect(runtime.getViewState().overlay.active).toBeUndefined();
+    expect(await submission).toEqual([["Yes"]]);
+    runtime.dispose();
   });
 
   test("interactive question custom requests resolve dismissed on abort", async () => {
     const { bundle, getAttachedUi } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
@@ -2051,18 +2033,18 @@ describe("shell controller", () => {
       { signal: abortController.signal },
     );
 
-    expect(controller.getState().overlay.active?.payload?.kind).toBe("question");
+    expect(runtime.getViewState().overlay.active?.payload?.kind).toBe("question");
     abortController.abort();
 
     expect(await pending).toBeUndefined();
-    expect(controller.getState().overlay.active).toBeUndefined();
-    controller.dispose();
+    expect(runtime.getViewState().overlay.active).toBeUndefined();
+    runtime.dispose();
   });
 
   test("interactive question custom requests resolve dismissed on session switch", async () => {
     const first = createFakeBundle({ sessionId: "session-1" });
     const second = createFakeBundle({ sessionId: "session-2" });
-    const controller = new CliShellController(first.bundle, {
+    const runtime = new CliShellRuntime(first.bundle, {
       cwd: process.cwd(),
       openSession: async (sessionId) => (sessionId === "session-2" ? second.bundle : first.bundle),
       createSession: async () => second.bundle,
@@ -2082,31 +2064,31 @@ describe("shell controller", () => {
       ],
     });
 
-    expect(controller.getState().overlay.active?.payload?.kind).toBe("question");
+    expect(runtime.getViewState().overlay.active?.payload?.kind).toBe("question");
 
-    await controller.openSessionById("session-2");
+    await runtime.openSessionById("session-2");
 
     expect(await pending).toBeUndefined();
-    expect(controller.getBundle()).toBe(second.bundle);
-    controller.dispose();
+    expect(runtime.getSessionBundle()).toBe(second.bundle);
+    runtime.dispose();
   });
 
   test("streaming transcript updates preserve slash completion metadata and selection", async () => {
     const fixture = createFakeBundle();
     const { bundle } = fixture;
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.ui.setEditorText("/qu");
+    await runtime.start();
+    runtime.ui.setEditorText("/qu");
 
     // Fuzzy sort: "/quit" (prefix score 1000-4=996) ranks above "/questions" (1000-9=991).
-    const initialCompletion = controller.getState().composer.completion;
+    const initialCompletion = runtime.getViewState().composer.completion;
     expect(initialCompletion).toMatchObject({
       trigger: "/",
       query: "qu",
@@ -2115,7 +2097,7 @@ describe("shell controller", () => {
     expect(initialCompletion?.items[0]).toMatchObject({ value: "quit" });
     expect(initialCompletion?.items[1]).toMatchObject({ value: "questions" });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "down",
       ctrl: false,
       meta: false,
@@ -2123,11 +2105,11 @@ describe("shell controller", () => {
     });
 
     // After "down", selectedIndex moves to index 1 (questions).
-    expect(controller.getState().composer.completion?.items.at(1)).toMatchObject({
+    expect(runtime.getViewState().composer.completion?.items.at(1)).toMatchObject({
       value: "questions",
       description: "Open the operator inbox for pending input.",
     });
-    expect(controller.getState().composer.completion?.selectedIndex).toBe(1);
+    expect(runtime.getViewState().composer.completion?.selectedIndex).toBe(1);
 
     fixture.emitSessionEvent({
       type: "message_update",
@@ -2139,18 +2121,18 @@ describe("shell controller", () => {
     });
 
     // Streaming event must not reset the completion state.
-    expect(controller.ui.getEditorText()).toBe("/qu");
-    expect(controller.getState().composer.completion?.selectedIndex).toBe(1);
+    expect(runtime.ui.getEditorText()).toBe("/qu");
+    expect(runtime.getViewState().composer.completion?.selectedIndex).toBe(1);
     expect(
-      controller.getState().composer.completion?.items[
-        controller.getState().composer.completion?.selectedIndex ?? 0
+      runtime.getViewState().composer.completion?.items[
+        runtime.getViewState().composer.completion?.selectedIndex ?? 0
       ],
     ).toMatchObject({
       value: "questions",
       description: "Open the operator inbox for pending input.",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("composer history navigates from input boundaries and restores the in-flight draft", async () => {
@@ -2161,22 +2143,22 @@ describe("shell controller", () => {
       },
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("first prompt");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("first prompt");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    controller.ui.setEditorText("second prompt");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("second prompt");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -2185,9 +2167,9 @@ describe("shell controller", () => {
 
     expect(prompts).toEqual(["first prompt", "second prompt"]);
 
-    controller.ui.setEditorText("draft now");
+    runtime.ui.setEditorText("draft now");
     expect(
-      controller.wantsSemanticInput({
+      runtime.wantsInput({
         key: "up",
         ctrl: false,
         meta: false,
@@ -2195,9 +2177,9 @@ describe("shell controller", () => {
       }),
     ).toBe(false);
 
-    controller.syncComposerFromEditor("draft now", 0);
+    runtime.syncComposerFromEditor("draft now", 0);
     expect(
-      controller.wantsSemanticInput({
+      runtime.wantsInput({
         key: "up",
         ctrl: false,
         meta: false,
@@ -2205,71 +2187,71 @@ describe("shell controller", () => {
       }),
     ).toBe(true);
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "up",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    expect(controller.ui.getEditorText()).toBe("second prompt");
-    expect(controller.getState().composer.cursor).toBe(0);
+    expect(runtime.ui.getEditorText()).toBe("second prompt");
+    expect(runtime.getViewState().composer.cursor).toBe(0);
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "up",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    expect(controller.ui.getEditorText()).toBe("first prompt");
-    expect(controller.getState().composer.cursor).toBe(0);
+    expect(runtime.ui.getEditorText()).toBe("first prompt");
+    expect(runtime.getViewState().composer.cursor).toBe(0);
 
-    controller.syncComposerFromEditor("first prompt", "first prompt".length);
-    await controller.handleSemanticInput({
+    runtime.syncComposerFromEditor("first prompt", "first prompt".length);
+    await runtime.handleInput({
       key: "down",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    expect(controller.ui.getEditorText()).toBe("second prompt");
-    expect(controller.getState().composer.cursor).toBe("second prompt".length);
+    expect(runtime.ui.getEditorText()).toBe("second prompt");
+    expect(runtime.getViewState().composer.cursor).toBe("second prompt".length);
 
-    controller.syncComposerFromEditor("second prompt", "second prompt".length);
-    await controller.handleSemanticInput({
+    runtime.syncComposerFromEditor("second prompt", "second prompt".length);
+    await runtime.handleInput({
       key: "down",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    expect(controller.ui.getEditorText()).toBe("draft now");
-    expect(controller.getState().composer.cursor).toBe("draft now".length);
+    expect(runtime.ui.getEditorText()).toBe("draft now");
+    expect(runtime.getViewState().composer.cursor).toBe("draft now".length);
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("slash completion escape clears partial command text and reopens on next typed slash", async () => {
     const fixture = createFakeBundle();
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/qu");
-    expect(controller.getState().composer.completion).toMatchObject({
+    runtime.ui.setEditorText("/qu");
+    expect(runtime.getViewState().composer.completion).toMatchObject({
       trigger: "/",
       query: "qu",
     });
 
     // Escape on an incomplete "/command" clears the text entirely (opencode parity).
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "escape",
       ctrl: false,
       meta: false,
       shift: false,
     });
-    expect(controller.getState().composer.text).toBe("");
-    expect(controller.getState().composer.completion).toBeUndefined();
+    expect(runtime.getViewState().composer.text).toBe("");
+    expect(runtime.getViewState().composer.completion).toBeUndefined();
 
     fixture.emitSessionEvent({
       type: "message_update",
@@ -2279,31 +2261,31 @@ describe("shell controller", () => {
         stopReason: "toolUse",
       },
     });
-    expect(controller.getState().composer.completion).toBeUndefined();
+    expect(runtime.getViewState().composer.completion).toBeUndefined();
 
     // After clearing, the user can type a new slash command and completion reopens.
-    controller.ui.setEditorText("/qui");
-    const afterReopen = controller.getState().composer.completion;
+    runtime.ui.setEditorText("/qui");
+    const afterReopen = runtime.getViewState().composer.completion;
     expect(afterReopen).toMatchObject({ trigger: "/", query: "qui" });
     // "/quit" is the best match for "qui" (prefix: 1000-4=996).
     expect(afterReopen?.items[0]).toMatchObject({ value: "quit" });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("slash completion closes after a trailing space and path completion expands directories on tab", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("/quit ");
-    expect(controller.getState().composer.completion).toBeUndefined();
+    runtime.ui.setEditorText("/quit ");
+    expect(runtime.getViewState().composer.completion).toBeUndefined();
 
-    controller.ui.setEditorText("@pack");
-    const completion = controller.getState().composer.completion;
+    runtime.ui.setEditorText("@pack");
+    const completion = runtime.getViewState().composer.completion;
     expect(completion).toMatchObject({
       trigger: "@",
     });
@@ -2314,21 +2296,21 @@ describe("shell controller", () => {
       ) ?? -1;
     expect(directoryIndex).toBeGreaterThanOrEqual(0);
 
-    controller.setCompletionSelection(directoryIndex);
-    await controller.handleSemanticInput({
+    runtime.setCompletionSelection(directoryIndex);
+    await runtime.handleInput({
       key: "tab",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.ui.getEditorText()).toBe("@packages/");
-    expect(controller.getState().composer.completion).toMatchObject({
+    expect(runtime.ui.getEditorText()).toBe("@packages/");
+    expect(runtime.getViewState().composer.completion).toMatchObject({
       trigger: "@",
       query: "packages/",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("accepting path completion creates a file prompt part and restores it from persisted history", async () => {
@@ -2341,7 +2323,7 @@ describe("shell controller", () => {
       },
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
@@ -2349,23 +2331,23 @@ describe("shell controller", () => {
     });
 
     try {
-      controller.ui.setEditorText("review @READ");
-      const completion = controller.getState().composer.completion;
+      runtime.ui.setEditorText("review @READ");
+      const completion = runtime.getViewState().composer.completion;
       const fileIndex =
         completion?.items.findIndex((item) => item.kind === "file" && item.value === "README.md") ??
         -1;
       expect(fileIndex).toBeGreaterThanOrEqual(0);
 
-      controller.setCompletionSelection(fileIndex);
-      await controller.handleSemanticInput({
+      runtime.setCompletionSelection(fileIndex);
+      await runtime.handleInput({
         key: "tab",
         ctrl: false,
         meta: false,
         shift: false,
       });
 
-      expect(controller.ui.getEditorText()).toBe("review @README.md");
-      expect(controller.getState().composer.parts).toEqual([
+      expect(runtime.ui.getEditorText()).toBe("review @README.md");
+      expect(runtime.getViewState().composer.parts).toEqual([
         {
           id: expect.any(String),
           type: "file",
@@ -2380,13 +2362,13 @@ describe("shell controller", () => {
         },
       ]);
 
-      await controller.handleSemanticInput({
+      await runtime.handleInput({
         key: "escape",
         ctrl: false,
         meta: false,
         shift: false,
       });
-      await controller.handleSemanticInput({
+      await runtime.handleInput({
         key: "enter",
         ctrl: false,
         meta: false,
@@ -2394,9 +2376,9 @@ describe("shell controller", () => {
       });
       expect(prompts).toEqual(["review @README.md"]);
 
-      controller.dispose();
+      runtime.dispose();
 
-      const restored = new CliShellController(bundle, {
+      const restored = new CliShellRuntime(bundle, {
         cwd: process.cwd(),
         openSession: async () => bundle,
         createSession: async () => bundle,
@@ -2405,7 +2387,7 @@ describe("shell controller", () => {
 
       try {
         expect(
-          restored.wantsSemanticInput({
+          restored.wantsInput({
             key: "up",
             ctrl: false,
             meta: false,
@@ -2413,7 +2395,7 @@ describe("shell controller", () => {
           }),
         ).toBe(true);
 
-        await restored.handleSemanticInput({
+        await restored.handleInput({
           key: "up",
           ctrl: false,
           meta: false,
@@ -2421,7 +2403,7 @@ describe("shell controller", () => {
         });
 
         expect(restored.ui.getEditorText()).toBe("review @README.md");
-        expect(restored.getState().composer.parts).toEqual([
+        expect(restored.getViewState().composer.parts).toEqual([
           {
             id: expect.any(String),
             type: "file",
@@ -2450,15 +2432,15 @@ describe("shell controller", () => {
         prompts.push(text);
       },
     });
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       completionAgents: [{ agentId: "reviewer", description: "Code review agent" }],
     });
 
-    controller.ui.setEditorText("ask @rev");
-    const completion = controller.getState().composer.completion;
+    runtime.ui.setEditorText("ask @rev");
+    const completion = runtime.getViewState().composer.completion;
     expect(completion).toMatchObject({
       trigger: "@",
     });
@@ -2468,16 +2450,16 @@ describe("shell controller", () => {
       -1;
     expect(agentIndex).toBeGreaterThanOrEqual(0);
 
-    controller.setCompletionSelection(agentIndex);
-    await controller.handleSemanticInput({
+    runtime.setCompletionSelection(agentIndex);
+    await runtime.handleInput({
       key: "tab",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.ui.getEditorText()).toBe("ask @reviewer");
-    expect(controller.getState().composer.parts).toEqual([
+    expect(runtime.ui.getEditorText()).toBe("ask @reviewer");
+    expect(runtime.getViewState().composer.parts).toEqual([
       {
         id: expect.any(String),
         type: "agent",
@@ -2492,7 +2474,7 @@ describe("shell controller", () => {
       },
     ]);
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -2500,7 +2482,7 @@ describe("shell controller", () => {
     });
 
     expect(prompts).toEqual(["ask @reviewer"]);
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("stashing the current prompt persists it and ctrl+y restores the latest stashed prompt", async () => {
@@ -2508,7 +2490,7 @@ describe("shell controller", () => {
     const promptStore = createCliShellPromptStore({ rootDir: promptRoot });
     const { bundle } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
@@ -2516,38 +2498,38 @@ describe("shell controller", () => {
     });
 
     try {
-      controller.ui.setEditorText("stash @READ");
-      const completion = controller.getState().composer.completion;
+      runtime.ui.setEditorText("stash @READ");
+      const completion = runtime.getViewState().composer.completion;
       const fileIndex =
         completion?.items.findIndex((item) => item.kind === "file" && item.value === "README.md") ??
         -1;
       expect(fileIndex).toBeGreaterThanOrEqual(0);
 
-      controller.setCompletionSelection(fileIndex);
-      await controller.handleSemanticInput({
+      runtime.setCompletionSelection(fileIndex);
+      await runtime.handleInput({
         key: "tab",
         ctrl: false,
         meta: false,
         shift: false,
       });
 
-      await controller.handleSemanticInput({
+      await runtime.handleInput({
         key: "s",
         ctrl: true,
         meta: false,
         shift: false,
       });
 
-      expect(controller.ui.getEditorText()).toBe("");
-      expect(controller.getState().composer.parts).toEqual([]);
-      expect(controller.getState().notifications.at(-1)).toMatchObject({
+      expect(runtime.ui.getEditorText()).toBe("");
+      expect(runtime.getViewState().composer.parts).toEqual([]);
+      expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
         level: "info",
         message: "Stashed prompt: stash @README.md. Press Ctrl+Y to restore the latest draft.",
       });
 
-      controller.dispose();
+      runtime.dispose();
 
-      const restored = new CliShellController(bundle, {
+      const restored = new CliShellRuntime(bundle, {
         cwd: process.cwd(),
         openSession: async () => bundle,
         createSession: async () => bundle,
@@ -2555,7 +2537,7 @@ describe("shell controller", () => {
       });
 
       try {
-        await restored.handleSemanticInput({
+        await restored.handleInput({
           key: "y",
           ctrl: true,
           meta: false,
@@ -2563,7 +2545,7 @@ describe("shell controller", () => {
         });
 
         expect(restored.ui.getEditorText()).toBe("stash @README.md");
-        expect(restored.getState().composer.parts).toEqual([
+        expect(restored.getViewState().composer.parts).toEqual([
           {
             id: expect.any(String),
             type: "file",
@@ -2577,7 +2559,7 @@ describe("shell controller", () => {
             },
           },
         ]);
-        expect(restored.getState().notifications.at(-1)).toMatchObject({
+        expect(restored.getViewState().notifications.at(-1)).toMatchObject({
           level: "info",
           message: "Restored stashed prompt: stash @README.md",
         });
@@ -2591,55 +2573,55 @@ describe("shell controller", () => {
 
   test("ctrl+y warns clearly when no stashed prompt is available", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "y",
       ctrl: true,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().notifications.at(-1)).toMatchObject({
+    expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
       level: "warning",
       message: "No stashed prompts yet. Press Ctrl+S to stash the current prompt first.",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("ctrl+s warns clearly when there is no prompt to stash", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "s",
       ctrl: true,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getState().notifications.at(-1)).toMatchObject({
+    expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
       level: "warning",
       message: "Nothing to stash yet. Type a prompt, then press Ctrl+S.",
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("slash stash warns clearly when no stashed prompts are available", async () => {
     const promptRoot = mkdtempSync(join(tmpdir(), "brewva-cli-prompt-stash-empty-"));
     const promptStore = createCliShellPromptStore({ rootDir: promptRoot });
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
@@ -2647,21 +2629,21 @@ describe("shell controller", () => {
     });
 
     try {
-      await controller.start();
-      controller.ui.setEditorText("/stash ");
-      await controller.handleSemanticInput({
+      await runtime.start();
+      runtime.ui.setEditorText("/stash ");
+      await runtime.handleInput({
         key: "enter",
         ctrl: false,
         meta: false,
         shift: false,
       });
 
-      expect(controller.getState().notifications.at(-1)).toMatchObject({
+      expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
         level: "warning",
         message: "No stashed prompts yet. Press Ctrl+S to stash the current prompt first.",
       });
     } finally {
-      controller.dispose();
+      runtime.dispose();
       rmSync(promptRoot, { force: true, recursive: true });
     }
   });
@@ -2678,13 +2660,13 @@ describe("shell controller", () => {
       },
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("ship it");
+    runtime.ui.setEditorText("ship it");
     const submitInput = {
       key: "enter",
       ctrl: false,
@@ -2692,8 +2674,8 @@ describe("shell controller", () => {
       shift: false,
     } as const;
 
-    const firstSubmit = controller.handleSemanticInput(submitInput);
-    const secondSubmit = controller.handleSemanticInput(submitInput);
+    const firstSubmit = runtime.handleInput(submitInput);
+    const secondSubmit = runtime.handleInput(submitInput);
 
     await Bun.sleep(0);
     expect(prompts).toEqual(["ship it"]);
@@ -2701,7 +2683,7 @@ describe("shell controller", () => {
     await firstSubmit;
     await secondSubmit;
     expect(prompts).toEqual(["ship it"]);
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("records interactive correction checkpoints with monotonic turn ids", async () => {
@@ -2714,7 +2696,7 @@ describe("shell controller", () => {
     });
     const restoreDateNow = patchDateNow(() => 1_710_000_000_000);
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
@@ -2722,15 +2704,15 @@ describe("shell controller", () => {
     });
 
     try {
-      controller.ui.setEditorText("first prompt");
-      await controller.handleSemanticInput({
+      runtime.ui.setEditorText("first prompt");
+      await runtime.handleInput({
         key: "enter",
         ctrl: false,
         meta: false,
         shift: false,
       });
-      controller.ui.setEditorText("second prompt");
-      await controller.handleSemanticInput({
+      runtime.ui.setEditorText("second prompt");
+      await runtime.handleInput({
         key: "enter",
         ctrl: false,
         meta: false,
@@ -2740,7 +2722,7 @@ describe("shell controller", () => {
       expect(turnIds).toEqual(["interactive:1710000000000:1", "interactive:1710000000000:2"]);
     } finally {
       restoreDateNow();
-      controller.dispose();
+      runtime.dispose();
     }
   });
 
@@ -2755,15 +2737,15 @@ describe("shell controller", () => {
     });
     (bundle.session as unknown as { isStreaming: boolean }).isStreaming = true;
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    controller.ui.setEditorText("/redo");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/redo");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -2772,13 +2754,13 @@ describe("shell controller", () => {
 
     expect(redoCalls).toBe(0);
     expect(
-      controller
-        .getState()
+      runtime
+        .getViewState()
         .notifications.some((notification) =>
           notification.message.includes("Cannot redo while agent is running."),
         ),
     ).toBe(true);
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("surfaces correction undo and redo as transcript notes and prompt status", async () => {
@@ -2851,27 +2833,27 @@ describe("shell controller", () => {
       },
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    expect(controller.getState().status.entries.correction).toBe("undo: /undo");
+    await runtime.start();
+    expect(runtime.getViewState().status.entries.correction).toBe("undo: /undo");
 
-    controller.ui.setEditorText("/undo");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/undo");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.ui.getEditorText()).toBe("fix this");
-    expect(controller.getState().status.entries.correction).toBe("redo: /redo");
-    expect(controller.getState().transcript.messages.at(-1)).toMatchObject({
+    expect(runtime.ui.getEditorText()).toBe("fix this");
+    expect(runtime.getViewState().status.entries.correction).toBe("redo: /redo");
+    expect(runtime.getViewState().transcript.messages.at(-1)).toMatchObject({
       role: "custom",
       parts: [
         {
@@ -2881,8 +2863,8 @@ describe("shell controller", () => {
       ],
     });
 
-    controller.ui.setEditorText("/redo");
-    await controller.handleSemanticInput({
+    runtime.ui.setEditorText("/redo");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -2890,9 +2872,9 @@ describe("shell controller", () => {
     });
 
     expect(branches).toEqual(["leaf-before", "leaf-redo"]);
-    expect(controller.ui.getEditorText()).toBe("");
-    expect(controller.getState().status.entries.correction).toBe("undo: /undo");
-    expect(controller.getState().transcript.messages.at(-1)).toMatchObject({
+    expect(runtime.ui.getEditorText()).toBe("");
+    expect(runtime.getViewState().status.entries.correction).toBe("undo: /undo");
+    expect(runtime.getViewState().transcript.messages.at(-1)).toMatchObject({
       role: "custom",
       parts: [
         {
@@ -2901,23 +2883,23 @@ describe("shell controller", () => {
         },
       ],
     });
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("user message appears exactly once even when session emits message_end for the user turn", async () => {
     const fixture = createFakeBundle();
     const { bundle } = fixture;
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.ui.setEditorText("你是谁");
-    await controller.handleSemanticInput({
+    await runtime.start();
+    runtime.ui.setEditorText("你是谁");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -2934,11 +2916,13 @@ describe("shell controller", () => {
       },
     });
 
-    const userMessages = controller.getState().transcript.messages.filter((m) => m.role === "user");
+    const userMessages = runtime
+      .getViewState()
+      .transcript.messages.filter((m) => m.role === "user");
     expect(userMessages).toHaveLength(1);
     expect(userMessages[0]?.parts[0]).toMatchObject({ type: "text", text: "你是谁" });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("submitted pasted text expands in the user transcript instead of showing the paste placeholder", async () => {
@@ -2949,19 +2933,19 @@ describe("shell controller", () => {
       },
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
 
     const token = "[Pasted ~3 lines]";
     const text = `review ${token} now`;
     const pastedText = "line one\nline two\nline three";
-    controller.syncComposerFromEditor(text, text.length, [
+    runtime.syncComposerFromEditor(text, text.length, [
       {
         id: "text-part-1",
         type: "text",
@@ -2976,7 +2960,7 @@ describe("shell controller", () => {
       },
     ]);
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -2986,11 +2970,13 @@ describe("shell controller", () => {
     const submittedText = `review ${pastedText} now`;
     expect(prompts).toEqual([submittedText]);
 
-    const userMessages = controller.getState().transcript.messages.filter((m) => m.role === "user");
+    const userMessages = runtime
+      .getViewState()
+      .transcript.messages.filter((m) => m.role === "user");
     expect(userMessages).toHaveLength(1);
     expect(userMessages[0]?.parts[0]).toMatchObject({ type: "text", text: submittedText });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("surfaces semantic input failures as notifications instead of rejecting the key handler", async () => {
@@ -3000,14 +2986,14 @@ describe("shell controller", () => {
       },
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.setEditorText("trigger failure");
-    const consumed = await controller.handleSemanticInput({
+    runtime.ui.setEditorText("trigger failure");
+    const consumed = await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -3015,25 +3001,25 @@ describe("shell controller", () => {
     });
 
     expect(consumed).toBe(true);
-    expect(controller.getState().notifications.at(-1)).toMatchObject({
+    expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
       level: "error",
       message: "prompt exploded",
     });
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("surfaces assistant errors as notifications and transcript entries", async () => {
     const fixture = createFakeBundle();
     const { bundle } = fixture;
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     fixture.emitSessionEvent({
       type: "message_end",
       message: {
@@ -3044,13 +3030,13 @@ describe("shell controller", () => {
       },
     });
 
-    expect(controller.getState().notifications.at(-1)).toMatchObject({
+    expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
       level: "error",
       message: "No API key for provider: openai-codex",
     });
     expect(
-      controller
-        .getState()
+      runtime
+        .getViewState()
         .transcript.messages.some(
           (message) =>
             message.role === "assistant" &&
@@ -3061,21 +3047,21 @@ describe("shell controller", () => {
         ),
     ).toBe(true);
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("groups assistant reasoning and tool execution updates into transcript parts", async () => {
     const fixture = createFakeBundle();
     const { bundle } = fixture;
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
 
     const partialAssistantMessage = {
       role: "assistant",
@@ -3143,8 +3129,8 @@ describe("shell controller", () => {
       },
     });
 
-    expect(controller.getState().transcript.messages).toHaveLength(1);
-    expect(controller.getState().transcript.messages[0]).toMatchObject({
+    expect(runtime.getViewState().transcript.messages).toHaveLength(1);
+    expect(runtime.getViewState().transcript.messages[0]).toMatchObject({
       role: "assistant",
       parts: [
         { type: "reasoning", text: "Inspect the file before editing." },
@@ -3161,21 +3147,21 @@ describe("shell controller", () => {
       ],
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("removes a streamed assistant draft when the stable message is hidden", async () => {
     const fixture = createFakeBundle();
     const { bundle } = fixture;
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
 
     fixture.emitSessionEvent({
       type: "message_update",
@@ -3190,8 +3176,8 @@ describe("shell controller", () => {
       },
     } as unknown as BrewvaPromptSessionEvent);
 
-    expect(controller.getState().transcript.messages).toHaveLength(1);
-    expect(controller.getState().transcript.messages[0]).toMatchObject({
+    expect(runtime.getViewState().transcript.messages).toHaveLength(1);
+    expect(runtime.getViewState().transcript.messages[0]).toMatchObject({
       role: "assistant",
       parts: [{ type: "text", text: "Draft answer while skill is incomplete." }],
     });
@@ -3212,21 +3198,21 @@ describe("shell controller", () => {
       },
     });
 
-    expect(controller.getState().transcript.messages).toEqual([]);
+    expect(runtime.getViewState().transcript.messages).toEqual([]);
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("rebuilds assistant transcript from assistantMessageEvent.partial when message_update omits message", async () => {
     const fixture = createFakeBundle();
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    await controller.start();
+    await runtime.start();
 
     const partialAssistantMessage = {
       role: "assistant",
@@ -3258,8 +3244,8 @@ describe("shell controller", () => {
       },
     });
 
-    expect(controller.getState().transcript.messages).toHaveLength(1);
-    expect(controller.getState().transcript.messages[0]).toMatchObject({
+    expect(runtime.getViewState().transcript.messages).toHaveLength(1);
+    expect(runtime.getViewState().transcript.messages[0]).toMatchObject({
       role: "assistant",
       renderMode: "streaming",
       parts: [
@@ -3274,21 +3260,21 @@ describe("shell controller", () => {
       ],
     });
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("inspect overlays drill down into a pager and restore inspect on close", async () => {
     const { bundle } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.openOverlay({
+    runtime.openOverlay({
       kind: "inspect",
-      lines: ["legacy inspect text"],
+      lines: ["inspect detail text"],
       sections: [
         {
           id: "summary",
@@ -3305,7 +3291,7 @@ describe("shell controller", () => {
       scrollOffsets: [0, 0],
     });
 
-    const consumedEnter = await controller.handleSemanticInput({
+    const consumedEnter = await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -3313,14 +3299,14 @@ describe("shell controller", () => {
     });
 
     expect(consumedEnter).toBe(true);
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "pager",
       title: "Analysis",
       lines: ["Outcome: pass", "Missing checks: none"],
       scrollOffset: 0,
     });
 
-    const consumedEscape = await controller.handleSemanticInput({
+    const consumedEscape = await runtime.handleInput({
       key: "escape",
       ctrl: false,
       meta: false,
@@ -3328,11 +3314,11 @@ describe("shell controller", () => {
     });
 
     expect(consumedEscape).toBe(true);
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "inspect",
       selectedIndex: 1,
     });
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("task overlays drill down into run output, artifact refs, and worker session hints", async () => {
@@ -3365,13 +3351,13 @@ describe("shell controller", () => {
       },
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.openOverlay({
+    runtime.openOverlay({
       kind: "tasks",
       selectedIndex: 0,
       snapshot: {
@@ -3412,7 +3398,7 @@ describe("shell controller", () => {
       },
     });
 
-    const consumedEnter = await controller.handleSemanticInput({
+    const consumedEnter = await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -3420,12 +3406,12 @@ describe("shell controller", () => {
     });
 
     expect(consumedEnter).toBe(true);
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "pager",
       title: "Task run-1 output",
     });
 
-    const pagerPayload = controller.getState().overlay.active?.payload;
+    const pagerPayload = runtime.getViewState().overlay.active?.payload;
     expect(pagerPayload && pagerPayload.kind === "pager" ? pagerPayload.lines : []).toEqual(
       expect.arrayContaining([
         "workerSessionRecentOutput:",
@@ -3445,22 +3431,22 @@ describe("shell controller", () => {
       ]),
     );
 
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("notifications open as an inbox, drill into pager details, and support dismiss", async () => {
     const { bundle } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    controller.ui.notify("older notification", "info");
-    controller.ui.notify("latest notification", "warning");
+    runtime.ui.notify("older notification", "info");
+    runtime.ui.notify("latest notification", "warning");
 
-    const consumedOpen = await controller.handleSemanticInput({
+    const consumedOpen = await runtime.handleInput({
       key: "n",
       ctrl: true,
       meta: false,
@@ -3468,12 +3454,12 @@ describe("shell controller", () => {
     });
 
     expect(consumedOpen).toBe(true);
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "notifications",
       selectedIndex: 0,
     });
 
-    const consumedEnter = await controller.handleSemanticInput({
+    const consumedEnter = await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -3481,19 +3467,19 @@ describe("shell controller", () => {
     });
 
     expect(consumedEnter).toBe(true);
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "pager",
       title: "Notification [warning]",
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "escape",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    const consumedDismiss = await controller.handleSemanticInput({
+    const consumedDismiss = await runtime.handleInput({
       key: "character",
       text: "d",
       ctrl: false,
@@ -3502,17 +3488,17 @@ describe("shell controller", () => {
     });
 
     expect(consumedDismiss).toBe(true);
-    expect(controller.getState().overlay.active?.payload).toMatchObject({
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "notifications",
       selectedIndex: 0,
     });
-    const notificationsPayload = controller.getState().overlay.active?.payload;
+    const notificationsPayload = runtime.getViewState().overlay.active?.payload;
     expect(
       notificationsPayload && notificationsPayload.kind === "notifications"
         ? notificationsPayload.notifications.map((notification) => notification.message)
         : [],
     ).toEqual(["older notification"]);
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("pager context routes Ctrl-E to the external pager instead of the global editor shortcut", async () => {
@@ -3520,7 +3506,7 @@ describe("shell controller", () => {
     const pagerCalls: Array<{ title: string; lines: readonly string[] }> = [];
     const editorCalls: Array<{ title: string; prefill?: string }> = [];
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
@@ -3534,14 +3520,14 @@ describe("shell controller", () => {
       },
     });
 
-    controller.openOverlay({
+    runtime.openOverlay({
       kind: "pager",
       title: "Task run-1 output",
       lines: ["line-1", "line-2"],
       scrollOffset: 0,
     });
 
-    const consumed = await controller.handleSemanticInput({
+    const consumed = await runtime.handleInput({
       key: "e",
       ctrl: true,
       meta: false,
@@ -3556,7 +3542,7 @@ describe("shell controller", () => {
       },
     ]);
     expect(editorCalls).toEqual([]);
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("Ctrl-E opens the external pager for inspect overlays before falling back to the editor", async () => {
@@ -3564,7 +3550,7 @@ describe("shell controller", () => {
     const pagerCalls: Array<{ title: string; lines: readonly string[] }> = [];
     const editorCalls: Array<{ title: string; prefill?: string }> = [];
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
@@ -3578,9 +3564,9 @@ describe("shell controller", () => {
       },
     });
 
-    controller.openOverlay({
+    runtime.openOverlay({
       kind: "inspect",
-      lines: ["legacy inspect text"],
+      lines: ["inspect detail text"],
       sections: [
         {
           id: "summary",
@@ -3597,7 +3583,7 @@ describe("shell controller", () => {
       scrollOffsets: [0, 0],
     });
 
-    const consumed = await controller.handleSemanticInput({
+    const consumed = await runtime.handleInput({
       key: "e",
       ctrl: true,
       meta: false,
@@ -3612,7 +3598,7 @@ describe("shell controller", () => {
       },
     ]);
     expect(editorCalls).toEqual([]);
-    controller.dispose();
+    runtime.dispose();
   });
 
   test("session switching preserves drafts per session and restores them when returning", async () => {
@@ -3643,14 +3629,14 @@ describe("shell controller", () => {
       ["session-2", second.bundle],
     ]);
 
-    const controller = new CliShellController(first.bundle, {
+    const runtime = new CliShellRuntime(first.bundle, {
       cwd: process.cwd(),
       openSession: async (sessionId) => bundles.get(sessionId) ?? first.bundle,
       createSession: async () => second.bundle,
     });
 
-    controller.ui.setEditorText("draft one");
-    controller.openOverlay({
+    runtime.ui.setEditorText("draft one");
+    runtime.openOverlay({
       kind: "sessions",
       selectedIndex: 1,
       sessions: replaySessions,
@@ -3664,18 +3650,18 @@ describe("shell controller", () => {
       },
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getBundle().session.sessionManager.getSessionId()).toBe("session-2");
-    expect(controller.ui.getEditorText()).toBe("");
+    expect(runtime.getSessionBundle().session.sessionManager.getSessionId()).toBe("session-2");
+    expect(runtime.ui.getEditorText()).toBe("");
 
-    controller.ui.setEditorText("draft two");
-    controller.openOverlay({
+    runtime.ui.setEditorText("draft two");
+    runtime.openOverlay({
       kind: "sessions",
       selectedIndex: 0,
       sessions: replaySessions,
@@ -3694,16 +3680,16 @@ describe("shell controller", () => {
       },
     });
 
-    await controller.handleSemanticInput({
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
       shift: false,
     });
 
-    expect(controller.getBundle().session.sessionManager.getSessionId()).toBe("session-1");
-    expect(controller.ui.getEditorText()).toBe("draft one");
-    controller.dispose();
+    expect(runtime.getSessionBundle().session.sessionManager.getSessionId()).toBe("session-1");
+    expect(runtime.ui.getEditorText()).toBe("draft one");
+    runtime.dispose();
   });
 
   test("session browser still surfaces the current session before any replay events exist", async () => {
@@ -3720,22 +3706,22 @@ describe("shell controller", () => {
       replaySessions,
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
 
-    await controller.start();
-    controller.ui.setEditorText("draft before first turn");
-    await controller.handleSemanticInput({
+    await runtime.start();
+    runtime.ui.setEditorText("draft before first turn");
+    await runtime.handleInput({
       key: "g",
       ctrl: true,
       meta: false,
       shift: false,
     });
 
-    const payload = controller.getState().overlay.active?.payload;
+    const payload = runtime.getViewState().overlay.active?.payload;
     expect(payload).toMatchObject({
       kind: "sessions",
       currentSessionId: "fresh-session",
@@ -3749,6 +3735,6 @@ describe("shell controller", () => {
       lines: 1,
       preview: "draft before first turn",
     });
-    controller.dispose();
+    runtime.dispose();
   });
 });

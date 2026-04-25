@@ -1,9 +1,9 @@
 import { createContext, useContext, type Accessor, type JSX } from "solid-js";
-import type { CliShellController } from "../../src/shell/controller.js";
+import type { CliShellRuntime } from "../../src/shell/runtime.js";
 import type { ShellDiffStyle, ShellDiffWrapMode } from "./diff-view.js";
 
 export interface ShellRenderContextValue {
-  controller: CliShellController;
+  runtime: CliShellRuntime;
   diffStyle: Accessor<ShellDiffStyle>;
   diffWrapMode: Accessor<ShellDiffWrapMode>;
   showThinking: Accessor<boolean>;

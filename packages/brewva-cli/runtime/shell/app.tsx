@@ -10,11 +10,11 @@ import type { BoxRenderable } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
 import { Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { For } from "solid-js";
-import type { CliShellController } from "../../src/shell/controller.js";
 import {
   buildPromptPartSignature,
   cloneCliShellPromptParts,
 } from "../../src/shell/prompt-parts.js";
+import type { CliShellRuntime } from "../../src/shell/runtime.js";
 import type { CliShellPromptPart } from "../../src/shell/types.js";
 import type {
   CliApprovalOverlayPayload,
@@ -45,17 +45,17 @@ import {
 } from "./utils.js";
 
 export function BrewvaOpenTuiShell(input: {
-  controller: CliShellController;
+  runtime: CliShellRuntime;
   toolRenderCache?: ToolRenderCache;
   renderer?: OpenTuiRenderer;
   copyTextToClipboard?: ClipboardCopy;
 }) {
   const toolRenderCache = input.toolRenderCache ?? createToolRenderCache();
-  const state = useShellState(input.controller);
+  const state = useShellState(input.runtime);
   const dimensions = useTerminalDimensions();
   const theme = createMemo(() => createPalette(state.theme));
   const shellRenderContext = {
-    controller: input.controller,
+    runtime: input.runtime,
     diffStyle: () => state.diff.style,
     diffWrapMode: () => state.diff.wrapMode,
     showThinking: () => state.view.showThinking,
@@ -64,7 +64,7 @@ export function BrewvaOpenTuiShell(input: {
   const bundleRefreshKey = createMemo(() => `${state.transcript.messages.length}`);
   const toolDefinitions = createMemo(() => {
     bundleRefreshKey();
-    return input.controller.getBundle().toolDefinitions;
+    return input.runtime.getToolDefinitions();
   });
   const transcriptWidth = createMemo(() => Math.max(20, dimensions().width - 8));
   const [scrollbox, setScrollbox] = createSignal<OpenTuiScrollBoxHandle | null>(null);
@@ -124,8 +124,8 @@ export function BrewvaOpenTuiShell(input: {
       return [];
     }
     const partsById = new Map(
-      input.controller
-        .getState()
+      input.runtime
+        .getViewState()
         .composer.parts.map((part) => [part.id, part] satisfies [string, CliShellPromptPart]),
     );
     const nextParts: CliShellPromptPart[] = [];
@@ -151,14 +151,14 @@ export function BrewvaOpenTuiShell(input: {
   };
 
   createEffect(() => {
-    input.controller.setViewportSize(dimensions().width, dimensions().height);
+    input.runtime.setViewportSize(dimensions().width, dimensions().height);
   });
 
   const copySelection = async (): Promise<boolean> =>
     await copyOpenTuiSelection({
       renderer: input.renderer,
       copyText: input.copyTextToClipboard,
-      notifier: input.controller.ui,
+      notifier: input.runtime.ui,
     });
 
   createEffect(() => {
@@ -171,7 +171,7 @@ export function BrewvaOpenTuiShell(input: {
         text,
         renderer,
         copyText: input.copyTextToClipboard,
-        notifier: input.controller.ui,
+        notifier: input.runtime.ui,
       });
     };
     renderer.console.onCopySelection = handleCopySelection;
@@ -184,7 +184,7 @@ export function BrewvaOpenTuiShell(input: {
 
   createEffect(() => {
     bundleRefreshKey();
-    const sessionId = input.controller.getBundle().session.sessionManager.getSessionId();
+    const sessionId = input.runtime.getSessionIdentity().sessionId;
     toolRenderCache.resetForSession(sessionId);
   });
 
@@ -195,7 +195,7 @@ export function BrewvaOpenTuiShell(input: {
     }
     if (state.transcript.navigationRequest) {
       applyTranscriptNavigationRequest({
-        controller: input.controller,
+        runtime: input.runtime,
         scrollbox: node,
         request: state.transcript.navigationRequest,
       });
@@ -205,7 +205,7 @@ export function BrewvaOpenTuiShell(input: {
     const { maxScrollTop, currentOffset } = readTranscriptScrollMetrics(node);
     if (state.transcript.followMode === "live") {
       if (currentOffset > 1 && node.scrollHeight > node.viewport.height) {
-        input.controller.syncTranscriptScrollState("scrolled", currentOffset);
+        input.runtime.syncTranscriptScrollState("scrolled", currentOffset);
         return;
       }
       node.stickyScroll = true;
@@ -215,11 +215,11 @@ export function BrewvaOpenTuiShell(input: {
     }
 
     if (currentOffset <= 1 && maxScrollTop > 0) {
-      input.controller.syncTranscriptScrollState("live", 0);
+      input.runtime.syncTranscriptScrollState("live", 0);
       return;
     }
     if (Math.abs(currentOffset - state.transcript.scrollOffset) > 1) {
-      input.controller.syncTranscriptScrollState("scrolled", currentOffset);
+      input.runtime.syncTranscriptScrollState("scrolled", currentOffset);
       return;
     }
     node.stickyScroll = false;
@@ -274,7 +274,7 @@ export function BrewvaOpenTuiShell(input: {
       if (node.isDestroyed) {
         return;
       }
-      input.controller.syncComposerFromEditor(
+      input.runtime.syncComposerFromEditor(
         node.plainText,
         textOffsetFromLogicalCursor(node.plainText, node.logicalCursor),
         readPromptPartsFromExtmarks(node),
@@ -310,12 +310,12 @@ export function BrewvaOpenTuiShell(input: {
 
   useKeyboard((event) => {
     const semanticInput = toSemanticInput(event as OpenTuiKeyEvent);
-    if (!input.controller.wantsSemanticInput(semanticInput)) {
+    if (!input.runtime.wantsInput(semanticInput)) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
-    void input.controller.handleSemanticInput(semanticInput);
+    void input.runtime.handleInput(semanticInput);
   }, {});
 
   const activeOverlay = createMemo(() => {
@@ -343,15 +343,10 @@ export function BrewvaOpenTuiShell(input: {
     if (state.status.entries.model) {
       return state.status.entries.model;
     }
-    const model = input.controller.getBundle().session.model;
-    if (!model?.provider || !model.id) {
-      return "unresolved-model";
-    }
-    return `${model.provider}/${model.id}`;
+    return input.runtime.getSessionIdentity().modelLabel;
   });
   const thinkingLevel = createMemo(
-    () =>
-      state.status.entries.thinking ?? input.controller.getBundle().session.thinkingLevel ?? "off",
+    () => state.status.entries.thinking ?? input.runtime.getSessionIdentity().thinkingLevel,
   );
   const inlineApproval = createMemo(() =>
     activeOverlay()?.payload?.kind === "approval"
@@ -421,7 +416,7 @@ export function BrewvaOpenTuiShell(input: {
                   toolDefinitions={toolDefinitions()}
                   toolRenderCache={toolRenderCache}
                   transcriptWidth={transcriptWidth()}
-                  showToolDetails={state.status.toolsExpanded}
+                  showToolDetails={state.view.toolDetails}
                   index={index()}
                   isLast={message.id === lastAssistantId()}
                   modelLabel={modelLabel()}
@@ -432,7 +427,7 @@ export function BrewvaOpenTuiShell(input: {
 
           <Show when={inlineApproval()}>
             <InlineApprovalPrompt
-              controller={input.controller}
+              runtime={input.runtime}
               payload={inlineApproval()!}
               theme={theme()}
               transcriptWidth={transcriptWidth()}
@@ -440,14 +435,14 @@ export function BrewvaOpenTuiShell(input: {
           </Show>
           <Show when={!inlineApproval() && inlineQuestion()}>
             <InlineQuestionPrompt
-              controller={input.controller}
+              runtime={input.runtime}
               payload={inlineQuestion()!}
               theme={theme()}
             />
           </Show>
 
           <PromptPanel
-            controller={input.controller}
+            runtime={input.runtime}
             composer={state.composer}
             status={state.status}
             overlayActive={Boolean(state.overlay.active)}
@@ -463,7 +458,7 @@ export function BrewvaOpenTuiShell(input: {
 
           <Show when={state.composer.completion && !state.overlay.active}>
             <CompletionOverlay
-              controller={input.controller}
+              runtime={input.runtime}
               completion={state.composer.completion!}
               anchor={promptAnchor}
               container={completionContainer}

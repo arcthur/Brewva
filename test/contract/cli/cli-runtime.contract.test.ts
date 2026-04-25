@@ -161,7 +161,7 @@ describe("cli contract: Brewva-native runtime boundary", () => {
     expect(runtimeEntrySource).toContain("renderCliInteractiveOpenTuiShell");
     expect(runtimeEntrySource).not.toContain("renderCliInteractiveShell");
     expect(runtimeEntrySource).not.toContain("BREWVA_TUI_ENGINE");
-    expect(solidShellSource).toContain("getBundle().toolDefinitions");
+    expect(solidShellSource).toContain("getToolDefinitions()");
     expect(solidShellSource).toContain("CompletionOverlay");
     expect(solidShellSource).toContain("promptAnchor");
     expect(solidShellSource).not.toContain("_customTools");

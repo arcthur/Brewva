@@ -69,7 +69,7 @@ Promotion is backed by:
 
 - stable docs aligned across architecture, commands, configuration, session
   lifecycle, CLI guide, and operator delegation journey
-- reducer, controller, and OpenTUI shell coverage for overlays, completion,
+- reducer, runtime, and OpenTUI shell coverage for overlays, completion,
   focus restoration, session switching, and task-output drill-down
 - repository verification via `bun run check`, `bun run test`,
   `bun run test:docs`, `bun run format:docs:check`, and `bun run test:dist`
@@ -77,12 +77,12 @@ Promotion is backed by:
 ## Source Anchors
 
 - `packages/brewva-cli/src/shell/state/index.ts`
-- `packages/brewva-cli/src/shell/controller.ts`
+- `packages/brewva-cli/src/shell/runtime.ts`
 - `packages/brewva-cli/src/shell/transcript.ts`
 - `packages/brewva-cli/src/shell/task-details.ts`
 - `packages/brewva-cli/runtime/opentui-shell-renderer.tsx`
 - `test/unit/cli/shell-state.unit.test.ts`
-- `test/unit/cli/shell-controller.unit.test.ts`
+- `test/unit/cli/shell-runtime.unit.test.ts`
 - `test/unit/cli/opentui-shell-renderer.unit.test.ts`
 - `test/unit/tui/focus-overlay.unit.test.ts`
 - `test/unit/tui/keybinding-resolver.unit.test.ts`

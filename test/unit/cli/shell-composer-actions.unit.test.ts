@@ -3,9 +3,9 @@ import {
   acceptComposerCompletion,
   createPromptHistoryState,
   navigatePromptHistoryState,
-} from "../../../packages/brewva-cli/src/shell/controller-composer.js";
+} from "../../../packages/brewva-cli/src/shell/composer-actions.js";
 
-describe("shell controller composer helpers", () => {
+describe("shell composer action helpers", () => {
   test("restores the in-flight draft when prompt history returns to the live composer", () => {
     const first = navigatePromptHistoryState({
       history: createPromptHistoryState([

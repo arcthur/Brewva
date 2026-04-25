@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { ShellCommandProvider } from "../../../packages/brewva-cli/src/shell/command-provider.js";
+import { ShellCommandProvider } from "../../../packages/brewva-cli/src/shell/commands/command-provider.js";
+import { registerShellCommands } from "../../../packages/brewva-cli/src/shell/commands/shell-command-registry.js";
 
 describe("shell command provider", () => {
   test("derives visible and keybound command surfaces from registered commands", () => {
@@ -12,7 +13,6 @@ describe("shell command provider", () => {
       slash: { name: "models", aliases: ["model"], argumentMode: "optional" },
       keybinding: { key: "m", ctrl: true, meta: false, shift: false },
       suggested: true,
-      run: () => {},
     });
     provider.register({
       id: "hidden.internal",
@@ -20,7 +20,6 @@ describe("shell command provider", () => {
       category: "System",
       slash: { name: "hidden" },
       hidden: true,
-      run: () => {},
     });
     provider.register({
       id: "disabled.command",
@@ -29,7 +28,6 @@ describe("shell command provider", () => {
       slash: { name: "disabled" },
       keybinding: { key: "d", ctrl: true, meta: false, shift: false },
       enabled: false,
-      run: () => {},
     });
 
     expect(provider.visibleCommands()).toMatchObject([
@@ -57,7 +55,6 @@ describe("shell command provider", () => {
       description: "Open the operator inbox for pending input.",
       category: "Operator",
       slash: { name: "questions", aliases: ["inbox"] },
-      run: () => {},
     });
 
     expect(provider.searchCommands("operator").map((command) => command.id)).toEqual([
@@ -85,7 +82,6 @@ describe("shell command provider", () => {
       category: "System",
       slash: { name: "one" },
       keybinding: { key: "k", ctrl: true, meta: false, shift: false },
-      run: () => {},
     });
 
     expect(() =>
@@ -93,7 +89,6 @@ describe("shell command provider", () => {
         id: "one",
         title: "Duplicate id",
         category: "System",
-        run: () => {},
       }),
     ).toThrow("Duplicate shell command id");
     expect(() =>
@@ -102,7 +97,6 @@ describe("shell command provider", () => {
         title: "Duplicate slash",
         category: "System",
         slash: { name: "one" },
-        run: () => {},
       }),
     ).toThrow("Duplicate shell command slash name");
     expect(() =>
@@ -111,26 +105,75 @@ describe("shell command provider", () => {
         title: "Duplicate keybinding",
         category: "System",
         keybinding: { key: "k", ctrl: true, meta: false, shift: false },
-        run: () => {},
       }),
     ).toThrow("Duplicate shell command keybinding");
   });
 
-  test("hidden commands stay executable by id", async () => {
+  test("hidden commands still create command intents by id", () => {
     const provider = new ShellCommandProvider();
-    let ran = false;
     provider.register({
       id: "hidden.internal",
       title: "Hidden internal",
       category: "System",
       hidden: true,
-      run: () => {
-        ran = true;
-      },
     });
 
     expect(provider.visibleCommands()).toEqual([]);
-    expect(await provider.runCommand("hidden.internal")).toBe(true);
-    expect(ran).toBe(true);
+    expect(provider.createCommandIntent("hidden.internal")).toEqual({
+      type: "command.invoke",
+      commandId: "hidden.internal",
+      args: "",
+      source: "internal",
+    });
+  });
+
+  test("disabled commands fail closed explicitly", () => {
+    const provider = new ShellCommandProvider();
+    provider.register({
+      id: "runtime.insights",
+      title: "Insights",
+      category: "Runtime",
+      slash: { name: "insights", argumentMode: "optional" },
+      enabled: false,
+    });
+    provider.register({
+      id: "disabled.command",
+      title: "Disabled",
+      category: "System",
+      enabled: false,
+    });
+
+    expect(
+      provider.createSlashCommandIntent("insights", {
+        args: "src",
+        source: "slash",
+      }),
+    ).toBeUndefined();
+    expect(provider.createCommandIntent("disabled.command")).toBeUndefined();
+  });
+
+  test("built-in registry keeps disabled runtime commands out of shell dispatch", () => {
+    const provider = new ShellCommandProvider();
+    registerShellCommands(provider);
+
+    expect(provider.createCommandIntent("app.commandPalette")).toEqual({
+      type: "command.invoke",
+      commandId: "app.commandPalette",
+      args: "",
+      source: "internal",
+    });
+    expect(
+      provider.createSlashCommandIntent("insights", {
+        args: "workspace",
+        source: "slash",
+      }),
+    ).toBeUndefined();
+    expect(provider.visibleCommands().map((command) => command.id)).not.toContain(
+      "runtime.insights",
+    );
+    expect(provider.searchCommands("insights")).toEqual([]);
+    expect(
+      provider.keyboundCommands().some((command) => command.action === "command:app.exit"),
+    ).toBe(true);
   });
 });

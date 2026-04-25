@@ -1,4 +1,4 @@
-import type { SessionOpenQuestion, SessionQuestionRequest } from "@brewva/brewva-gateway";
+import type { SessionOpenQuestion } from "@brewva/brewva-gateway";
 import type {
   ProviderAuthMethod,
   ProviderAuthPrompt,
@@ -37,6 +37,14 @@ export interface CliShellSessionBundle {
   toolDefinitions: ReadonlyMap<string, BrewvaToolDefinition>;
   providerConnections?: ProviderConnectionPort;
   orchestration?: BrewvaSessionResult["orchestration"];
+}
+
+export interface CliShellInput {
+  key: string;
+  text?: string;
+  ctrl: boolean;
+  meta: boolean;
+  shift: boolean;
 }
 
 export interface CliShellPromptSourceText {
@@ -166,11 +174,6 @@ export interface CliQuestionOverlayPayload {
   draftsByRequestId?: Record<string, CliQuestionDraftState>;
   requestTitle?: string;
   interactiveRequest?: BrewvaInteractiveQuestionRequest;
-  onSubmit?(
-    request: SessionQuestionRequest,
-    answers: readonly (readonly string[])[],
-  ): Promise<void>;
-  onDismiss?(): Promise<void>;
 }
 
 export interface CliTasksOverlayPayload {
@@ -230,8 +233,8 @@ export interface CliInspectOverlayPayload {
 
 export interface CliConfirmOverlayPayload {
   kind: "confirm";
+  dialogId?: string;
   message: string;
-  resolve(value: boolean): void;
 }
 
 export interface CliInputOverlayPayload {
@@ -241,14 +244,14 @@ export interface CliInputOverlayPayload {
   message?: string;
   value: string;
   masked?: boolean;
-  resolve(value: string | undefined): void;
 }
 
 export interface CliSelectOverlayPayload {
   kind: "select";
+  dialogId?: string;
+  title?: string;
   options: string[];
   selectedIndex: number;
-  resolve(value: string | undefined): void;
 }
 
 export interface CliPickerItem {
@@ -311,20 +314,20 @@ export interface CliAuthMethodPickerItem extends CliPickerItem {
 
 export interface CliAuthMethodPickerOverlayPayload {
   kind: "authMethodPicker";
+  dialogId?: string;
   title: string;
   selectedIndex: number;
   items: CliAuthMethodPickerItem[];
-  resolve(method: ProviderAuthMethod | undefined): void;
 }
 
 export interface CliOAuthWaitOverlayPayload {
   kind: "oauthWait";
+  flowId?: string;
   title: string;
   url: string;
   instructions: string;
   copyText?: string;
   manualCodePrompt?: string;
-  submitManualCode?(code: string): Promise<void>;
 }
 
 export interface CliCommandPaletteOverlayPayload {

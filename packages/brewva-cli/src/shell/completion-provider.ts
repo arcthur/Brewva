@@ -1,6 +1,6 @@
 import { readdirSync, type Dirent } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { ShellCommandProvider } from "./command-provider.js";
+import { ShellCommandProvider } from "./commands/command-provider.js";
 import { fuzzyScore, normalizeSearchQuery } from "./search-scoring.js";
 
 export type ShellCompletionTrigger = "/" | "@";

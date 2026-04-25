@@ -3,12 +3,12 @@
 import type { OpenTuiTextareaHandle } from "@brewva/brewva-tui/internal-opentui-runtime";
 import { SyntaxStyle, decodePasteBytes, type BoxRenderable, type PasteEvent } from "@opentui/core";
 import { Show, createMemo } from "solid-js";
-import type { CliShellController } from "../../src/shell/controller.js";
 import {
   cloneCliShellPromptParts,
   rebasePromptPartsAfterTextReplace,
 } from "../../src/shell/prompt-parts.js";
-import type { CliShellState } from "../../src/shell/state/index.js";
+import type { CliShellRuntime } from "../../src/shell/runtime.js";
+import type { CliShellViewState } from "../../src/shell/state/index.js";
 import { SPLIT_BORDER_CHARS, type SessionPalette } from "./palette.js";
 import {
   completionItemAuxText,
@@ -51,9 +51,9 @@ export function createPromptPartTokenId(prefix: "agent" | "file" | "text"): stri
 }
 
 export function PromptPanel(input: {
-  controller: CliShellController;
-  composer: CliShellState["composer"];
-  status: CliShellState["status"];
+  runtime: CliShellRuntime;
+  composer: CliShellViewState["composer"];
+  status: CliShellViewState["status"];
   overlayActive: boolean;
   theme: SessionPalette;
   width: number;
@@ -176,7 +176,7 @@ export function PromptPanel(input: {
             focused={!input.overlayActive}
             initialValue={input.composer.text}
             onSubmit={() => {
-              void input.controller.handleSemanticInput({
+              void input.runtime.handleInput({
                 key: "enter",
                 ctrl: false,
                 meta: false,
@@ -224,7 +224,7 @@ export function PromptPanel(input: {
                   },
                 },
               );
-              input.controller.syncComposerFromEditor(
+              input.runtime.syncComposerFromEditor(
                 node.plainText,
                 textOffsetFromLogicalCursor(node.plainText, node.logicalCursor),
                 nextParts,

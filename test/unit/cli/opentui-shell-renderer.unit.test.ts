@@ -35,8 +35,13 @@ import {
   resolveToastMaxWidth,
 } from "../../../packages/brewva-cli/runtime/shell/overlay-style.js";
 import { createToolRenderCache } from "../../../packages/brewva-cli/runtime/shell/tool-render.js";
-import { CliShellController } from "../../../packages/brewva-cli/src/shell/controller.js";
-import type { CliShellSessionBundle } from "../../../packages/brewva-cli/src/shell/types.js";
+import { CliShellRuntime } from "../../../packages/brewva-cli/src/shell/runtime.js";
+import type {
+  CliShellSessionBundle,
+  ProviderAuthMethod,
+  ProviderConnection,
+  ProviderOAuthAuthorization,
+} from "../../../packages/brewva-cli/src/shell/types.js";
 
 interface OpenTuiTestRenderableInspector {
   getChildren(): unknown[];
@@ -136,6 +141,14 @@ function createFakeBundle(
     replaySessions?: BrewvaReplaySession[];
     sessionWireBySessionId?: Record<string, SessionWireFrame[]>;
     toolDefinitions?: Map<string, BrewvaToolDefinition>;
+    providers?: ProviderConnection[];
+    authMethods?: Record<string, ProviderAuthMethod[]>;
+    authorizeOAuth?: (
+      provider: string,
+      methodId: string,
+      inputs?: Record<string, string>,
+    ) => Promise<ProviderOAuthAuthorization | undefined>;
+    completeOAuth?: (provider: string, methodId: string, code?: string) => Promise<void>;
   } = {},
 ) {
   let attachedUi: BrewvaToolUiPort | undefined;
@@ -303,6 +316,29 @@ function createFakeBundle(
         },
       },
     },
+    providerConnections: options.providers
+      ? {
+          async listProviders() {
+            return options.providers ?? [];
+          },
+          listAuthMethods(provider: string) {
+            return options.authMethods?.[provider] ?? [];
+          },
+          async connectApiKey() {},
+          async authorizeOAuth(
+            provider: string,
+            methodId: string,
+            inputs?: Record<string, string>,
+          ) {
+            return options.authorizeOAuth?.(provider, methodId, inputs);
+          },
+          async completeOAuth(provider: string, methodId: string, code?: string) {
+            await options.completeOAuth?.(provider, methodId, code);
+          },
+          async disconnect() {},
+          async refresh() {},
+        }
+      : undefined,
   } as unknown as CliShellSessionBundle;
 
   return {
@@ -375,18 +411,18 @@ describe("opentui solid shell runtime", () => {
       ],
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.ui.notify("Solid shell notice", "info");
+    await runtime.start();
+    runtime.ui.notify("Solid shell notice", "info");
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 36,
@@ -395,7 +431,7 @@ describe("opentui solid shell runtime", () => {
 
     try {
       await openTuiSolidAct(async () => {
-        await Bun.sleep(CliShellController.STATUS_DEBOUNCE_MS + 20);
+        await Bun.sleep(CliShellRuntime.STATUS_DEBOUNCE_MS + 20);
       });
       await testSetup.renderOnce();
       await testSetup.renderOnce();
@@ -405,7 +441,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("Solid");
       expect(frame).toContain("notice");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -430,16 +466,16 @@ describe("opentui solid shell runtime", () => {
       },
     ];
     const { bundle } = createFakeBundle({ models });
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 24,
@@ -451,15 +487,15 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       expect(testSetup.captureCharFrame()).toContain("openai/alpha");
 
-      controller.ui.setEditorText("/models beta");
+      runtime.ui.setEditorText("/models beta");
       await openTuiSolidAct(async () => {
-        await controller.handleSemanticInput({
+        await runtime.handleInput({
           key: "enter",
           ctrl: false,
           meta: false,
           shift: false,
         });
-        await controller.handleSemanticInput({
+        await runtime.handleInput({
           key: "enter",
           ctrl: false,
           meta: false,
@@ -473,7 +509,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("anthropic/beta");
       expect(frame).not.toContain("openai/alpha");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -488,18 +524,18 @@ describe("opentui solid shell runtime", () => {
       ],
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.ui.notify("Heads up", "warning");
-    controller.ui.setEditorText("/ins");
+    await runtime.start();
+    runtime.ui.notify("Heads up", "warning");
+    runtime.ui.setEditorText("/ins");
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 36,
@@ -508,22 +544,22 @@ describe("opentui solid shell runtime", () => {
 
     try {
       await openTuiSolidAct(async () => {
-        await Bun.sleep(CliShellController.STATUS_DEBOUNCE_MS + 20);
+        await Bun.sleep(CliShellRuntime.STATUS_DEBOUNCE_MS + 20);
       });
       const frame = await waitForRenderedFrame(testSetup, {
         predicate: (candidate) =>
           candidate.includes("▣ Brewva") &&
           candidate.includes("Hello from Brewva") &&
-          candidate.includes("/insights"),
+          candidate.includes("/inspect"),
       });
       expect(frame).toContain("▣ Brewva");
       expect(frame).toContain("Hello from Brewva");
       expect(frame).toContain("warning");
       expect(frame).toContain("Heads");
-      expect(frame).toContain("/insights");
+      expect(frame).toContain("/inspect");
       expect(frame).toContain("┃  /ins");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -539,16 +575,16 @@ describe("opentui solid shell runtime", () => {
     });
     const { bundle } = fixture;
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.ui.setEditorText("/qu");
-    await controller.handleSemanticInput({
+    await runtime.start();
+    runtime.ui.setEditorText("/qu");
+    await runtime.handleInput({
       key: "down",
       ctrl: false,
       meta: false,
@@ -556,7 +592,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 36,
@@ -598,16 +634,16 @@ describe("opentui solid shell runtime", () => {
       expect(countOccurrences(frame, "Exit the interactive shell.")).toBe(1);
       expect(frame).not.toContain("┌");
       expect(frame).not.toContain("└");
-      expect(controller.getState().composer.completion?.selectedIndex).toBe(1);
+      expect(runtime.getViewState().composer.completion?.selectedIndex).toBe(1);
       expect(
-        controller.getState().composer.completion?.items[
-          controller.getState().composer.completion?.selectedIndex ?? 0
+        runtime.getViewState().composer.completion?.items[
+          runtime.getViewState().composer.completion?.selectedIndex ?? 0
         ],
       ).toMatchObject({
         value: "questions",
       });
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -618,7 +654,7 @@ describe("opentui solid shell runtime", () => {
     writeFileSync(join(cwd, "README.md"), "# Test\n");
     const { bundle } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd,
       openSession: async () => bundle,
       createSession: async () => bundle,
@@ -626,10 +662,10 @@ describe("opentui solid shell runtime", () => {
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.ui.setEditorText("@");
+    await runtime.start();
+    runtime.ui.setEditorText("@");
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 80,
         height: 18,
@@ -648,7 +684,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("directory");
       expect(frame).not.toContain("No matching items");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -656,15 +692,15 @@ describe("opentui solid shell runtime", () => {
   test("renders command palette metadata from the command provider", async () => {
     const { bundle } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    await controller.handleSemanticInput({
+    await runtime.start();
+    await runtime.handleInput({
       key: "k",
       ctrl: true,
       meta: false,
@@ -672,7 +708,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 36,
@@ -689,7 +725,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("/models");
       expect(frame).toContain("Ctrl+K");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -697,16 +733,16 @@ describe("opentui solid shell runtime", () => {
   test("renders help hub with command palette entry and navigation hints", async () => {
     const { bundle } = createFakeBundle();
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.ui.setEditorText("/help");
-    await controller.handleSemanticInput({
+    await runtime.start();
+    runtime.ui.setEditorText("/help");
+    await runtime.handleInput({
       key: "enter",
       ctrl: false,
       meta: false,
@@ -714,7 +750,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 36,
@@ -730,7 +766,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("Enter runs");
       expect(frame).toContain("Switch model");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -745,16 +781,16 @@ describe("opentui solid shell runtime", () => {
         },
       ],
     });
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 36,
@@ -765,8 +801,8 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       await testSetup.renderOnce();
 
-      const message = controller
-        .getState()
+      const message = runtime
+        .getViewState()
         .transcript.messages.find((candidate) => candidate.role === "assistant");
       const textPart = message?.parts.find((part) => part.type === "text");
       expect(textPart).toBeDefined();
@@ -790,7 +826,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("Changes");
       expect(frame).toContain("const value = 1;");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -807,16 +843,16 @@ describe("opentui solid shell runtime", () => {
         },
       ],
     });
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 30,
@@ -827,8 +863,8 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       await testSetup.renderOnce();
 
-      const message = controller
-        .getState()
+      const message = runtime
+        .getViewState()
         .transcript.messages.find((candidate) => candidate.role === "assistant");
       const reasoningPart = message?.parts.find((part) => part.type === "reasoning");
       expect(reasoningPart).toBeDefined();
@@ -836,8 +872,8 @@ describe("opentui solid shell runtime", () => {
       const rendererInspector = testSetup.renderer as unknown as OpenTuiTestRendererInspector;
       expect(rendererInspector.root.findDescendantById(`text-${reasoningPart!.id}`)).toBeDefined();
 
-      controller.ui.setEditorText("/thinking");
-      await controller.handleSemanticInput({
+      runtime.ui.setEditorText("/thinking");
+      await runtime.handleInput({
         key: "enter",
         ctrl: false,
         meta: false,
@@ -846,12 +882,12 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       await testSetup.renderOnce();
 
-      expect(controller.getState().view.showThinking).toBe(false);
+      expect(runtime.getViewState().view.showThinking).toBe(false);
       expect(
         rendererInspector.root.findDescendantById(`text-${reasoningPart!.id}`),
       ).toBeUndefined();
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -859,16 +895,16 @@ describe("opentui solid shell runtime", () => {
   test("keeps streamed assistant text on the OpenTUI streaming code path", async () => {
     const fixture = createFakeBundle();
     const { bundle } = fixture;
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 30,
@@ -887,8 +923,8 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       await testSetup.renderOnce();
 
-      const message = controller
-        .getState()
+      const message = runtime
+        .getViewState()
         .transcript.messages.find((candidate) => candidate.role === "assistant");
       const textPart = message?.parts.find((part) => part.type === "text");
       expect(textPart).toBeDefined();
@@ -955,24 +991,24 @@ describe("opentui solid shell runtime", () => {
         (finalizedRenderable as { drawUnstyledText?: boolean } | undefined)?.drawUnstyledText,
       ).toBe(false);
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("routes global semantic keybindings through the Solid shell keyboard transport", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 30,
@@ -988,24 +1024,24 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       await testSetup.renderOnce();
 
-      expect(controller.getState().overlay.active?.kind).toBe("approval");
+      expect(runtime.getViewState().overlay.active?.kind).toBe("approval");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("updates model picker highlight when keyboard navigation changes selection", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.openOverlay({
+    await runtime.start();
+    runtime.openOverlay({
       kind: "modelPicker",
       title: "Models",
       query: "",
@@ -1033,7 +1069,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 30,
@@ -1052,28 +1088,28 @@ describe("opentui solid shell runtime", () => {
         predicate: (candidate) => candidate.includes("Beta openai/beta"),
       });
 
-      expect(controller.getState().overlay.active?.payload).toMatchObject({
+      expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
         kind: "modelPicker",
         selectedIndex: 1,
       });
       expect(frame).toContain("Beta openai/beta");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("renders long model picker rows as one clipped line with a short footer", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.openOverlay({
+    await runtime.start();
+    runtime.openOverlay({
       kind: "modelPicker",
       title: "Models",
       query: "gemini",
@@ -1093,7 +1129,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 60,
         height: 24,
@@ -1113,22 +1149,22 @@ describe("opentui solid shell runtime", () => {
       expect(modelRows[0]).toContain("Connect");
       expect(frame).not.toContain("google/gemini-2.5-flash-lite-preview-06-17");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("renders provider picker with the OpenCode dialog-select shell", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.openOverlay({
+    await runtime.start();
+    runtime.openOverlay({
       kind: "providerPicker",
       title: "Connect a provider",
       query: "",
@@ -1175,7 +1211,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 30,
@@ -1200,14 +1236,14 @@ describe("opentui solid shell runtime", () => {
       expect(frame).not.toContain("┌");
       expect(frame).not.toContain("└");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("renders OAuth wait dialog with copyable URL fallback", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
@@ -1217,11 +1253,11 @@ describe("opentui solid shell runtime", () => {
     const authUrl =
       "https://auth.openai.com/oauth/authorize?client_id=brewva-test&redirect_uri=http://localhost:1455/auth/callback&state=tail-marker";
 
-    await controller.start();
-    controller.ui.copyText = async (text: string) => {
+    await runtime.start();
+    runtime.ui.copyText = async (text: string) => {
       copiedText.push(text);
     };
-    controller.openOverlay({
+    runtime.openOverlay({
       kind: "oauthWait",
       title: "ChatGPT Pro/Plus (browser)",
       url: authUrl,
@@ -1229,7 +1265,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 30,
@@ -1255,42 +1291,83 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
 
       expect(copiedText).toEqual([authUrl]);
-      expect(controller.getState().notifications.at(-1)).toMatchObject({
+      expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
         level: "info",
         message: "Copied to clipboard.",
       });
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("renders OAuth manual callback input with keyboard entry", async () => {
-    const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const providers: ProviderConnection[] = [
+      {
+        id: "openai",
+        name: "OpenAI",
+        description: "ChatGPT Plus/Pro or API key",
+        group: "popular",
+        connected: false,
+        connectionSource: "none",
+        modelCount: 1,
+        availableModelCount: 0,
+        credentialRef: "vault://openai/apiKey",
+      },
+    ];
+    const submittedCodes: string[] = [];
+    const authUrl =
+      "https://auth.openai.com/oauth/authorize?client_id=brewva-test&redirect_uri=http://localhost:1455/auth/callback&state=tail-marker";
+    let finishBrowserWait: (() => void) | undefined;
+    const { bundle } = createFakeBundle({
+      providers,
+      authMethods: {
+        openai: [
+          {
+            id: "chatgpt_browser",
+            kind: "oauth",
+            type: "oauth",
+            label: "ChatGPT Pro/Plus (browser)",
+            credentialProvider: "openai-codex",
+            modelProviderFilter: "openai-codex",
+          },
+        ],
+      },
+      async authorizeOAuth() {
+        return {
+          url: authUrl,
+          method: "auto",
+          instructions: "Authorize in browser.",
+          manualCode: {
+            prompt: "Paste the final redirect URL or authorization code.",
+          },
+        };
+      },
+      async completeOAuth(_provider, _methodId, code) {
+        if (code) {
+          submittedCodes.push(code);
+          return;
+        }
+        await new Promise<void>((resolve) => {
+          finishBrowserWait = resolve;
+        });
+      },
+    });
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
-    const submittedCodes: string[] = [];
-    const authUrl =
-      "https://auth.openai.com/oauth/authorize?client_id=brewva-test&redirect_uri=http://localhost:1455/auth/callback&state=tail-marker";
 
-    await controller.start();
-    controller.openOverlay({
-      kind: "oauthWait",
-      title: "ChatGPT Pro/Plus (browser)",
-      url: authUrl,
-      instructions: "Authorize in browser.",
-      manualCodePrompt: "Paste the final redirect URL or authorization code.",
-      async submitManualCode(code: string) {
-        submittedCodes.push(code);
-      },
-    });
+    await runtime.start();
+    runtime.ui.setEditorText("/connect ");
+    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await Bun.sleep(0);
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 30,
@@ -1318,15 +1395,17 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
 
       expect(submittedCodes).toEqual(["https://callback?code=abc"]);
+      finishBrowserWait?.();
     } finally {
-      controller.dispose();
+      finishBrowserWait?.();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("copies selected OpenTUI text with ctrl+c before semantic key handling", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
@@ -1335,11 +1414,11 @@ describe("opentui solid shell runtime", () => {
     const selection = createFakeSelectionRenderer("Selected transcript text");
     const copiedText: string[] = [];
 
-    await controller.start();
+    await runtime.start();
 
     const testSetup = await openTuiSolidTestRender(
       createOpenTuiSolidElement(BrewvaOpenTuiShell, {
-        controller,
+        runtime: runtime,
         renderer: selection.renderer,
         copyTextToClipboard: async (text: string) => {
           copiedText.push(text);
@@ -1362,19 +1441,19 @@ describe("opentui solid shell runtime", () => {
 
       expect(copiedText).toEqual(["Selected transcript text"]);
       expect(selection.wasCleared()).toBe(true);
-      expect(controller.getState().notifications.at(-1)).toMatchObject({
+      expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
         level: "info",
         message: "Copied to clipboard.",
       });
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("wires OpenTUI console copy-selection actions to the shell clipboard", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
@@ -1383,11 +1462,11 @@ describe("opentui solid shell runtime", () => {
     const selection = createFakeSelectionRenderer("");
     const copiedText: string[] = [];
 
-    await controller.start();
+    await runtime.start();
 
     const testSetup = await openTuiSolidTestRender(
       createOpenTuiSolidElement(BrewvaOpenTuiShell, {
-        controller,
+        runtime: runtime,
         renderer: selection.renderer,
         copyTextToClipboard: async (text: string) => {
           copiedText.push(text);
@@ -1411,29 +1490,29 @@ describe("opentui solid shell runtime", () => {
 
       expect(copiedText).toEqual(["Console selected text"]);
       expect(selection.wasCleared()).toBe(true);
-      expect(controller.getState().notifications.at(-1)).toMatchObject({
+      expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
         level: "info",
         message: "Copied to clipboard.",
       });
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("ctrl+a with no pending approvals renders a visible empty state instead of a blank overlay", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 30,
@@ -1450,30 +1529,30 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
 
       const frame = testSetup.captureCharFrame();
-      expect(controller.getState().overlay.active?.kind).toBe("approval");
+      expect(runtime.getViewState().overlay.active?.kind).toBe("approval");
       expect(frame).toContain("No pending approvals.");
       expect(frame).toContain(
         "Brewva will show permission requests here when a tool needs approval.",
       );
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("ctrl+o with no pending operator input renders a visible empty state instead of a blank overlay", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 30,
@@ -1490,12 +1569,12 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
 
       const frame = testSetup.captureCharFrame();
-      expect(controller.getState().overlay.active?.kind).toBe("question");
+      expect(runtime.getViewState().overlay.active?.kind).toBe("question");
       expect(frame).toContain("No pending operator input.");
       expect(frame).toContain("Brewva will show pending input requests and follow-up questions");
       expect(frame).toContain("your input.");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -1550,17 +1629,34 @@ describe("opentui solid shell runtime", () => {
         },
       ],
     });
-    const controller = new CliShellController(bundle, {
+    const secondBundle = createFakeBundle({
+      sessionId: "session-2",
+      toolDefinitions: new Map([[secondTool.name, secondTool]]),
+      seedMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "shared-tool-call",
+              name: secondTool.name,
+              arguments: { label: "second" },
+            },
+          ],
+        },
+      ],
+    }).bundle;
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
-      openSession: async () => bundle,
+      openSession: async (sessionId) => (sessionId === "session-2" ? secondBundle : bundle),
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 30,
@@ -1574,28 +1670,8 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("tool:first");
       expect(frame).not.toContain("leak:first");
 
-      const secondBundle = createFakeBundle({
-        sessionId: "session-2",
-        toolDefinitions: new Map([[secondTool.name, secondTool]]),
-        seedMessages: [
-          {
-            role: "assistant",
-            content: [
-              {
-                type: "toolCall",
-                id: "shared-tool-call",
-                name: secondTool.name,
-                arguments: { label: "second" },
-              },
-            ],
-          },
-        ],
-      }).bundle;
-
       await openTuiSolidAct(async () => {
-        await (
-          controller as unknown as { switchBundle(bundle: CliShellSessionBundle): Promise<void> }
-        ).switchBundle(secondBundle);
+        await runtime.openSessionById("session-2");
       });
       await testSetup.renderOnce();
       await testSetup.renderOnce();
@@ -1604,23 +1680,23 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("tool:second");
       expect(frame).not.toContain("leak:second");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("renders the prompt action bar with live session status", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 40,
@@ -1640,22 +1716,22 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("approvals=0");
       expect(frame).toContain("questions=0");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("renders the OpenCode-style inline approval prompt", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.openOverlay({
+    await runtime.start();
+    runtime.openOverlay({
       kind: "approval",
       selectedIndex: 0,
       snapshot: {
@@ -1682,7 +1758,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 40,
@@ -1698,22 +1774,22 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("Tool: write");
       expect(frame).toContain("Boundary: effectful");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("renders inline approval diff preview with fullscreen hint", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.openOverlay({
+    await runtime.start();
+    runtime.openOverlay({
       kind: "approval",
       selectedIndex: 0,
       snapshot: {
@@ -1745,7 +1821,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 40,
@@ -1760,7 +1836,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("ctrl+f fullscreen");
       expect(frame).toContain("1 + export const value = 2;");
 
-      await controller.handleSemanticInput({
+      await runtime.handleInput({
         key: "f",
         ctrl: true,
         meta: false,
@@ -1768,28 +1844,28 @@ describe("opentui solid shell runtime", () => {
       });
       await testSetup.renderOnce();
       frame = testSetup.captureCharFrame();
-      expect(controller.getState().overlay.active?.payload).toMatchObject({
+      expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
         kind: "approval",
         previewExpanded: true,
       });
       expect(frame).toContain("ctrl+f minimize");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("renders the OpenCode-style inline question prompt", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.openOverlay({
+    await runtime.start();
+    runtime.openOverlay({
       kind: "question",
       mode: "operator",
       selectedIndex: 0,
@@ -1841,7 +1917,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 32,
@@ -1857,7 +1933,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("Should I update the config");
       expect(frame).toContain("Custom");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -1891,15 +1967,15 @@ describe("opentui solid shell runtime", () => {
         ],
       },
     });
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.openOverlay({
+    await runtime.start();
+    runtime.openOverlay({
       kind: "tasks",
       selectedIndex: 0,
       snapshot: {
@@ -1938,7 +2014,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 28,
@@ -1948,7 +2024,7 @@ describe("opentui solid shell runtime", () => {
     try {
       await testSetup.renderOnce();
       await openTuiSolidAct(async () => {
-        await controller.handleSemanticInput({
+        await runtime.handleInput({
           key: "enter",
           ctrl: false,
           meta: false,
@@ -1956,7 +2032,7 @@ describe("opentui solid shell runtime", () => {
         });
       });
       await openTuiSolidAct(async () => {
-        await controller.handleSemanticInput({
+        await runtime.handleInput({
           key: "pagedown",
           ctrl: false,
           meta: false,
@@ -1972,24 +2048,24 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("1775 pass");
       expect(frame).toContain("brewva inspect --session worker-session-1");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("renders structured inspect overlays with section navigation and details", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.openOverlay({
+    await runtime.start();
+    runtime.openOverlay({
       kind: "inspect",
-      lines: ["legacy inspect text"],
+      lines: ["inspect detail text"],
       sections: [
         {
           id: "summary",
@@ -2007,7 +2083,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 28,
@@ -2024,22 +2100,22 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("Outcome");
       expect(frame).toContain("pass");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("scrolls pager overlays through semantic page-down input", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.openOverlay({
+    await runtime.start();
+    runtime.openOverlay({
       kind: "pager",
       lines: Array.from({ length: 40 }, (_, index) => `line-${index + 1}`),
       title: "Task Details",
@@ -2047,7 +2123,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 28,
@@ -2060,7 +2136,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("line-1");
 
       await openTuiSolidAct(async () => {
-        await controller.handleSemanticInput({
+        await runtime.handleInput({
           key: "pagedown",
           ctrl: false,
           meta: false,
@@ -2074,24 +2150,24 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("line-20");
       expect(frame).not.toContain("line-4");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("drills from inspect sections into a pager and returns on escape", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.openOverlay({
+    await runtime.start();
+    runtime.openOverlay({
       kind: "inspect",
-      lines: ["legacy inspect text"],
+      lines: ["inspect detail text"],
       sections: [
         {
           id: "summary",
@@ -2109,7 +2185,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 28,
@@ -2123,7 +2199,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("Analysis");
 
       await openTuiSolidAct(async () => {
-        await controller.handleSemanticInput({
+        await runtime.handleInput({
           key: "enter",
           ctrl: false,
           meta: false,
@@ -2139,7 +2215,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("close/back");
 
       await openTuiSolidAct(async () => {
-        await controller.handleSemanticInput({
+        await runtime.handleInput({
           key: "escape",
           ctrl: false,
           meta: false,
@@ -2153,26 +2229,26 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("Inspect");
       expect(frame).toContain("Analysis");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
 
   test("renders the notification inbox and supports dismissing the selected item", async () => {
     const { bundle } = createFakeBundle();
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.ui.notify("older notification", "info");
-    controller.ui.notify("latest notification", "warning");
+    await runtime.start();
+    runtime.ui.notify("older notification", "info");
+    runtime.ui.notify("latest notification", "warning");
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 28,
@@ -2181,7 +2257,7 @@ describe("opentui solid shell runtime", () => {
 
     try {
       await openTuiSolidAct(async () => {
-        await controller.handleSemanticInput({
+        await runtime.handleInput({
           key: "n",
           ctrl: true,
           meta: false,
@@ -2200,7 +2276,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("details enter");
 
       await openTuiSolidAct(async () => {
-        await controller.handleSemanticInput({
+        await runtime.handleInput({
           key: "character",
           text: "d",
           ctrl: false,
@@ -2216,7 +2292,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).not.toContain("latest notification");
       expect(frame).toContain("older notification");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -2234,17 +2310,17 @@ describe("opentui solid shell runtime", () => {
       sessionId: "fresh-session",
       replaySessions,
     });
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
-    controller.ui.setEditorText("draft line one");
+    await runtime.start();
+    runtime.ui.setEditorText("draft line one");
     await openTuiSolidAct(async () => {
-      await controller.handleSemanticInput({
+      await runtime.handleInput({
         key: "g",
         ctrl: true,
         meta: false,
@@ -2253,7 +2329,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 28,
@@ -2270,7 +2346,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("events: 0");
       expect(frame).toContain("current: yes");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -2301,16 +2377,16 @@ describe("opentui solid shell runtime", () => {
       ],
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 28,
@@ -2325,7 +2401,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).not.toContain("const hidden = 1;");
       expect(frame).not.toContain('"path": "src/app.ts"');
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -2380,16 +2456,16 @@ describe("opentui solid shell runtime", () => {
       ],
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 32,
@@ -2406,7 +2482,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("1 + export const value = 2;");
       expect(frame).not.toContain('"content": "export const value = 1;');
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -2455,16 +2531,16 @@ describe("opentui solid shell runtime", () => {
       ],
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 140,
         height: 36,
@@ -2483,7 +2559,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("-12 lines");
       expect(frame).not.toContain('"description": "update generated files"');
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -2518,16 +2594,16 @@ describe("opentui solid shell runtime", () => {
       ],
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 28,
@@ -2543,7 +2619,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("1775 pass");
       expect(frame).not.toContain('"command": "bun test"');
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -2579,16 +2655,16 @@ describe("opentui solid shell runtime", () => {
     });
     const toolRenderCache = createToolRenderCache();
     toolRenderCache.resetForSession("session-1");
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller, toolRenderCache }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime, toolRenderCache }),
       {
         width: 120,
         height: 32,
@@ -2605,7 +2681,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("Click to expand 2 more line(s) · 12 lines total");
       expect(countOccurrences(frame, "Click to expand")).toBe(1);
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -2644,16 +2720,16 @@ describe("opentui solid shell runtime", () => {
         },
       ],
     });
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 32,
@@ -2670,7 +2746,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).not.toContain("line 10");
       expect(frame).toContain("Click to expand 9 more line(s) · 12 lines total");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -2719,16 +2795,16 @@ describe("opentui solid shell runtime", () => {
       ],
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 32,
@@ -2754,7 +2830,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).not.toContain('"steps"');
       expect(frame).not.toContain("cleanup: skipped");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -2786,16 +2862,16 @@ describe("opentui solid shell runtime", () => {
       ],
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 32,
@@ -2810,7 +2886,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).not.toContain("raw line 6");
       expect(frame).toContain("Click to expand 3 more line(s) · 8 lines total");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -2843,16 +2919,16 @@ describe("opentui solid shell runtime", () => {
       ],
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 28,
@@ -2869,7 +2945,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("old");
       expect(frame).toContain("new");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -2938,16 +3014,16 @@ describe("opentui solid shell runtime", () => {
       ],
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
         height: 32,
@@ -2969,7 +3045,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).not.toContain("Brewva Project Critical Rules");
       expect(frame).not.toContain("Long markdown body");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -2984,16 +3060,16 @@ describe("opentui solid shell runtime", () => {
       ],
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 24,
@@ -3003,11 +3079,11 @@ describe("opentui solid shell runtime", () => {
     try {
       await testSetup.renderOnce();
       await testSetup.renderOnce();
-      expect(controller.getState().transcript.followMode).toBe("live");
-      expect(controller.getState().composer.text).toBe("");
+      expect(runtime.getViewState().transcript.followMode).toBe("live");
+      expect(runtime.getViewState().composer.text).toBe("");
 
       await openTuiSolidAct(async () => {
-        await controller.handleSemanticInput({
+        await runtime.handleInput({
           key: "home",
           ctrl: false,
           meta: false,
@@ -3017,12 +3093,12 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       await testSetup.renderOnce();
 
-      expect(controller.getState().transcript.followMode).toBe("scrolled");
-      expect(controller.getState().transcript.scrollOffset).toBeGreaterThan(0);
-      expect(controller.getState().composer.text).toBe("");
+      expect(runtime.getViewState().transcript.followMode).toBe("scrolled");
+      expect(runtime.getViewState().transcript.scrollOffset).toBeGreaterThan(0);
+      expect(runtime.getViewState().composer.text).toBe("");
 
       await openTuiSolidAct(async () => {
-        await controller.handleSemanticInput({
+        await runtime.handleInput({
           key: "end",
           ctrl: false,
           meta: false,
@@ -3032,11 +3108,11 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       await testSetup.renderOnce();
 
-      expect(controller.getState().transcript.followMode).toBe("live");
-      expect(controller.getState().transcript.scrollOffset).toBe(0);
-      expect(controller.getState().composer.text).toBe("");
+      expect(runtime.getViewState().transcript.followMode).toBe("live");
+      expect(runtime.getViewState().transcript.scrollOffset).toBe(0);
+      expect(runtime.getViewState().composer.text).toBe("");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });
@@ -3051,16 +3127,16 @@ describe("opentui solid shell runtime", () => {
       ],
     });
 
-    const controller = new CliShellController(bundle, {
+    const runtime = new CliShellRuntime(bundle, {
       cwd: process.cwd(),
       openSession: async () => bundle,
       createSession: async () => bundle,
       operatorPollIntervalMs: 60_000,
     });
 
-    await controller.start();
+    await runtime.start();
     const testSetup = await openTuiSolidTestRender(
-      createOpenTuiSolidElement(BrewvaOpenTuiShell, { controller }),
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 100,
         height: 24,
@@ -3072,7 +3148,7 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
 
       await openTuiSolidAct(async () => {
-        await controller.handleSemanticInput({
+        await runtime.handleInput({
           key: "home",
           ctrl: false,
           meta: false,
@@ -3081,12 +3157,12 @@ describe("opentui solid shell runtime", () => {
       });
       await testSetup.renderOnce();
       await testSetup.renderOnce();
-      const topOffset = controller.getState().transcript.scrollOffset;
+      const topOffset = runtime.getViewState().transcript.scrollOffset;
       expect(topOffset).toBeGreaterThan(0);
 
       await openTuiSolidAct(async () => {
         for (let index = 0; index < 5; index += 1) {
-          await controller.handleSemanticInput({
+          await runtime.handleInput({
             key: "pagedown",
             ctrl: false,
             meta: false,
@@ -3097,12 +3173,12 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       await testSetup.renderOnce();
 
-      expect(controller.getState().transcript.scrollOffset).toBeLessThan(topOffset);
-      expect(controller.getState().transcript.scrollOffset).toBeGreaterThan(0);
-      expect(controller.getState().transcript.followMode).toBe("scrolled");
-      expect(controller.getState().composer.text).toBe("");
+      expect(runtime.getViewState().transcript.scrollOffset).toBeLessThan(topOffset);
+      expect(runtime.getViewState().transcript.scrollOffset).toBeGreaterThan(0);
+      expect(runtime.getViewState().transcript.followMode).toBe("scrolled");
+      expect(runtime.getViewState().composer.text).toBe("");
     } finally {
-      controller.dispose();
+      runtime.dispose();
       testSetup.renderer.destroy();
     }
   });

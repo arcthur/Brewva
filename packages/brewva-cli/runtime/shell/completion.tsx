@@ -3,15 +3,15 @@
 import type { OpenTuiScrollBoxHandle } from "@brewva/brewva-tui/internal-opentui-runtime";
 import { type BoxRenderable } from "@opentui/core";
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
-import type { CliShellController } from "../../src/shell/controller.js";
-import type { CliShellState } from "../../src/shell/state/index.js";
+import type { CliShellRuntime } from "../../src/shell/runtime.js";
+import type { CliShellViewState } from "../../src/shell/state/index.js";
 import { COMPLETION_Z_INDEX } from "./overlay-style.js";
 import { DEFAULT_SCROLL_ACCELERATION, SPLIT_BORDER_CHARS, type SessionPalette } from "./palette.js";
 import { completionItemAuxText } from "./utils.js";
 
 export function CompletionOverlay(input: {
-  controller: CliShellController;
-  completion: NonNullable<CliShellState["composer"]["completion"]>;
+  runtime: CliShellRuntime;
+  completion: NonNullable<CliShellViewState["composer"]["completion"]>;
   anchor: () => BoxRenderable | null;
   container: () => BoxRenderable | null;
   width: number;
@@ -150,13 +150,13 @@ export function CompletionOverlay(input: {
                     if (pointerMode() !== "mouse") {
                       return;
                     }
-                    input.controller.setCompletionSelection(index());
+                    input.runtime.setCompletionSelection(index());
                   }}
                   onMouseDown={() => {
                     setPointerMode("mouse");
-                    input.controller.setCompletionSelection(index());
+                    input.runtime.setCompletionSelection(index());
                   }}
-                  onMouseUp={() => input.controller.acceptCurrentCompletion()}
+                  onMouseUp={() => input.runtime.acceptCurrentCompletion()}
                 >
                   <text
                     fg={selected ? input.theme.selectionText : input.theme.text}

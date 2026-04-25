@@ -3,7 +3,7 @@
 import { truncateToWidth, visibleWidth } from "@brewva/brewva-tui";
 import { TextAttributes } from "@opentui/core";
 import { For, Match, Show, Switch, createMemo, type JSX } from "solid-js";
-import type { CliShellState } from "../../src/shell/state/index.js";
+import type { CliShellViewState } from "../../src/shell/state/index.js";
 import { buildTaskRunListLabel, buildTaskRunPreviewLines } from "../../src/shell/task-details.js";
 import type {
   CliApprovalOverlayPayload,
@@ -1022,7 +1022,7 @@ function ConfirmDialogOverlay(input: {
 }
 
 export function ModalOverlay(input: {
-  overlay: NonNullable<CliShellState["overlay"]["active"]>;
+  overlay: NonNullable<CliShellViewState["overlay"]["active"]>;
   width: number;
   height: number;
   theme: SessionPalette;

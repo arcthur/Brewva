@@ -813,7 +813,7 @@ function GenericToolView(input: {
     if (!sessionId) {
       return;
     }
-    void shellContext.controller.openSessionById(sessionId);
+    void shellContext.runtime.openSessionById(sessionId);
   };
   const workerSessionHint = createMemo(() =>
     workerSessionId() ? "Click to open worker session" : undefined,

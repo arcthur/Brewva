@@ -222,7 +222,7 @@ export function createSessionViewPort(bundle: CliShellSessionBundle): SessionVie
 }
 
 export function createOperatorSurfacePort(input: {
-  getBundle(): CliShellSessionBundle;
+  getSessionBundle(): CliShellSessionBundle;
   openSession(sessionId: string): Promise<CliShellSessionBundle>;
   createSession(): Promise<CliShellSessionBundle>;
 }): OperatorSurfacePort {
@@ -252,7 +252,7 @@ export function createOperatorSurfacePort(input: {
 
   return {
     async getSnapshot() {
-      const bundle = input.getBundle();
+      const bundle = input.getSessionBundle();
       const sessionId = bundle.session.sessionManager.getSessionId();
       const approvals = bundle.runtime.inspect.proposals.listPendingEffectCommitments(sessionId);
       const questions = (await collectOpenSessionQuestions(bundle.runtime, sessionId)).questions;
@@ -268,7 +268,7 @@ export function createOperatorSurfacePort(input: {
       return { approvals, questions, taskRuns, sessions };
     },
     async decideApproval(requestId, inputDecision) {
-      const bundle = input.getBundle();
+      const bundle = input.getSessionBundle();
       const sessionId = bundle.session.sessionManager.getSessionId();
       bundle.runtime.authority.proposals.decideEffectCommitment(
         sessionId,
@@ -277,7 +277,7 @@ export function createOperatorSurfacePort(input: {
       );
     },
     async answerQuestion(questionId, answerText) {
-      const bundle = input.getBundle();
+      const bundle = input.getSessionBundle();
       const sessionId = bundle.session.sessionManager.getSessionId();
       const question = await resolveOpenSessionQuestion(bundle.runtime, sessionId, questionId);
       if (!question) {
@@ -303,7 +303,7 @@ export function createOperatorSurfacePort(input: {
       });
     },
     async answerQuestionRequest(requestId, answers) {
-      const bundle = input.getBundle();
+      const bundle = input.getSessionBundle();
       const sessionId = bundle.session.sessionManager.getSessionId();
       const request = await resolveOpenSessionQuestionRequest(bundle.runtime, sessionId, requestId);
       if (!request) {
@@ -336,7 +336,7 @@ export function createOperatorSurfacePort(input: {
       }
     },
     async stopTask(runId) {
-      const bundle = input.getBundle();
+      const bundle = input.getSessionBundle();
       const sessionId = bundle.session.sessionManager.getSessionId();
       const result = await bundle.orchestration?.subagents?.cancel?.({
         fromSessionId: sessionId,

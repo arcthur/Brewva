@@ -6,8 +6,8 @@ import type {
 import { onCleanup } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import type { ShellCompletionCandidate } from "../../src/shell/completion-provider.js";
-import type { CliShellController, CliShellSemanticInput } from "../../src/shell/controller.js";
-import type { CliShellNotification, CliShellState } from "../../src/shell/state/index.js";
+import type { CliShellRuntime } from "../../src/shell/runtime.js";
+import type { CliShellNotification, CliShellViewState } from "../../src/shell/state/index.js";
 import type {
   CliApprovalOverlayPayload,
   CliConfirmOverlayPayload,
@@ -18,14 +18,15 @@ import type {
   CliQuestionOverlayPayload,
   CliSelectOverlayPayload,
   CliSessionsOverlayPayload,
+  CliShellInput,
   CliShellOverlayPayload,
   CliTasksOverlayPayload,
 } from "../../src/shell/types.js";
 
-export function useShellState(controller: CliShellController): CliShellState {
-  const [state, setState] = createStore(controller.getState());
-  const unsubscribe = controller.subscribe(() => {
-    setState(reconcile(controller.getState()));
+export function useShellState(runtime: CliShellRuntime): CliShellViewState {
+  const [state, setState] = createStore(runtime.getViewState());
+  const unsubscribe = runtime.subscribe(() => {
+    setState(reconcile(runtime.getViewState()));
   });
   onCleanup(unsubscribe);
   return state;
@@ -183,7 +184,7 @@ export function renderNotificationSummary(notification: CliShellNotification): s
 }
 
 export function completionKindLabel(
-  trigger: NonNullable<CliShellState["composer"]["completion"]>["trigger"],
+  trigger: NonNullable<CliShellViewState["composer"]["completion"]>["trigger"],
 ): string {
   return trigger === "/" ? "command" : "reference";
 }
@@ -192,7 +193,7 @@ export function completionItemAuxText(item: ShellCompletionCandidate): string | 
   return item.description ?? item.detail;
 }
 
-export function toSemanticInput(event: OpenTuiKeyEvent): CliShellSemanticInput {
+export function toSemanticInput(event: OpenTuiKeyEvent): CliShellInput {
   const normalizedKey =
     event.name.length === 1 && !event.ctrl && !event.meta ? "character" : event.name;
   return {
@@ -251,21 +252,21 @@ export function readTranscriptScrollMetrics(scrollbox: OpenTuiScrollBoxHandle): 
 }
 
 export function syncTranscriptStateFromScrollbox(
-  controller: CliShellController,
+  runtime: CliShellRuntime,
   scrollbox: OpenTuiScrollBoxHandle,
 ): void {
   const { maxScrollTop, currentOffset } = readTranscriptScrollMetrics(scrollbox);
   if (currentOffset <= 1 || maxScrollTop === 0) {
-    controller.syncTranscriptScrollState("live", 0);
+    runtime.syncTranscriptScrollState("live", 0);
     return;
   }
-  controller.syncTranscriptScrollState("scrolled", currentOffset);
+  runtime.syncTranscriptScrollState("scrolled", currentOffset);
 }
 
 export function applyTranscriptNavigationRequest(input: {
-  controller: CliShellController;
+  runtime: CliShellRuntime;
   scrollbox: OpenTuiScrollBoxHandle;
-  request: NonNullable<CliShellState["transcript"]["navigationRequest"]>;
+  request: NonNullable<CliShellViewState["transcript"]["navigationRequest"]>;
 }): void {
   const pageStep = Math.max(1, Math.floor(Math.max(2, input.scrollbox.viewport.height) / 2));
 
@@ -293,8 +294,8 @@ export function applyTranscriptNavigationRequest(input: {
     }
   }
 
-  syncTranscriptStateFromScrollbox(input.controller, input.scrollbox);
-  input.controller.acknowledgeTranscriptNavigation(input.request.id);
+  syncTranscriptStateFromScrollbox(input.runtime, input.scrollbox);
+  input.runtime.acknowledgeTranscriptNavigation(input.request.id);
 }
 
 export type {

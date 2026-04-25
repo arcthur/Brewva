@@ -29,7 +29,6 @@ export interface CliShellStatusState {
   entries: Record<string, string>;
   workingMessage?: string;
   hiddenThinkingLabel?: string;
-  toolsExpanded: boolean;
 }
 
 export type CliShellDiffStyle = "auto" | "stacked";
@@ -40,8 +39,9 @@ export interface CliShellDiffState {
   wrapMode: CliShellDiffWrapMode;
 }
 
-export interface CliShellViewState {
+export interface CliShellDisplayState {
   showThinking: boolean;
+  toolDetails: boolean;
 }
 
 export interface CliShellCompletionState {
@@ -69,7 +69,7 @@ export interface CliShellOverlayState {
   >;
 }
 
-export interface CliShellState {
+export interface CliShellViewState {
   theme: TuiTheme;
   focus: {
     active: ShellFocusOwner;
@@ -100,7 +100,7 @@ export interface CliShellState {
   notifications: CliShellNotification[];
   status: CliShellStatusState;
   diff: CliShellDiffState;
-  view: CliShellViewState;
+  view: CliShellDisplayState;
 }
 
 export type CliShellAction =
@@ -138,7 +138,7 @@ export type CliShellAction =
     }
   | {
       type: "transcript.requestNavigation";
-      request: NonNullable<CliShellState["transcript"]["navigationRequest"]>;
+      request: NonNullable<CliShellViewState["transcript"]["navigationRequest"]>;
     }
   | {
       type: "transcript.clearNavigation";
@@ -184,16 +184,12 @@ export type CliShellAction =
       text: string | undefined;
     }
   | {
-      type: "status.toolsExpanded";
-      expanded: boolean;
-    }
-  | {
       type: "diff.setPreferences";
       preferences: Partial<CliShellDiffState>;
     }
   | {
       type: "view.setPreferences";
-      preferences: Partial<CliShellViewState>;
+      preferences: Partial<CliShellDisplayState>;
     };
 
 function snapshotOverlayState(overlays: OverlayManager): CliShellOverlayState {
@@ -204,7 +200,7 @@ function snapshotOverlayState(overlays: OverlayManager): CliShellOverlayState {
   };
 }
 
-export function createCliShellState(): CliShellState {
+export function createCliShellState(): CliShellViewState {
   return {
     theme: DEFAULT_TUI_THEME,
     focus: {
@@ -229,7 +225,6 @@ export function createCliShellState(): CliShellState {
     notifications: [],
     status: {
       entries: {},
-      toolsExpanded: true,
     },
     diff: {
       style: "auto",
@@ -237,11 +232,15 @@ export function createCliShellState(): CliShellState {
     },
     view: {
       showThinking: true,
+      toolDetails: true,
     },
   };
 }
 
-export function reduceCliShellState(state: CliShellState, action: CliShellAction): CliShellState {
+export function reduceCliShellState(
+  state: CliShellViewState,
+  action: CliShellAction,
+): CliShellViewState {
   const focus = new FocusManager(state.focus.active);
   for (const owner of state.focus.returnStack) {
     focus.pushReturn(owner);
@@ -448,14 +447,6 @@ export function reduceCliShellState(state: CliShellState, action: CliShellAction
           hiddenThinkingLabel: action.text,
         },
       };
-    case "status.toolsExpanded":
-      return {
-        ...state,
-        status: {
-          ...state.status,
-          toolsExpanded: action.expanded,
-        },
-      };
     case "diff.setPreferences":
       return {
         ...state,
@@ -469,6 +460,7 @@ export function reduceCliShellState(state: CliShellState, action: CliShellAction
         ...state,
         view: {
           showThinking: action.preferences.showThinking ?? state.view.showThinking,
+          toolDetails: action.preferences.toolDetails ?? state.view.toolDetails,
         },
       };
   }

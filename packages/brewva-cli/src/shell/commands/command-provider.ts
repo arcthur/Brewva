@@ -1,14 +1,13 @@
 import type { KeybindingDefinition, KeybindingTrigger } from "@brewva/brewva-tui";
-import { fuzzyScore, normalizeSearchQuery } from "./search-scoring.js";
+import { fuzzyScore, normalizeSearchQuery } from "../search-scoring.js";
+import type { ShellIntent } from "../shell-actions.js";
 
 export interface ShellCommandRunInput {
   readonly args: string;
   readonly source: "keybinding" | "palette" | "slash" | "internal";
 }
 
-export type ShellCommandRunner = (
-  input: ShellCommandRunInput,
-) => boolean | void | Promise<boolean | void>;
+export type ShellCommandIntentFactory = (input: ShellCommandRunInput) => ShellIntent | undefined;
 
 export interface ShellCommand {
   readonly id: string;
@@ -24,7 +23,7 @@ export interface ShellCommand {
   readonly hidden?: boolean;
   readonly enabled?: boolean;
   readonly suggested?: boolean;
-  readonly run: ShellCommandRunner;
+  readonly createIntent?: ShellCommandIntentFactory;
 }
 
 export interface ShellCommandListItem {
@@ -167,16 +166,28 @@ export class ShellCommandProvider {
       .map((entry) => entry.command);
   }
 
-  async runCommand(
+  createCommandIntent(
     id: string,
     input: ShellCommandRunInput = { args: "", source: "internal" },
-  ): Promise<boolean> {
+  ): ShellIntent | undefined {
     const command = this.#commands.get(id);
-    if (!command) {
-      return false;
+    if (!command || command.enabled === false) {
+      return undefined;
     }
-    const result = await command.run(input);
-    return result !== false;
+    if (command.createIntent) {
+      return command.createIntent(input);
+    }
+    return {
+      type: "command.invoke",
+      commandId: command.id,
+      args: input.args,
+      source: input.source,
+    };
+  }
+
+  createSlashCommandIntent(name: string, input: ShellCommandRunInput): ShellIntent | undefined {
+    const command = this.resolveSlashCommand(name);
+    return command ? this.createCommandIntent(command.id, input) : undefined;
   }
 
   resolveSlashCommand(name: string): ShellCommand | undefined {

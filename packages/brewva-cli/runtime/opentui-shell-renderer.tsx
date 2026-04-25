@@ -12,8 +12,8 @@ import {
   openExternalEditorWithShell,
   openExternalPagerWithShell,
 } from "../src/external-process.js";
-import { CliShellController } from "../src/shell/controller.js";
-import type { CliShellControllerOptions } from "../src/shell/controller.js";
+import { CliShellRuntime } from "../src/shell/runtime.js";
+import type { CliShellRuntimeOptions } from "../src/shell/runtime.js";
 import type { CliShellSessionBundle } from "../src/shell/types.js";
 import { BrewvaOpenTuiShell } from "./shell/app.js";
 import { createToolRenderCache, type ToolRenderCache } from "./shell/tool-render.js";
@@ -24,17 +24,17 @@ class CliInteractiveOpenTuiShellRuntime {
   #renderer: OpenTuiRenderer | undefined;
   readonly #toolRenderCache: ToolRenderCache = createToolRenderCache();
 
-  constructor(private readonly controller: CliShellController) {}
+  constructor(private readonly shellRuntime: CliShellRuntime) {}
 
   async run(): Promise<void> {
     const automaticTheme = resolveAutomaticTuiTheme(await getOpenTuiTerminalBackgroundMode());
-    this.controller.ui.setTheme(automaticTheme.name);
+    this.shellRuntime.ui.setTheme(automaticTheme.name);
     await this.mount();
-    await this.controller.start();
+    await this.shellRuntime.start();
     try {
-      await this.controller.waitForExit();
+      await this.shellRuntime.waitForExit();
     } finally {
-      this.controller.dispose();
+      this.shellRuntime.dispose();
       this.#toolRenderCache.clear();
       this.unmount();
     }
@@ -71,7 +71,7 @@ class CliInteractiveOpenTuiShellRuntime {
     await render(
       () => (
         <BrewvaOpenTuiShell
-          controller={this.controller}
+          runtime={this.shellRuntime}
           renderer={this.#renderer}
           toolRenderCache={this.#toolRenderCache}
         />
@@ -88,18 +88,18 @@ class CliInteractiveOpenTuiShellRuntime {
 
 export async function renderCliInteractiveOpenTuiShell(
   bundle: CliShellSessionBundle,
-  options: Omit<CliShellControllerOptions, "openExternalEditor" | "openExternalPager">,
+  options: Omit<CliShellRuntimeOptions, "openExternalEditor" | "openExternalPager">,
 ): Promise<void> {
-  let runtime: CliInteractiveOpenTuiShellRuntime | undefined;
-  const controller = new CliShellController(bundle, {
+  let interactiveRuntime: CliInteractiveOpenTuiShellRuntime | undefined;
+  const shellRuntime = new CliShellRuntime(bundle, {
     ...options,
     async openExternalEditor(title, prefill) {
-      return await runtime?.openExternalEditor(title, prefill);
+      return await interactiveRuntime?.openExternalEditor(title, prefill);
     },
     async openExternalPager(title, lines) {
-      return (await runtime?.openExternalPager(title, lines)) ?? false;
+      return (await interactiveRuntime?.openExternalPager(title, lines)) ?? false;
     },
   });
-  runtime = new CliInteractiveOpenTuiShellRuntime(controller);
-  await runtime.run();
+  interactiveRuntime = new CliInteractiveOpenTuiShellRuntime(shellRuntime);
+  await interactiveRuntime.run();
 }

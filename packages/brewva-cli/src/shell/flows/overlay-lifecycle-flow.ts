@@ -1,0 +1,710 @@
+import { createOperatorRuntimePort } from "@brewva/brewva-runtime";
+import type { OverlayPriority } from "@brewva/brewva-tui";
+import { buildSessionInspectReport, resolveInspectDirectory } from "../../inspect.js";
+import { buildCommandPalettePayload, buildHelpHubPayload } from "../commands/command-palette.js";
+import type { ShellCommandProvider } from "../commands/command-provider.js";
+import {
+  buildInspectSections,
+  buildNotificationsOverlayPayload,
+  buildSessionsOverlayPayload,
+} from "../overlay-view.js";
+import { questionRequestsFromSnapshot } from "../question-utils.js";
+import type { ShellAction, ShellCommitOptions, ShellIntent } from "../shell-actions.js";
+import { normalizeShellInputKey } from "../shell-keymap.js";
+import type { CliShellViewState } from "../state/index.js";
+import { buildTaskRunOutputLines } from "../task-details.js";
+import type {
+  CliShellInput,
+  CliShellOverlayPayload,
+  CliShellPromptPart,
+  CliShellSessionBundle,
+  OperatorSurfaceSnapshot,
+  SessionViewPort,
+} from "../types.js";
+
+type PagerTarget = {
+  readonly title: string;
+  readonly lines: readonly string[];
+};
+
+export type ShellOverlayCommitOptions = ShellCommitOptions;
+
+interface OperatorOverlayDelegate {
+  handleShortcut(active: CliShellOverlayPayload, input: CliShellInput): Promise<boolean>;
+  handlePrimary(active: CliShellOverlayPayload): Promise<boolean>;
+}
+
+interface ModelSelectionDelegate {
+  handlePickerTextInput(
+    payload: Extract<
+      CliShellOverlayPayload,
+      { kind: "commandPalette" | "modelPicker" | "providerPicker" }
+    >,
+    input: CliShellInput,
+  ): Promise<boolean>;
+  toggleSelectedModelFavorite(
+    payload: Extract<CliShellOverlayPayload, { kind: "modelPicker" }>,
+  ): Promise<void>;
+  selectModelPickerItem(
+    payload: Extract<CliShellOverlayPayload, { kind: "modelPicker" }>,
+  ): Promise<void>;
+  selectThinkingPickerItem(
+    payload: Extract<CliShellOverlayPayload, { kind: "thinkingPicker" }>,
+  ): void;
+}
+
+interface ProviderAuthDelegate {
+  openConnectDialog(query?: string): Promise<void>;
+  selectProviderPickerItem(
+    payload: Extract<CliShellOverlayPayload, { kind: "providerPicker" }>,
+  ): Promise<void>;
+  disconnectSelectedProvider(
+    payload: Extract<CliShellOverlayPayload, { kind: "providerPicker" }>,
+  ): Promise<void>;
+  copyOAuthWaitText(payload: Extract<CliShellOverlayPayload, { kind: "oauthWait" }>): Promise<void>;
+  submitOAuthWaitManualCode(
+    payload: Extract<CliShellOverlayPayload, { kind: "oauthWait" }>,
+  ): Promise<void>;
+  resolveAuthMethod(dialogId: string | undefined, method: unknown): void;
+}
+
+interface QuestionOverlayDelegate {
+  handleInput(
+    active: Extract<CliShellOverlayPayload, { kind: "question" }>,
+    input: CliShellInput,
+  ): Promise<boolean>;
+}
+
+export interface ShellOverlayLifecycleFlowContext {
+  getState(): CliShellViewState;
+  getViewportRows(): number;
+  getBundle(): CliShellSessionBundle;
+  getSessionPort(): SessionViewPort;
+  getOperatorSnapshot(): OperatorSurfaceSnapshot;
+  getDraftsBySessionId(): ReadonlyMap<
+    string,
+    {
+      text: string;
+      cursor: number;
+      parts: readonly CliShellPromptPart[];
+      updatedAt: number;
+    }
+  >;
+  getCommandProvider(): ShellCommandProvider;
+  commit(actions: readonly ShellAction[], options?: ShellOverlayCommitOptions): void;
+  handleShellIntent(intent: ShellIntent): Promise<boolean>;
+  submitComposer(): Promise<void>;
+  resolveDialog(dialogId: string | undefined, value: unknown): void;
+  settleInteractiveQuestionRequest(
+    requestId: string,
+    value: readonly (readonly string[])[] | undefined,
+  ): void;
+  operatorOverlay: OperatorOverlayDelegate;
+  modelSelection: ModelSelectionDelegate;
+  providerAuth: ProviderAuthDelegate;
+  questionOverlay: QuestionOverlayDelegate;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+function hasDiffPreviewPayload(value: unknown): boolean {
+  const record = asRecord(value);
+  const preview = asRecord(record?.diffPreview ?? record?.previewDiff ?? record?.preview);
+  if (!preview) {
+    return false;
+  }
+  if (typeof preview.diff === "string" || typeof preview.error === "string") {
+    return true;
+  }
+  const files = preview.files;
+  return Array.isArray(files) && files.length > 0;
+}
+
+function selectableItemCount(payload: CliShellOverlayPayload): number | undefined {
+  if (payload.kind === "approval") {
+    return payload.snapshot.approvals.length;
+  }
+  if (payload.kind === "question") {
+    return questionRequestsFromSnapshot(payload.snapshot).length;
+  }
+  if (payload.kind === "tasks") {
+    return payload.snapshot.taskRuns.length;
+  }
+  if (payload.kind === "sessions") {
+    return payload.sessions.length;
+  }
+  if (payload.kind === "notifications") {
+    return payload.notifications.length;
+  }
+  if (payload.kind === "inspect") {
+    return payload.sections.length;
+  }
+  if (payload.kind === "select") {
+    return payload.options.length;
+  }
+  if (
+    payload.kind === "commandPalette" ||
+    payload.kind === "modelPicker" ||
+    payload.kind === "providerPicker" ||
+    payload.kind === "thinkingPicker" ||
+    payload.kind === "authMethodPicker"
+  ) {
+    return payload.items.length;
+  }
+  return undefined;
+}
+
+export class ShellOverlayLifecycleFlow {
+  constructor(private readonly context: ShellOverlayLifecycleFlowContext) {}
+
+  openOverlay(payload: CliShellOverlayPayload, priority: OverlayPriority = "normal"): void {
+    this.openOverlayWithOptions(payload, { priority });
+  }
+
+  openOverlayWithOptions(
+    payload: CliShellOverlayPayload,
+    options: {
+      priority?: OverlayPriority;
+      suspendCurrent?: boolean;
+    } = {},
+  ): string {
+    const overlayId = `${payload.kind}:${Date.now()}`;
+    this.context.commit(
+      [
+        {
+          type: "overlay.openData",
+          id: overlayId,
+          priority: options.priority ?? "normal",
+          payload,
+          suspendCurrent: options.suspendCurrent,
+        },
+      ],
+      { refreshCompletions: false },
+    );
+    return overlayId;
+  }
+
+  openPagerOverlay(target: PagerTarget, options: { scrollOffset?: number } = {}): void {
+    this.openOverlayWithOptions(
+      {
+        kind: "pager",
+        title: target.title,
+        lines: [...target.lines],
+        scrollOffset: options.scrollOffset ?? 0,
+      },
+      {
+        suspendCurrent: true,
+      },
+    );
+  }
+
+  replaceActiveOverlay(payload: CliShellOverlayPayload): void {
+    this.context.commit([{ type: "overlay.replaceData", payload }], {
+      refreshCompletions: false,
+    });
+  }
+
+  closeOverlayById(overlayId: string): void {
+    this.context.commit([{ type: "overlay.close", id: overlayId }], {
+      refreshCompletions: false,
+    });
+  }
+
+  closeActiveOverlay(cancelled: boolean): void {
+    const active = this.context.getState().overlay.active;
+    const payload = active?.payload;
+    if (!active || !payload) {
+      return;
+    }
+    if (cancelled) {
+      if (payload.kind === "confirm") {
+        this.context.resolveDialog(payload.dialogId, false);
+      } else if (payload.kind === "input" || payload.kind === "select") {
+        this.context.resolveDialog(payload.dialogId, undefined);
+      } else if (payload.kind === "authMethodPicker") {
+        this.context.providerAuth.resolveAuthMethod(payload.dialogId, undefined);
+      } else if (payload.kind === "question" && payload.mode === "interactive") {
+        const request = questionRequestsFromSnapshot(payload.snapshot)[payload.selectedIndex];
+        if (request) {
+          this.context.settleInteractiveQuestionRequest(request.requestId, undefined);
+        }
+      }
+    }
+    this.closeOverlayById(active.id);
+  }
+
+  moveSelection(delta: number): void {
+    const active = this.context.getState().overlay.active?.payload;
+    if (!active) {
+      return;
+    }
+    if (active.kind === "pager") {
+      this.scrollActive(delta);
+      return;
+    }
+    const itemCount = selectableItemCount(active);
+    if (itemCount === undefined || itemCount === 0) {
+      return;
+    }
+    if (!("selectedIndex" in active)) {
+      return;
+    }
+    this.replaceActiveOverlay({
+      ...active,
+      selectedIndex: (active.selectedIndex + delta + itemCount) % itemCount,
+    });
+  }
+
+  scrollActive(delta: number): void {
+    const active = this.context.getState().overlay.active?.payload;
+    if (!active) {
+      return;
+    }
+    if (active.kind === "pager") {
+      this.replaceActiveOverlay({
+        ...active,
+        scrollOffset: Math.max(0, active.scrollOffset + delta),
+      });
+      return;
+    }
+    if (active.kind === "inspect") {
+      const nextOffsets = [...active.scrollOffsets];
+      const currentOffset = nextOffsets[active.selectedIndex] ?? 0;
+      nextOffsets[active.selectedIndex] = Math.max(0, currentOffset + delta);
+      this.replaceActiveOverlay({
+        ...active,
+        scrollOffsets: nextOffsets,
+      });
+      return;
+    }
+    if (active.kind === "approval") {
+      const item = active.snapshot.approvals[active.selectedIndex];
+      if (!hasDiffPreviewPayload(item)) {
+        return;
+      }
+      this.replaceActiveOverlay({
+        ...active,
+        previewScrollOffset: Math.max(0, (active.previewScrollOffset ?? 0) + delta),
+      });
+    }
+  }
+
+  scrollPage(direction: -1 | 1): void {
+    this.scrollActive(direction * this.getOverlayPageStep());
+  }
+
+  toggleFullscreen(): void {
+    const active = this.context.getState().overlay.active?.payload;
+    if (!active || active.kind !== "approval") {
+      return;
+    }
+    const item = active.snapshot.approvals[active.selectedIndex];
+    if (!hasDiffPreviewPayload(item)) {
+      return;
+    }
+    this.replaceActiveOverlay({
+      ...active,
+      previewExpanded: !active.previewExpanded,
+    });
+  }
+
+  handleInputOverlayInput(
+    active: Extract<CliShellOverlayPayload, { kind: "input" }>,
+    input: CliShellInput,
+  ): boolean {
+    const key = normalizeShellInputKey(input.key);
+    if (key === "enter") {
+      this.context.resolveDialog(
+        active.dialogId,
+        active.value.trim().length > 0 ? active.value : undefined,
+      );
+      this.closeActiveOverlay(false);
+      return true;
+    }
+    if (key === "escape") {
+      this.closeActiveOverlay(true);
+      return true;
+    }
+    if (key === "backspace") {
+      this.replaceActiveOverlay({
+        ...active,
+        value: active.value.slice(0, -1),
+      });
+      return true;
+    }
+    if (!input.ctrl && !input.meta && key === "character" && typeof input.text === "string") {
+      this.replaceActiveOverlay({
+        ...active,
+        value: `${active.value}${input.text}`,
+      });
+      return true;
+    }
+    return true;
+  }
+
+  async handleShortcut(active: CliShellOverlayPayload, input: CliShellInput): Promise<boolean> {
+    const handledOperatorShortcut = await this.context.operatorOverlay.handleShortcut(
+      active,
+      input,
+    );
+    if (handledOperatorShortcut) {
+      return true;
+    }
+
+    if (
+      input.ctrl ||
+      input.meta ||
+      normalizeShellInputKey(input.key) !== "character" ||
+      !input.text
+    ) {
+      return false;
+    }
+    const key = input.text.toLowerCase();
+
+    if (active.kind === "modelPicker" && key === "f") {
+      await this.context.modelSelection.toggleSelectedModelFavorite(active);
+      return true;
+    }
+
+    if (active.kind === "modelPicker" && key === "c") {
+      this.closeActiveOverlay(false);
+      await this.context.providerAuth.openConnectDialog(active.query);
+      return true;
+    }
+
+    if (active.kind === "providerPicker" && key === "d") {
+      await this.context.providerAuth.disconnectSelectedProvider(active);
+      return true;
+    }
+
+    if (active.kind === "oauthWait" && key === "c") {
+      await this.context.providerAuth.copyOAuthWaitText(active);
+      return true;
+    }
+
+    if (active.kind === "oauthWait" && key === "p") {
+      void this.context.providerAuth.submitOAuthWaitManualCode(active);
+      return true;
+    }
+
+    if (active.kind === "confirm") {
+      if (key === "y") {
+        this.context.resolveDialog(active.dialogId, true);
+        this.closeActiveOverlay(false);
+        return true;
+      }
+      if (key === "n") {
+        this.context.resolveDialog(active.dialogId, false);
+        this.closeActiveOverlay(false);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  async handlePrimary(): Promise<void> {
+    const active = this.context.getState().overlay.active?.payload;
+    if (!active) {
+      return;
+    }
+    const handledOperatorPrimary = await this.context.operatorOverlay.handlePrimary(active);
+    if (handledOperatorPrimary) {
+      return;
+    }
+
+    switch (active.kind) {
+      case "confirm":
+        this.context.resolveDialog(active.dialogId, true);
+        this.closeActiveOverlay(false);
+        return;
+      case "input":
+        this.context.resolveDialog(
+          active.dialogId,
+          active.value.trim().length > 0 ? active.value : undefined,
+        );
+        this.closeActiveOverlay(false);
+        return;
+      case "select":
+        this.context.resolveDialog(active.dialogId, active.options[active.selectedIndex]);
+        this.closeActiveOverlay(false);
+        return;
+      case "commandPalette":
+        await this.handleCommandPalettePrimary(active);
+        return;
+      case "helpHub":
+        this.closeActiveOverlay(false);
+        return;
+      case "modelPicker":
+        await this.context.modelSelection.selectModelPickerItem(active);
+        return;
+      case "providerPicker":
+        await this.context.providerAuth.selectProviderPickerItem(active);
+        return;
+      case "thinkingPicker":
+        this.context.modelSelection.selectThinkingPickerItem(active);
+        return;
+      case "authMethodPicker":
+        this.context.providerAuth.resolveAuthMethod(
+          active.dialogId,
+          active.items[active.selectedIndex]?.method,
+        );
+        this.closeActiveOverlay(false);
+        return;
+      case "oauthWait":
+        void this.context.providerAuth.submitOAuthWaitManualCode(active);
+        return;
+      default:
+        this.closeActiveOverlay(false);
+    }
+  }
+
+  async handlePickerInput(input: CliShellInput): Promise<void> {
+    const active = this.context.getState().overlay.active?.payload;
+    if (
+      active?.kind !== "commandPalette" &&
+      active?.kind !== "modelPicker" &&
+      active?.kind !== "providerPicker"
+    ) {
+      return;
+    }
+    const handledShortcut = await this.handleShortcut(active, input);
+    if (!handledShortcut) {
+      await this.context.modelSelection.handlePickerTextInput(active, input);
+    }
+  }
+
+  async handleQuestionInput(input: CliShellInput): Promise<void> {
+    const active = this.context.getState().overlay.active?.payload;
+    if (active?.kind === "question") {
+      await this.context.questionOverlay.handleInput(active, input);
+    }
+  }
+
+  async handleGenericInput(input: CliShellInput): Promise<void> {
+    const active = this.context.getState().overlay.active?.payload;
+    if (active) {
+      await this.handleShortcut(active, input);
+    }
+  }
+
+  openCommandPalette(query = ""): void {
+    this.openOverlay(
+      buildCommandPalettePayload({
+        commandProvider: this.context.getCommandProvider(),
+        query,
+      }),
+    );
+  }
+
+  openHelpHub(): void {
+    this.openOverlay(buildHelpHubPayload(this.context.getCommandProvider()));
+  }
+
+  openSessionsOverlay(): void {
+    this.openOverlay(this.buildSessionsOverlayPayload());
+  }
+
+  async openInspectOverlay(): Promise<void> {
+    const operatorRuntime = createOperatorRuntimePort(this.context.getBundle().runtime);
+    const report = buildSessionInspectReport({
+      runtime: operatorRuntime,
+      sessionId: this.context.getSessionPort().getSessionId(),
+      directory: resolveInspectDirectory(operatorRuntime, undefined, undefined),
+    });
+    const sections = buildInspectSections(report);
+    this.openOverlay({
+      kind: "inspect",
+      lines: sections[0]?.lines ?? [],
+      sections,
+      selectedIndex: 0,
+      scrollOffsets: sections.map(() => 0),
+    });
+  }
+
+  openNotificationsOverlay(): void {
+    this.openOverlay(this.buildNotificationsOverlayPayload());
+  }
+
+  syncNotificationsOverlay(): void {
+    const active = this.context.getState().overlay.active?.payload;
+    if (active?.kind !== "notifications") {
+      return;
+    }
+    this.replaceActiveOverlay(
+      this.buildNotificationsOverlayPayload({
+        id: active.notifications[active.selectedIndex]?.id,
+        index: active.selectedIndex,
+      }),
+    );
+  }
+
+  syncSnapshotOverlay(snapshot: OperatorSurfaceSnapshot): void {
+    const active = this.context.getState().overlay.active?.payload;
+    if (!active) {
+      return;
+    }
+
+    if (active.kind === "approval") {
+      this.replaceActiveOverlay({
+        ...active,
+        selectedIndex: Math.max(0, Math.min(active.selectedIndex, snapshot.approvals.length - 1)),
+        snapshot,
+      });
+      return;
+    }
+    if (active.kind === "question") {
+      if (active.mode === "interactive") {
+        return;
+      }
+      const requestCount = questionRequestsFromSnapshot(snapshot).length;
+      this.replaceActiveOverlay({
+        ...active,
+        selectedIndex: Math.max(0, Math.min(active.selectedIndex, requestCount - 1)),
+        snapshot,
+      });
+      return;
+    }
+    if (active.kind === "tasks") {
+      this.replaceActiveOverlay({
+        ...active,
+        selectedIndex: Math.max(0, Math.min(active.selectedIndex, snapshot.taskRuns.length - 1)),
+        snapshot,
+      });
+      return;
+    }
+    if (active.kind === "sessions") {
+      this.replaceActiveOverlay(
+        this.buildSessionsOverlayPayload(snapshot, {
+          sessionId: active.sessions[active.selectedIndex]?.sessionId,
+          index: active.selectedIndex,
+        }),
+      );
+    }
+  }
+
+  getExternalPagerTarget(filter?: "pager"): PagerTarget | undefined {
+    const active = this.context.getState().overlay.active?.payload;
+    if (!active) {
+      return undefined;
+    }
+    if (active.kind === "pager") {
+      return {
+        title: active.title ?? "brewva-pager",
+        lines: active.lines,
+      };
+    }
+    if (filter === "pager") {
+      return undefined;
+    }
+    if (active.kind === "inspect") {
+      const section = active.sections[active.selectedIndex];
+      if (!section) {
+        return undefined;
+      }
+      return {
+        title: section.title,
+        lines: section.lines,
+      };
+    }
+    if (active.kind === "tasks") {
+      const run = active.snapshot.taskRuns[active.selectedIndex];
+      if (!run) {
+        return undefined;
+      }
+      const sessionWireFrames = run.workerSessionId
+        ? this.context.getBundle().runtime.inspect.sessionWire?.query?.(run.workerSessionId)
+        : undefined;
+      return {
+        title: `Task ${run.runId} output`,
+        lines: buildTaskRunOutputLines(run, { sessionWireFrames }),
+      };
+    }
+    if (active.kind === "notifications") {
+      const notification = active.notifications[active.selectedIndex];
+      if (!notification) {
+        return undefined;
+      }
+      return {
+        title: `Notification [${notification.level}]`,
+        lines: [
+          `id: ${notification.id}`,
+          `level: ${notification.level}`,
+          `createdAt: ${new Date(notification.createdAt).toISOString()}`,
+          "",
+          ...notification.message.split(/\r?\n/u),
+        ],
+      };
+    }
+    return undefined;
+  }
+
+  private async handleCommandPalettePrimary(
+    active: Extract<CliShellOverlayPayload, { kind: "commandPalette" }>,
+  ): Promise<void> {
+    const item = active.items[active.selectedIndex];
+    if (!item) {
+      return;
+    }
+    this.closeActiveOverlay(false);
+    const intent = this.context.getCommandProvider().createCommandIntent(item.id, {
+      args: "",
+      source: "palette",
+    });
+    const handled = intent ? await this.context.handleShellIntent(intent) : false;
+    if (handled) {
+      return;
+    }
+    const command = this.context.getCommandProvider().getCommand(item.id);
+    const slashName = command?.slash?.name;
+    if (!slashName) {
+      return;
+    }
+    this.context.commit(
+      [
+        {
+          type: "composer.setPromptState",
+          text: `/${slashName}`,
+          cursor: slashName.length + 1,
+          parts: [],
+        },
+      ],
+      { refreshCompletions: false },
+    );
+    await this.context.submitComposer();
+  }
+
+  private buildNotificationsOverlayPayload(
+    selection: {
+      id?: string;
+      index?: number;
+    } = {},
+  ) {
+    return buildNotificationsOverlayPayload(this.context.getState().notifications, selection);
+  }
+
+  private buildSessionsOverlayPayload(
+    snapshot: OperatorSurfaceSnapshot = this.context.getOperatorSnapshot(),
+    selection: {
+      sessionId?: string;
+      index?: number;
+    } = {},
+  ): CliShellOverlayPayload {
+    return buildSessionsOverlayPayload({
+      snapshot,
+      currentSessionId: this.context.getSessionPort().getSessionId(),
+      draftsBySessionId: this.context.getDraftsBySessionId(),
+      currentComposerText: this.context.getState().composer.text,
+      selection,
+    });
+  }
+
+  private getOverlayPageStep(): number {
+    return Math.max(4, Math.floor(Math.max(10, this.context.getViewportRows() - 8) / 2));
+  }
+}

@@ -4,7 +4,6 @@ import type { OpenTuiScrollBoxHandle } from "@brewva/brewva-tui/internal-opentui
 import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "solid-js";
 import { For, Show, createEffect, createMemo } from "solid-js";
-import type { CliShellController } from "../../src/shell/controller.js";
 import {
   countQuestionRequestKinds,
   isImmediateQuestionRequest,
@@ -13,6 +12,7 @@ import {
   questionRequestsFromOverlay,
   questionTabCount,
 } from "../../src/shell/question-utils.js";
+import type { CliShellRuntime } from "../../src/shell/runtime.js";
 import type {
   CliApprovalOverlayPayload,
   CliQuestionOverlayPayload,
@@ -142,7 +142,7 @@ function InlinePromptCard(input: {
 }
 
 export function InlineApprovalPrompt(input: {
-  controller: CliShellController;
+  runtime: CliShellRuntime;
   payload: CliApprovalOverlayPayload;
   theme: SessionPalette;
   transcriptWidth: number;
@@ -329,7 +329,7 @@ export function InlineApprovalPrompt(input: {
               label: "Allow once",
               active: true,
               onSelect: () => {
-                void input.controller.handleSemanticInput({
+                void input.runtime.handleInput({
                   key: "enter",
                   ctrl: false,
                   meta: false,
@@ -340,7 +340,7 @@ export function InlineApprovalPrompt(input: {
             {
               label: "Reject",
               onSelect: () => {
-                void input.controller.handleSemanticInput({
+                void input.runtime.handleInput({
                   key: "character",
                   text: "r",
                   ctrl: false,
@@ -366,7 +366,7 @@ export function InlineApprovalPrompt(input: {
 }
 
 export function InlineQuestionPrompt(input: {
-  controller: CliShellController;
+  runtime: CliShellRuntime;
   payload: CliQuestionOverlayPayload;
   theme: SessionPalette;
 }) {
@@ -614,7 +614,7 @@ export function InlineQuestionPrompt(input: {
                     label: "Submit",
                     active: true,
                     onSelect: () => {
-                      void input.controller.handleSemanticInput({
+                      void input.runtime.handleInput({
                         key: "enter",
                         ctrl: false,
                         meta: false,
@@ -629,7 +629,7 @@ export function InlineQuestionPrompt(input: {
                       label: "Save custom",
                       active: true,
                       onSelect: () => {
-                        void input.controller.handleSemanticInput({
+                        void input.runtime.handleInput({
                           key: "enter",
                           ctrl: false,
                           meta: false,

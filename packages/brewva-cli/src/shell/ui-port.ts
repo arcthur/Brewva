@@ -10,7 +10,7 @@ import {
 } from "@brewva/brewva-tui";
 import { copyTextToClipboard } from "./clipboard.js";
 import { cloneCliShellPromptParts, rebasePromptPartsAfterTextReplace } from "./prompt-parts.js";
-import type { CliShellAction, CliShellState } from "./state/index.js";
+import type { CliShellAction, CliShellViewState } from "./state/index.js";
 import type { CliShellUiPort } from "./types.js";
 
 function openUrlInBrowser(url: string): Promise<void> {
@@ -22,20 +22,19 @@ function openUrlInBrowser(url: string): Promise<void> {
   });
 }
 
-interface CliShellDialogRequest<T> {
+interface CliShellDialogRequest {
   id: string;
   kind: "confirm" | "input" | "select";
   title: string;
   message?: string;
   options?: string[];
   masked?: boolean;
-  resolve(value: T): void;
 }
 
 export function createCliShellUiPortController(input: {
-  dispatch(action: CliShellAction): void;
-  getState(): CliShellState;
-  requestDialog<T>(request: CliShellDialogRequest<T>): Promise<T>;
+  commit(action: CliShellAction): void;
+  getState(): CliShellViewState;
+  requestDialog<T>(request: CliShellDialogRequest): Promise<T>;
   requestCustom<T>(kind: string, payload: unknown, opts?: BrewvaUiDialogOptions): Promise<T>;
   openExternalEditor(title: string, prefill?: string): Promise<string | undefined>;
   requestRender(): void;
@@ -52,7 +51,6 @@ export function createCliShellUiPortController(input: {
         kind: "select",
         title,
         options,
-        resolve: (value) => value,
       });
     },
     async confirm(title, message) {
@@ -61,7 +59,6 @@ export function createCliShellUiPortController(input: {
         kind: "confirm",
         title,
         message,
-        resolve: (value) => value,
       });
     },
     async input(title, placeholder) {
@@ -70,11 +67,10 @@ export function createCliShellUiPortController(input: {
         kind: "input",
         title,
         message: placeholder,
-        resolve: (value) => value,
       });
     },
     notify(message, level = "info") {
-      input.dispatch({
+      input.commit({
         type: "notification.add",
         notification: {
           id: `notification:${Date.now()}:${Math.random().toString(16).slice(2, 8)}`,
@@ -91,20 +87,20 @@ export function createCliShellUiPortController(input: {
       };
     },
     setStatus(key, text) {
-      input.dispatch({
+      input.commit({
         type: "status.set",
         key,
         text,
       });
     },
     setWorkingMessage(message) {
-      input.dispatch({
+      input.commit({
         type: "status.working",
         text: message,
       });
     },
     setHiddenThinkingLabel(label) {
-      input.dispatch({
+      input.commit({
         type: "status.hiddenThinking",
         text: label,
       });
@@ -124,7 +120,7 @@ export function createCliShellUiPortController(input: {
         state.composer.text.slice(0, state.composer.cursor) +
         text +
         state.composer.text.slice(state.composer.cursor);
-      input.dispatch({
+      input.commit({
         type: "composer.setPromptState",
         text: nextText,
         cursor: state.composer.cursor + text.length,
@@ -136,7 +132,7 @@ export function createCliShellUiPortController(input: {
       });
     },
     setEditorText(text) {
-      input.dispatch({
+      input.commit({
         type: "composer.setText",
         text,
         cursor: text.length,
@@ -172,19 +168,21 @@ export function createCliShellUiPortController(input: {
           error: "Unknown theme selection.",
         };
       }
-      input.dispatch({
+      input.commit({
         type: "theme.set",
         theme: resolvedTheme,
       });
       return { success: true };
     },
     getToolsExpanded() {
-      return input.getState().status.toolsExpanded;
+      return input.getState().view.toolDetails;
     },
     setToolsExpanded(expanded) {
-      input.dispatch({
-        type: "status.toolsExpanded",
-        expanded,
+      input.commit({
+        type: "view.setPreferences",
+        preferences: {
+          toolDetails: expanded,
+        },
       });
     },
   };

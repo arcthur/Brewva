@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ShellCommandProvider } from "../../../packages/brewva-cli/src/shell/command-provider.js";
+import { ShellCommandProvider } from "../../../packages/brewva-cli/src/shell/commands/command-provider.js";
 import {
   ShellCompletionProvider,
   createAgentCompletionSource,
@@ -29,7 +29,6 @@ function createCommandProvider(): ShellCommandProvider {
     description: "Choose the active model",
     category: "Agent",
     slash: { name: "models", aliases: ["model"] },
-    run() {},
   });
   provider.register({
     id: "session.quit",
@@ -37,7 +36,6 @@ function createCommandProvider(): ShellCommandProvider {
     description: "Exit the shell",
     category: "Session",
     slash: { name: "quit" },
-    run() {},
   });
   return provider;
 }

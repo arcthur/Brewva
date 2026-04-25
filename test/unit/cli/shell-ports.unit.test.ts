@@ -196,7 +196,7 @@ describe("cli shell session port", () => {
       toolDefinitions: new Map(),
     } as unknown as CliShellSessionBundle;
     const port = createOperatorSurfacePort({
-      getBundle: () => bundle,
+      getSessionBundle: () => bundle,
       openSession: async () => bundle,
       createSession: async () => bundle,
     });
