@@ -48,23 +48,12 @@
       },
       "optionalDependencies": {
         "@brewva/brewva-darwin-arm64": "0.1.0",
-        "@brewva/brewva-darwin-x64": "0.1.0",
         "@brewva/brewva-linux-arm64": "0.1.0",
-        "@brewva/brewva-linux-arm64-musl": "0.1.0",
         "@brewva/brewva-linux-x64": "0.1.0",
-        "@brewva/brewva-linux-x64-musl": "0.1.0",
-        "@brewva/brewva-windows-x64": "0.1.0",
       },
     },
     "distribution/brewva-darwin-arm64": {
       "name": "@brewva/brewva-darwin-arm64",
-      "version": "0.1.0",
-      "bin": {
-        "brewva": "./bin/brewva",
-      },
-    },
-    "distribution/brewva-darwin-x64": {
-      "name": "@brewva/brewva-darwin-x64",
       "version": "0.1.0",
       "bin": {
         "brewva": "./bin/brewva",
@@ -77,32 +66,11 @@
         "brewva": "./bin/brewva",
       },
     },
-    "distribution/brewva-linux-arm64-musl": {
-      "name": "@brewva/brewva-linux-arm64-musl",
-      "version": "0.1.0",
-      "bin": {
-        "brewva": "./bin/brewva",
-      },
-    },
     "distribution/brewva-linux-x64": {
       "name": "@brewva/brewva-linux-x64",
       "version": "0.1.0",
       "bin": {
         "brewva": "./bin/brewva",
-      },
-    },
-    "distribution/brewva-linux-x64-musl": {
-      "name": "@brewva/brewva-linux-x64-musl",
-      "version": "0.1.0",
-      "bin": {
-        "brewva": "./bin/brewva",
-      },
-    },
-    "distribution/brewva-windows-x64": {
-      "name": "@brewva/brewva-windows-x64",
-      "version": "0.1.0",
-      "bin": {
-        "brewva": "./bin/brewva.exe",
       },
     },
     "packages/brewva-agent-engine": {
@@ -440,8 +408,6 @@
 
     "@brewva/brewva-darwin-arm64": ["@brewva/brewva-darwin-arm64@workspace:distribution/brewva-darwin-arm64"],
 
-    "@brewva/brewva-darwin-x64": ["@brewva/brewva-darwin-x64@workspace:distribution/brewva-darwin-x64"],
-
     "@brewva/brewva-deliberation": ["@brewva/brewva-deliberation@workspace:packages/brewva-deliberation"],
 
     "@brewva/brewva-gateway": ["@brewva/brewva-gateway@workspace:packages/brewva-gateway"],
@@ -450,11 +416,7 @@
 
     "@brewva/brewva-linux-arm64": ["@brewva/brewva-linux-arm64@workspace:distribution/brewva-linux-arm64"],
 
-    "@brewva/brewva-linux-arm64-musl": ["@brewva/brewva-linux-arm64-musl@workspace:distribution/brewva-linux-arm64-musl"],
-
     "@brewva/brewva-linux-x64": ["@brewva/brewva-linux-x64@workspace:distribution/brewva-linux-x64"],
-
-    "@brewva/brewva-linux-x64-musl": ["@brewva/brewva-linux-x64-musl@workspace:distribution/brewva-linux-x64-musl"],
 
     "@brewva/brewva-provider-core": ["@brewva/brewva-provider-core@workspace:packages/brewva-provider-core"],
 
@@ -473,8 +435,6 @@
     "@brewva/brewva-tools": ["@brewva/brewva-tools@workspace:packages/brewva-tools"],
 
     "@brewva/brewva-tui": ["@brewva/brewva-tui@workspace:packages/brewva-tui"],
-
-    "@brewva/brewva-windows-x64": ["@brewva/brewva-windows-x64@workspace:distribution/brewva-windows-x64"],
 
     "@dimforge/rapier2d-simd-compat": ["@dimforge/rapier2d-simd-compat@0.17.3", "", {}, "sha512-bijvwWz6NHsNj5e5i1vtd3dU2pDhthSaTUZSh14DUGGKJfw8eMnlWZsxwHBxB/a3AXVNDjL9abuHw1k9FGR+jg=="],
 

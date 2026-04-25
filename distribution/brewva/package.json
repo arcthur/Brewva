@@ -19,12 +19,8 @@
   },
   "optionalDependencies": {
     "@brewva/brewva-darwin-arm64": "0.1.0",
-    "@brewva/brewva-darwin-x64": "0.1.0",
     "@brewva/brewva-linux-arm64": "0.1.0",
-    "@brewva/brewva-linux-arm64-musl": "0.1.0",
-    "@brewva/brewva-linux-x64": "0.1.0",
-    "@brewva/brewva-linux-x64-musl": "0.1.0",
-    "@brewva/brewva-windows-x64": "0.1.0"
+    "@brewva/brewva-linux-x64": "0.1.0"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

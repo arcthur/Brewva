@@ -74,6 +74,36 @@ describe("binary packaging contract", () => {
     expect(buildScriptSource).toContain("copyBoxLiteRuntimeAssets");
   });
 
+  test("CI and launcher expose only BoxLite-supported binary targets", () => {
+    const repoRoot = resolve(import.meta.dirname, "../../..");
+    const workflowPath = resolve(repoRoot, ".github", "workflows", "ci.yml");
+    const launcherPackagePath = resolve(repoRoot, "distribution", "brewva", "package.json");
+    const platformResolverPath = resolve(repoRoot, "distribution", "brewva", "bin", "platform.js");
+    const workflowSource = readFileSync(workflowPath, "utf8");
+    const launcherPackageSource = readFileSync(launcherPackagePath, "utf8");
+    const platformResolverSource = readFileSync(platformResolverPath, "utf8");
+
+    for (const supported of ["brewva-darwin-arm64", "brewva-linux-x64", "brewva-linux-arm64"]) {
+      expect(workflowSource).toContain(`target: ${supported}`);
+      expect(launcherPackageSource).toContain(`"@brewva/${supported}"`);
+    }
+
+    for (const unsupported of [
+      "brewva-darwin-x64",
+      "brewva-windows-x64",
+      "brewva-linux-x64-musl",
+      "brewva-linux-arm64-musl",
+    ]) {
+      expect(workflowSource).not.toContain(unsupported);
+      expect(launcherPackageSource).not.toContain(`"@brewva/${unsupported}"`);
+    }
+
+    expect(platformResolverSource).not.toContain('"darwin-x64"');
+    expect(platformResolverSource).not.toContain('"windows-x64"');
+    expect(platformResolverSource).not.toContain('"linux-x64-musl"');
+    expect(platformResolverSource).not.toContain('"linux-arm64-musl"');
+  });
+
   test("uses the baseline Bun runtime for the glibc Linux x64 binary", () => {
     const repoRoot = resolve(import.meta.dirname, "../../..");
     const buildScriptPath = resolve(repoRoot, "script", "build-binaries.ts");

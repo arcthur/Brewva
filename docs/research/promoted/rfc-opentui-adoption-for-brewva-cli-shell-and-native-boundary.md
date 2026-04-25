@@ -29,9 +29,10 @@ The accepted decision is:
 - the interactive shell runs in `alternate-screen`
 - Brewva pins `@opentui/core` to `0.1.100` and uses `@opentui/solid` as the
   only interactive renderer binding
-- promoted interactive packaging scope now covers `darwin-arm64`, `darwin-x64`,
-  `linux-x64` (glibc), `linux-arm64` (glibc), and `windows-x64`, while musl
-  builds remain non-interactive
+- after the BoxLite execution-plane promotion, binary packaging scope is
+  constrained to `darwin-arm64`, `linux-x64` (glibc), and `linux-arm64`
+  (glibc); `darwin-x64`, Windows, and musl targets remain unpublished until
+  BoxLite native bindings support them
 
 ## Stable References
 
@@ -78,8 +79,8 @@ Promotion is backed by:
 - local binary packaging proof via
   `BREWVA_BINARY_TARGETS=brewva-darwin-arm64 BREWVA_SHELL_SMOKE=1 bun run build:binaries`
   plus `./distribution/brewva-darwin-arm64/bin/brewva --help`
-- CI packaging matrix coverage for `linux-x64`, `linux-arm64`, `darwin-arm64`,
-  `darwin-x64`, and `windows-x64`
+- CI packaging matrix coverage for `linux-x64`, `linux-arm64`, and
+  `darwin-arm64`
 
 ## Source Anchors
 

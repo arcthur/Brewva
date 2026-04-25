@@ -100,10 +100,10 @@ Completion and overlays are part of the stable command contract:
 - requests for the full-screen shell on unsupported or low-capability terminals
   fail fast with a clear interactive-mode error instead of reviving the retired
   renderer
-- promoted interactive builds currently cover `darwin-arm64`, `darwin-x64`,
-  `linux-x64` (glibc), `linux-arm64` (glibc), and `windows-x64`
-- musl builds remain non-interactive until native OpenTUI support is added and
-  verified
+- promoted interactive builds currently cover `darwin-arm64`, `linux-x64`
+  (glibc), and `linux-arm64` (glibc)
+- `darwin-x64`, Windows, and musl targets are not published while the BoxLite
+  native runtime lacks supported bindings for those targets
 
 ## Interactive Runtime-Plugin Commands
 

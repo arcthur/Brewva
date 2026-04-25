@@ -73,14 +73,6 @@ jobs:
             runner: macos-14
             target: brewva-darwin-arm64
             smoke: ./distribution/brewva-darwin-arm64/bin/brewva --help | head -n 1
-          - label: macOS x64
-            runner: macos-15-intel
-            target: brewva-darwin-x64
-            smoke: ./distribution/brewva-darwin-x64/bin/brewva --help | head -n 1
-          - label: Windows x64
-            runner: windows-latest
-            target: brewva-windows-x64
-            smoke: ./distribution/brewva-windows-x64/bin/brewva.exe --help | head -n 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4

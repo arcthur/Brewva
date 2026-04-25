@@ -6,8 +6,8 @@ describe("brewva platform package resolution", () => {
     expect(getPlatformPackage({ platform: "darwin", arch: "arm64" })).toBe(
       "@brewva/brewva-darwin-arm64",
     );
-    expect(getPlatformPackage({ platform: "darwin", arch: "x64" })).toBe(
-      "@brewva/brewva-darwin-x64",
+    expect(() => getPlatformPackage({ platform: "darwin", arch: "x64" })).toThrow(
+      "unsupported platform target",
     );
   });
 
@@ -15,14 +15,20 @@ describe("brewva platform package resolution", () => {
     expect(getPlatformPackage({ platform: "linux", arch: "x64", libcFamily: "glibc" })).toBe(
       "@brewva/brewva-linux-x64",
     );
-    expect(getPlatformPackage({ platform: "linux", arch: "x64", libcFamily: "musl" })).toBe(
-      "@brewva/brewva-linux-x64-musl",
+    expect(getPlatformPackage({ platform: "linux", arch: "arm64", libcFamily: "glibc" })).toBe(
+      "@brewva/brewva-linux-arm64",
     );
+    expect(() =>
+      getPlatformPackage({ platform: "linux", arch: "x64", libcFamily: "musl" }),
+    ).toThrow("unsupported platform target");
+    expect(() =>
+      getPlatformPackage({ platform: "linux", arch: "arm64", libcFamily: "musl" }),
+    ).toThrow("unsupported platform target");
   });
 
-  test("maps win32 platform to windows package names", () => {
-    expect(getPlatformPackage({ platform: "win32", arch: "x64" })).toBe(
-      "@brewva/brewva-windows-x64",
+  test("rejects Windows until BoxLite publishes a supported native target", () => {
+    expect(() => getPlatformPackage({ platform: "win32", arch: "x64" })).toThrow(
+      "unsupported platform target",
     );
     expect(getBinaryPath("@brewva/brewva-windows-x64", "win32")).toBe(
       "@brewva/brewva-windows-x64/bin/brewva.exe",

@@ -252,14 +252,11 @@ For subcommand-scoped flags such as `--host`, `--port`, `--state-dir`,
 Promoted interactive targets are:
 
 - `darwin-arm64`
-- `darwin-x64`
 - `linux-x64` (glibc)
 - `linux-arm64` (glibc)
-- `windows-x64`
 
-Musl targets continue shipping Brewva binaries for non-interactive flows, but
-interactive OpenTUI mode is intentionally unsupported there and fails fast
-until musl-compatible native artifacts are added and verified.
+`darwin-x64`, Windows, and musl targets are not published while the BoxLite
+native runtime lacks supported bindings for those targets.
 
 ## Managed Tools and Backend Selection
 

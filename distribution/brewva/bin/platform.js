@@ -1,12 +1,4 @@
-const SUPPORTED_TARGETS = new Set([
-  "darwin-arm64",
-  "darwin-x64",
-  "linux-arm64",
-  "linux-arm64-musl",
-  "linux-x64",
-  "linux-x64-musl",
-  "windows-x64",
-]);
+const SUPPORTED_TARGETS = new Set(["darwin-arm64", "linux-arm64", "linux-x64"]);
 
 /**
  * Resolve the platform package name for the running system.

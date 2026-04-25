@@ -336,10 +336,10 @@ Interactive shell policy that remains fixed rather than configurable:
 
 - screen mode is `alternate-screen`
 - terminal capability fallback is driven by runtime detection, not config flags
-- promoted interactive targets are `darwin-arm64`, `darwin-x64`, `linux-x64`,
-  `linux-arm64`, and `windows-x64`
-- musl targets remain non-interactive until native OpenTUI artifacts are added
-  and verified
+- promoted interactive targets are `darwin-arm64`, `linux-x64`, and
+  `linux-arm64`
+- `darwin-x64`, Windows, and musl targets are not published while the BoxLite
+  native runtime lacks supported bindings for those targets
 
 ## Interactive Shell Packaging And Runtime Boundary
 

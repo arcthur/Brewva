@@ -154,7 +154,7 @@ runtime path.
 - Platform package examples:
   - `distribution/brewva-darwin-arm64`
   - `distribution/brewva-linux-x64`
-  - `distribution/brewva-windows-x64`
+  - `distribution/brewva-linux-arm64`
 
 ## Source Paths
 
