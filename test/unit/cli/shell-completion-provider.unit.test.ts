@@ -37,6 +37,20 @@ function createCommandProvider(): ShellCommandProvider {
     category: "Session",
     slash: { name: "quit" },
   });
+  provider.register({
+    id: "session.sessions",
+    title: "Switch Session",
+    description: "Browse and switch replay sessions.",
+    category: "Session",
+    slash: { name: "sessions" },
+  });
+  provider.register({
+    id: "session.inspect",
+    title: "Inspect Session",
+    description: "Replay-first inspect report for the current session.",
+    category: "Session",
+    slash: { name: "inspect" },
+  });
   return provider;
 }
 
@@ -61,6 +75,46 @@ describe("ShellCompletionProvider", () => {
         commandId: "agent.models",
       },
     });
+  });
+
+  test("/ completion ranks slash name matches ahead of command metadata matches", () => {
+    const provider = new ShellCompletionProvider({
+      sources: [createCommandCompletionSource(createCommandProvider())],
+      usageStore: createInMemoryCompletionUsageStore(),
+    });
+
+    const results = provider.resolve(completionRange("/", "se"));
+
+    expect(results[0]).toMatchObject({
+      kind: "command",
+      value: "sessions",
+      accept: {
+        type: "runCommand",
+        commandId: "session.sessions",
+      },
+    });
+  });
+
+  test("/ completion does not let command frecency promote non-name matches", () => {
+    const provider = new ShellCompletionProvider({
+      sources: [createCommandCompletionSource(createCommandProvider())],
+      usageStore: createInMemoryCompletionUsageStore([
+        {
+          kind: "command",
+          value: "agent.models",
+          count: 100,
+          lastUsedAt: Date.now(),
+        },
+      ]),
+    });
+
+    const results = provider.resolve(completionRange("/", "se"));
+
+    expect(results[0]).toMatchObject({
+      kind: "command",
+      value: "sessions",
+    });
+    expect(results.map((candidate) => candidate.value)).not.toContain("models");
   });
 
   test("@ completion mixes agents, files, and directories with fuzzy path matching", () => {

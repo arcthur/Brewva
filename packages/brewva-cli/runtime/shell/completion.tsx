@@ -136,13 +136,13 @@ export function CompletionOverlay(input: {
         >
           <For each={input.completion.items}>
             {(item, index) => {
-              const selected = index() === input.completion.selectedIndex;
+              const selected = createMemo(() => index() === input.completion.selectedIndex);
               const auxText = completionItemAuxText(item);
               return (
                 <box
                   paddingLeft={1}
                   paddingRight={1}
-                  backgroundColor={selected ? input.theme.primary : undefined}
+                  backgroundColor={selected() ? input.theme.primary : undefined}
                   flexDirection="row"
                   gap={1}
                   onMouseMove={() => setPointerMode("mouse")}
@@ -159,7 +159,7 @@ export function CompletionOverlay(input: {
                   onMouseUp={() => input.runtime.acceptCurrentCompletion()}
                 >
                   <text
-                    fg={selected ? input.theme.selectionText : input.theme.text}
+                    fg={selected() ? input.theme.selectionText : input.theme.text}
                     flexShrink={0}
                     wrapMode="none"
                   >
@@ -167,7 +167,7 @@ export function CompletionOverlay(input: {
                   </text>
                   <Show when={auxText}>
                     <text
-                      fg={selected ? input.theme.selectionText : input.theme.textMuted}
+                      fg={selected() ? input.theme.selectionText : input.theme.textMuted}
                       wrapMode="none"
                     >
                       {auxText}

@@ -118,9 +118,7 @@ export function PromptPanel(input: {
     const auxText = completion && selected ? completionItemAuxText(selected) : undefined;
     return auxText ?? promptStatus();
   });
-  const showFooterStatus = createMemo(
-    () => input.composer.completion?.trigger !== "/" || input.overlayActive,
-  );
+  const showFooterStatus = createMemo(() => !input.composer.completion || input.overlayActive);
   const completionHints = createMemo(() =>
     input.composer.completion
       ? input.composer.completion.trigger === "/"

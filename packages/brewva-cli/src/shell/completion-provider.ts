@@ -243,14 +243,17 @@ function bestCandidateScore(query: string, candidate: ShellCompletionCandidate):
   }
 
   let best: number | null = null;
-  const fields = [
-    candidate.value,
-    candidate.label.replace(/^[@/]/u, ""),
-    candidate.description ?? "",
-    candidate.detail ?? "",
-    ...(candidate.aliases ?? []),
-    ...(candidate.searchText ?? []),
-  ];
+  const fields =
+    candidate.kind === "command"
+      ? [candidate.value, candidate.label.replace(/^\//u, ""), ...(candidate.aliases ?? [])]
+      : [
+          candidate.value,
+          candidate.label.replace(/^[@/]/u, ""),
+          candidate.description ?? "",
+          candidate.detail ?? "",
+          ...(candidate.aliases ?? []),
+          ...(candidate.searchText ?? []),
+        ];
   for (const field of fields) {
     const score = fuzzyScore(normalized, field);
     if (score !== null && (best === null || score > best)) {

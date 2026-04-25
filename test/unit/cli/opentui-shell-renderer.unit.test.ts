@@ -34,6 +34,8 @@ import {
   resolveDialogWidth,
   resolveToastMaxWidth,
 } from "../../../packages/brewva-cli/runtime/shell/overlay-style.js";
+import { createPalette } from "../../../packages/brewva-cli/runtime/shell/palette.js";
+import { ToastStrip } from "../../../packages/brewva-cli/runtime/shell/toast.js";
 import { createToolRenderCache } from "../../../packages/brewva-cli/runtime/shell/tool-render.js";
 import { CliShellRuntime } from "../../../packages/brewva-cli/src/shell/runtime.js";
 import type {
@@ -129,6 +131,54 @@ function findRenderedColumn(frame: string, needle: string): number {
   const line = frame.split("\n").find((candidate) => candidate.includes(needle));
   expect(line).toBeDefined();
   return line?.indexOf(needle) ?? -1;
+}
+
+interface CapturedSpanLike {
+  text: string;
+  bg: {
+    toInts(): [number, number, number, number];
+  };
+}
+
+interface CapturedFrameLike {
+  lines: Array<{
+    spans: CapturedSpanLike[];
+  }>;
+}
+
+interface SpanCaptureRenderSetup {
+  captureSpans(): CapturedFrameLike;
+}
+
+function hexToRgbInts(hex: string): [number, number, number] {
+  const value = hex.replace(/^#/u, "");
+  return [
+    Number.parseInt(value.slice(0, 2), 16),
+    Number.parseInt(value.slice(2, 4), 16),
+    Number.parseInt(value.slice(4, 6), 16),
+  ];
+}
+
+function renderedLineUsesBackground(
+  testSetup: Awaited<ReturnType<typeof openTuiSolidTestRender>>,
+  needle: string,
+  hex: string,
+): boolean {
+  const [red, green, blue] = hexToRgbInts(hex);
+  const frame = (testSetup as typeof testSetup & SpanCaptureRenderSetup).captureSpans();
+  const line = frame.lines.find((candidate) =>
+    candidate.spans
+      .map((span) => span.text)
+      .join("")
+      .includes(needle),
+  );
+  expect(line).toBeDefined();
+  return (
+    line?.spans.some((span) => {
+      const [spanRed, spanGreen, spanBlue, alpha] = span.bg.toInts();
+      return spanRed === red && spanGreen === green && spanBlue === blue && alpha > 0;
+    }) ?? false
+  );
 }
 
 function createFakeBundle(
@@ -514,6 +564,52 @@ describe("opentui solid shell runtime", () => {
     }
   });
 
+  test("hides expired toast notifications", async () => {
+    const theme = createPalette({
+      backgroundApp: "#000000",
+      backgroundPanel: "#111111",
+      backgroundElement: "#222222",
+      backgroundOverlay: "#333333",
+      text: "#ffffff",
+      textMuted: "#999999",
+      textDim: "#666666",
+      accent: "#00ffcc",
+      accentSoft: "#003333",
+      warning: "#ffaa00",
+      error: "#ff3300",
+      success: "#00dd66",
+      border: "#444444",
+      borderActive: "#00ffcc",
+      borderSubtle: "#222222",
+      selectionBg: "#005555",
+      selectionText: "#ffffff",
+    });
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(ToastStrip, {
+        notifications: [
+          {
+            id: "notification-expired",
+            level: "info",
+            message: "expired toast notice",
+            createdAt: Date.now() - 60_000,
+          },
+        ],
+        theme,
+      }),
+      {
+        width: 100,
+        height: 12,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      expect(testSetup.captureCharFrame()).not.toContain("expired toast notice");
+    } finally {
+      testSetup.renderer.destroy();
+    }
+  });
+
   test("renders transcript, notifications, and slash completion inside the Solid shell", async () => {
     const { bundle } = createFakeBundle({
       seedMessages: [
@@ -648,6 +744,61 @@ describe("opentui solid shell runtime", () => {
     }
   });
 
+  test("updates slash completion highlight when query resets selection", async () => {
+    const { bundle } = createFakeBundle({
+      seedMessages: [
+        {
+          role: "assistant",
+          content: "Hello from Brewva",
+        },
+      ],
+    });
+
+    const runtime = new CliShellRuntime(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await runtime.start();
+    runtime.ui.setEditorText("/q");
+    await runtime.handleInput({
+      key: "down",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
+      {
+        width: 120,
+        height: 36,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+      expect(renderedLineUsesBackground(testSetup, "/questions", "#5bc0eb")).toBe(true);
+
+      runtime.ui.setEditorText("/qu");
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+
+      expect(runtime.getViewState().composer.completion?.selectedIndex).toBe(0);
+      expect(runtime.getViewState().composer.completion?.items[0]).toMatchObject({
+        value: "quit",
+      });
+      expect(renderedLineUsesBackground(testSetup, "/quit", "#5bc0eb")).toBe(true);
+      expect(renderedLineUsesBackground(testSetup, "/questions", "#5bc0eb")).toBe(false);
+    } finally {
+      runtime.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
   test("renders mixed reference completion kinds", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "brewva-render-completion-"));
     mkdirSync(join(cwd, "packages"), { recursive: true });
@@ -677,6 +828,7 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       const frame = testSetup.captureCharFrame();
       expect(frame).toContain("@reviewer");
+      expect(countOccurrences(frame, "Code review agent")).toBe(1);
       expect(frame).toContain("agent");
       expect(frame).toContain("@README.md");
       expect(frame).toContain("file");
