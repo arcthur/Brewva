@@ -201,6 +201,7 @@ status-pointer catalog.
 - `docs/research/archive/rfc-runtime-decomposition-and-deliberation-thickening.md`
 - `docs/research/archive/rfc-session-wire-v2-attempt-scoped-live-tool-frames.md`
 - `docs/research/archive/rfc-skill-first-delegation-and-execution-envelopes.md`
+- `docs/research/archive/rfc-stateful-box-plane-and-boxlite-execution-runtime.md`
 - `docs/research/archive/rfc-subagent-delegation-and-isolated-execution.md`
 
 See `docs/research/archive/README.md` for thematic grouping and historical

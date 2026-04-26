@@ -96,8 +96,9 @@ The promoted contract is:
 | `contract_failed`         | hidden            | hidden         | repair only     |
 
 10. Tool-surface filtering uses semantic action policy and declared routing
-    scopes, not tool-name heuristics. `local_exec_readonly` remains gated until
-    a later command-policy RFC proves it safe.
+    scopes, not tool-name heuristics. `local_exec_readonly` is auto-allow only
+    after command-policy acceptance and `virtual_readonly` routing prove the
+    request stays on the narrow exploration path.
 11. Completion guard uses visible recommendation or repair notices. Routine
     skill recommendations do not return `display:false` or
     `excludeFromContext:true`.
@@ -194,8 +195,8 @@ The following ideas are intentionally not part of the promoted contract:
 
 - live `skill_promotion_apply`; it needs explicit diff review, operator
   approval UI, rollback metadata, and audit contracts before registration
-- a command-policy RFC that could eventually classify a narrow
-  `local_exec_readonly` grammar as ordinary read/search posture
+- broader command-policy grammar beyond the currently accepted
+  `local_exec_readonly` read/search posture
 - third-party plugin sandboxing beyond the current local hook port
 - richer operator UI for reading `turn_governance_decision` receipts without
   querying raw events

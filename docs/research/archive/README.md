@@ -39,6 +39,7 @@ runtime, product, and session contracts.
 - [`rfc-invocation-spine-and-posture-runtime-vnext.md`](./rfc-invocation-spine-and-posture-runtime-vnext.md)
 - [`rfc-runtime-decomposition-and-deliberation-thickening.md`](./rfc-runtime-decomposition-and-deliberation-thickening.md)
 - [`rfc-session-wire-v2-attempt-scoped-live-tool-frames.md`](./rfc-session-wire-v2-attempt-scoped-live-tool-frames.md)
+- [`rfc-stateful-box-plane-and-boxlite-execution-runtime.md`](./rfc-stateful-box-plane-and-boxlite-execution-runtime.md)
 
 ## Reading Rule
 
