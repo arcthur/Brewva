@@ -20,7 +20,7 @@ import {
 } from "./prompt-content.js";
 import { transformMessages } from "./transform-messages.js";
 
-type GoogleApiType = "google-generative-ai" | "google-gemini-cli" | "google-vertex";
+type GoogleApiType = "google-generative-ai" | "google-gemini-cli";
 
 /**
  * Determines whether a streamed Gemini `Part` should be treated as "thinking".
@@ -169,7 +169,7 @@ export function convertMessages<T extends GoogleApiType>(
 
       for (const block of msg.content) {
         if (block.type === "text") {
-          // Skip empty text blocks - they can cause issues with some models (e.g. Claude via Antigravity)
+          // Skip empty text blocks - they can cause issues with some bridged models.
           if (!block.text || block.text.trim() === "") continue;
           const thoughtSignature = resolveThoughtSignature(
             isSameProviderAndModel,
@@ -206,7 +206,7 @@ export function convertMessages<T extends GoogleApiType>(
           );
           // Gemini 3 requires thoughtSignature on all function calls when thinking mode is enabled.
           // Use the skip_thought_signature_validator sentinel for unsigned function calls
-          // (e.g. replayed from providers without thought signatures like Claude via Antigravity).
+          // (e.g. replayed from providers without thought signatures).
           const isGemini3 = model.id.toLowerCase().includes("gemini-3");
           const effectiveSignature =
             thoughtSignature || (isGemini3 ? SKIP_THOUGHT_SIGNATURE : undefined);
@@ -240,7 +240,7 @@ export function convertMessages<T extends GoogleApiType>(
 
       // Gemini 3+ models support multimodal function responses with images nested inside
       // functionResponse.parts. Claude and other non-Gemini models behind Cloud Code Assist /
-      // Antigravity also accept this shape. Gemini < 3 still needs a separate user image turn.
+      // Cloud Code Assist also accepts this shape. Gemini < 3 still needs a separate user image turn.
       const modelSupportsMultimodalFunctionResponse = supportsMultimodalFunctionResponse(model.id);
 
       // Use "output" key for success, "error" key for errors as per SDK documentation

@@ -258,7 +258,7 @@ describe("provider request reduction", () => {
     const payload = invokeBeforeProviderRequestChain(
       handlers,
       {
-        model: "azure-openai-responses/gpt-4",
+        model: "openai/gpt-4",
         messages: buildToolMessagesWithSize(6, 4_000),
       },
       sessionId,

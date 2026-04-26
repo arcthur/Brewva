@@ -57,22 +57,10 @@ const STANDARD_BUILT_IN_PROVIDER_REGISTRATION_DESCRIPTORS = [
     streamSimpleExport: "streamSimpleOpenAICompletions",
   }),
   createBuiltInProviderRegistrationDescriptor({
-    api: "mistral-conversations",
-    loadModule: () => import("./mistral.js"),
-    streamExport: "streamMistral",
-    streamSimpleExport: "streamSimpleMistral",
-  }),
-  createBuiltInProviderRegistrationDescriptor({
     api: "openai-responses",
     loadModule: () => import("./openai-responses.js"),
     streamExport: "streamOpenAIResponses",
     streamSimpleExport: "streamSimpleOpenAIResponses",
-  }),
-  createBuiltInProviderRegistrationDescriptor({
-    api: "azure-openai-responses",
-    loadModule: () => import("./azure-openai-responses.js"),
-    streamExport: "streamAzureOpenAIResponses",
-    streamSimpleExport: "streamSimpleAzureOpenAIResponses",
   }),
   createBuiltInProviderRegistrationDescriptor({
     api: "openai-codex-responses",
@@ -91,12 +79,6 @@ const STANDARD_BUILT_IN_PROVIDER_REGISTRATION_DESCRIPTORS = [
     loadModule: () => import("./google-gemini-cli.js"),
     streamExport: "streamGoogleGeminiCli",
     streamSimpleExport: "streamSimpleGoogleGeminiCli",
-  }),
-  createBuiltInProviderRegistrationDescriptor({
-    api: "google-vertex",
-    loadModule: () => import("./google-vertex.js"),
-    streamExport: "streamGoogleVertex",
-    streamSimpleExport: "streamSimpleGoogleVertex",
   }),
 ] as const satisfies readonly BuiltInProviderRegistrationDescriptor<BuiltInApiProviderApi>[];
 

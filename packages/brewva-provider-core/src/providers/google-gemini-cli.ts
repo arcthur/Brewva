@@ -1,6 +1,5 @@
 /**
- * Google Gemini CLI / Antigravity provider.
- * Shared implementation for both google-gemini-cli and google-antigravity providers.
+ * Google Gemini CLI provider.
  * Uses the Cloud Code Assist API endpoint to access Gemini and Claude models.
  */
 
@@ -64,13 +63,6 @@ export interface GoogleGeminiCliOptions extends StreamOptions {
 }
 
 const DEFAULT_ENDPOINT = "https://cloudcode-pa.googleapis.com";
-const ANTIGRAVITY_DAILY_ENDPOINT = "https://daily-cloudcode-pa.sandbox.googleapis.com";
-const ANTIGRAVITY_AUTOPUSH_ENDPOINT = "https://autopush-cloudcode-pa.sandbox.googleapis.com";
-const ANTIGRAVITY_ENDPOINT_FALLBACKS = [
-  ANTIGRAVITY_DAILY_ENDPOINT,
-  ANTIGRAVITY_AUTOPUSH_ENDPOINT,
-  DEFAULT_ENDPOINT,
-] as const;
 // Headers for Gemini CLI (prod endpoint)
 const GEMINI_CLI_HEADERS = {
   "User-Agent": "google-cloud-sdk vscode_cloudshelleditor/0.1",
@@ -82,23 +74,6 @@ const GEMINI_CLI_HEADERS = {
   }),
 };
 
-// Headers for Antigravity (sandbox endpoint) - requires specific User-Agent
-const DEFAULT_ANTIGRAVITY_VERSION = "1.21.9";
-
-function getAntigravityHeaders() {
-  const version = process.env.PI_AI_ANTIGRAVITY_VERSION || DEFAULT_ANTIGRAVITY_VERSION;
-  return {
-    "User-Agent": `antigravity/${version} darwin/arm64`,
-  };
-}
-
-// Antigravity system instruction (compact version from CLIProxyAPI).
-const ANTIGRAVITY_SYSTEM_INSTRUCTION =
-  "You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding." +
-  "You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question." +
-  "**Absolute paths only**" +
-  "**Proactiveness**";
-
 // Counter for generating unique tool call IDs
 let toolCallCounter = 0;
 
@@ -107,7 +82,6 @@ const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 const MAX_EMPTY_STREAM_RETRIES = 2;
 const EMPTY_STREAM_BASE_DELAY_MS = 500;
-const CLAUDE_THINKING_BETA_HEADER = "interleaved-thinking-2025-05-14";
 
 /**
  * Extract retry delay from Gemini error response (in milliseconds).
@@ -211,12 +185,6 @@ export function extractRetryDelay(
   }
 
   return undefined;
-}
-
-function needsClaudeThinkingBetaHeader(model: Model<"google-gemini-cli">): boolean {
-  return (
-    model.provider === "google-antigravity" && model.id.startsWith("claude-") && model.reasoning
-  );
 }
 
 function isGemini3ProModel(modelId: string): boolean {
@@ -385,27 +353,17 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli", GoogleGe
         );
       }
 
-      const isAntigravity = model.provider === "google-antigravity";
       const baseUrl = model.baseUrl?.trim();
-      const endpoints = baseUrl
-        ? [baseUrl]
-        : isAntigravity
-          ? ANTIGRAVITY_ENDPOINT_FALLBACKS
-          : [DEFAULT_ENDPOINT];
-
-      const headers = isAntigravity ? getAntigravityHeaders() : GEMINI_CLI_HEADERS;
+      const endpoints = baseUrl ? [baseUrl] : [DEFAULT_ENDPOINT];
 
       const requestHeaders = {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
         Accept: "text/event-stream",
-        ...headers,
-        ...(needsClaudeThinkingBetaHeader(model)
-          ? { "anthropic-beta": CLAUDE_THINKING_BETA_HEADER }
-          : {}),
+        ...GEMINI_CLI_HEADERS,
         ...options?.headers,
       };
-      let requestBody = buildRequest(model, context, projectId, options, isAntigravity);
+      let requestBody = buildRequest(model, context, projectId, options);
       const nextRequestBody = await options?.onPayload?.(
         requestBody,
         model,
@@ -921,7 +879,6 @@ export function buildRequest(
   context: Context,
   projectId: string,
   options: GoogleGeminiCliOptions = {},
-  isAntigravity = false,
 ): CloudCodeAssistRequest {
   const contents = convertMessages(model, context, options);
 
@@ -980,25 +937,12 @@ export function buildRequest(
     }
   }
 
-  if (isAntigravity) {
-    const existingParts = request.systemInstruction?.parts ?? [];
-    request.systemInstruction = {
-      role: "user",
-      parts: [
-        { text: ANTIGRAVITY_SYSTEM_INSTRUCTION },
-        { text: `Please ignore following [ignore]${ANTIGRAVITY_SYSTEM_INSTRUCTION}[/ignore]` },
-        ...existingParts,
-      ],
-    };
-  }
-
   return {
     project: projectId,
     model: model.id,
     request,
-    ...(isAntigravity ? { requestType: "agent" } : {}),
-    userAgent: isAntigravity ? "antigravity" : "brewva",
-    requestId: `${isAntigravity ? "agent" : "brewva"}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+    userAgent: "brewva",
+    requestId: `brewva-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
   };
 }
 

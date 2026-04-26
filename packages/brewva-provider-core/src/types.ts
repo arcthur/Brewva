@@ -4,37 +4,26 @@ export type { AssistantMessageEventStream } from "./utils/event-stream.js";
 
 export type KnownApi =
   | "openai-completions"
-  | "mistral-conversations"
   | "openai-responses"
-  | "azure-openai-responses"
   | "openai-codex-responses"
   | "anthropic-messages"
-  | "bedrock-converse-stream"
   | "google-generative-ai"
-  | "google-gemini-cli"
-  | "google-vertex";
+  | "google-gemini-cli";
 
 export type Api = KnownApi | (string & {});
 
 export type KnownProvider =
-  | "amazon-bedrock"
   | "anthropic"
   | "google"
   | "google-gemini-cli"
-  | "google-antigravity"
-  | "google-vertex"
   | "openai"
-  | "azure-openai-responses"
   | "openai-codex"
   | "github-copilot"
   | "xai"
   | "groq"
   | "openrouter"
-  | "vercel-ai-gateway"
-  | "mistral"
   | "minimax"
   | "minimax-cn"
-  | "huggingface"
   | "kimi-coding"
   | "moonshot-cn"
   | "moonshot-ai";
@@ -178,7 +167,6 @@ export interface StreamOptions {
   /**
    * Optional custom HTTP headers to include in API requests.
    * Merged with provider defaults; can override default headers.
-   * Not supported by all providers (e.g., AWS Bedrock uses SDK auth).
    */
   headers?: Record<string, string>;
   /**
@@ -431,8 +419,6 @@ export interface OpenAICompletionsCompat {
   thinkingFormat?: "openai" | "openrouter" | "qwen" | "qwen-chat-template";
   /** OpenRouter-specific routing preferences. Only used when baseUrl points to OpenRouter. */
   openRouterRouting?: OpenRouterRouting;
-  /** Vercel AI Gateway routing preferences. Only used when baseUrl points to Vercel AI Gateway. */
-  vercelGatewayRouting?: VercelGatewayRouting;
   /** Whether the provider supports the `strict` field in tool definitions. Default: true. */
   supportsStrictMode?: boolean;
 }
@@ -515,18 +501,6 @@ export interface OpenRouterRouting {
         /** Maximum latency in seconds at the 99th percentile. */
         p99?: number;
       };
-}
-
-/**
- * Vercel AI Gateway routing preferences.
- * Controls which upstream providers the gateway routes requests to.
- * @see https://vercel.com/docs/ai-gateway/models-and-providers/provider-options
- */
-export interface VercelGatewayRouting {
-  /** List of provider slugs to exclusively use for this request (e.g., ["bedrock", "anthropic"]). */
-  only?: string[];
-  /** List of provider slugs to try in order (e.g., ["anthropic", "openai"]). */
-  order?: string[];
 }
 
 // Model interface for the unified model system

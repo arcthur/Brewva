@@ -273,20 +273,3 @@ export function buildGoogleFileDataPart(part: ResolvedUserFileContentPart):
     },
   };
 }
-
-export function buildMistralDocumentUrlChunk(part: ResolvedUserFileContentPart):
-  | {
-      type: "document_url";
-      documentUrl: string;
-      documentName?: string;
-    }
-  | undefined {
-  if (!isHttpUrl(part.file.uri)) {
-    return undefined;
-  }
-  return {
-    type: "document_url",
-    documentUrl: part.file.uri,
-    documentName: resolveFileTitle(part.file, part.resolved),
-  };
-}

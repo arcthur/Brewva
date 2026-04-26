@@ -32,8 +32,8 @@ function buildAvailableModel(input: {
 const AVAILABLE_MODELS: RegisteredModel[] = [
   buildAvailableModel({
     provider: "openai",
-    id: "gpt-5.4",
-    name: "GPT-5.4",
+    id: "gpt-5.5",
+    name: "GPT-5.5",
   }),
   buildAvailableModel({
     provider: "openai",
@@ -75,17 +75,17 @@ describe("subagent model routing", () => {
         objective: "Review the runtime change.",
       },
       executionShape: {
-        model: "openai/gpt-5.4:high",
+        model: "openai/gpt-5.5:high",
       },
       modelRouting: {
         availableModels: [...AVAILABLE_MODELS],
       },
     });
 
-    expect(resolved.model).toBe("openai/gpt-5.4:high");
+    expect(resolved.model).toBe("openai/gpt-5.5:high");
     expect(resolved.modelRoute).toEqual({
-      selectedModel: "openai/gpt-5.4:high",
-      requestedModel: "openai/gpt-5.4:high",
+      selectedModel: "openai/gpt-5.5:high",
+      requestedModel: "openai/gpt-5.5:high",
       source: "execution_shape",
       mode: "explicit",
       reason: "Explicit executionShape model override.",

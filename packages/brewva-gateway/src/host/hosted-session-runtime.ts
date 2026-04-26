@@ -41,13 +41,9 @@ function cloneCompat(model: HostedBackendRegisteredModel): BrewvaRegisteredModel
   }
   const compat = { ...model.compat } as BrewvaRegisteredModel["compat"] & {
     openRouterRouting?: Record<string, unknown>;
-    vercelGatewayRouting?: Record<string, unknown>;
   };
   if ("openRouterRouting" in compat && compat.openRouterRouting) {
     compat.openRouterRouting = { ...compat.openRouterRouting };
-  }
-  if ("vercelGatewayRouting" in compat && compat.vercelGatewayRouting) {
-    compat.vercelGatewayRouting = { ...compat.vercelGatewayRouting };
   }
   return compat;
 }

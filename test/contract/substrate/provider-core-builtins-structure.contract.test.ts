@@ -37,27 +37,16 @@ describe("provider core built-in registration structure contract", () => {
       "providers",
       "provider-loader-runtime.ts",
     );
-    const bedrockLoaderPath = resolve(
-      repoRoot,
-      "packages",
-      "brewva-provider-core",
-      "src",
-      "providers",
-      "bedrock-provider-loader.ts",
-    );
-
     const registerBuiltinsSource = readFileSync(registerBuiltinsPath, "utf8");
     const manifestSource = readFileSync(manifestPath, "utf8");
     const loadersSource = readFileSync(loadersPath, "utf8");
     const runtimeSource = readFileSync(runtimePath, "utf8");
-    const bedrockLoaderSource = readFileSync(bedrockLoaderPath, "utf8");
 
     expect(registerBuiltinsSource).toContain('from "./built-in-api-provider-manifest.js"');
     expect(registerBuiltinsSource).not.toContain('import("./anthropic.js")');
     expect(registerBuiltinsSource).not.toContain("createLazyStream(");
 
     expect(manifestSource).toContain('from "./built-in-provider-loaders.js"');
-    expect(manifestSource).toContain('from "./bedrock-provider-loader.js"');
     expect(manifestSource).toContain("getStandardBuiltInApiProviderRegistrations");
     expect(manifestSource).not.toContain("loadAnthropicProviderModule");
 
@@ -65,13 +54,9 @@ describe("provider core built-in registration structure contract", () => {
     expect(loadersSource).toContain("createNamedProviderModuleLoader");
     expect(loadersSource).toContain("STANDARD_BUILT_IN_PROVIDER_REGISTRATION_DESCRIPTORS");
     expect(loadersSource).not.toContain("export const loadAnthropicProviderModule");
-    expect(loadersSource).not.toContain("setBedrockProviderModule(");
 
     expect(runtimeSource).toContain("createLazyStream");
     expect(runtimeSource).toContain("createCachedModuleLoader");
     expect(runtimeSource).toContain("createNamedProviderModuleLoader");
-
-    expect(bedrockLoaderSource).toContain("setBedrockProviderModule");
-    expect(bedrockLoaderSource).toContain('importNodeOnlyProvider("./amazon-bedrock.js")');
   });
 });

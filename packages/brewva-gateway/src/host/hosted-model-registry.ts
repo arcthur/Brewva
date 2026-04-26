@@ -44,10 +44,6 @@ function cloneCompat(compat: BrewvaRegisteredModel["compat"]): BrewvaRegisteredM
       "openRouterRouting" in compat && compat.openRouterRouting
         ? { ...compat.openRouterRouting }
         : undefined,
-    vercelGatewayRouting:
-      "vercelGatewayRouting" in compat && compat.vercelGatewayRouting
-        ? { ...compat.vercelGatewayRouting }
-        : undefined,
   };
 }
 
@@ -80,17 +76,6 @@ function mergeCompat(
               : undefined),
             ...(typeof override === "object" && override && "openRouterRouting" in override
               ? override.openRouterRouting
-              : undefined),
-          }
-        : undefined,
-    vercelGatewayRouting:
-      "vercelGatewayRouting" in (base ?? {}) || "vercelGatewayRouting" in (override ?? {})
-        ? {
-            ...(typeof base === "object" && base && "vercelGatewayRouting" in base
-              ? base.vercelGatewayRouting
-              : undefined),
-            ...(typeof override === "object" && override && "vercelGatewayRouting" in override
-              ? override.vercelGatewayRouting
               : undefined),
           }
         : undefined,

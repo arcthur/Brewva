@@ -78,8 +78,8 @@ Supported hosted cache policy fields:
 `reason=default`.
 
 There is no legacy `cacheRetention` compatibility alias. Provider-specific
-cache fields such as Anthropic cache markers, Bedrock cache points, OpenAI
-prompt-cache keys, and Codex continuation state are rendered only in
+cache fields such as Anthropic cache markers, OpenAI prompt-cache keys, and
+Codex continuation state are rendered only in
 `@brewva/brewva-provider-core`. See `docs/reference/token-cache.md` for the
 full cache contract.
 

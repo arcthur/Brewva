@@ -23,7 +23,6 @@ export {
   buildProviderCacheBucketKey,
   normalizeProviderCachePolicy,
   resolveAnthropicCacheRender,
-  resolveBedrockCacheRender,
   resolveOpenAIResponsesCacheRender,
   resolveProviderCacheCapability,
 } from "./cache-policy.js";

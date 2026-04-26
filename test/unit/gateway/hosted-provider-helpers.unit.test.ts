@@ -17,25 +17,6 @@ describe("hosted provider helpers", () => {
     ).toBe("anthropic-oauth");
 
     expect(
-      getHostedEnvApiKey(
-        "google-vertex",
-        {
-          GOOGLE_CLOUD_PROJECT: "demo-project",
-          GOOGLE_CLOUD_LOCATION: "us-central1",
-        },
-        {
-          hasVertexAdcCredentials: () => true,
-        },
-      ),
-    ).toBe("<authenticated>");
-
-    expect(
-      getHostedEnvApiKey("amazon-bedrock", {
-        AWS_PROFILE: "default",
-      }),
-    ).toBe("<authenticated>");
-
-    expect(
       getHostedEnvApiKey("openai", {
         OPENAI_API_KEY: "openai-key",
       }),
@@ -67,6 +48,7 @@ describe("hosted provider helpers", () => {
   });
 
   test("reports xhigh support for the same model families as Pi", () => {
+    expect(supportsHostedExtendedThinkingModel({ id: "gpt-5.5" })).toBe(true);
     expect(supportsHostedExtendedThinkingModel({ id: "gpt-5.4" })).toBe(true);
     expect(supportsHostedExtendedThinkingModel({ id: "claude-opus-4-6" })).toBe(true);
     expect(supportsHostedExtendedThinkingModel({ id: "claude-3-5-sonnet" })).toBe(false);
@@ -78,23 +60,7 @@ describe("hosted provider helpers", () => {
     expect(providers).toContain("anthropic");
 
     const openaiModels = getHostedBuiltInModels("openai");
-    expect(openaiModels.some((model) => model.id === "gpt-5.4")).toBe(true);
-  });
-
-  test("does not expose removed provider catalogs", () => {
-    const removedProviders = ["opencode", "opencode-go", "zai", "cerebras"];
-    const providerCoreProviders = getProviders();
-    const hostedProviders = getHostedBuiltInProviders();
-
-    for (const provider of removedProviders) {
-      expect(providerCoreProviders).not.toContain(provider);
-      expect(hostedProviders).not.toContain(provider);
-    }
-
-    const allHostedModels = hostedProviders.flatMap((provider) => getHostedBuiltInModels(provider));
-    for (const provider of removedProviders) {
-      expect(allHostedModels.some((model) => model.provider === provider)).toBe(false);
-    }
+    expect(openaiModels.some((model) => model.id === "gpt-5.5")).toBe(true);
   });
 
   test("mirrors provider-core built-in provider and model catalog", () => {

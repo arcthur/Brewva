@@ -152,7 +152,7 @@ const POPULAR_PROVIDER_ORDER = [
 ] as const;
 
 const TOKEN_PROVIDERS = new Set(["github-copilot"]);
-const API_KEY_UNSUPPORTED_PROVIDERS = new Set(["amazon-bedrock", "google-gemini-cli"]);
+const API_KEY_UNSUPPORTED_PROVIDERS = new Set(["google-gemini-cli"]);
 const OPENAI_PROVIDER = "openai";
 const OPENAI_CODEX_PROVIDER = "openai-codex";
 const KIMI_PROVIDER = "kimi-coding";
@@ -183,25 +183,19 @@ const OAUTH_POLLING_SAFETY_MARGIN_MS = 3_000;
 const OAUTH_DEVICE_FLOW_TIMEOUT_MS = 10 * 60 * 1000;
 
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
-  "amazon-bedrock": "Amazon Bedrock",
   anthropic: "Anthropic",
   "github-copilot": "GitHub Copilot",
   google: "Google",
-  "google-antigravity": "Google Antigravity",
   "google-gemini-cli": "Google Gemini CLI",
-  "google-vertex": "Google Vertex",
   groq: "Groq",
-  huggingface: "Hugging Face",
   "kimi-coding": "Kimi",
   minimax: "MiniMax",
   "minimax-cn": "MiniMax CN",
-  mistral: "Mistral",
   "moonshot-ai": "Moonshot AI Open Platform (moonshot.ai)",
   "moonshot-cn": "Moonshot AI Open Platform (moonshot.cn)",
   openai: "OpenAI",
   "openai-codex": "OpenAI Codex",
   openrouter: "OpenRouter",
-  "vercel-ai-gateway": "Vercel AI Gateway",
   xai: "xAI",
 };
 

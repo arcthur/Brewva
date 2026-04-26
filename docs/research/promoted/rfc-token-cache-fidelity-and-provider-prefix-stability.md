@@ -83,7 +83,6 @@ Promotion is backed by current regression coverage for:
 
 - provider-core cache policy rendering and unsupported/degraded reasons
 - Anthropic multi-breakpoint cache marker placement
-- Bedrock model cache-point eligibility
 - OpenAI Responses prompt-cache keys
 - OpenAI Codex WebSocket plus `previous_response_id` continuation
 - gateway fingerprint attribution and per-tool drift detection

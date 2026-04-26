@@ -73,7 +73,12 @@ export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage
 }
 
 export function supportsXhighModelId(modelId: string): boolean {
-  if (modelId.includes("gpt-5.2") || modelId.includes("gpt-5.3") || modelId.includes("gpt-5.4")) {
+  if (
+    modelId.includes("gpt-5.2") ||
+    modelId.includes("gpt-5.3") ||
+    modelId.includes("gpt-5.4") ||
+    modelId.includes("gpt-5.5")
+  ) {
     return true;
   }
 

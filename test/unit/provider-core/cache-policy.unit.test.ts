@@ -3,7 +3,6 @@ import {
   buildProviderCacheBucketKey,
   normalizeProviderCachePolicy,
   resolveAnthropicCacheRender,
-  resolveBedrockCacheRender,
   resolveProviderCacheCapability,
   resolveOpenAIResponsesCacheRender,
 } from "../../../packages/brewva-provider-core/src/cache-policy.js";
@@ -239,26 +238,6 @@ describe("provider cache policy", () => {
       }),
     );
     expect(anthropic.cacheControl).toBeUndefined();
-
-    const bedrock = resolveBedrockCacheRender({
-      modelId: "anthropic.claude-3-7-sonnet-20250219-v1:0",
-      forceCache: true,
-      sessionId: "session-read-only",
-      policy: {
-        retention: "short",
-        writeMode: "readOnly",
-        scope: "session",
-        reason: "config",
-      },
-    });
-    expect(bedrock).toEqual(
-      expect.objectContaining({
-        status: "unsupported",
-        reason: "cache_write_mode_read_only_not_supported",
-        renderedRetention: "none",
-      }),
-    );
-    expect(bedrock.cachePoint).toBeUndefined();
   });
 
   test("renders Anthropic long retention only for direct Anthropic requests", () => {
@@ -351,51 +330,5 @@ describe("provider cache policy", () => {
         },
       }).reason,
     ).toBe("kimi_code_cache_contract_not_verified");
-  });
-
-  test("reports unsupported Bedrock cache points with readable reasons", () => {
-    expect(
-      resolveBedrockCacheRender({
-        modelId: "anthropic.claude-3-5-sonnet-20241022-v2:0",
-        forceCache: false,
-        sessionId: "session-bedrock-sonnet-v2",
-        policy: {
-          retention: "short",
-          writeMode: "readWrite",
-          scope: "session",
-          reason: "default",
-        },
-      }),
-    ).toEqual(
-      expect.objectContaining({
-        status: "rendered",
-        reason: "rendered_bedrock_cache_point",
-      }),
-    );
-
-    expect(
-      resolveBedrockCacheRender({
-        modelId: "amazon.nova-pro-v1:0",
-        forceCache: false,
-        sessionId: "session-bedrock",
-        policy: {
-          retention: "short",
-          writeMode: "readWrite",
-          scope: "session",
-          reason: "default",
-        },
-      }),
-    ).toEqual({
-      status: "unsupported",
-      reason: "bedrock_model_does_not_support_explicit_cache_points",
-      renderedRetention: "none",
-      bucketKey:
-        "bedrock-converse-stream|session=session-bedrock|retention=none|writeMode=readWrite",
-      capability: expect.objectContaining({
-        strategies: ["unsupported"],
-        cacheCounters: "none",
-      }),
-      cachePoint: undefined,
-    });
   });
 });

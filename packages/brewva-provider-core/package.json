@@ -15,11 +15,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.1032.0",
     "@google/genai": "^1.50.1",
-    "@mistralai/mistralai": "2.2.0",
     "@sinclair/typebox": "^0.34.49",
-    "@smithy/node-http-handler": "^4.5.3",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "openai": "6.34.0",

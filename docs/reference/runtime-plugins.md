@@ -260,8 +260,8 @@ Stable responsibilities:
 - hosted settings provide an object-shaped `cachePolicy`
 - agent-engine forwards that policy to provider-core without provider-specific
   interpretation
-- provider-core renders Anthropic, Bedrock, OpenAI, Codex, Azure OpenAI, and
-  implicit-prefix strategies at the provider edge
+- provider-core renders Anthropic, OpenAI, Codex, and implicit-prefix strategies
+  at the provider edge
 - gateway fingerprints final provider payloads and records provider-cache
   observations through runtime context inspection
 - provider-request reduction marks expected cache breaks and can preserve a

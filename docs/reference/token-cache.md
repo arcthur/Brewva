@@ -7,7 +7,6 @@ Implementation anchors:
 - `packages/brewva-provider-core/src/providers/anthropic.ts`
 - `packages/brewva-provider-core/src/providers/openai-responses.ts`
 - `packages/brewva-provider-core/src/providers/openai-codex-responses.ts`
-- `packages/brewva-provider-core/src/providers/amazon-bedrock.ts`
 - `packages/brewva-gateway/src/cache/`
 - `packages/brewva-gateway/src/host/managed-agent-session.ts`
 - `packages/brewva-gateway/src/host/hosted-session-bootstrap.ts`
@@ -72,18 +71,17 @@ Provider capability is resolved by provider-core from API, provider, concrete
 model, base URL, and transport. The normalized strategy vocabulary is:
 
 - `explicitCacheMarker`
-  - Anthropic Messages and supported Bedrock Claude models render provider
-    cache markers or Bedrock cache points.
+  - Anthropic Messages render provider cache markers.
   - Anthropic direct API may use bounded multi-breakpoint placement across
     system, tools, message prefix, and current turn.
 - `promptCacheKey`
-  - OpenAI Responses, OpenAI Codex Responses, and Azure OpenAI Responses can use
-    a stable prompt cache key when the provider/model supports it.
+  - OpenAI Responses and OpenAI Codex Responses can use a stable prompt cache
+    key when the provider/model supports it.
   - Direct OpenAI can expose longer prompt-cache retention where supported.
 - `implicitPrefix`
-  - Providers such as Gemini, OpenAI-compatible completions, and Mistral may
-    rely on provider-side implicit prefix behavior when no explicit cache field
-    is supported.
+  - Providers such as Gemini and OpenAI-compatible completions may rely on
+    provider-side implicit prefix behavior when no explicit cache field is
+    supported.
 - `unsupported`
   - Provider-core must return a readable reason instead of silently pretending
     the requested cache policy was honored.
@@ -98,10 +96,10 @@ An API envelope is not a cache contract.
 
 Provider-core resolves cache behavior from provider family, API shape, model,
 base URL, transport, and verified provider behavior. The API shape alone must
-not grant provider cache features. This keeps Anthropic `cache_control`, Bedrock
-cache points, OpenAI prompt-cache keys, Codex continuation, Gemini implicit
-prefix behavior, and future provider primitives from leaking across providers
-that merely share a transport or request envelope.
+not grant provider cache features. This keeps Anthropic `cache_control`, OpenAI
+prompt-cache keys, Codex continuation, Gemini implicit prefix behavior, and
+future provider primitives from leaking across providers that merely share a
+transport or request envelope.
 
 Every provider-family cache adapter must document:
 

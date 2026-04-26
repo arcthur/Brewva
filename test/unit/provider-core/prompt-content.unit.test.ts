@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   buildAnthropicDocumentBlock,
   buildGoogleFileDataPart,
-  buildMistralDocumentUrlChunk,
   buildOpenAIInputFilePart,
   materializeResolvedUserMessageContentPart,
 } from "../../../packages/brewva-provider-core/src/providers/prompt-content.js";
@@ -104,7 +103,7 @@ describe("provider prompt content helpers", () => {
     });
   });
 
-  test("builds native Google and Mistral file references only for supported URI schemes", () => {
+  test("builds native Google file references only for supported URI schemes", () => {
     expect(
       buildGoogleFileDataPart({
         type: "file",
@@ -120,21 +119,6 @@ describe("provider prompt content helpers", () => {
         fileUri: "gs://bucket/spec.pdf",
         mimeType: "application/pdf",
       },
-    });
-
-    expect(
-      buildMistralDocumentUrlChunk({
-        type: "file",
-        file: {
-          type: "file",
-          uri: "https://example.com/spec.pdf",
-          name: "spec.pdf",
-        },
-      }),
-    ).toEqual({
-      type: "document_url",
-      documentUrl: "https://example.com/spec.pdf",
-      documentName: "spec.pdf",
     });
   });
 

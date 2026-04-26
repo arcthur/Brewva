@@ -459,17 +459,6 @@ function buildParams(
     (params as any).provider = model.compat.openRouterRouting;
   }
 
-  // Vercel AI Gateway provider routing preferences
-  if (model.baseUrl.includes("ai-gateway.vercel.sh") && model.compat?.vercelGatewayRouting) {
-    const routing = model.compat.vercelGatewayRouting;
-    if (routing.only || routing.order) {
-      const gatewayOptions: Record<string, string[]> = {};
-      if (routing.only) gatewayOptions.only = routing.only;
-      if (routing.order) gatewayOptions.order = routing.order;
-      (params as any).providerOptions = { gateway: gatewayOptions };
-    }
-  }
-
   return params;
 }
 
@@ -878,7 +867,6 @@ function detectCompat(model: Model<"openai-completions">): Required<OpenAIComple
     thinkingFormat:
       provider === "openrouter" || baseUrl.includes("openrouter.ai") ? "openrouter" : "openai",
     openRouterRouting: {},
-    vercelGatewayRouting: {},
     supportsStrictMode: true,
   };
 }
@@ -906,7 +894,6 @@ function getCompat(model: Model<"openai-completions">): Required<OpenAICompletio
     requiresThinkingAsText: model.compat.requiresThinkingAsText ?? detected.requiresThinkingAsText,
     thinkingFormat: model.compat.thinkingFormat ?? detected.thinkingFormat,
     openRouterRouting: model.compat.openRouterRouting ?? {},
-    vercelGatewayRouting: model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
     supportsStrictMode: model.compat.supportsStrictMode ?? detected.supportsStrictMode,
   };
 }

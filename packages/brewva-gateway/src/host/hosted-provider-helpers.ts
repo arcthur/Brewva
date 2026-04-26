@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import {
   getEnvApiKey,
   getModels,
@@ -8,10 +7,6 @@ import {
   type Model as ProviderCoreModel,
 } from "@brewva/brewva-provider-core";
 import type { BrewvaRegisteredModel } from "@brewva/brewva-substrate";
-
-interface HostedEnvLookupOptions {
-  hasVertexAdcCredentials?: () => boolean;
-}
 
 type ProviderCoreKnownProvider = ReturnType<typeof getProviders>[number];
 
@@ -24,13 +19,9 @@ function cloneCompat(
 
   const nextCompat = { ...compat } as BrewvaRegisteredModel["compat"] & {
     openRouterRouting?: Record<string, unknown>;
-    vercelGatewayRouting?: Record<string, unknown>;
   };
   if ("openRouterRouting" in nextCompat && nextCompat.openRouterRouting) {
     nextCompat.openRouterRouting = { ...nextCompat.openRouterRouting };
-  }
-  if ("vercelGatewayRouting" in nextCompat && nextCompat.vercelGatewayRouting) {
-    nextCompat.vercelGatewayRouting = { ...nextCompat.vercelGatewayRouting };
   }
   return nextCompat;
 }
@@ -52,28 +43,11 @@ function cloneBuiltInModel(model: ProviderCoreModel<ProviderCoreApi>): BrewvaReg
   };
 }
 
-function hasHostedVertexAdcCredentials(): boolean {
-  const applicationCredentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (applicationCredentialsPath) {
-    return existsSync(applicationCredentialsPath);
-  }
-
-  const homeDir = process.env.HOME;
-  if (!homeDir) {
-    return false;
-  }
-
-  return existsSync(`${homeDir}/.config/gcloud/application_default_credentials.json`);
-}
-
 export function getHostedEnvApiKey(
   provider: string,
   env: Record<string, string | undefined> = process.env,
-  options: HostedEnvLookupOptions = {},
 ): string | undefined {
-  return getEnvApiKey(provider, env, {
-    hasVertexAdcCredentials: options.hasVertexAdcCredentials ?? hasHostedVertexAdcCredentials,
-  });
+  return getEnvApiKey(provider, env);
 }
 
 function isBuiltInProvider(provider: string): provider is ProviderCoreKnownProvider {

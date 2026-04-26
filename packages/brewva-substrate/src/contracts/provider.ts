@@ -1,25 +1,16 @@
 export type BrewvaKnownApi =
   | "openai-completions"
-  | "mistral-conversations"
   | "openai-responses"
-  | "azure-openai-responses"
   | "openai-codex-responses"
   | "anthropic-messages"
-  | "bedrock-converse-stream"
   | "google-generative-ai"
-  | "google-gemini-cli"
-  | "google-vertex";
+  | "google-gemini-cli";
 
 export type BrewvaApi = BrewvaKnownApi | (string & {});
 
 export type BrewvaThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export interface BrewvaOpenRouterRouting {
-  only?: string[];
-  order?: string[];
-}
-
-export interface BrewvaVercelGatewayRouting {
   only?: string[];
   order?: string[];
 }
@@ -36,7 +27,6 @@ export interface BrewvaOpenAICompletionsCompat {
   requiresThinkingAsText?: boolean;
   thinkingFormat?: "openai" | "openrouter" | "qwen" | "qwen-chat-template";
   openRouterRouting?: BrewvaOpenRouterRouting;
-  vercelGatewayRouting?: BrewvaVercelGatewayRouting;
   supportsStrictMode?: boolean;
 }
 

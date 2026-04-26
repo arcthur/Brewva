@@ -43,4 +43,30 @@ describe("provider core model catalog", () => {
     expect(moonshotCnModels).toEqual(["kimi-k2.6", "kimi-k2.5"]);
     expect(moonshotAiModels).toEqual(moonshotCnModels);
   });
+
+  test("exposes the current official OpenAI GPT family defaults", () => {
+    const openaiModels = getModels("openai");
+    const openaiModelIds = openaiModels.map((model) => model.id);
+
+    expect(openaiModelIds).toContain("gpt-5.5");
+    expect(openaiModelIds).toContain("gpt-5.5-pro");
+    expect(openaiModelIds).toContain("gpt-5.4");
+    expect(openaiModelIds).toContain("gpt-5.4-mini");
+    expect(openaiModelIds).toContain("gpt-5.4-nano");
+
+    const flagship = getModel("openai", "gpt-5.5");
+    expect(flagship).toMatchObject({
+      api: "openai-responses",
+      provider: "openai",
+      reasoning: true,
+      contextWindow: 1_050_000,
+      maxTokens: 128_000,
+      cost: {
+        input: 5,
+        output: 30,
+        cacheRead: 0.5,
+        cacheWrite: 0,
+      },
+    });
+  });
 });

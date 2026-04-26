@@ -9,13 +9,6 @@ describe("provider core surface contract", () => {
     const indexPath = resolve(repoRoot, "packages", "brewva-provider-core", "src", "index.ts");
     const cliPath = resolve(repoRoot, "packages", "brewva-provider-core", "src", "cli.ts");
     const oauthPath = resolve(repoRoot, "packages", "brewva-provider-core", "src", "oauth.ts");
-    const bedrockProviderPath = resolve(
-      repoRoot,
-      "packages",
-      "brewva-provider-core",
-      "src",
-      "bedrock-provider.ts",
-    );
     const oauthUtilsPath = resolve(
       repoRoot,
       "packages",
@@ -49,7 +42,6 @@ describe("provider core surface contract", () => {
     expect(indexSource).not.toContain('from "@sinclair/typebox"');
     expect(existsSync(cliPath)).toBe(false);
     expect(existsSync(oauthPath)).toBe(false);
-    expect(existsSync(bedrockProviderPath)).toBe(false);
     expect(existsSync(oauthUtilsPath)).toBe(false);
   });
 });

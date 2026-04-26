@@ -21,14 +21,12 @@ import type { AssistantMessage } from "../types.js";
  * - MiniMax: "invalid params, context window exceeds limit"
  * - Kimi For Coding: "Your request exceeded model token limit: X (requested: Y)"
  * - Cerebras: "400/413 status code (no body)"
- * - Mistral: "Prompt contains X tokens ... too large for model with Y maximum context length"
  * - z.ai: Does NOT error, accepts overflow silently - handled via usage.input > contextWindow
  * - Ollama: Some deployments truncate silently, others return errors like "prompt too long; exceeded max context length by X tokens"
  */
 const OVERFLOW_PATTERNS = [
   /prompt is too long/i, // Anthropic token overflow
   /request_too_large/i, // Anthropic request byte-size overflow (HTTP 413)
-  /input is too long for requested model/i, // Amazon Bedrock
   /exceeds the context window/i, // OpenAI (Completions & Responses API)
   /input token count.*exceeds the maximum/i, // Google (Gemini)
   /maximum prompt length is \d+/i, // xAI (Grok)
@@ -39,7 +37,6 @@ const OVERFLOW_PATTERNS = [
   /greater than the context length/i, // LM Studio
   /context window exceeds limit/i, // MiniMax
   /exceeded model token limit/i, // Kimi For Coding
-  /too large for model with \d+ maximum context length/i, // Mistral
   /model_context_window_exceeded/i, // z.ai non-standard finish_reason surfaced as error text
   /prompt too long; exceeded (?:max )?context length/i, // Ollama explicit overflow error
   /context[_ ]length[_ ]exceeded/i, // Generic fallback
@@ -53,12 +50,10 @@ const OVERFLOW_PATTERNS = [
  * Error messages matching any of these are excluded from overflow detection
  * even if they also match an OVERFLOW_PATTERN.
  *
- * Example: Bedrock formats throttling errors as "ThrottlingException: Too many tokens,
- * please wait before trying again." which would match the /too many tokens/i overflow
- * pattern without this exclusion.
+ * This avoids classifying rate-limit responses as overflow when they contain
+ * phrases such as "too many tokens" or similar wording.
  */
 const NON_OVERFLOW_PATTERNS = [
-  /^(Throttling error|Service unavailable):/i, // AWS Bedrock non-overflow errors (human-readable prefixes from formatBedrockError)
   /rate limit/i, // Generic rate limiting
   /too many requests/i, // Generic HTTP 429 style
 ];
@@ -81,7 +76,6 @@ const NON_OVERFLOW_PATTERNS = [
  * - xAI (Grok): "maximum prompt length is X but request contains Y"
  * - Groq: "reduce the length of the messages"
  * - Cerebras: 400/413 status code (no body)
- * - Mistral: "Prompt contains X tokens ... too large for model with Y maximum context length"
  * - OpenRouter (all backends): "maximum context length is X tokens"
  * - llama.cpp: "exceeds the available context size"
  * - LM Studio: "greater than the context length"

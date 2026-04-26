@@ -56,7 +56,6 @@ const DISCOVERY_MAPPINGS: Array<{
   { provider: "github", envVar: "GH_TOKEN", credentialRef: "vault://github/token" },
   { provider: "gemini", envVar: "GEMINI_API_KEY", credentialRef: "vault://gemini/apiKey" },
   { provider: "google", envVar: "GOOGLE_API_KEY", credentialRef: "vault://google/apiKey" },
-  { provider: "mistral", envVar: "MISTRAL_API_KEY", credentialRef: "vault://mistral/apiKey" },
   { provider: "groq", envVar: "GROQ_API_KEY", credentialRef: "vault://groq/apiKey" },
   { provider: "kimi-coding", envVar: "KIMI_API_KEY", credentialRef: "vault://kimi-coding/apiKey" },
   {

@@ -141,7 +141,7 @@ const ROUTING_POLICIES: readonly DelegationRoutingPolicy[] = [
   {
     id: "frontend-design",
     reason: "Frontend-heavy delegation benefits from a design-strong route when available.",
-    candidateModels: ["anthropic/claude-opus-4.1", "openai/gpt-5.4:high"],
+    candidateModels: ["anthropic/claude-opus-4.1", "openai/gpt-5.5:high"],
     score({ keywordText, effectiveSkillName }) {
       const keywordMatches = countKeywordMatches(keywordText, FRONTEND_KEYWORDS);
       if (keywordMatches === 0) {
@@ -156,7 +156,7 @@ const ROUTING_POLICIES: readonly DelegationRoutingPolicy[] = [
   {
     id: "deep-reasoning",
     reason: "Reasoning-heavy delegation should prefer a frontier reasoning model.",
-    candidateModels: ["openai/gpt-5.4:high", "openai/gpt-5.4-mini:high"],
+    candidateModels: ["openai/gpt-5.5:high", "openai/gpt-5.4-mini:high"],
     score({ target, keywordText, effectiveSkillName }) {
       if (
         effectiveSkillName === "design" ||
@@ -175,7 +175,7 @@ const ROUTING_POLICIES: readonly DelegationRoutingPolicy[] = [
   {
     id: "review-and-verification",
     reason: "Review and QA work should bias toward higher-fidelity reasoning.",
-    candidateModels: ["openai/gpt-5.4:medium", "openai/gpt-5.4-mini:medium"],
+    candidateModels: ["openai/gpt-5.5:medium", "openai/gpt-5.4-mini:medium"],
     score({ target, effectiveSkillName }) {
       return target.consultKind === "review" ||
         target.resultMode === "qa" ||

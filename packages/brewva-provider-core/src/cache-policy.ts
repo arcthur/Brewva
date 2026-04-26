@@ -41,10 +41,6 @@ export interface AnthropicCacheRender extends ProviderCacheRenderResult {
   cacheControl?: { type: "ephemeral"; ttl?: "1h" };
 }
 
-export interface BedrockCacheRender extends ProviderCacheRenderResult {
-  cachePoint?: { type: string; ttl?: string };
-}
-
 const KIMI_CODE_CACHE_REASON = "kimi_code_cache_contract_not_verified";
 
 export function normalizeProviderCachePolicy(
@@ -197,20 +193,6 @@ export function resolveProviderCacheCapability(
     };
   }
 
-  if (api === "bedrock-converse-stream") {
-    const supported = bedrockModelSupportsPromptCaching(modelId, input.forceCache ?? false);
-    return {
-      strategies: supported ? ["explicitCacheMarker"] : ["unsupported"],
-      cacheCounters: supported ? "readWrite" : "none",
-      shortRetention: supported,
-      longRetention: supported ? "1h" : "none",
-      readOnlyWriteMode: "unsupported",
-      reason: supported
-        ? "bedrock_cache_point"
-        : "bedrock_model_does_not_support_explicit_cache_points",
-    };
-  }
-
   if (api === "openai-codex-responses") {
     return {
       strategies: ["promptCacheKey"],
@@ -228,17 +210,6 @@ export function resolveProviderCacheCapability(
               reason: "openai_codex_websocket_previous_response_id_affinity",
             },
       reason: "openai_codex_responses_prompt_cache_key",
-    };
-  }
-
-  if (api === "azure-openai-responses") {
-    return {
-      strategies: ["promptCacheKey"],
-      cacheCounters: "readOnly",
-      shortRetention: true,
-      longRetention: "none",
-      readOnlyWriteMode: "unsupported",
-      reason: "azure_openai_responses_prompt_cache_key",
     };
   }
 
@@ -265,7 +236,7 @@ export function resolveProviderCacheCapability(
     };
   }
 
-  if (api === "google-generative-ai" || api === "google-gemini-cli" || api === "google-vertex") {
+  if (api === "google-generative-ai" || api === "google-gemini-cli") {
     return {
       strategies: ["implicitPrefix"],
       cacheCounters: "readOnly",
@@ -276,7 +247,7 @@ export function resolveProviderCacheCapability(
     };
   }
 
-  if (api === "openai-completions" || api === "mistral-conversations") {
+  if (api === "openai-completions") {
     return {
       strategies: ["implicitPrefix"],
       cacheCounters: "readOnly",
@@ -450,83 +421,6 @@ export function resolveAnthropicCacheRender(input: {
     cacheControl: {
       type: "ephemeral",
       ...(renderedRetention === "long" ? { ttl: "1h" as const } : {}),
-    },
-  };
-}
-
-function bedrockModelSupportsPromptCaching(modelId: string, forceCache: boolean): boolean {
-  const id = modelId.toLowerCase();
-  if (!id.includes("claude")) {
-    return forceCache;
-  }
-  return (
-    id.includes("-4-") ||
-    id.includes("-4.") ||
-    id.includes("claude-3-7-sonnet") ||
-    id.includes("claude-3-5-sonnet") ||
-    id.includes("claude-3-5-haiku")
-  );
-}
-
-export function resolveBedrockCacheRender(input: {
-  modelId: string;
-  forceCache: boolean;
-  sessionId?: string;
-  policy?: ProviderCachePolicy;
-}): BedrockCacheRender {
-  const policy = normalizeProviderCachePolicy(input.policy);
-  const capability = resolveProviderCacheCapability({
-    api: "bedrock-converse-stream",
-    provider: "amazon-bedrock",
-    modelId: input.modelId,
-    forceCache: input.forceCache,
-  });
-  if (policy.retention === "none") {
-    return disabledRender({
-      api: "bedrock-converse-stream",
-      sessionId: input.sessionId,
-      writeMode: policy.writeMode,
-      capability,
-    }) as BedrockCacheRender;
-  }
-  if (policy.writeMode === "readOnly") {
-    return unsupportedReadOnlyRender({
-      api: "bedrock-converse-stream",
-      sessionId: input.sessionId,
-      capability,
-    }) as BedrockCacheRender;
-  }
-
-  if (!bedrockModelSupportsPromptCaching(input.modelId, input.forceCache)) {
-    return {
-      status: "unsupported",
-      reason: "bedrock_model_does_not_support_explicit_cache_points",
-      renderedRetention: "none",
-      bucketKey: buildRenderBucketKey({
-        api: "bedrock-converse-stream",
-        sessionId: input.sessionId,
-        retention: "none",
-        writeMode: policy.writeMode,
-      }),
-      capability,
-      cachePoint: undefined,
-    };
-  }
-
-  return {
-    status: "rendered",
-    reason: "rendered_bedrock_cache_point",
-    renderedRetention: policy.retention,
-    bucketKey: buildRenderBucketKey({
-      api: "bedrock-converse-stream",
-      sessionId: input.sessionId,
-      retention: policy.retention,
-      writeMode: policy.writeMode,
-    }),
-    capability,
-    cachePoint: {
-      type: "default",
-      ...(policy.retention === "long" ? { ttl: "1h" } : {}),
     },
   };
 }
