@@ -19,6 +19,14 @@ const TEST_MODEL = {
   maxTokens: 8192,
 };
 
+const KIMI_CODE_MODEL = {
+  ...TEST_MODEL,
+  provider: "kimi-coding",
+  id: "kimi-for-coding",
+  name: "Kimi For Coding",
+  baseUrl: "https://api.kimi.com/coding/v1",
+};
+
 describe("anthropic cache breakpoints", () => {
   test("allocates cache_control across system, tools, message prefix, and current turn", () => {
     const params = ANTHROPIC_MESSAGES_TEST_ONLY.buildParams(
@@ -93,6 +101,41 @@ describe("anthropic cache breakpoints", () => {
         content: [expect.objectContaining({ cache_control: { type: "ephemeral" } })],
       }),
     );
+  });
+
+  test("does not apply Anthropic cache_control to Kimi Code", () => {
+    const params = ANTHROPIC_MESSAGES_TEST_ONLY.buildParams(
+      KIMI_CODE_MODEL as never,
+      {
+        systemPrompt: "Stable system prompt",
+        tools: [
+          {
+            name: "read",
+            description: "Read a file",
+            parameters: { type: "object", properties: { path: { type: "string" } } },
+          },
+        ],
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "First turn" }],
+            timestamp: 1,
+          },
+        ],
+      } as never,
+      false,
+      {
+        sessionId: "session-kimi-code-cache",
+        cachePolicy: {
+          retention: "short",
+          writeMode: "readWrite",
+          scope: "session",
+          reason: "default",
+        },
+      },
+    );
+
+    expect(countCacheControl(params)).toBe(0);
   });
 });
 

@@ -29,6 +29,7 @@ interface CliShellDialogRequest {
   message?: string;
   options?: string[];
   masked?: boolean;
+  compact?: boolean;
 }
 
 export function createCliShellUiPortController(input: {

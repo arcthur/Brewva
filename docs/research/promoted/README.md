@@ -67,6 +67,7 @@ refresh the pointer summary and `Last reviewed` metadata here.
 - [`rfc-gateway-experience-ring-decomposition.md`](./rfc-gateway-experience-ring-decomposition.md)
 - [`rfc-hosted-thread-loop-and-unified-recovery-decisions.md`](./rfc-hosted-thread-loop-and-unified-recovery-decisions.md)
 - [`rfc-hosted-turn-transitions-and-bounded-recovery.md`](./rfc-hosted-turn-transitions-and-bounded-recovery.md)
+- [`rfc-kimi-code-token-cache-adapter.md`](./rfc-kimi-code-token-cache-adapter.md)
 - [`rfc-preparse-normalization-model-capability-and-live-audit-split.md`](./rfc-preparse-normalization-model-capability-and-live-audit-split.md)
 - [`rfc-runtime-owned-session-lifecycle-aggregate-and-authority-gate.md`](./rfc-runtime-owned-session-lifecycle-aggregate-and-authority-gate.md)
 - [`rfc-schedule-intent-hardening-and-control-plane-ergonomics.md`](./rfc-schedule-intent-hardening-and-control-plane-ergonomics.md)

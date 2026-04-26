@@ -110,6 +110,9 @@ export function providerConnectionFooter(provider: ProviderConnection): string {
     if (provider.id === "openai" || provider.id === "openai-codex") {
       return "OAuth/API key";
     }
+    if (provider.id === "kimi-coding") {
+      return "Kimi Code/Moonshot API key";
+    }
     if (provider.id === "github-copilot") {
       return "OAuth/token";
     }

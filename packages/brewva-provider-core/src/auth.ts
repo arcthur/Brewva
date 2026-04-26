@@ -113,6 +113,14 @@ export function getEnvApiKey(
     }
   }
 
+  if (provider === "moonshot-cn") {
+    return env.MOONSHOT_CN_API_KEY;
+  }
+
+  if (provider === "moonshot-ai") {
+    return env.MOONSHOT_AI_API_KEY;
+  }
+
   const envMap: Record<string, string> = {
     openai: "OPENAI_API_KEY",
     "azure-openai-responses": "AZURE_OPENAI_API_KEY",

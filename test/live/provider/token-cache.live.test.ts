@@ -8,6 +8,7 @@ import {
   type AssistantMessage,
   type Context,
   type Model,
+  type ProviderPayloadMetadata,
   type ProviderStreamOptions,
 } from "@brewva/brewva-provider-core";
 import { resolveBrewvaAgentDir } from "@brewva/brewva-runtime";
@@ -25,6 +26,8 @@ const CACHE_ANCHOR = Array.from(
 ).join("\n");
 
 const MODEL = getModel("openai-codex", LIVE_MODEL_ID as never) as Model<"openai-codex-responses">;
+const KIMI_CODE_MODEL = getModel("kimi-coding", "kimi-for-coding");
+const MOONSHOT_CN_MODEL = getModel("moonshot-cn", "kimi-k2.6");
 
 type CodexAuthCredential = {
   type?: unknown;
@@ -139,7 +142,8 @@ function formatProviderSkip(label: string, error: unknown): string | undefined {
     hasProviderRateLimitText(message) ||
     /no api key|token refresh failed|failed to extract accountid|unauthorized|forbidden|usage limit/i.test(
       message,
-    )
+    ) ||
+    /authentication_error|invalid api key|api key appears to be invalid/i.test(message)
   ) {
     return `[${label}] skipped because provider auth/quota is unavailable: ${message}`;
   }
@@ -188,6 +192,59 @@ async function runCodexTurn(input: {
     throw new Error(message.errorMessage || `Provider ended with ${message.stopReason}`);
   }
   return message;
+}
+
+function hasExplicitProviderCacheField(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some((item) => hasExplicitProviderCacheField(item));
+  }
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  if ("cache_control" in record || "prompt_cache_key" in record || "cachePoint" in record) {
+    return true;
+  }
+  return Object.values(record).some((item) => hasExplicitProviderCacheField(item));
+}
+
+async function runOpenAICompatTurn(input: {
+  apiKey: string;
+  model: Model<"openai-completions">;
+  marker: string;
+}): Promise<{
+  message: AssistantMessage;
+  payload: unknown;
+  metadata: ProviderPayloadMetadata | undefined;
+}> {
+  let capturedPayload: unknown;
+  let capturedMetadata: ProviderPayloadMetadata | undefined;
+  const message = await complete(
+    input.model,
+    {
+      systemPrompt: "Reply with the exact marker requested by the user and no extra text.",
+      messages: [userMessage(`Reply exactly: ${input.marker}`)],
+    },
+    {
+      apiKey: input.apiKey,
+      maxTokens: 64,
+      cachePolicy: {
+        retention: "short",
+        writeMode: "readWrite",
+        scope: "session",
+        reason: "live_test",
+      },
+      onPayload(payload, _model, metadata) {
+        capturedPayload = structuredClone(payload);
+        capturedMetadata = metadata;
+        return payload;
+      },
+    },
+  );
+  if (message.stopReason === "error" || message.stopReason === "aborted") {
+    throw new Error(message.errorMessage || `Provider ended with ${message.stopReason}`);
+  }
+  return { message, payload: capturedPayload, metadata: capturedMetadata };
 }
 
 describe("live: provider token cache", () => {
@@ -347,5 +404,73 @@ describe("live: provider token cache", () => {
       expect(messageText(second)).toContain("CONTINUATION-LIVE-TWO");
     },
     180_000,
+  );
+
+  runLive(
+    "Kimi Code accepts safe-degraded cache posture without inherited cache fields",
+    async () => {
+      const apiKey = process.env.KIMI_API_KEY?.trim();
+      if (!apiKey) {
+        console.warn("[token-cache.live] skipped because KIMI_API_KEY is unavailable");
+        return;
+      }
+
+      let result: Awaited<ReturnType<typeof runOpenAICompatTurn>>;
+      try {
+        result = await runOpenAICompatTurn({
+          apiKey,
+          model: KIMI_CODE_MODEL,
+          marker: "KIMI-CODE-LIVE",
+        });
+      } catch (error) {
+        const skipMessage = formatProviderSkip("token-cache.live Kimi Code", error);
+        if (skipMessage) {
+          console.warn(skipMessage);
+          return;
+        }
+        throw error;
+      }
+
+      expect(messageText(result.message)).toContain("KIMI-CODE-LIVE");
+      expect(hasExplicitProviderCacheField(result.payload)).toBe(false);
+      expect(result.metadata?.cacheCapability?.reason).toBe(
+        "kimi_code_cache_contract_not_verified",
+      );
+    },
+    120_000,
+  );
+
+  runLive(
+    "Moonshot CN accepts OpenAI-compatible payload without inherited cache fields",
+    async () => {
+      const apiKey = process.env.MOONSHOT_CN_API_KEY?.trim();
+      if (!apiKey) {
+        console.warn("[token-cache.live] skipped because MOONSHOT_CN_API_KEY is unavailable");
+        return;
+      }
+
+      let result: Awaited<ReturnType<typeof runOpenAICompatTurn>>;
+      try {
+        result = await runOpenAICompatTurn({
+          apiKey,
+          model: MOONSHOT_CN_MODEL,
+          marker: "MOONSHOT-CN-LIVE",
+        });
+      } catch (error) {
+        const skipMessage = formatProviderSkip("token-cache.live Moonshot CN", error);
+        if (skipMessage) {
+          console.warn(skipMessage);
+          return;
+        }
+        throw error;
+      }
+
+      expect(messageText(result.message)).toContain("MOONSHOT-CN-LIVE");
+      expect(hasExplicitProviderCacheField(result.payload)).toBe(false);
+      expect(result.metadata?.cacheCapability?.reason).toBe(
+        "openai_compatible_implicit_prefix_cache",
+      );
+    },
+    120_000,
   );
 });

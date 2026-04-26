@@ -68,7 +68,7 @@ export interface ProviderAuthSelectPrompt {
 export type ProviderAuthPrompt = ProviderAuthTextPrompt | ProviderAuthSelectPrompt;
 
 export interface ProviderApiKeyAuthMethod {
-  id: "api_key";
+  id: string;
   kind: "api_key";
   type: "api";
   label: string;
@@ -147,6 +147,7 @@ const POPULAR_PROVIDER_ORDER = [
   "anthropic",
   "github-copilot",
   "google",
+  "kimi-coding",
   "openrouter",
 ] as const;
 
@@ -154,6 +155,15 @@ const TOKEN_PROVIDERS = new Set(["github-copilot"]);
 const API_KEY_UNSUPPORTED_PROVIDERS = new Set(["amazon-bedrock", "google-gemini-cli"]);
 const OPENAI_PROVIDER = "openai";
 const OPENAI_CODEX_PROVIDER = "openai-codex";
+const KIMI_PROVIDER = "kimi-coding";
+const KIMI_CODE_PROVIDER = "kimi-coding";
+const MOONSHOT_CN_PROVIDER = "moonshot-cn";
+const MOONSHOT_AI_PROVIDER = "moonshot-ai";
+const KIMI_COVERED_PROVIDERS = [
+  KIMI_CODE_PROVIDER,
+  MOONSHOT_CN_PROVIDER,
+  MOONSHOT_AI_PROVIDER,
+] as const;
 const OPENAI_CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const OPENAI_CODEX_OAUTH_ISSUER = "https://auth.openai.com";
 const OPENAI_CODEX_OAUTH_PORT = 1455;
@@ -182,10 +192,12 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   "google-vertex": "Google Vertex",
   groq: "Groq",
   huggingface: "Hugging Face",
-  "kimi-coding": "Kimi Coding",
+  "kimi-coding": "Kimi",
   minimax: "MiniMax",
   "minimax-cn": "MiniMax CN",
   mistral: "Mistral",
+  "moonshot-ai": "Moonshot AI Open Platform (moonshot.ai)",
+  "moonshot-cn": "Moonshot AI Open Platform (moonshot.cn)",
   openai: "OpenAI",
   "openai-codex": "OpenAI Codex",
   openrouter: "OpenRouter",
@@ -197,6 +209,9 @@ const PROVIDER_DESCRIPTIONS: Record<string, string> = {
   anthropic: "API key",
   "github-copilot": "GitHub OAuth or token",
   google: "API key",
+  "kimi-coding": "Kimi Code or Moonshot API key",
+  "moonshot-ai": "API key",
+  "moonshot-cn": "API key",
   openai: "ChatGPT Plus/Pro or API key",
   "openai-codex": "ChatGPT Plus/Pro or API key",
   openrouter: "API key",
@@ -1276,6 +1291,45 @@ function consolidateOpenAIConnectionProviders(
   ].toSorted(sortProviders);
 }
 
+function consolidateKimiConnectionProviders(
+  providers: readonly ProviderConnection[],
+): ProviderConnection[] {
+  const coveredProviders = KIMI_COVERED_PROVIDERS.map((providerId) =>
+    providers.find((provider) => provider.id === providerId),
+  ).filter((provider): provider is ProviderConnection => provider !== undefined);
+
+  if (coveredProviders.length === 0) {
+    return [...providers];
+  }
+
+  const consolidated: ProviderConnection = {
+    id: KIMI_PROVIDER,
+    name: formatProviderName(KIMI_PROVIDER),
+    group: "popular",
+    connected: coveredProviders.some((provider) => provider.connected),
+    connectionSource: pickProviderConnectionSource(coveredProviders),
+    description: PROVIDER_DESCRIPTIONS[KIMI_PROVIDER],
+    modelProviders: coveredProviders.map((provider) => provider.id),
+    modelCount: coveredProviders.reduce((sum, provider) => sum + provider.modelCount, 0),
+    availableModelCount: coveredProviders.reduce(
+      (sum, provider) => sum + provider.availableModelCount,
+      0,
+    ),
+    credentialRef: getProviderCredentialRef(KIMI_CODE_PROVIDER),
+  };
+
+  const covered = new Set<string>(KIMI_COVERED_PROVIDERS);
+  return [consolidated, ...providers.filter((provider) => !covered.has(provider.id))].toSorted(
+    sortProviders,
+  );
+}
+
+function consolidateConnectionProviders(
+  providers: readonly ProviderConnection[],
+): ProviderConnection[] {
+  return consolidateKimiConnectionProviders(consolidateOpenAIConnectionProviders(providers));
+}
+
 async function listAvailableModels(
   modelRegistry: ProviderConnectionModelCatalog,
 ): Promise<readonly BrewvaRegisteredModel[]> {
@@ -1333,6 +1387,36 @@ export function createProviderConnectionPort(input: {
 }): ProviderConnectionPort {
   const vault = createVault(input.runtime);
   const authHandlers = [...createBuiltInProviderAuthHandlers(), ...(input.authHandlers ?? [])];
+
+  const kimiApiKeyMethods = (): ProviderApiKeyAuthMethod[] => [
+    {
+      id: "kimi_code_api_key",
+      kind: "api_key",
+      type: "api",
+      label: "Kimi Code",
+      credentialRef: getProviderCredentialRef(KIMI_CODE_PROVIDER),
+      credentialProvider: KIMI_CODE_PROVIDER,
+      modelProviderFilter: KIMI_CODE_PROVIDER,
+    },
+    {
+      id: "moonshot_cn_api_key",
+      kind: "api_key",
+      type: "api",
+      label: "Moonshot AI Open Platform (moonshot.cn)",
+      credentialRef: getProviderCredentialRef(MOONSHOT_CN_PROVIDER),
+      credentialProvider: MOONSHOT_CN_PROVIDER,
+      modelProviderFilter: MOONSHOT_CN_PROVIDER,
+    },
+    {
+      id: "moonshot_ai_api_key",
+      kind: "api_key",
+      type: "api",
+      label: "Moonshot AI Open Platform (moonshot.ai)",
+      credentialRef: getProviderCredentialRef(MOONSHOT_AI_PROVIDER),
+      credentialProvider: MOONSHOT_AI_PROVIDER,
+      modelProviderFilter: MOONSHOT_AI_PROVIDER,
+    },
+  ];
 
   const apiKeyMethodForProvider = (provider: string): ProviderApiKeyAuthMethod | undefined => {
     if (API_KEY_UNSUPPORTED_PROVIDERS.has(provider)) {
@@ -1429,10 +1513,13 @@ export function createProviderConnectionPort(input: {
           };
         })
         .toSorted(sortProviders);
-      return consolidateOpenAIConnectionProviders(providers);
+      return consolidateConnectionProviders(providers);
     },
 
     listAuthMethods(provider) {
+      if (provider === KIMI_PROVIDER) {
+        return kimiApiKeyMethods();
+      }
       const apiKeyMethod = apiKeyMethodForProvider(provider);
       return [...oauthMethodsForProvider(provider), ...(apiKeyMethod ? [apiKeyMethod] : [])];
     },
@@ -1495,7 +1582,11 @@ export function createProviderConnectionPort(input: {
 
     async disconnect(provider) {
       const providers =
-        provider === OPENAI_PROVIDER ? [OPENAI_PROVIDER, OPENAI_CODEX_PROVIDER] : [provider];
+        provider === OPENAI_PROVIDER
+          ? [OPENAI_PROVIDER, OPENAI_CODEX_PROVIDER]
+          : provider === KIMI_PROVIDER
+            ? [...KIMI_COVERED_PROVIDERS]
+            : [provider];
       for (const targetProvider of providers) {
         vault.remove(getProviderCredentialRef(targetProvider));
         input.authStore?.remove?.(targetProvider);

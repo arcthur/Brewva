@@ -58,6 +58,17 @@ const DISCOVERY_MAPPINGS: Array<{
   { provider: "google", envVar: "GOOGLE_API_KEY", credentialRef: "vault://google/apiKey" },
   { provider: "mistral", envVar: "MISTRAL_API_KEY", credentialRef: "vault://mistral/apiKey" },
   { provider: "groq", envVar: "GROQ_API_KEY", credentialRef: "vault://groq/apiKey" },
+  { provider: "kimi-coding", envVar: "KIMI_API_KEY", credentialRef: "vault://kimi-coding/apiKey" },
+  {
+    provider: "moonshot-cn",
+    envVar: "MOONSHOT_CN_API_KEY",
+    credentialRef: "vault://moonshot-cn/apiKey",
+  },
+  {
+    provider: "moonshot-ai",
+    envVar: "MOONSHOT_AI_API_KEY",
+    credentialRef: "vault://moonshot-ai/apiKey",
+  },
   { provider: "together", envVar: "TOGETHER_API_KEY", credentialRef: "vault://together/apiKey" },
   { provider: "xai", envVar: "XAI_API_KEY", credentialRef: "vault://xai/apiKey" },
 ];

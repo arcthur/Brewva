@@ -28,6 +28,7 @@ interface ShellProviderAuthDialogRequest {
   message?: string;
   options?: string[];
   masked?: boolean;
+  compact?: boolean;
 }
 
 export interface ShellProviderAuthFlowContext {
@@ -355,6 +356,7 @@ export class ShellProviderAuthFlow {
         title: prompt.message,
         message: prompt.placeholder ?? prompt.message,
         masked: prompt.masked,
+        compact: prompt.masked,
       });
       if (value === undefined) {
         return undefined;
@@ -572,13 +574,15 @@ export class ShellProviderAuthFlow {
       title: `Connect ${provider.name}`,
       message: `${method.label} for ${provider.name} (${method.credentialRef})`,
       masked: true,
+      compact: true,
     });
     if (!apiKey?.trim()) {
       return;
     }
+    const connectedProviderName = provider.id === "kimi-coding" ? method.label : provider.name;
     await this.connectProviderApiKey(
       authMethodCredentialProvider(provider.id, method),
-      provider.name,
+      connectedProviderName,
       apiKey.trim(),
       inputs,
       authMethodModelProviderFilter(provider.id, method),

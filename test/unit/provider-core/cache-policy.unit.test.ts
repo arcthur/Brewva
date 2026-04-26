@@ -180,6 +180,24 @@ describe("provider cache policy", () => {
         reason: "provider_model_does_not_advertise_prompt_cache_key",
       }),
     );
+
+    expect(
+      resolveProviderCacheCapability({
+        api: "anthropic-messages",
+        provider: "kimi-coding",
+        modelId: "kimi-for-coding",
+        baseUrl: "https://api.kimi.com/coding/v1",
+        transport: "sse",
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        strategies: ["unsupported"],
+        cacheCounters: "none",
+        shortRetention: false,
+        longRetention: "none",
+        reason: "kimi_code_cache_contract_not_verified",
+      }),
+    );
   });
 
   test("reports read-only cache mode as unsupported when providers cannot honor it", () => {
@@ -291,6 +309,48 @@ describe("provider cache policy", () => {
       }),
       cacheControl: { type: "ephemeral" },
     });
+  });
+
+  test("does not inherit Anthropic cache markers for Kimi Code", () => {
+    expect(
+      resolveAnthropicCacheRender({
+        baseUrl: "https://api.kimi.com/coding/v1",
+        provider: "kimi-coding",
+        modelId: "kimi-for-coding",
+        sessionId: "session-kimi-code",
+        policy: {
+          retention: "short",
+          writeMode: "readWrite",
+          scope: "session",
+          reason: "default",
+        },
+      }),
+    ).toEqual({
+      status: "unsupported",
+      reason: "kimi_code_cache_contract_not_verified",
+      renderedRetention: "none",
+      bucketKey: "anthropic-messages|session=session-kimi-code|retention=none|writeMode=readWrite",
+      capability: expect.objectContaining({
+        strategies: ["unsupported"],
+        cacheCounters: "none",
+      }),
+      cacheControl: undefined,
+    });
+
+    expect(
+      resolveAnthropicCacheRender({
+        baseUrl: "https://api.kimi.com/coding/v1",
+        provider: "anthropic",
+        modelId: "kimi-for-coding",
+        sessionId: "session-kimi-code-url",
+        policy: {
+          retention: "short",
+          writeMode: "readWrite",
+          scope: "session",
+          reason: "default",
+        },
+      }).reason,
+    ).toBe("kimi_code_cache_contract_not_verified");
   });
 
   test("reports unsupported Bedrock cache points with readable reasons", () => {

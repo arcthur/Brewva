@@ -35,7 +35,9 @@ export type KnownProvider =
   | "minimax"
   | "minimax-cn"
   | "huggingface"
-  | "kimi-coding";
+  | "kimi-coding"
+  | "moonshot-cn"
+  | "moonshot-ai";
 export type Provider = KnownProvider | string;
 
 export type ThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh";

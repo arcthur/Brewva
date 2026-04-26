@@ -566,6 +566,41 @@ function InputOverlay(input: {
   width: number;
   height: number;
 }) {
+  const displayValue = createMemo(() =>
+    input.payload.masked ? "*".repeat(input.payload.value.length) : input.payload.value,
+  );
+  if (input.payload.compact) {
+    const surfaceWidth = createMemo(() => resolveDialogWidth(input.width, "medium"));
+    const contentWidth = createMemo(() =>
+      Math.max(1, surfaceWidth() - DIALOG_HORIZONTAL_PADDING * 2),
+    );
+    return (
+      <DialogFrame width={input.width} height={input.height} theme={input.theme} size="medium">
+        <box
+          width="100%"
+          flexDirection="column"
+          gap={1}
+          paddingLeft={DIALOG_HORIZONTAL_PADDING}
+          paddingRight={DIALOG_HORIZONTAL_PADDING}
+          paddingBottom={1}
+        >
+          <DialogHeader title={input.payload.title ?? "Input"} theme={input.theme} />
+          <Show when={input.payload.message}>
+            <text fg={input.theme.textMuted} wrapMode="none">
+              {truncateDialogText(input.payload.message ?? "", contentWidth())}
+            </text>
+          </Show>
+          <box flexDirection="row">
+            <text fg={input.theme.primary}>› </text>
+            <text fg={input.theme.text} wrapMode="none">
+              {truncateDialogText(displayValue(), Math.max(1, contentWidth() - 2))}
+            </text>
+          </box>
+          <text fg={input.theme.textMuted}>Enter confirm · Esc cancel</text>
+        </box>
+      </DialogFrame>
+    );
+  }
   return (
     <OverlaySurface
       title={input.payload.title ?? "Input"}
@@ -586,9 +621,7 @@ function InputOverlay(input: {
           paddingLeft={1}
           paddingRight={1}
         >
-          <text fg={input.theme.text}>
-            {input.payload.masked ? "*".repeat(input.payload.value.length) : input.payload.value}
-          </text>
+          <text fg={input.theme.text}>{displayValue()}</text>
         </box>
       </box>
     </OverlaySurface>

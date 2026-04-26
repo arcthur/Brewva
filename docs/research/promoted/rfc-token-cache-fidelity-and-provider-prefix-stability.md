@@ -111,6 +111,10 @@ Current verification commands used during promotion:
   renderer exposes true cache-edit semantics.
 - Future provider-specific continuation modes should start in provider-core
   capability/render contracts, not gateway conditionals.
+- Kimi Code safe-degraded cache handling is promoted separately in
+  `docs/research/promoted/rfc-kimi-code-token-cache-adapter.md`. Native Kimi
+  Code cache support beyond that guard should start from a new focused RFC once
+  the provider behavior is documented or repeatably live-verifiable.
 - If operational diagnostics become noisy, tune detector thresholds and dump
   contents in `docs/reference/token-cache.md` and tests instead of reopening
   this promoted pointer.

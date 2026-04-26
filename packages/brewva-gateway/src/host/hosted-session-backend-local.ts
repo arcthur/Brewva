@@ -51,7 +51,9 @@ const DEFAULT_MODEL_PER_PROVIDER: Record<string, string> = {
   minimax: "MiniMax-M2.7",
   "minimax-cn": "MiniMax-M2.7",
   huggingface: "moonshotai/Kimi-K2.5",
-  "kimi-coding": "kimi-k2-thinking",
+  "kimi-coding": "kimi-for-coding",
+  "moonshot-cn": "kimi-k2.6",
+  "moonshot-ai": "kimi-k2.6",
 };
 
 type HostedRegisteredModel = NonNullable<

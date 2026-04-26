@@ -16,6 +16,10 @@ function writeHostedSettings(
     defaultProvider?: string;
     defaultModel?: string;
     defaultThinkingLevel?: string;
+    modelPreferences?: {
+      recent?: Array<{ provider: string; id: string }>;
+      favorite?: Array<{ provider: string; id: string }>;
+    };
   },
 ): void {
   mkdirSync(agentDir, { recursive: true });
@@ -135,6 +139,8 @@ describe("hosted session driver", () => {
       KIMI_API_KEY: undefined,
       MINIMAX_API_KEY: undefined,
       MINIMAX_CN_API_KEY: undefined,
+      MOONSHOT_AI_API_KEY: undefined,
+      MOONSHOT_CN_API_KEY: undefined,
       MISTRAL_API_KEY: undefined,
       OPENAI_API_KEY: undefined,
       OPENROUTER_API_KEY: undefined,

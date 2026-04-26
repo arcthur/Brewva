@@ -33,4 +33,14 @@ describe("provider core model catalog", () => {
       'Model "google/gemini-2.5-flash-preview-04-17" is retired.',
     );
   });
+
+  test("exposes documented Kimi Code and Moonshot platform model routes", () => {
+    const kimiCodeModels = getModels("kimi-coding").map((model) => model.id);
+    expect(kimiCodeModels).toEqual(["kimi-for-coding"]);
+
+    const moonshotCnModels = getModels("moonshot-cn").map((model) => model.id);
+    const moonshotAiModels = getModels("moonshot-ai").map((model) => model.id);
+    expect(moonshotCnModels).toEqual(["kimi-k2.6", "kimi-k2.5"]);
+    expect(moonshotAiModels).toEqual(moonshotCnModels);
+  });
 });

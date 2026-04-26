@@ -330,6 +330,13 @@ export class ShellOverlayLifecycleFlow {
       this.closeActiveOverlay(true);
       return true;
     }
+    if (key === "paste" && typeof input.text === "string") {
+      this.replaceActiveOverlay({
+        ...active,
+        value: `${active.value}${input.text}`,
+      });
+      return true;
+    }
     if (key === "backspace") {
       this.replaceActiveOverlay({
         ...active,

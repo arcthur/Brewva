@@ -244,6 +244,7 @@ export interface CliInputOverlayPayload {
   message?: string;
   value: string;
   masked?: boolean;
+  compact?: boolean;
 }
 
 export interface CliSelectOverlayPayload {

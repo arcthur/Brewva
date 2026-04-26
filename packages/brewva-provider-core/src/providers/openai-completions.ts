@@ -771,13 +771,15 @@ function parseChunkUsage(
   rawUsage: {
     prompt_tokens?: number;
     completion_tokens?: number;
+    cached_tokens?: number;
     prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
     completion_tokens_details?: { reasoning_tokens?: number };
   },
   model: Model<"openai-completions">,
 ): AssistantMessage["usage"] {
   const promptTokens = rawUsage.prompt_tokens || 0;
-  const reportedCachedTokens = rawUsage.prompt_tokens_details?.cached_tokens || 0;
+  const reportedCachedTokens =
+    rawUsage.prompt_tokens_details?.cached_tokens || rawUsage.cached_tokens || 0;
   const cacheWriteTokens = rawUsage.prompt_tokens_details?.cache_write_tokens || 0;
   const reasoningTokens = rawUsage.completion_tokens_details?.reasoning_tokens || 0;
 

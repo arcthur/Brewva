@@ -92,6 +92,50 @@ model, base URL, and transport. The normalized strategy vocabulary is:
 provider cannot honor read-only cache semantics, rendering returns an
 unsupported or degraded result with a readable reason.
 
+## Provider-Specific Adapter Rule
+
+An API envelope is not a cache contract.
+
+Provider-core resolves cache behavior from provider family, API shape, model,
+base URL, transport, and verified provider behavior. The API shape alone must
+not grant provider cache features. This keeps Anthropic `cache_control`, Bedrock
+cache points, OpenAI prompt-cache keys, Codex continuation, Gemini implicit
+prefix behavior, and future provider primitives from leaking across providers
+that merely share a transport or request envelope.
+
+Every provider-family cache adapter must document:
+
+- rendered provider fields, headers, or markers
+- usage counters and whether observability is full or degraded
+- continuation or session-affinity state
+- sticky-latch material that can affect prefix bytes or cache eligibility
+- bucket-key material
+- live or contract tests that prove the behavior
+
+Kimi is the current guardrail example. Brewva exposes a single `Kimi` connect
+surface, but the provider families remain separate underneath:
+
+- `kimi-coding` for Kimi Code, using the documented stable
+  `kimi-for-coding` model on the `https://api.kimi.com/coding/v1` route. The
+  current Kimi Code product page describes that route as powered by `kimi-k2.6`;
+  Brewva still sends the stable `kimi-for-coding` model id.
+- `moonshot-cn` for Moonshot AI Open Platform at `https://api.moonshot.cn/v1`
+- `moonshot-ai` for Moonshot AI Open Platform at `https://api.moonshot.ai/v1`
+
+Moonshot Open Platform defaults to `kimi-k2.6` and keeps `kimi-k2.5` available.
+Older `kimi-k2` series ids are not part of Brewva's built-in Kimi surface.
+Environment credentials are intentionally platform-specific:
+`KIMI_API_KEY`, `MOONSHOT_CN_API_KEY`, and `MOONSHOT_AI_API_KEY`. Brewva does
+not accept a generic `MOONSHOT_API_KEY` fallback because it cannot identify the
+intended `.cn` or `.ai` route without adding ambiguity.
+
+Kimi Code must not inherit Anthropic `cache_control` or GPT `prompt_cache_key`
+semantics solely from the API envelope. Until provider-core has a verified Kimi
+Code cache adapter, Kimi Code should report degraded or unsupported cache
+rendering with a readable reason. The current safe-degraded implementation uses
+`kimi_code_cache_contract_not_verified` and does not render inherited cache
+markers for Kimi Code.
+
 ## GPT And Codex Continuation
 
 OpenAI-family prompt caching is not Claude-style cache markers. Brewva models

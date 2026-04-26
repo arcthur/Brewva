@@ -1306,6 +1306,104 @@ describe("shell runtime", () => {
     runtime.dispose();
   });
 
+  test("Kimi connect flow selects platform before accepting pasted API keys", async () => {
+    const providers: ProviderConnection[] = [
+      {
+        id: "kimi-coding",
+        name: "Kimi",
+        group: "popular",
+        connected: false,
+        connectionSource: "none",
+        modelProviders: ["kimi-coding", "moonshot-cn", "moonshot-ai"],
+        modelCount: 3,
+        availableModelCount: 0,
+        credentialRef: "vault://kimi-coding/apiKey",
+      },
+    ];
+    const fixture = createFakeBundle({
+      providers,
+      authMethods: {
+        "kimi-coding": [
+          {
+            id: "kimi_code_api_key",
+            kind: "api_key",
+            type: "api",
+            label: "Kimi Code",
+            credentialRef: "vault://kimi-coding/apiKey",
+            credentialProvider: "kimi-coding",
+            modelProviderFilter: "kimi-coding",
+          },
+          {
+            id: "moonshot_cn_api_key",
+            kind: "api_key",
+            type: "api",
+            label: "Moonshot AI Open Platform (moonshot.cn)",
+            credentialRef: "vault://moonshot-cn/apiKey",
+            credentialProvider: "moonshot-cn",
+            modelProviderFilter: "moonshot-cn",
+          },
+          {
+            id: "moonshot_ai_api_key",
+            kind: "api_key",
+            type: "api",
+            label: "Moonshot AI Open Platform (moonshot.ai)",
+            credentialRef: "vault://moonshot-ai/apiKey",
+            credentialProvider: "moonshot-ai",
+            modelProviderFilter: "moonshot-ai",
+          },
+        ],
+      },
+    });
+    const { bundle } = fixture;
+    const runtime = new CliShellRuntime(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    runtime.ui.setEditorText("/connect ");
+    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await Bun.sleep(0);
+
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
+      kind: "authMethodPicker",
+      title: "Connect Kimi",
+    });
+
+    await runtime.handleInput({ key: "down", ctrl: false, meta: false, shift: false });
+    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await Bun.sleep(0);
+
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
+      kind: "input",
+      title: "Connect Kimi",
+      message: "Moonshot AI Open Platform (moonshot.cn) for Kimi (vault://moonshot-cn/apiKey)",
+      masked: true,
+      compact: true,
+    });
+
+    await runtime.handleInput({
+      key: "paste",
+      text: "sk-moonshot-pasted\n",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await Bun.sleep(0);
+
+    expect(fixture.providerConnects).toEqual([
+      { provider: "moonshot-cn", key: "sk-moonshot-pasted" },
+    ]);
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
+      kind: "modelPicker",
+      providerFilter: "moonshot-cn",
+    });
+
+    runtime.dispose();
+  });
+
   test("provider connect flow warns when a provider exposes no in-TUI auth methods", async () => {
     const providers: ProviderConnection[] = [
       {

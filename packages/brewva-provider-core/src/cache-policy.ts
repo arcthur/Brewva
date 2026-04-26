@@ -45,6 +45,8 @@ export interface BedrockCacheRender extends ProviderCacheRenderResult {
   cachePoint?: { type: string; ttl?: string };
 }
 
+const KIMI_CODE_CACHE_REASON = "kimi_code_cache_contract_not_verified";
+
 export function normalizeProviderCachePolicy(
   policy: ProviderCachePolicy | undefined,
 ): ProviderCachePolicy {
@@ -173,6 +175,17 @@ export function resolveProviderCacheCapability(
   const baseUrl = (input.baseUrl ?? "").toLowerCase();
   const transport = input.transport ?? "auto";
 
+  if (isKimiCodeCacheRoute({ provider, baseUrl })) {
+    return {
+      strategies: ["unsupported"],
+      cacheCounters: "none",
+      shortRetention: false,
+      longRetention: "none",
+      readOnlyWriteMode: "unsupported",
+      reason: KIMI_CODE_CACHE_REASON,
+    };
+  }
+
   if (api === "anthropic-messages") {
     return {
       strategies: ["explicitCacheMarker"],
@@ -284,6 +297,18 @@ export function resolveProviderCacheCapability(
   };
 }
 
+function isKimiCodeCacheRoute(input: { provider: string; baseUrl: string }): boolean {
+  if (input.provider === "kimi-coding") {
+    return true;
+  }
+  try {
+    const url = new URL(input.baseUrl);
+    return url.hostname === "api.kimi.com" && url.pathname.startsWith("/coding");
+  } catch {
+    return input.baseUrl.includes("api.kimi.com/coding");
+  }
+}
+
 function modelSupportsOpenAIPromptCacheKey(modelId: string): boolean {
   if (!modelId) {
     return false;
@@ -369,6 +394,7 @@ export function resolveOpenAIResponsesCacheRender(input: {
 
 export function resolveAnthropicCacheRender(input: {
   baseUrl: string;
+  provider?: string;
   modelId?: string;
   sessionId?: string;
   policy?: ProviderCachePolicy;
@@ -376,7 +402,7 @@ export function resolveAnthropicCacheRender(input: {
   const policy = normalizeProviderCachePolicy(input.policy);
   const capability = resolveProviderCacheCapability({
     api: "anthropic-messages",
-    provider: "anthropic",
+    provider: input.provider ?? "anthropic",
     modelId: input.modelId,
     baseUrl: input.baseUrl,
   });
@@ -392,6 +418,14 @@ export function resolveAnthropicCacheRender(input: {
     return unsupportedReadOnlyRender({
       api: "anthropic-messages",
       sessionId: input.sessionId,
+      capability,
+    }) as AnthropicCacheRender;
+  }
+  if (!capability.strategies.includes("explicitCacheMarker")) {
+    return unsupportedCapabilityRender({
+      api: "anthropic-messages",
+      sessionId: input.sessionId,
+      writeMode: policy.writeMode,
       capability,
     }) as AnthropicCacheRender;
   }

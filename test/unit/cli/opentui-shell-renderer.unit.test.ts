@@ -63,6 +63,12 @@ interface FakeOpenTuiSelectionRenderer extends OpenTuiRenderer {
   clearSelection(): void;
 }
 
+interface OpenTuiPasteRenderer extends OpenTuiRenderer {
+  keyInput: {
+    processPaste(bytes: Uint8Array): void;
+  };
+}
+
 function createFakeSelectionRenderer(selectedText = "Selected transcript text"): {
   renderer: FakeOpenTuiSelectionRenderer;
   wasCleared(): boolean;
@@ -1762,6 +1768,63 @@ describe("opentui solid shell runtime", () => {
       finishBrowserWait?.();
     } finally {
       finishBrowserWait?.();
+      runtime.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("routes bracketed paste into masked input dialogs without rendering the secret", async () => {
+    const { bundle } = createFakeBundle();
+    const runtime = new CliShellRuntime(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+    const secret = "sk-kimi-ui-paste";
+
+    await runtime.start();
+    runtime.openOverlay({
+      kind: "input",
+      dialogId: "provider-api-key:kimi-coding:test",
+      title: "Connect Kimi",
+      message: "Kimi Code for Kimi (vault://kimi-coding/apiKey)",
+      value: "",
+      masked: true,
+      compact: true,
+    });
+
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
+      {
+        width: 100,
+        height: 30,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      let frame = testSetup.captureCharFrame();
+      expect(frame).toContain("Connect Kimi");
+      expect(frame).not.toContain(secret);
+
+      await openTuiSolidAct(async () => {
+        (testSetup.renderer as OpenTuiPasteRenderer).keyInput.processPaste(
+          new TextEncoder().encode(secret),
+        );
+        await Bun.sleep(0);
+      });
+      await testSetup.renderOnce();
+      frame = testSetup.captureCharFrame();
+
+      expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
+        kind: "input",
+        value: secret,
+        masked: true,
+      });
+      expect(frame).toContain("*".repeat(secret.length));
+      expect(frame).not.toContain(secret);
+    } finally {
       runtime.dispose();
       testSetup.renderer.destroy();
     }

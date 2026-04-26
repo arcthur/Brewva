@@ -6,8 +6,8 @@ import type {
   OpenTuiScrollBoxHandle,
   OpenTuiTextareaHandle,
 } from "@brewva/brewva-tui/internal-opentui-runtime";
-import type { BoxRenderable } from "@opentui/core";
-import { useKeyboard, useTerminalDimensions } from "@opentui/solid";
+import { decodePasteBytes, type BoxRenderable, type PasteEvent } from "@opentui/core";
+import { useKeyboard, usePaste, useTerminalDimensions } from "@opentui/solid";
 import { Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { For } from "solid-js";
 import {
@@ -317,6 +317,25 @@ export function BrewvaOpenTuiShell(input: {
     event.stopPropagation();
     void input.runtime.handleInput(semanticInput);
   }, {});
+
+  usePaste((event: PasteEvent) => {
+    if (state.overlay.active?.payload?.kind !== "input") {
+      return;
+    }
+    const pastedText = decodePasteBytes(event.bytes).replace(/\r\n/gu, "\n").replace(/\r/gu, "\n");
+    if (pastedText.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    void input.runtime.handleInput({
+      key: "paste",
+      text: pastedText,
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+  });
 
   const activeOverlay = createMemo(() => {
     const active = state.overlay.active;

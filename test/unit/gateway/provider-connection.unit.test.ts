@@ -183,7 +183,9 @@ describe("provider connection port", () => {
     const restoreEnv = patchProcessEnv({ BREWVA_VAULT_KEY: "provider-connection-test-key" });
     try {
       const runtime = new BrewvaRuntime({ cwd: workspace });
-      const registry = HostedModelRegistry.inMemory(HostedAuthStore.inMemory());
+      const authStore = HostedAuthStore.inMemory();
+      configureCredentialVaultModelAuth({ runtime, authStore });
+      const registry = HostedModelRegistry.inMemory(authStore);
       registerSingleModelProvider(registry, "openai", "gpt-5.4");
       registerSingleModelProvider(registry, "openai-codex", "gpt-5.3-codex");
       const port = createProviderConnectionPort({ runtime, modelRegistry: registry });
@@ -199,6 +201,69 @@ describe("provider connection port", () => {
         modelCount: 2,
         credentialRef: "vault://openai/apiKey",
       });
+    } finally {
+      restoreEnv();
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  test("consolidates Kimi Code and Moonshot platforms into one connect provider", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-provider-connection-"));
+    const restoreEnv = patchProcessEnv({ BREWVA_VAULT_KEY: "provider-connection-test-key" });
+    try {
+      const runtime = new BrewvaRuntime({ cwd: workspace });
+      const authStore = HostedAuthStore.inMemory();
+      configureCredentialVaultModelAuth({ runtime, authStore });
+      const registry = HostedModelRegistry.inMemory(authStore);
+      registerSingleModelProvider(registry, "kimi-coding", "kimi-for-coding");
+      registerSingleModelProvider(registry, "moonshot-cn", "kimi-k2.6");
+      registerSingleModelProvider(registry, "moonshot-ai", "kimi-k2.6");
+      const port = createProviderConnectionPort({ runtime, modelRegistry: registry });
+
+      const providers = await port.listProviders();
+
+      expect(providers.map((provider) => provider.id)).toContain("kimi-coding");
+      expect(providers.map((provider) => provider.id)).not.toContain("moonshot-cn");
+      expect(providers.map((provider) => provider.id)).not.toContain("moonshot-ai");
+      expect(providers.find((provider) => provider.id === "kimi-coding")).toMatchObject({
+        name: "Kimi",
+        group: "popular",
+        modelProviders: ["kimi-coding", "moonshot-cn", "moonshot-ai"],
+        modelCount: 3,
+        credentialRef: "vault://kimi-coding/apiKey",
+      });
+
+      expect(port.listAuthMethods("kimi-coding")).toMatchObject([
+        {
+          id: "kimi_code_api_key",
+          label: "Kimi Code",
+          credentialProvider: "kimi-coding",
+          modelProviderFilter: "kimi-coding",
+          credentialRef: "vault://kimi-coding/apiKey",
+        },
+        {
+          id: "moonshot_cn_api_key",
+          label: "Moonshot AI Open Platform (moonshot.cn)",
+          credentialProvider: "moonshot-cn",
+          modelProviderFilter: "moonshot-cn",
+          credentialRef: "vault://moonshot-cn/apiKey",
+        },
+        {
+          id: "moonshot_ai_api_key",
+          label: "Moonshot AI Open Platform (moonshot.ai)",
+          credentialProvider: "moonshot-ai",
+          modelProviderFilter: "moonshot-ai",
+          credentialRef: "vault://moonshot-ai/apiKey",
+        },
+      ]);
+
+      await port.connectApiKey("moonshot-cn", "moonshot-cn-secret");
+      expect(registry.getAvailable().some((model) => model.provider === "moonshot-cn")).toBe(true);
+
+      await port.disconnect("kimi-coding");
+      expect(registry.getAvailable().some((model) => model.provider === "kimi-coding")).toBe(false);
+      expect(registry.getAvailable().some((model) => model.provider === "moonshot-cn")).toBe(false);
+      expect(registry.getAvailable().some((model) => model.provider === "moonshot-ai")).toBe(false);
     } finally {
       restoreEnv();
       rmSync(workspace, { recursive: true, force: true });

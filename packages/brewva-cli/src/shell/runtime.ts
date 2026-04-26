@@ -1343,6 +1343,7 @@ export class CliShellRuntime {
       message?: string;
       options?: string[];
       masked?: boolean;
+      compact?: boolean;
     },
     options: { priority?: OverlayPriority; suspendCurrent?: boolean } = {},
   ): Promise<T> {
@@ -1366,6 +1367,7 @@ export class CliShellRuntime {
                 message: request.message,
                 value: "",
                 masked: request.masked,
+                compact: request.compact,
               } satisfies CliShellOverlayPayload)
             : ({
                 kind: "select",

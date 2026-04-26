@@ -637,6 +637,8 @@ function buildParams(
 ): MessageCreateParamsStreaming {
   const cacheRender = resolveAnthropicCacheRender({
     baseUrl: model.baseUrl,
+    provider: model.provider,
+    modelId: model.id,
     sessionId: options?.sessionId,
     policy: options?.cachePolicy,
   });
