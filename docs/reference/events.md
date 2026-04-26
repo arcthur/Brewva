@@ -768,8 +768,8 @@ turn-time workflow brief or a hidden next-step controller.
 
 `operator_question_answered` is not a derived workflow artifact. It is the
 durable operator-input receipt for the operator inbox surface exposed through
-`/questions` and `/answer`. The answer itself remains explicit, replay-visible
-session input rather than hidden channel-local state.
+`/inbox`, `/status`, and `/answer`. The answer itself remains explicit,
+replay-visible session input rather than hidden channel-local state.
 
 Read-only operator products such as `/inspect` and `/insights` do not mint
 their own command-specific durable event families. They are command veneers

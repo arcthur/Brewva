@@ -91,6 +91,29 @@ export class ShellOperatorOverlayFlow {
       }
     }
 
+    if (active.kind === "inbox") {
+      const item = active.items[active.selectedIndex];
+      if (key === "d" && item?.kind === "notification") {
+        this.context.commit(
+          {
+            type: "notification.dismiss",
+            id: item.notificationId,
+          },
+          { debounceStatus: false },
+        );
+        return true;
+      }
+      if (key === "x" && active.notifications.length > 0) {
+        this.context.commit(
+          {
+            type: "notification.clear",
+          },
+          { debounceStatus: false },
+        );
+        return true;
+      }
+    }
+
     if (active.kind === "sessions" && key === "n") {
       await this.context.createSession();
       this.context.closeActiveOverlay(false);

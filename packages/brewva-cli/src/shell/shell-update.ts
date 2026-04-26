@@ -147,7 +147,7 @@ function updateCommandIntent(
       return handled({ effects: [{ type: "session.undoCorrection" }] });
     case "session.redo":
       return handled({ effects: [{ type: "session.redoCorrection" }] });
-    case "agent.models":
+    case "agent.model":
       return intent.args.trim() === "recent"
         ? handled({ effects: [{ type: "model.cycleRecent" }] })
         : handled({
@@ -181,6 +181,8 @@ function updateCommandIntent(
           },
         ],
       });
+    case "operator.inbox":
+      return handled({ effects: [{ type: "overlay.openInbox" }] });
     case "operator.questions":
       return handled({
         actions: [
@@ -247,10 +249,6 @@ function updateCommandIntent(
       return handled({ effects: [{ type: "promptMemory.selectStashed" }] });
     case "composer.unstash":
       return handled({ effects: [{ type: "promptMemory.restoreLatest" }] });
-    case "runtime.insights":
-    case "runtime.agentOverlays":
-    case "runtime.update":
-      return unhandled();
     default:
       return unhandled({
         effects: [

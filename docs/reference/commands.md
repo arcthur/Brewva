@@ -72,21 +72,14 @@ The shell is a dual-layer operator surface:
 Completion and overlays are part of the stable command contract:
 
 - slash-command completion is triggered by `/`
-- `/models` opens the model-selection overlay; it handles current model,
-  favorites, recents, provider grouping, search, and recent-model cycling
-- `/connect` opens the provider connection overlay; provider auth may use
-  OAuth, provider-specific prompts, or API-key entries stored as canonical
-  vault refs such as `vault://openai/apiKey`
-- `/think` opens the thinking-level overlay and only offers levels supported by
-  the selected model
-- `/thinking` toggles reasoning block visibility in the transcript; this does
-  not change the selected model's thinking level
-- `/tool-details` toggles completed tool detail visibility in the transcript
-- `/diffwrap` toggles edit/apply-patch diff wrapping
-- `/diffstyle` toggles automatic split diffs and stacked unified diffs
+- `/model` opens the model-selection overlay; it handles current model,
+  favorites, recents, provider grouping, search, recent-model cycling, and
+  provider connection when no model is currently available
+- provider connection, thinking selection, view toggles, and prompt-stash
+  controls remain palette-first rather than top-level slash commands
 - workspace path completion is triggered by `@`
-- interactive overlays include approval, question, task, model, provider,
-  thinking, inspect, session, and pager surfaces
+- interactive overlays include approval, inbox, question, task, model,
+  provider, thinking, inspect, session, and pager surfaces
 - task drill-down must expose recent output, structured result data, and
   artifact refs rather than only listing task metadata
 
@@ -113,10 +106,8 @@ runtime plugins:
 - `/inspect [dir]`
 - `/insights [dir]`
 - `/questions`
-- `/theme | /theme list | /theme <name>`
-- `/thinking | /tool-details`
-- `/diffwrap | /diffstyle`
 - `/answer <question-id> <answer>`
+- `/theme | /theme list | /theme <name>`
 - `/agent-overlays | /agent-overlays validate | /agent-overlays <name>`
 - `/update [operator hints]`
 
@@ -133,9 +124,9 @@ channel session. It follows live conversation focus and does not perform the
 default "latest replayable session" selection used by the standalone
 `brewva inspect` subcommand.
 
-`/questions` and `/answer` expose the operator inbox UX. `/questions` presents
-pending operator input derived from durable session state, split product-side
-into input requests and follow-up questions. Only `/answer` records the durable
+`/questions` and `/answer` remain the headless runtime-plugin operator inbox
+surface. Interactive TUI sessions promote `/inbox` instead of exposing
+`/questions` directly. Only `/answer` records the durable
 `operator_question_answered` receipt described in `docs/reference/events.md`;
 listing or clearing inbox items is session-local presentation behavior.
 
@@ -145,23 +136,21 @@ When `channels.orchestration.enabled=true`, channel hosts expose a small
 control-plane command set:
 
 - `/agents`
-- `/cost [@agent] [top=N]`
-- `/questions [@agent]`
+- `/status [@agent] [dir] [top=N]`
 - `/answer [@agent] <question-id> <answer>`
-- `/inspect [@agent] [dir]`
-- `/insights [@agent] [dir]`
 - `/update [operator hints]`
-- `/new-agent <name> [model=<exact-id[:thinking]>]`
-- `/del-agent <name>`
+- `/agent new <name> [model=<exact-id[:thinking]>]`
+- `/agent delete <name>`
+- `/agent status [@agent] [dir] [top=N]`
 - `/focus @agent`
 - `/run @a,@b <task>`
 - `/discuss @a,@b [maxRounds=N] <topic>`
 - `@agent <task>`
 
-`/questions` and `/answer` are the operator inbox surface described by the
-overlay RFC: pending inbox items remain derived from durable session state, and
-answering a question records `operator_question_answered` before the answer is
-routed back into the target session.
+`/status` is the canonical channel inspection summary. It composes cost,
+operator inbox, inspect, and insights output into one controller reply without
+introducing a second durable read model. `/answer` remains the only write path
+for durable operator-input resolution.
 
 These channel commands are transport veneers over the same underlying runtime
 surfaces. `@agent` routing, focus resolution, and inline delivery are channel
@@ -541,12 +530,10 @@ For Cloudflare Worker + Fly ingress deployment steps, see:
 When channel orchestration is enabled (`channels.orchestration.enabled=true`),
 channel text commands are available:
 
-- `/new-agent <name>` or `/new-agent name=<name> model=<exact-id[:thinking]>`
-- `/del-agent <name>` (soft delete)
+- `/agent new <name>` or `/agent new name=<name> model=<exact-id[:thinking]>`
+- `/agent delete <name>` (soft delete)
 - `/agents`
-- `/cost [@agent] [top=N]` (focused-agent cost view veneer over the typed `inspect_cost` operator action and `cost_view`)
-- `/inspect [dir]` (canonical inline deterministic review of the focused agent session)
-- `/inspect @agent [dir]` (canonical inline deterministic review of a specific agent session in the current conversation scope)
+- `/status [@agent] [dir] [top=N]` (focused-agent status veneer over cost, operator inbox, inspect, and insights)
 - `/update [operator hints]` (route the focused agent through the shared Brewva upgrade workflow; changelog review and validation are required before completion)
 - `/focus @<agent>`
 - `/run @a,@b <task>`

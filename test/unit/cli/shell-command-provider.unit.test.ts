@@ -3,23 +3,23 @@ import { ShellCommandProvider } from "../../../packages/brewva-cli/src/shell/com
 import { registerShellCommands } from "../../../packages/brewva-cli/src/shell/commands/shell-command-registry.js";
 
 describe("shell command provider", () => {
-  test("derives visible and keybound command surfaces from registered commands", () => {
+  test("derives palette, help, slash, and keybound command surfaces independently", () => {
     const provider = new ShellCommandProvider();
     provider.register({
-      id: "model.list",
+      id: "agent.model",
       title: "Switch model",
       description: "Select a model.",
       category: "Agent",
-      slash: { name: "models", aliases: ["model"], argumentMode: "optional" },
+      slash: { name: "model", argumentMode: "optional" },
       keybinding: { key: "m", ctrl: true, meta: false, shift: false },
       suggested: true,
     });
     provider.register({
-      id: "hidden.internal",
-      title: "Hidden internal",
-      category: "System",
-      slash: { name: "hidden" },
-      hidden: true,
+      id: "agent.connect",
+      title: "Connect provider",
+      description: "Connect a model provider.",
+      category: "Agent",
+      discovery: { help: false },
     });
     provider.register({
       id: "disabled.command",
@@ -30,18 +30,36 @@ describe("shell command provider", () => {
       enabled: false,
     });
 
-    expect(provider.visibleCommands()).toMatchObject([
+    expect(provider.paletteCommands()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "agent.connect",
+          slashName: undefined,
+        }),
+        expect.objectContaining({
+          id: "agent.model",
+          slashName: "model",
+          slashAliases: [],
+          description: "Select a model.",
+        }),
+      ]),
+    );
+    expect(provider.helpCommands()).toMatchObject([
       {
-        id: "model.list",
-        slashName: "models",
-        slashAliases: ["model"],
-        description: "Select a model.",
+        id: "agent.model",
+        slashName: "model",
+      },
+    ]);
+    expect(provider.slashCommands()).toMatchObject([
+      {
+        id: "agent.model",
+        slashName: "model",
       },
     ]);
     expect(provider.keyboundCommands()).toMatchObject([
       {
-        id: "command.model.list",
-        action: "command:model.list",
+        id: "command.agent.model",
+        action: "command:agent.model",
         context: "global",
       },
     ]);
@@ -51,25 +69,25 @@ describe("shell command provider", () => {
     const provider = new ShellCommandProvider();
     provider.register({
       id: "operator.questions",
-      title: "Operator questions",
-      description: "Open the operator inbox for pending input.",
+      title: "Inbox",
+      description: "Open pending operator questions and shell notifications.",
       category: "Operator",
-      slash: { name: "questions", aliases: ["inbox"] },
+      slash: { name: "inbox" },
     });
 
-    expect(provider.searchCommands("operator").map((command) => command.id)).toEqual([
+    expect(provider.searchPaletteCommands("operator").map((command) => command.id)).toEqual([
       "operator.questions",
     ]);
-    expect(provider.searchCommands("pending").map((command) => command.id)).toEqual([
+    expect(provider.searchPaletteCommands("pending").map((command) => command.id)).toEqual([
       "operator.questions",
     ]);
-    expect(provider.searchCommands("/questions").map((command) => command.id)).toEqual([
+    expect(provider.searchPaletteCommands("/inbox").map((command) => command.id)).toEqual([
       "operator.questions",
     ]);
-    expect(provider.searchCommands("inbox").map((command) => command.id)).toEqual([
+    expect(provider.searchPaletteCommands("inbox").map((command) => command.id)).toEqual([
       "operator.questions",
     ]);
-    expect(provider.searchCommands("opq").map((command) => command.id)).toEqual([
+    expect(provider.searchPaletteCommands("opq").map((command) => command.id)).toEqual([
       "operator.questions",
     ]);
   });
@@ -109,16 +127,58 @@ describe("shell command provider", () => {
     ).toThrow("Duplicate shell command keybinding");
   });
 
-  test("hidden commands still create command intents by id", () => {
+  test("supports hidden callable slash commands and explicit reserved names", () => {
+    const provider = new ShellCommandProvider();
+    provider.register({
+      id: "legacy.hidden",
+      title: "Legacy hidden command",
+      category: "System",
+      slash: { name: "legacy", visibility: "hidden" },
+    });
+    provider.reserveSlashNames([
+      {
+        name: "insights",
+        owner: "runtime.insights",
+        message: "/insights remains runtime-owned.",
+      },
+    ]);
+
+    expect(provider.createSlashCommandIntent("legacy", { args: "", source: "slash" })).toEqual({
+      type: "command.invoke",
+      commandId: "legacy.hidden",
+      args: "",
+      source: "slash",
+    });
+    expect(provider.slashCommands()).toEqual([]);
+    expect(provider.lookupSlashName("insights")).toEqual({
+      kind: "reserved",
+      reservation: {
+        name: "insights",
+        owner: "runtime.insights",
+        message: "/insights remains runtime-owned.",
+      },
+    });
+    expect(() =>
+      provider.register({
+        id: "runtime.shadow",
+        title: "Shadow",
+        category: "System",
+        slash: { name: "insights" },
+      }),
+    ).toThrow("is reserved by runtime.insights");
+  });
+
+  test("palette-hidden commands still create command intents by id", () => {
     const provider = new ShellCommandProvider();
     provider.register({
       id: "hidden.internal",
       title: "Hidden internal",
       category: "System",
-      hidden: true,
+      discovery: { palette: false, help: false },
     });
 
-    expect(provider.visibleCommands()).toEqual([]);
+    expect(provider.paletteCommands()).toEqual([]);
+    expect(provider.helpCommands()).toEqual([]);
     expect(provider.createCommandIntent("hidden.internal")).toEqual({
       type: "command.invoke",
       commandId: "hidden.internal",
@@ -152,7 +212,7 @@ describe("shell command provider", () => {
     expect(provider.createCommandIntent("disabled.command")).toBeUndefined();
   });
 
-  test("built-in registry keeps disabled runtime commands out of shell dispatch", () => {
+  test("built-in registry keeps palette-only commands out of slash and help surfaces", () => {
     const provider = new ShellCommandProvider();
     registerShellCommands(provider);
 
@@ -163,15 +223,21 @@ describe("shell command provider", () => {
       source: "internal",
     });
     expect(
-      provider.createSlashCommandIntent("insights", {
-        args: "workspace",
-        source: "slash",
-      }),
+      provider.createSlashCommandIntent("connect", { args: "", source: "slash" }),
     ).toBeUndefined();
-    expect(provider.visibleCommands().map((command) => command.id)).not.toContain(
-      "runtime.insights",
+    expect(provider.lookupSlashName("questions")).toMatchObject({
+      kind: "reserved",
+      reservation: {
+        owner: "runtime.questions",
+      },
+    });
+    expect(provider.slashCommands().map((command) => command.id)).toContain("agent.model");
+    expect(provider.slashCommands().map((command) => command.id)).toContain("operator.inbox");
+    expect(provider.helpCommands().map((command) => command.id)).not.toContain("agent.connect");
+    expect(provider.helpCommands().map((command) => command.id)).not.toContain("view.thinking");
+    expect(provider.searchPaletteCommands("connect").map((command) => command.id)).toContain(
+      "agent.connect",
     );
-    expect(provider.searchCommands("insights")).toEqual([]);
     expect(
       provider.keyboundCommands().some((command) => command.action === "command:app.exit"),
     ).toBe(true);

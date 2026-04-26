@@ -4,7 +4,9 @@ import { buildSessionInspectReport, resolveInspectDirectory } from "../../inspec
 import { buildCommandPalettePayload, buildHelpHubPayload } from "../commands/command-palette.js";
 import type { ShellCommandProvider } from "../commands/command-provider.js";
 import {
+  buildInboxOverlayPayload,
   buildInspectSections,
+  buildNotificationDetailLines,
   buildNotificationsOverlayPayload,
   buildSessionsOverlayPayload,
 } from "../overlay-view.js";
@@ -444,6 +446,9 @@ export class ShellOverlayLifecycleFlow {
       case "commandPalette":
         await this.handleCommandPalettePrimary(active);
         return;
+      case "inbox":
+        await this.handleInboxPrimary(active);
+        return;
       case "helpHub":
         this.closeActiveOverlay(false);
         return;
@@ -538,8 +543,21 @@ export class ShellOverlayLifecycleFlow {
     this.openOverlay(this.buildNotificationsOverlayPayload());
   }
 
+  openInboxOverlay(): void {
+    this.openOverlay(this.buildInboxOverlayPayload());
+  }
+
   syncNotificationsOverlay(): void {
     const active = this.context.getState().overlay.active?.payload;
+    if (active?.kind === "inbox") {
+      this.replaceActiveOverlay(
+        this.buildInboxOverlayPayload(this.context.getOperatorSnapshot(), {
+          id: active.items[active.selectedIndex]?.id,
+          index: active.selectedIndex,
+        }),
+      );
+      return;
+    }
     if (active?.kind !== "notifications") {
       return;
     }
@@ -575,6 +593,15 @@ export class ShellOverlayLifecycleFlow {
         selectedIndex: Math.max(0, Math.min(active.selectedIndex, requestCount - 1)),
         snapshot,
       });
+      return;
+    }
+    if (active.kind === "inbox") {
+      this.replaceActiveOverlay(
+        this.buildInboxOverlayPayload(snapshot, {
+          id: active.items[active.selectedIndex]?.id,
+          index: active.selectedIndex,
+        }),
+      );
       return;
     }
     if (active.kind === "tasks") {
@@ -686,6 +713,36 @@ export class ShellOverlayLifecycleFlow {
     await this.context.submitComposer();
   }
 
+  private async handleInboxPrimary(
+    active: Extract<CliShellOverlayPayload, { kind: "inbox" }>,
+  ): Promise<void> {
+    const item = active.items[active.selectedIndex];
+    if (!item) {
+      return;
+    }
+    if (item.kind === "question") {
+      const requests = questionRequestsFromSnapshot(active.snapshot);
+      const selectedIndex = requests.findIndex((request) => request.requestId === item.requestId);
+      this.openOverlay({
+        kind: "question",
+        mode: "operator",
+        selectedIndex: selectedIndex >= 0 ? selectedIndex : 0,
+        snapshot: active.snapshot,
+      });
+      return;
+    }
+    const notification = active.notifications.find(
+      (candidate) => candidate.id === item.notificationId,
+    );
+    if (!notification) {
+      return;
+    }
+    this.openPagerOverlay({
+      title: `Notification [${notification.level}]`,
+      lines: buildNotificationDetailLines(notification),
+    });
+  }
+
   private buildNotificationsOverlayPayload(
     selection: {
       id?: string;
@@ -693,6 +750,16 @@ export class ShellOverlayLifecycleFlow {
     } = {},
   ) {
     return buildNotificationsOverlayPayload(this.context.getState().notifications, selection);
+  }
+
+  private buildInboxOverlayPayload(
+    snapshot: OperatorSurfaceSnapshot = this.context.getOperatorSnapshot(),
+    selection: {
+      id?: string;
+      index?: number;
+    } = {},
+  ) {
+    return buildInboxOverlayPayload(snapshot, this.context.getState().notifications, selection);
   }
 
   private buildSessionsOverlayPayload(

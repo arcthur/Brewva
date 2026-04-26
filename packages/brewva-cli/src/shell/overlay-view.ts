@@ -5,11 +5,14 @@ import {
   countQuestionRequestKinds,
   describeQuestionRequestSummary,
   questionRequestsFromOverlay,
+  questionRequestsFromSnapshot,
   resolveQuestionOverlayTitle,
 } from "./question-utils.js";
 import { buildTaskRunListLabel, buildTaskRunPreviewLines } from "./task-details.js";
 import type {
   CliNotificationsOverlayPayload,
+  CliInboxOverlayPayload,
+  CliInboxOverlayItem,
   CliOverlayNotification,
   CliOverlaySection,
   CliSessionsOverlayPayload,
@@ -42,6 +45,7 @@ export function resolveOverlayFocusOwner(
 ):
   | "approvalOverlay"
   | "questionOverlay"
+  | "inboxOverlay"
   | "taskBrowser"
   | "sessionSwitcher"
   | "notificationCenter"
@@ -53,6 +57,8 @@ export function resolveOverlayFocusOwner(
       return "approvalOverlay";
     case "question":
       return "questionOverlay";
+    case "inbox":
+      return "inboxOverlay";
     case "tasks":
       return "taskBrowser";
     case "sessions":
@@ -270,6 +276,22 @@ export function buildOverlayView(payload: CliShellOverlayPayload): {
       }
       return { title: resolveQuestionOverlayTitle(payload), lines };
     }
+    case "inbox": {
+      const questionCount = questionRequestsFromSnapshot(payload.snapshot).length;
+      const lines = [
+        `Inbox: ${payload.items.length}`,
+        `Pending questions: ${questionCount} · Notifications: ${payload.notifications.length}`,
+        "Use ↑/↓ to choose, Enter to inspect, d to dismiss the selected notification, x to clear notifications, Esc to close.",
+      ];
+      for (const [index, item] of payload.items.entries()) {
+        const marker = index === payload.selectedIndex ? ">" : " ";
+        lines.push(`${marker} ${renderInboxItemSummary(item)}`);
+      }
+      if (payload.items.length === 0) {
+        lines.push("No pending inbox items.");
+      }
+      return { title: "Inbox", lines };
+    }
     case "tasks": {
       const lines = [
         `Task runs: ${payload.snapshot.taskRuns.length}`,
@@ -427,6 +449,45 @@ export function buildNotificationsOverlayPayload(
   };
 }
 
+export function buildInboxOverlayPayload(
+  snapshot: OperatorSurfaceSnapshot,
+  notificationsSource: readonly CliOverlayNotification[],
+  selection: {
+    id?: string;
+    index?: number;
+  } = {},
+): CliInboxOverlayPayload {
+  const notifications = [...notificationsSource].toReversed();
+  const items: CliInboxOverlayItem[] = [
+    ...questionRequestsFromSnapshot(snapshot).map((request) => ({
+      kind: "question" as const,
+      id: `question:${request.requestId}`,
+      requestId: request.requestId,
+      sourceLabel: request.sourceLabel,
+      summary: describeQuestionRequestSummary(request),
+    })),
+    ...notifications.map((notification) => ({
+      kind: "notification" as const,
+      id: `notification:${notification.id}`,
+      notificationId: notification.id,
+      level: notification.level,
+      summary: notification.message,
+    })),
+  ];
+  const selectedIndexById =
+    typeof selection.id === "string" ? items.findIndex((item) => item.id === selection.id) : -1;
+  return {
+    kind: "inbox",
+    snapshot,
+    notifications,
+    items,
+    selectedIndex:
+      selectedIndexById >= 0
+        ? selectedIndexById
+        : Math.max(0, Math.min(selection.index ?? 0, Math.max(0, items.length - 1))),
+  };
+}
+
 export function buildSessionsOverlayPayload(input: {
   snapshot: OperatorSurfaceSnapshot;
   currentSessionId: string;
@@ -513,4 +574,21 @@ function renderNotificationSummary(notification: {
   message: string;
 }): string {
   return `[${notification.level}] ${notification.message}`;
+}
+
+export function buildNotificationDetailLines(notification: CliOverlayNotification): string[] {
+  return [
+    `id: ${notification.id}`,
+    `level: ${notification.level}`,
+    `createdAt: ${new Date(notification.createdAt).toISOString()}`,
+    "",
+    ...notification.message.split(/\r?\n/u),
+  ];
+}
+
+function renderInboxItemSummary(item: CliInboxOverlayItem): string {
+  if (item.kind === "question") {
+    return `[question] ${item.sourceLabel} :: ${item.summary}`;
+  }
+  return `[${item.level}] ${item.summary}`;
 }

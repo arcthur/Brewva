@@ -33,6 +33,24 @@ function modelKey(model: Pick<BrewvaSessionModelDescriptor, "provider" | "id">):
   return `${model.provider}/${model.id}`;
 }
 
+async function invokePaletteCommand(runtime: CliShellRuntime, commandId: string): Promise<boolean> {
+  return await (
+    runtime as unknown as {
+      handleShellIntent(intent: {
+        type: "command.invoke";
+        commandId: string;
+        args: string;
+        source: "palette";
+      }): Promise<boolean>;
+    }
+  ).handleShellIntent({
+    type: "command.invoke",
+    commandId,
+    args: "",
+    source: "palette",
+  });
+}
+
 function createFakeBundle(
   options: {
     promptHandler?: (text: string) => Promise<void>;
@@ -333,7 +351,39 @@ describe("shell runtime", () => {
     runtime.dispose();
   });
 
-  test("slash completion exposes model and transcript view commands while omitting legacy auth commands", () => {
+  test("reserved runtime slash names stay out of prompt submission in the interactive shell", async () => {
+    const prompts: string[] = [];
+    const { bundle } = createFakeBundle({
+      promptHandler: async (text) => {
+        prompts.push(text);
+      },
+    });
+
+    const runtime = new CliShellRuntime(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    runtime.ui.setEditorText("/questions ");
+    await runtime.handleInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(prompts).toEqual([]);
+    expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
+      level: "warning",
+      message:
+        "Use /inbox in the interactive shell; /questions remains a headless runtime-plugin command.",
+    });
+
+    runtime.dispose();
+  });
+
+  test("slash completion exposes only promoted shell commands", () => {
     const { bundle } = createFakeBundle();
 
     const runtime = new CliShellRuntime(bundle, {
@@ -345,13 +395,15 @@ describe("shell runtime", () => {
     runtime.ui.setEditorText("/");
     const slashValues = runtime.getViewState().composer.completion?.items.map((item) => item.value);
 
-    expect(slashValues).toContain("models");
-    expect(slashValues).toContain("connect");
-    expect(slashValues).toContain("think");
-    expect(slashValues).toContain("thinking");
-    expect(slashValues).toContain("tool-details");
-    expect(slashValues).toContain("diffwrap");
-    expect(slashValues).toContain("diffstyle");
+    expect(slashValues).toContain("model");
+    expect(slashValues).toContain("inbox");
+    expect(slashValues).toContain("inspect");
+    expect(slashValues).not.toContain("connect");
+    expect(slashValues).not.toContain("think");
+    expect(slashValues).not.toContain("thinking");
+    expect(slashValues).not.toContain("tool-details");
+    expect(slashValues).not.toContain("diffwrap");
+    expect(slashValues).not.toContain("diffstyle");
     expect(slashValues).not.toContain("credentials");
     expect(slashValues).not.toContain("auth");
 
@@ -460,7 +512,7 @@ describe("shell runtime", () => {
     runtime.dispose();
   });
 
-  test("thinking and tool-details slash commands update durable shell view preferences", async () => {
+  test("thinking and tool-details palette commands update durable shell view preferences", async () => {
     const fixture = createFakeBundle();
     const runtime = new CliShellRuntime(fixture.bundle, {
       cwd: process.cwd(),
@@ -471,25 +523,13 @@ describe("shell runtime", () => {
     expect(runtime.getViewState().view.showThinking).toBe(true);
     expect(runtime.getViewState().view.toolDetails).toBe(true);
 
-    runtime.ui.setEditorText("/thinking");
-    await runtime.handleInput({
-      key: "enter",
-      ctrl: false,
-      meta: false,
-      shift: false,
-    });
+    await invokePaletteCommand(runtime, "view.thinking");
 
     expect(runtime.getViewState().view.showThinking).toBe(false);
     expect(fixture.getShellViewPreferences().showThinking).toBe(false);
     expect(fixture.getShellViewPreferences().toolDetails).toBe(true);
 
-    runtime.ui.setEditorText("/tool-details");
-    await runtime.handleInput({
-      key: "enter",
-      ctrl: false,
-      meta: false,
-      shift: false,
-    });
+    await invokePaletteCommand(runtime, "view.toolDetails");
 
     expect(runtime.getViewState().view.toolDetails).toBe(false);
     expect(fixture.getShellViewPreferences()).toEqual({
@@ -511,7 +551,7 @@ describe("shell runtime", () => {
     restored.dispose();
   });
 
-  test("diff slash commands update and persist transcript diff preferences", async () => {
+  test("diff palette commands update and persist transcript diff preferences", async () => {
     const fixture = createFakeBundle();
     const runtime = new CliShellRuntime(fixture.bundle, {
       cwd: process.cwd(),
@@ -521,24 +561,12 @@ describe("shell runtime", () => {
 
     expect(runtime.getViewState().diff).toEqual({ style: "auto", wrapMode: "word" });
 
-    runtime.ui.setEditorText("/diffwrap");
-    await runtime.handleInput({
-      key: "enter",
-      ctrl: false,
-      meta: false,
-      shift: false,
-    });
+    await invokePaletteCommand(runtime, "view.diffWrap");
 
     expect(runtime.getViewState().diff.wrapMode).toBe("none");
     expect(fixture.getDiffPreferences().wrapMode).toBe("none");
 
-    runtime.ui.setEditorText("/diffstyle");
-    await runtime.handleInput({
-      key: "enter",
-      ctrl: false,
-      meta: false,
-      shift: false,
-    });
+    await invokePaletteCommand(runtime, "view.diffStyle");
 
     expect(runtime.getViewState().diff.style).toBe("stacked");
     expect(fixture.getDiffPreferences().style).toBe("stacked");
@@ -557,10 +585,10 @@ describe("shell runtime", () => {
     runtime.ui.setEditorText("/mo");
     expect(runtime.getViewState().composer.completion?.items[0]).toMatchObject({
       kind: "command",
-      value: "models",
+      value: "model",
       accept: {
         type: "runCommand",
-        commandId: "agent.models",
+        commandId: "agent.model",
       },
     });
 
@@ -587,17 +615,17 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    for (const text of ["/", "/c", "/co", "/con"]) {
+    for (const text of ["/", "/i", "/in", "/inb"]) {
       runtime.ui.setEditorText(text);
     }
 
     const completion = runtime.getViewState().composer.completion;
     expect(completion?.items[completion.selectedIndex]).toMatchObject({
       kind: "command",
-      value: "connect",
+      value: "inbox",
       accept: {
         type: "runCommand",
-        commandId: "agent.connect",
+        commandId: "operator.inbox",
       },
     });
 
@@ -610,7 +638,7 @@ describe("shell runtime", () => {
 
     expect(runtime.ui.getEditorText()).toBe("");
     expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
-      kind: "providerPicker",
+      kind: "inbox",
     });
 
     runtime.dispose();
@@ -664,7 +692,7 @@ describe("shell runtime", () => {
       shift: false,
     });
 
-    expect(runtime.ui.getEditorText()).toBe("/models ");
+    expect(runtime.ui.getEditorText()).toBe("/model ");
     expect(runtime.getViewState().overlay.active).toBeUndefined();
 
     runtime.dispose();
@@ -697,7 +725,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/models ");
+    runtime.ui.setEditorText("/model ");
     await runtime.handleInput({
       key: "enter",
       ctrl: false,
@@ -771,7 +799,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/models ");
+    runtime.ui.setEditorText("/model ");
     await runtime.handleInput({
       key: "enter",
       ctrl: false,
@@ -882,7 +910,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/models gpt");
+    runtime.ui.setEditorText("/model gpt");
     await runtime.handleInput({
       key: "enter",
       ctrl: false,
@@ -923,7 +951,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/models gemini");
+    runtime.ui.setEditorText("/model gemini");
     await runtime.handleInput({
       key: "enter",
       ctrl: false,
@@ -1019,7 +1047,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/models codex");
+    runtime.ui.setEditorText("/model codex");
     await runtime.handleInput({
       key: "enter",
       ctrl: false,
@@ -1072,7 +1100,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/models gmni");
+    runtime.ui.setEditorText("/model gmni");
     await runtime.handleInput({
       key: "enter",
       ctrl: false,
@@ -1115,7 +1143,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/models ");
+    runtime.ui.setEditorText("/model ");
     await runtime.handleInput({
       key: "enter",
       ctrl: false,
@@ -1173,13 +1201,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/connect ");
-    await runtime.handleInput({
-      key: "enter",
-      ctrl: false,
-      meta: false,
-      shift: false,
-    });
+    await invokePaletteCommand(runtime, "agent.connect");
 
     const before = runtime.getViewState().overlay.active?.payload;
     expect(before).toMatchObject({ kind: "providerPicker", query: "" });
@@ -1227,13 +1249,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/connect ");
-    await runtime.handleInput({
-      key: "enter",
-      ctrl: false,
-      meta: false,
-      shift: false,
-    });
+    await invokePaletteCommand(runtime, "agent.connect");
 
     expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
       kind: "providerPicker",
@@ -1361,8 +1377,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/connect ");
-    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await invokePaletteCommand(runtime, "agent.connect");
     await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
     await Bun.sleep(0);
 
@@ -1430,13 +1445,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/connect ");
-    await runtime.handleInput({
-      key: "enter",
-      ctrl: false,
-      meta: false,
-      shift: false,
-    });
+    await invokePaletteCommand(runtime, "agent.connect");
     await runtime.handleInput({
       key: "enter",
       ctrl: false,
@@ -1448,7 +1457,7 @@ describe("shell runtime", () => {
     expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
       level: "warning",
       message:
-        "External Provider does not expose an in-TUI auth flow. Configure provider auth, then reopen /models.",
+        "External Provider does not expose an in-TUI auth flow. Configure provider auth, then reopen /model.",
     });
 
     runtime.dispose();
@@ -1523,13 +1532,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/connect ");
-    await runtime.handleInput({
-      key: "enter",
-      ctrl: false,
-      meta: false,
-      shift: false,
-    });
+    await invokePaletteCommand(runtime, "agent.connect");
     await runtime.handleInput({
       key: "enter",
       ctrl: false,
@@ -1625,8 +1628,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/connect ");
-    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await invokePaletteCommand(runtime, "agent.connect");
     await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
     await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
     await Bun.sleep(0);
@@ -1718,8 +1720,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/connect ");
-    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await invokePaletteCommand(runtime, "agent.connect");
     await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
     await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
     await Bun.sleep(0);
@@ -1819,13 +1820,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/connect ");
-    await runtime.handleInput({
-      key: "enter",
-      ctrl: false,
-      meta: false,
-      shift: false,
-    });
+    await invokePaletteCommand(runtime, "agent.connect");
     await runtime.handleInput({
       key: "enter",
       ctrl: false,
@@ -1934,13 +1929,7 @@ describe("shell runtime", () => {
       createSession: async () => bundle,
     });
 
-    runtime.ui.setEditorText("/connect ");
-    await runtime.handleInput({
-      key: "enter",
-      ctrl: false,
-      meta: false,
-      shift: false,
-    });
+    await invokePaletteCommand(runtime, "agent.connect");
     await runtime.handleInput({
       key: "enter",
       ctrl: false,
@@ -2192,17 +2181,18 @@ describe("shell runtime", () => {
     });
 
     await runtime.start();
-    runtime.ui.setEditorText("/qu");
+    runtime.ui.setEditorText("/in");
 
-    // Fuzzy sort: "/quit" (prefix score 1000-4=996) ranks above "/questions" (1000-9=991).
+    // Fuzzy sort keeps a stable ordered pair so streaming updates preserve selection.
     const initialCompletion = runtime.getViewState().composer.completion;
     expect(initialCompletion).toMatchObject({
       trigger: "/",
-      query: "qu",
+      query: "in",
       selectedIndex: 0,
     });
-    expect(initialCompletion?.items[0]).toMatchObject({ value: "quit" });
-    expect(initialCompletion?.items[1]).toMatchObject({ value: "questions" });
+    const secondItem = initialCompletion?.items[1];
+    expect(initialCompletion?.items[0]).toMatchObject({ value: "inbox" });
+    expect(secondItem).toBeDefined();
 
     await runtime.handleInput({
       key: "down",
@@ -2211,11 +2201,7 @@ describe("shell runtime", () => {
       shift: false,
     });
 
-    // After "down", selectedIndex moves to index 1 (questions).
-    expect(runtime.getViewState().composer.completion?.items.at(1)).toMatchObject({
-      value: "questions",
-      description: "Open the operator inbox for pending input.",
-    });
+    expect(runtime.getViewState().composer.completion?.items.at(1)).toEqual(secondItem);
     expect(runtime.getViewState().composer.completion?.selectedIndex).toBe(1);
 
     fixture.emitSessionEvent({
@@ -2228,16 +2214,13 @@ describe("shell runtime", () => {
     });
 
     // Streaming event must not reset the completion state.
-    expect(runtime.ui.getEditorText()).toBe("/qu");
+    expect(runtime.ui.getEditorText()).toBe("/in");
     expect(runtime.getViewState().composer.completion?.selectedIndex).toBe(1);
     expect(
       runtime.getViewState().composer.completion?.items[
         runtime.getViewState().composer.completion?.selectedIndex ?? 0
       ],
-    ).toMatchObject({
-      value: "questions",
-      description: "Open the operator inbox for pending input.",
-    });
+    ).toEqual(secondItem);
 
     runtime.dispose();
   });
@@ -2724,7 +2707,7 @@ describe("shell runtime", () => {
     runtime.dispose();
   });
 
-  test("slash stash warns clearly when no stashed prompts are available", async () => {
+  test("palette stash warns clearly when no stashed prompts are available", async () => {
     const promptRoot = mkdtempSync(join(tmpdir(), "brewva-cli-prompt-stash-empty-"));
     const promptStore = createCliShellPromptStore({ rootDir: promptRoot });
     const { bundle } = createFakeBundle();
@@ -2737,13 +2720,7 @@ describe("shell runtime", () => {
 
     try {
       await runtime.start();
-      runtime.ui.setEditorText("/stash ");
-      await runtime.handleInput({
-        key: "enter",
-        ctrl: false,
-        meta: false,
-        shift: false,
-      });
+      await invokePaletteCommand(runtime, "composer.stash");
 
       expect(runtime.getViewState().notifications.at(-1)).toMatchObject({
         level: "warning",
@@ -3562,7 +3539,7 @@ describe("shell runtime", () => {
 
     expect(consumedOpen).toBe(true);
     expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
-      kind: "notifications",
+      kind: "inbox",
       selectedIndex: 0,
     });
 
@@ -3596,12 +3573,12 @@ describe("shell runtime", () => {
 
     expect(consumedDismiss).toBe(true);
     expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
-      kind: "notifications",
+      kind: "inbox",
       selectedIndex: 0,
     });
     const notificationsPayload = runtime.getViewState().overlay.active?.payload;
     expect(
-      notificationsPayload && notificationsPayload.kind === "notifications"
+      notificationsPayload && notificationsPayload.kind === "inbox"
         ? notificationsPayload.notifications.map((notification) => notification.message)
         : [],
     ).toEqual(["older notification"]);

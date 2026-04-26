@@ -969,6 +969,9 @@ export class CliShellRuntime {
       case "overlay.openHelpHub":
         this.#overlayFlow.openHelpHub();
         return;
+      case "overlay.openInbox":
+        this.#overlayFlow.openInboxOverlay();
+        return;
       case "overlay.openSessions":
         this.#overlayFlow.openSessionsOverlay();
         return;
@@ -1273,7 +1276,28 @@ export class CliShellRuntime {
     if (!slashCommand) {
       return false;
     }
-    const intent = this.#commandProvider.createSlashCommandIntent(slashCommand.name, {
+    const slashMatch = this.#commandProvider.lookupSlashName(slashCommand.name);
+    if (!slashMatch) {
+      return false;
+    }
+    if (slashMatch.kind === "reserved") {
+      this.commit(
+        {
+          type: "notification.add",
+          notification: {
+            id: `reserved-slash:${Date.now()}:${slashCommand.name.toLowerCase()}`,
+            level: "warning",
+            message:
+              slashMatch.reservation.message ??
+              `/${slashCommand.name} is reserved for ${slashMatch.reservation.owner} and is unavailable in the interactive shell.`,
+            createdAt: Date.now(),
+          },
+        },
+        { refreshCompletions: false },
+      );
+      return true;
+    }
+    const intent = this.#commandProvider.createCommandIntent(slashMatch.command.id, {
       args: slashCommand.args,
       source: "slash",
     });

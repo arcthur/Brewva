@@ -278,7 +278,7 @@ export class ShellProviderAuthFlow {
   ): Promise<ProviderAuthMethod | undefined> {
     if (methods.length === 0) {
       this.ui.notify(
-        `${providerName} does not expose an in-TUI auth flow. Configure provider auth, then reopen /models.`,
+        `${providerName} does not expose an in-TUI auth flow. Configure provider auth, then reopen /model.`,
         "warning",
       );
       return undefined;
@@ -563,7 +563,7 @@ export class ShellProviderAuthFlow {
     }
     if (method.kind !== "api_key") {
       this.ui.notify(
-        `${provider.name} does not expose an in-TUI auth flow. Configure provider auth, then reopen /models.`,
+        `${provider.name} does not expose an in-TUI auth flow. Configure provider auth, then reopen /model.`,
         "warning",
       );
       return;

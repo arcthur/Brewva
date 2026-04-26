@@ -168,6 +168,7 @@ None currently.
 - `docs/research/promoted/rfc-kernel-level-reasoning-revert-and-branch-continuity.md`
 - `docs/research/promoted/rfc-runtime-owned-session-lifecycle-aggregate-and-authority-gate.md`
 - `docs/research/promoted/rfc-cli-tui-dual-layer-operator-shell.md`
+- `docs/research/promoted/rfc-slash-command-surface-layering-and-control-plane-separation.md`
 - `docs/research/promoted/rfc-model-native-product-reconstruction-and-closure-vnext.md`
 - `docs/research/promoted/rfc-narrative-memory-product-and-bounded-semantic-recall.md`
 - `docs/research/promoted/rfc-opentui-adoption-for-brewva-cli-shell-and-native-boundary.md`

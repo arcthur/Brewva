@@ -2,15 +2,11 @@ import type { ChannelCommandMatch } from "./command-router.js";
 
 export type ChannelOperatorAction =
   | {
-      kind: "inspect_cost";
-      sourceCommand: "cost";
+      kind: "status_summary";
+      sourceCommand: "status";
       agentId?: string;
+      directory?: string;
       top?: number;
-    }
-  | {
-      kind: "inspect_questions";
-      sourceCommand: "questions";
-      agentId?: string;
     }
   | {
       kind: "answer_question";
@@ -23,19 +19,13 @@ export type ChannelOperatorAction =
 export function resolveChannelOperatorAction(
   match: ChannelCommandMatch,
 ): ChannelOperatorAction | null {
-  if (match.kind === "cost") {
+  if (match.kind === "status") {
     return {
-      kind: "inspect_cost",
-      sourceCommand: "cost",
+      kind: "status_summary",
+      sourceCommand: "status",
       agentId: match.agentId,
+      directory: match.directory,
       top: match.top,
-    };
-  }
-  if (match.kind === "questions") {
-    return {
-      kind: "inspect_questions",
-      sourceCommand: "questions",
-      agentId: match.agentId,
     };
   }
   if (match.kind === "answer") {

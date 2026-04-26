@@ -9,18 +9,31 @@ export interface ShellCommandRunInput {
 
 export type ShellCommandIntentFactory = (input: ShellCommandRunInput) => ShellIntent | undefined;
 
+export interface ShellSlashMetadata {
+  readonly name: string;
+  readonly aliases?: readonly string[];
+  readonly argumentMode?: "none" | "optional" | "required";
+  readonly visibility?: "visible" | "hidden";
+}
+
+export interface ShellSlashReservation {
+  readonly name: string;
+  readonly aliases?: readonly string[];
+  readonly owner: string;
+  readonly message?: string;
+}
+
 export interface ShellCommand {
   readonly id: string;
   readonly title: string;
   readonly description?: string;
   readonly category: string;
-  readonly slash?: {
-    readonly name: string;
-    readonly aliases?: readonly string[];
-    readonly argumentMode?: "none" | "optional" | "required";
+  readonly discovery?: {
+    readonly palette?: boolean;
+    readonly help?: boolean;
   };
+  readonly slash?: ShellSlashMetadata;
   readonly keybinding?: KeybindingTrigger;
-  readonly hidden?: boolean;
   readonly enabled?: boolean;
   readonly suggested?: boolean;
   readonly createIntent?: ShellCommandIntentFactory;
@@ -92,16 +105,53 @@ function commandSearchScore(command: ShellCommandListItem, query: string): numbe
 export class ShellCommandProvider {
   readonly #commands = new Map<string, ShellCommand>();
   readonly #slashNames = new Map<string, string>();
+  readonly #reservedSlashNames = new Map<string, ShellSlashReservation>();
   readonly #keybindings = new Map<string, string>();
+
+  static #isEnabled(command: ShellCommand): boolean {
+    return command.enabled !== false;
+  }
+
+  static #isPaletteVisible(command: ShellCommand): boolean {
+    return ShellCommandProvider.#isEnabled(command) && command.discovery?.palette !== false;
+  }
+
+  static #isHelpVisible(command: ShellCommand): boolean {
+    if (!ShellCommandProvider.#isEnabled(command)) {
+      return false;
+    }
+    if (typeof command.discovery?.help === "boolean") {
+      return command.discovery.help;
+    }
+    return ShellCommandProvider.#isPaletteVisible(command);
+  }
+
+  static #isSlashCallable(command: ShellCommand): boolean {
+    return ShellCommandProvider.#isEnabled(command) && command.slash !== undefined;
+  }
+
+  static #isSlashVisible(command: ShellCommand): boolean {
+    return ShellCommandProvider.#isSlashCallable(command) && command.slash?.visibility !== "hidden";
+  }
 
   register(command: ShellCommand): void {
     if (this.#commands.has(command.id)) {
       throw new Error(`Duplicate shell command id: ${command.id}`);
     }
-    if (command.slash) {
-      const names = [command.slash.name, ...(command.slash.aliases ?? [])];
+    if (ShellCommandProvider.#isSlashCallable(command)) {
+      const slash = command.slash;
+      if (!slash) {
+        throw new Error(`Slash-callable shell command ${command.id} is missing slash metadata`);
+      }
+      const names = [slash.name, ...(slash.aliases ?? [])];
       for (const name of names) {
         const normalized = name.toLowerCase();
+        const reservation = this.#reservedSlashNames.get(normalized);
+        if (reservation) {
+          throw new Error(
+            `Slash name '${name}' for ${command.id} is reserved by ${reservation.owner}`,
+          );
+        }
         const existing = this.#slashNames.get(normalized);
         if (existing) {
           throw new Error(
@@ -124,9 +174,55 @@ export class ShellCommandProvider {
     this.#commands.set(command.id, command);
   }
 
-  visibleCommands(): ShellCommandListItem[] {
+  reserveSlashNames(reservations: readonly ShellSlashReservation[]): void {
+    for (const reservation of reservations) {
+      const names = [reservation.name, ...(reservation.aliases ?? [])];
+      for (const name of names) {
+        const normalized = name.toLowerCase();
+        const existingCommand = this.#slashNames.get(normalized);
+        if (existingCommand) {
+          throw new Error(
+            `Reserved slash name '${name}' for ${reservation.owner}; already used by ${existingCommand}`,
+          );
+        }
+        const existingReservation = this.#reservedSlashNames.get(normalized);
+        if (existingReservation) {
+          throw new Error(
+            `Reserved slash name '${name}' for ${reservation.owner}; already reserved by ${existingReservation.owner}`,
+          );
+        }
+        this.#reservedSlashNames.set(normalized, reservation);
+      }
+    }
+  }
+
+  paletteCommands(): ShellCommandListItem[] {
     return [...this.#commands.values()]
-      .filter((command) => command.enabled !== false && command.hidden !== true)
+      .filter((command) => ShellCommandProvider.#isPaletteVisible(command))
+      .map((command) => this.toListItem(command))
+      .toSorted(
+        (left, right) =>
+          Number(right.suggested) - Number(left.suggested) ||
+          left.category.localeCompare(right.category) ||
+          left.title.localeCompare(right.title),
+      );
+  }
+
+  helpCommands(): ShellCommandListItem[] {
+    return [...this.#commands.values()]
+      .filter((command) => ShellCommandProvider.#isHelpVisible(command))
+      .map((command) => this.toListItem(command))
+      .toSorted(
+        (left, right) =>
+          Number(right.suggested) - Number(left.suggested) ||
+          left.category.localeCompare(right.category) ||
+          left.title.localeCompare(right.title),
+      );
+  }
+
+  slashCommands(): ShellCommandListItem[] {
+    return [...this.#commands.values()]
+      .filter((command) => ShellCommandProvider.#isSlashVisible(command))
       .map((command) => this.toListItem(command))
       .toSorted(
         (left, right) =>
@@ -138,7 +234,7 @@ export class ShellCommandProvider {
 
   keyboundCommands(): KeybindingDefinition[] {
     return [...this.#commands.values()]
-      .filter((command) => command.keybinding && command.enabled !== false)
+      .filter((command) => command.keybinding && ShellCommandProvider.#isEnabled(command))
       .map((command) => ({
         id: `command.${command.id}`,
         context: "global",
@@ -147,8 +243,8 @@ export class ShellCommandProvider {
       }));
   }
 
-  searchCommands(query: string): ShellCommandListItem[] {
-    return this.visibleCommands()
+  searchPaletteCommands(query: string): ShellCommandListItem[] {
+    return this.paletteCommands()
       .map((command) => ({
         command,
         score: commandSearchScore(command, query),
@@ -190,9 +286,27 @@ export class ShellCommandProvider {
     return command ? this.createCommandIntent(command.id, input) : undefined;
   }
 
+  lookupSlashName(
+    name: string,
+  ):
+    | { kind: "command"; command: ShellCommand }
+    | { kind: "reserved"; reservation: ShellSlashReservation }
+    | undefined {
+    const normalized = name.toLowerCase();
+    const id = this.#slashNames.get(normalized);
+    if (id) {
+      const command = this.#commands.get(id);
+      if (command) {
+        return { kind: "command", command };
+      }
+    }
+    const reservation = this.#reservedSlashNames.get(normalized);
+    return reservation ? { kind: "reserved", reservation } : undefined;
+  }
+
   resolveSlashCommand(name: string): ShellCommand | undefined {
-    const id = this.#slashNames.get(name.toLowerCase());
-    return id ? this.#commands.get(id) : undefined;
+    const match = this.lookupSlashName(name);
+    return match?.kind === "command" ? match.command : undefined;
   }
 
   getCommand(id: string): ShellCommand | undefined {
@@ -200,13 +314,14 @@ export class ShellCommandProvider {
   }
 
   private toListItem(command: ShellCommand): ShellCommandListItem {
+    const slash = ShellCommandProvider.#isSlashVisible(command) ? command.slash : undefined;
     return {
       id: command.id,
       title: command.title,
       description: command.description,
       category: command.category,
-      slashName: command.slash?.name,
-      slashAliases: command.slash?.aliases ?? [],
+      slashName: slash?.name,
+      slashAliases: slash?.aliases ?? [],
       keybinding: command.keybinding,
       suggested: command.suggested === true,
     };

@@ -972,7 +972,7 @@ function githubCopilotDeviceFlowErrorMessage(error: string): string {
   switch (error) {
     case "expired_token":
     case "token_expired":
-      return "GitHub device authorization expired. Reopen /connect to request a new code.";
+      return "GitHub device authorization expired. Reopen /model to request a new code.";
     case "access_denied":
       return "GitHub device authorization was denied.";
     case "incorrect_device_code":
@@ -1105,9 +1105,7 @@ async function authorizeGitHubCopilot(
         }
         throw new Error("GitHub device authorization failed.");
       }
-      throw new Error(
-        "GitHub device authorization expired. Reopen /connect to request a new code.",
-      );
+      throw new Error("GitHub device authorization expired. Reopen /model to request a new code.");
     },
   };
 }

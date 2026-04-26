@@ -167,6 +167,11 @@ export function cloneOverlayPayload(payload: CliShellOverlayPayload): CliShellOv
         ...payload,
         lines: [...payload.lines],
       };
+    case "inbox":
+      return {
+        ...payload,
+        items: [...payload.items],
+      };
     case "oauthWait":
       return {
         ...payload,

@@ -210,6 +210,30 @@ export interface CliNotificationsOverlayPayload {
   notifications: CliOverlayNotification[];
 }
 
+export type CliInboxOverlayItem =
+  | {
+      kind: "question";
+      id: string;
+      requestId: string;
+      sourceLabel: string;
+      summary: string;
+    }
+  | {
+      kind: "notification";
+      id: string;
+      notificationId: string;
+      level: CliOverlayNotification["level"];
+      summary: string;
+    };
+
+export interface CliInboxOverlayPayload {
+  kind: "inbox";
+  selectedIndex: number;
+  snapshot: OperatorSurfaceSnapshot;
+  notifications: CliOverlayNotification[];
+  items: CliInboxOverlayItem[];
+}
+
 export interface CliOverlaySection {
   id: string;
   title: string;
@@ -350,6 +374,7 @@ export type CliShellOverlayPayload =
   | CliQuestionOverlayPayload
   | CliTasksOverlayPayload
   | CliSessionsOverlayPayload
+  | CliInboxOverlayPayload
   | CliNotificationsOverlayPayload
   | CliPagerOverlayPayload
   | CliInspectOverlayPayload

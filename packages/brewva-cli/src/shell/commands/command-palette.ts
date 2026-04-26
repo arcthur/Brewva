@@ -27,7 +27,7 @@ export function buildCommandPalettePayload(input: {
   selectedIndex?: number;
 }): CommandPalettePayload {
   const query = input.query ?? "";
-  const commands = input.commandProvider.searchCommands(query);
+  const commands = input.commandProvider.searchPaletteCommands(query);
   const items = commands.map((command) => commandPaletteItem(command));
   return {
     kind: "commandPalette",
@@ -40,7 +40,7 @@ export function buildCommandPalettePayload(input: {
 }
 
 export function buildHelpHubPayload(commandProvider: ShellCommandProvider): HelpHubPayload {
-  const visible = commandProvider.visibleCommands();
+  const visible = commandProvider.helpCommands();
   const grouped = new Map<string, ShellCommandListItem[]>();
   for (const command of visible) {
     const group = grouped.get(command.category) ?? [];
@@ -50,7 +50,7 @@ export function buildHelpHubPayload(commandProvider: ShellCommandProvider): Help
   const lines = [
     "Brewva commands are searchable from the command palette.",
     "Ctrl+K opens the command palette from any normal shell context.",
-    "Type / in the composer for slash commands; aliases match search but show canonical names.",
+    "Type / in the composer for slash commands; advanced controls stay in the palette.",
     "",
     "Navigation",
     "↑/↓ or Ctrl+P/Ctrl+N move selection; Enter runs; Esc closes.",

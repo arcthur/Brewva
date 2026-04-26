@@ -11,9 +11,9 @@ the full command or runtime-plugin contract.
 
 - Multi-agent registry under `.brewva/agents/<agentId>/`
 - Per-agent runtime state isolation (`.brewva/agents/<agentId>/state/*`)
-- In-channel command routing (`/agents`, `/cost`, `/questions`, `/answer`,
-  `/inspect`, `/insights`, `/update`, `/new-agent`, `/del-agent`, `/focus`,
-  `/run`, `/discuss`, `@agent ...`)
+- In-channel command routing (`/agents`, `/status`, `/answer`, `/update`,
+  `/agent new`, `/agent delete`, `/agent status`, `/focus`, `/run`,
+  `/discuss`, `@agent ...`)
 - Fan-out and bounded discussion loops
 - Optional A2A tools (`agent_send`, `agent_broadcast`, `agent_list`)
 
@@ -64,7 +64,8 @@ This override happens in runtime manager code and cannot be bypassed by agent-lo
 - Telegram screen state is process-local cache only. There is no durable `.brewva/channel/approval-state*` or `.brewva/channel/approval-routing.json` recovery contract.
 - Worker runtimes are lazy-created on first routing hit.
 - Runtime pool uses `maxLiveRuntimes` + idle TTL eviction.
-- `/del-agent` performs soft delete and tears down active sessions for that agent.
+- `/agent delete` performs soft delete and tears down active sessions for that
+  agent.
 
 ## Related Docs
 

@@ -172,8 +172,9 @@ changing the inspection contract.
 The overlay/operator RFC is now closed through thin command veneers rather than
 new kernel state:
 
-- `/questions` inspects the operator inbox derived from durable
-  `skill_completed` outputs and delegated consult outcome artifacts
+- interactive `/inbox` and headless `/questions` both inspect the operator
+  inbox derived from durable `skill_completed` outputs and delegated consult
+  outcome artifacts
 - `/answer` records `operator_question_answered` and routes the answer back into
   the active session as explicit operator input
 - `/agent-overlays` inspects and validates Markdown-authored delegated-worker

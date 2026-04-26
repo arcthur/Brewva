@@ -819,7 +819,7 @@ describe("provider connection port", () => {
       }
       expect(rejection).toBeInstanceOf(Error);
       expect((rejection as Error).message).toBe(
-        "GitHub device authorization expired. Reopen /connect to request a new code.",
+        "GitHub device authorization expired. Reopen /model to request a new code.",
       );
       expect(authStore.get("github-copilot")).toBeUndefined();
     } finally {
@@ -906,7 +906,7 @@ describe("provider connection port", () => {
       }
       expect(rejection).toBeInstanceOf(Error);
       expect((rejection as Error).message).toBe(
-        "GitHub device authorization expired. Reopen /connect to request a new code.",
+        "GitHub device authorization expired. Reopen /model to request a new code.",
       );
       expect(tokenPolls).toBe(1);
     } finally {

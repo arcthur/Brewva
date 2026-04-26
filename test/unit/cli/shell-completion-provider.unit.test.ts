@@ -24,11 +24,18 @@ function completionRange(trigger: "/" | "@", query: string): ShellCompletionRang
 function createCommandProvider(): ShellCommandProvider {
   const provider = new ShellCommandProvider();
   provider.register({
-    id: "agent.models",
+    id: "agent.model",
     title: "Switch Model",
     description: "Choose the active model",
     category: "Agent",
-    slash: { name: "models", aliases: ["model"] },
+    slash: { name: "model" },
+  });
+  provider.register({
+    id: "agent.connect",
+    title: "Connect Provider",
+    description: "Connect a model provider",
+    category: "Agent",
+    slash: { name: "connect", visibility: "hidden" },
   });
   provider.register({
     id: "session.quit",
@@ -68,11 +75,11 @@ describe("ShellCompletionProvider", () => {
 
     expect(results.map((candidate) => candidate.kind)).toEqual(["command"]);
     expect(results[0]).toMatchObject({
-      value: "models",
-      label: "/models",
+      value: "model",
+      label: "/model",
       accept: {
         type: "runCommand",
-        commandId: "agent.models",
+        commandId: "agent.model",
       },
     });
   });
@@ -101,7 +108,7 @@ describe("ShellCompletionProvider", () => {
       usageStore: createInMemoryCompletionUsageStore([
         {
           kind: "command",
-          value: "agent.models",
+          value: "agent.model",
           count: 100,
           lastUsedAt: Date.now(),
         },
@@ -114,7 +121,18 @@ describe("ShellCompletionProvider", () => {
       kind: "command",
       value: "sessions",
     });
-    expect(results.map((candidate) => candidate.value)).not.toContain("models");
+    expect(results.map((candidate) => candidate.value)).not.toContain("model");
+  });
+
+  test("/ completion omits palette-only commands that are not slash-visible", () => {
+    const provider = new ShellCompletionProvider({
+      sources: [createCommandCompletionSource(createCommandProvider())],
+      usageStore: createInMemoryCompletionUsageStore(),
+    });
+
+    const results = provider.resolve(completionRange("/", "con"));
+
+    expect(results).toEqual([]);
   });
 
   test("@ completion mixes agents, files, and directories with fuzzy path matching", () => {
@@ -334,20 +352,20 @@ describe("ShellCompletionProvider", () => {
 
     expect(
       usageStore.recordAccepted({
-        id: "command:agent.models",
+        id: "command:agent.model",
         kind: "command",
         source: "command",
-        label: "/models",
-        value: "models",
-        insertText: "/models ",
+        label: "/model",
+        value: "model",
+        insertText: "/model ",
         accept: {
           type: "runCommand",
-          commandId: "agent.models",
-          insertText: "/models ",
+          commandId: "agent.model",
+          insertText: "/model ",
           argumentMode: "optional",
         },
       }),
-    ).toMatchObject({ kind: "command", value: "agent.models" });
+    ).toMatchObject({ kind: "command", value: "agent.model" });
 
     expect(
       usageStore.recordAccepted({

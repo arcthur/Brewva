@@ -174,7 +174,7 @@ describe("channel turn dispatcher ingress routing", () => {
       orchestrationEnabled: true,
       defaultAgentId: "default",
       commandRouter: {
-        match: () => ({ kind: "questions" }),
+        match: () => ({ kind: "status" }),
       } as never,
       replyWriter: {
         sendControllerReply: async () => undefined,
@@ -200,7 +200,7 @@ describe("channel turn dispatcher ingress routing", () => {
       isShuttingDown: () => false,
     });
 
-    await dispatcher.enqueueInboundTurn(createUserTurn("/questions"), {
+    await dispatcher.enqueueInboundTurn(createUserTurn("/status"), {
       awaitCompletion: true,
     });
 
@@ -231,7 +231,7 @@ describe("channel turn dispatcher ingress routing", () => {
       orchestrationEnabled: true,
       defaultAgentId: "default",
       commandRouter: {
-        match: () => ({ kind: "questions" }),
+        match: () => ({ kind: "status" }),
       } as never,
       replyWriter: {
         sendControllerReply: async () => undefined,
@@ -260,7 +260,7 @@ describe("channel turn dispatcher ingress routing", () => {
 
     let caught: unknown;
     try {
-      await dispatcher.enqueueInboundTurn(createUserTurn("/questions"), {
+      await dispatcher.enqueueInboundTurn(createUserTurn("/status"), {
         awaitCompletion: true,
       });
     } catch (error) {

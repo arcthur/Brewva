@@ -97,8 +97,8 @@ export class ShellSessionWorkflow {
           .getUi()
           .notify(
             availableModels.length === 0
-              ? "No connected model provider. Use /connect to add provider auth."
-              : "No model selected. Use /models to choose one.",
+              ? "No connected model provider. Use /model to connect one."
+              : "No model selected. Use /model to choose one.",
             "warning",
           );
         if (availableModels.length === 0) {

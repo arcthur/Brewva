@@ -48,6 +48,7 @@ refresh the pointer summary and `Last reviewed` metadata here.
 - [`rfc-model-native-product-reconstruction-and-closure-vnext.md`](./rfc-model-native-product-reconstruction-and-closure-vnext.md)
 - [`rfc-narrative-memory-product-and-bounded-semantic-recall.md`](./rfc-narrative-memory-product-and-bounded-semantic-recall.md)
 - [`rfc-opentui-adoption-for-brewva-cli-shell-and-native-boundary.md`](./rfc-opentui-adoption-for-brewva-cli-shell-and-native-boundary.md)
+- [`rfc-slash-command-surface-layering-and-control-plane-separation.md`](./rfc-slash-command-surface-layering-and-control-plane-separation.md)
 - [`rfc-recall-first-compounding-intelligence-and-experience-products.md`](./rfc-recall-first-compounding-intelligence-and-experience-products.md)
 - [`rfc-duckdb-session-query-plane.md`](./rfc-duckdb-session-query-plane.md)
 - [`rfc-repository-native-compound-knowledge-and-review-ensemble.md`](./rfc-repository-native-compound-knowledge-and-review-ensemble.md)

@@ -19,6 +19,12 @@ session, through skill activation, tool execution, verification, and
 completion, and ends in explicit inspection surfaces backed by event tape and
 evidence-ledger records.
 
+Interactive shell command ownership follows the narrowed slash contract:
+high-frequency entrypoints such as `/model`, `/inbox`, `/inspect`, and
+session-history actions stay in the shell slash surface, while lower-signal
+view/config toggles live in the command palette and headless or channel command
+grammars remain separate control planes.
+
 ## In Scope
 
 - CLI mode resolution and hosted session creation

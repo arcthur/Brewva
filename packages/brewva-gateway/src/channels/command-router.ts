@@ -4,22 +4,15 @@ export type ChannelCommandMatch =
   | { kind: "none" }
   | { kind: "error"; message: string }
   | { kind: "agents" }
-  | { kind: "cost"; agentId?: string; top?: number }
-  | { kind: "questions"; agentId?: string }
+  | { kind: "status"; agentId?: string; directory?: string; top?: number }
   | { kind: "answer"; agentId?: string; questionId: string; answerText: string }
-  | { kind: "inspect"; agentId?: string; directory?: string }
-  | { kind: "insights"; agentId?: string; directory?: string }
   | { kind: "update"; instructions?: string }
-  | { kind: "new-agent"; agentId: string; model?: string }
-  | { kind: "del-agent"; agentId: string }
+  | { kind: "agent-create"; agentId: string; model?: string }
+  | { kind: "agent-delete"; agentId: string }
   | { kind: "focus"; agentId: string }
   | { kind: "run"; agentIds: string[]; task: string }
   | { kind: "discuss"; agentIds: string[]; topic: string; maxRounds?: number }
   | { kind: "route-agent"; agentId: string; task: string; viaMention: boolean };
-
-function normalizeToken(token: string): string {
-  return token.trim();
-}
 
 function parseAgentRef(raw: string): string | undefined {
   const stripped = raw.replace(/^@/u, "").trim();
@@ -61,6 +54,49 @@ function parseKeyValueArgs(input: string): Record<string, string> {
   return args;
 }
 
+function parseStatusCommand(body: string, usage: string): ChannelCommandMatch {
+  if (!body) {
+    return { kind: "status" };
+  }
+  const tokens = body.split(/\s+/u).filter((token) => token.length > 0);
+  let agentId: string | undefined;
+  let tokenIndex = 0;
+  if ((tokens[0] ?? "").startsWith("@")) {
+    agentId = parseAgentRef(tokens[0] ?? "");
+    if (!agentId) {
+      return { kind: "error", message: usage };
+    }
+    tokenIndex = 1;
+  }
+
+  let top: number | undefined;
+  const directoryTokens: string[] = [];
+  for (const token of tokens.slice(tokenIndex)) {
+    const topMatch = /^top=(.+)$/u.exec(token);
+    if (topMatch?.[1]) {
+      const parsedTop = parsePositiveInteger(topMatch[1]);
+      if (!parsedTop || top !== undefined) {
+        return { kind: "error", message: usage };
+      }
+      top = parsedTop;
+      continue;
+    }
+    const directoryMatch = /^dir=(.+)$/u.exec(token);
+    if (directoryMatch?.[1]) {
+      directoryTokens.push(directoryMatch[1]);
+      continue;
+    }
+    directoryTokens.push(token);
+  }
+
+  return {
+    kind: "status",
+    agentId,
+    top,
+    directory: directoryTokens.join(" ").trim() || undefined,
+  };
+}
+
 export class CommandRouter {
   match(rawText: string): ChannelCommandMatch {
     const text = rawText.trim();
@@ -93,55 +129,8 @@ export class CommandRouter {
       return { kind: "agents" };
     }
 
-    if (command === "/cost") {
-      if (!body) {
-        return { kind: "cost" };
-      }
-      const tokens = body.split(/\s+/u).filter((token) => token.length > 0);
-      let agentId: string | undefined;
-      let tokenIndex = 0;
-      if ((tokens[0] ?? "").startsWith("@")) {
-        agentId = parseAgentRef(tokens[0] ?? "");
-        if (!agentId) {
-          return { kind: "error", message: "Usage: /cost [@agent] [top=N]" };
-        }
-        tokenIndex = 1;
-      }
-      let top: number | undefined;
-      for (const token of tokens.slice(tokenIndex)) {
-        const topMatch = /^top=(.+)$/u.exec(token);
-        if (!topMatch?.[1]) {
-          return { kind: "error", message: "Usage: /cost [@agent] [top=N]" };
-        }
-        const parsedTop = parsePositiveInteger(topMatch[1]);
-        if (!parsedTop || top !== undefined) {
-          return { kind: "error", message: "Usage: /cost [@agent] [top=N]" };
-        }
-        top = parsedTop;
-      }
-      if (!agentId && top === undefined && tokens.length > 0) {
-        return { kind: "error", message: "Usage: /cost [@agent] [top=N]" };
-      }
-      return {
-        kind: "cost",
-        agentId,
-        top,
-      };
-    }
-
-    if (command === "/questions") {
-      if (!body) {
-        return { kind: "questions" };
-      }
-      const [firstToken, ...rest] = body.split(/\s+/u);
-      if (!(firstToken ?? "").startsWith("@") || rest.length > 0) {
-        return { kind: "error", message: "Usage: /questions [@agent]" };
-      }
-      const agentId = parseAgentRef(firstToken ?? "");
-      if (!agentId) {
-        return { kind: "error", message: "Usage: /questions [@agent]" };
-      }
-      return { kind: "questions", agentId };
+    if (command === "/status") {
+      return parseStatusCommand(body, "Usage: /status [@agent] [dir] [top=N]");
     }
 
     if (command === "/answer") {
@@ -176,50 +165,6 @@ export class CommandRouter {
       };
     }
 
-    if (command === "/inspect") {
-      if (!body) {
-        return { kind: "inspect" };
-      }
-      const [firstToken, ...rest] = body.split(/\s+/u);
-      if ((firstToken ?? "").startsWith("@")) {
-        const agentId = parseAgentRef(firstToken ?? "");
-        if (!agentId) {
-          return { kind: "error", message: "Usage: /inspect [@agent] [dir]" };
-        }
-        return {
-          kind: "inspect",
-          agentId,
-          directory: rest.join(" ").trim() || undefined,
-        };
-      }
-      return {
-        kind: "inspect",
-        directory: body || undefined,
-      };
-    }
-
-    if (command === "/insights") {
-      if (!body) {
-        return { kind: "insights" };
-      }
-      const [firstToken, ...rest] = body.split(/\s+/u);
-      if ((firstToken ?? "").startsWith("@")) {
-        const agentId = parseAgentRef(firstToken ?? "");
-        if (!agentId) {
-          return { kind: "error", message: "Usage: /insights [@agent] [dir]" };
-        }
-        return {
-          kind: "insights",
-          agentId,
-          directory: rest.join(" ").trim() || undefined,
-        };
-      }
-      return {
-        kind: "insights",
-        directory: body || undefined,
-      };
-    }
-
     if (command === "/update") {
       return {
         kind: "update",
@@ -227,46 +172,69 @@ export class CommandRouter {
       };
     }
 
-    if (command === "/new-agent") {
-      if (!body)
+    if (command === "/agent") {
+      if (!body) {
         return {
           kind: "error",
-          message: "Usage: /new-agent <name> [model=<exact-id[:thinking]>]",
+          message: "Usage: /agent <new|delete|status> ...",
         };
-
-      const nameIs = /^name\s+is\s+(\S+)(?:\s+|$)/iu.exec(body);
-      let agentId = nameIs?.[1] ? parseAgentRef(nameIs[1]) : undefined;
-      const kvArgs = parseKeyValueArgs(body);
-      if (!agentId && kvArgs.name) {
-        agentId = parseAgentRef(kvArgs.name);
       }
-      if (!agentId) {
-        const firstToken = normalizeToken(body.split(/\s+/u)[0] ?? "");
-        if (
-          firstToken &&
-          !firstToken.includes("=") &&
-          firstToken.toLowerCase() !== "name" &&
-          firstToken.toLowerCase() !== "is"
-        ) {
-          agentId = parseAgentRef(firstToken);
+      const [firstToken = "", secondToken = "", ...subcommandTokens] = body.split(/\s+/u);
+      if (firstToken.startsWith("@") && secondToken.toLowerCase() === "status") {
+        return parseStatusCommand(
+          [firstToken, ...subcommandTokens].join(" ").trim(),
+          "Usage: /agent status [@agent] [dir] [top=N]",
+        );
+      }
+      const subcommand = firstToken.toLowerCase();
+      const subcommandBody = [secondToken, ...subcommandTokens].join(" ").trim();
+      if (subcommand === "status") {
+        return parseStatusCommand(subcommandBody, "Usage: /agent status [@agent] [dir] [top=N]");
+      }
+      if (subcommand === "new") {
+        if (!subcommandBody) {
+          return {
+            kind: "error",
+            message: "Usage: /agent new <name> [model=<exact-id[:thinking]>]",
+          };
         }
-      }
-      if (!agentId) {
-        return { kind: "error", message: "Missing agent name for /new-agent." };
-      }
-      const model = kvArgs.model?.trim();
-      return {
-        kind: "new-agent",
-        agentId,
-        model: model && model.length > 0 ? model : undefined,
-      };
-    }
 
-    if (command === "/del-agent") {
-      if (!body) return { kind: "error", message: "Usage: /del-agent <name>" };
-      const agentId = parseAgentRef(body.split(/\s+/u)[0] ?? "");
-      if (!agentId) return { kind: "error", message: "Missing agent name for /del-agent." };
-      return { kind: "del-agent", agentId };
+        const kvArgs = parseKeyValueArgs(subcommandBody);
+        let agentId = kvArgs.name ? parseAgentRef(kvArgs.name) : undefined;
+        if (!agentId) {
+          const firstNameToken = subcommandBody.split(/\s+/u)[0]?.trim() ?? "";
+          if (
+            firstNameToken &&
+            !firstNameToken.includes("=") &&
+            firstNameToken.toLowerCase() !== "name"
+          ) {
+            agentId = parseAgentRef(firstNameToken);
+          }
+        }
+        if (!agentId) {
+          return { kind: "error", message: "Missing agent name for /agent new." };
+        }
+        const model = kvArgs.model?.trim();
+        return {
+          kind: "agent-create",
+          agentId,
+          model: model && model.length > 0 ? model : undefined,
+        };
+      }
+      if (subcommand === "delete") {
+        if (!subcommandBody) {
+          return { kind: "error", message: "Usage: /agent delete <name>" };
+        }
+        const agentId = parseAgentRef(subcommandBody.split(/\s+/u)[0] ?? "");
+        if (!agentId) {
+          return { kind: "error", message: "Missing agent name for /agent delete." };
+        }
+        return { kind: "agent-delete", agentId };
+      }
+      return {
+        kind: "error",
+        message: "Usage: /agent <new|delete|status> ...",
+      };
     }
 
     if (command === "/focus") {
@@ -323,7 +291,7 @@ export class CommandRouter {
     return {
       kind: "error",
       message:
-        "Unknown command. Use /inspect, /insights, /cost, /questions, /answer, /agents, /update, /new-agent, /del-agent, /focus, /run, or /discuss.",
+        "Unknown command. Use /status, /answer, /agents, /agent, /update, /focus, /run, or /discuss.",
     };
   }
 }

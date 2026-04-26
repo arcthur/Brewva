@@ -404,33 +404,30 @@ export function createCommandCompletionSource(
     id: "command",
     triggers: ["/"],
     resolve() {
-      return commandProvider
-        .visibleCommands()
-        .filter((command) => command.slashName)
-        .map((command): ShellCompletionCandidate => {
-          const source = commandProvider.getCommand(command.id);
-          const argumentMode = source?.slash?.argumentMode ?? "none";
-          const slashName = command.slashName ?? command.id;
-          return {
-            id: `command:${command.id}`,
-            kind: "command",
-            source: "command",
-            label: `/${slashName}`,
-            value: slashName,
+      return commandProvider.slashCommands().map((command): ShellCompletionCandidate => {
+        const source = commandProvider.getCommand(command.id);
+        const argumentMode = source?.slash?.argumentMode ?? "none";
+        const slashName = command.slashName ?? command.id;
+        return {
+          id: `command:${command.id}`,
+          kind: "command",
+          source: "command",
+          label: `/${slashName}`,
+          value: slashName,
+          insertText: `/${slashName} `,
+          description: command.description,
+          detail: command.category,
+          aliases: command.slashAliases,
+          searchText: [command.title, command.category],
+          suggested: command.suggested,
+          accept: {
+            type: "runCommand",
+            commandId: command.id,
             insertText: `/${slashName} `,
-            description: command.description,
-            detail: command.category,
-            aliases: command.slashAliases,
-            searchText: [command.title, command.category],
-            suggested: command.suggested,
-            accept: {
-              type: "runCommand",
-              commandId: command.id,
-              insertText: `/${slashName} `,
-              argumentMode,
-            },
-          };
-        });
+            argumentMode,
+          },
+        };
+      });
     },
   };
 }

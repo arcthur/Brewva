@@ -71,17 +71,17 @@ The first-pass keyboard contract is:
 Completion remains keyboard-first:
 
 - `/` opens slash-command completion with summaries and argument hints
-- `/models` opens the model picker for current, favorite, recent, and
-  provider-grouped models
-- `/connect` opens the provider connection picker. Supported providers can use
-  OAuth, provider-specific prompts, or API keys stored in the encrypted runtime
-  vault.
-- `/think` opens the thinking-level picker for the selected model
-- `/thinking` toggles reasoning block visibility without changing the model
-  thinking level
-- `/tool-details` toggles completed tool detail visibility in the transcript
-- `/diffwrap` toggles wrapping for edit and patch diff views
-- `/diffstyle` toggles automatic split diffs and stacked unified diffs
+- `/model` opens the model picker for current, favorite, recent, and
+  provider-grouped models, and routes into provider connection when no model is
+  available
+- `/inbox` opens pending operator questions and shell notifications in one
+  overlay
+- `/inspect` opens the replay-first inspect overlay for the current session
+- `/answer <question-id> <answer>` resolves one pending operator prompt
+- `/theme` lists or switches the interactive shell theme
+- provider connection, thinking selection, view toggles, and prompt-stash
+  actions stay in the command palette or keybinding layer instead of the top
+  slash namespace
 - `@` opens quoted or unquoted workspace path completion
 - completion is advisory only; it does not mutate session state until the
   operator accepts an action
@@ -158,7 +158,8 @@ supports:
 - `brewva credentials remove --ref <vault://...>`
 - `brewva credentials discover`
 
-The interactive shell uses `/connect` as the primary provider-auth experience.
+The interactive shell uses `/model` as the primary provider-auth and
+model-selection experience.
 The root `brewva credentials` command remains the lower-level operational entry
 for listing, importing, or removing vault refs outside the TUI.
 
@@ -299,16 +300,13 @@ Current backend constraints:
 - `--backend gateway` is rejected with `--task` or `--task-file`
 - `--backend auto` skips gateway when `--task` or `--task-file` is provided
 
-## Interactive And Channel Commands
+## Runtime-Plugin And Channel Commands
 
-Embedded interactive sessions register a small runtime-plugin command set:
+Managed or headless sessions still register a small runtime-plugin command set:
 
 - `/inspect [dir]`
 - `/insights [dir]`
 - `/questions`
-- `/theme | /theme list | /theme <name>`
-- `/thinking | /tool-details`
-- `/diffwrap | /diffstyle`
 - `/answer <question-id> <answer>`
 - `/agent-overlays | /agent-overlays validate | /agent-overlays <name>`
 - `/update [operator hints]`
@@ -317,14 +315,12 @@ When `channels.orchestration.enabled=true`, channel orchestration commands
 include:
 
 - `/agents`
-- `/cost [@agent] [top=N]`
-- `/questions [@agent]`
+- `/status [@agent] [dir] [top=N]`
 - `/answer [@agent] <question-id> <answer>`
-- `/inspect [@agent] [dir]`
-- `/insights [@agent] [dir]`
 - `/update [operator hints]`
-- `/new-agent <name> [model=<exact-id[:thinking]>]`
-- `/del-agent <name>`
+- `/agent new <name> [model=<exact-id[:thinking]>]`
+- `/agent delete <name>`
+- `/agent status [@agent] [dir] [top=N]`
 - `/focus @agent`
 - `/run @a,@b <task>`
 - `/discuss @a,@b [maxRounds=N] <topic>`
@@ -333,9 +329,11 @@ include:
 These are thin control-plane veneers over replay-visible session state. They do
 not create hidden planner state or a second command authority model.
 
-`/questions` inspects the operator inbox derived from `skill_completed` and
-delegated consult outcomes. The shell presents that inbox as pending input
-requests plus follow-up questions. `/answer` records
+`/status` is the operator summary wrapper for cost, pending operator input,
+inspect, and insights. Its reply meta preserves the section-level structured
+payloads from those underlying products. `/questions` remains available as a
+runtime-plugin command, while the interactive shell promotes `/inbox` for the
+same underlying operator-input truth. `/answer` records
 `operator_question_answered` before routing the answer back into the target
 session as explicit operator input.
 

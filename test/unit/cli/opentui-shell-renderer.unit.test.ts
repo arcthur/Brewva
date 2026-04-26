@@ -133,6 +133,24 @@ function countOccurrences(text: string, needle: string): number {
   return text.split(needle).length - 1;
 }
 
+async function invokePaletteCommand(runtime: CliShellRuntime, commandId: string): Promise<boolean> {
+  return await (
+    runtime as unknown as {
+      handleShellIntent(intent: {
+        type: "command.invoke";
+        commandId: string;
+        args: string;
+        source: "palette";
+      }): Promise<boolean>;
+    }
+  ).handleShellIntent({
+    type: "command.invoke",
+    commandId,
+    args: "",
+    source: "palette",
+  });
+}
+
 function findRenderedColumn(frame: string, needle: string): number {
   const line = frame.split("\n").find((candidate) => candidate.includes(needle));
   expect(line).toBeDefined();
@@ -543,7 +561,7 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       expect(testSetup.captureCharFrame()).toContain("openai/alpha");
 
-      runtime.ui.setEditorText("/models beta");
+      runtime.ui.setEditorText("/model beta");
       await openTuiSolidAct(async () => {
         await runtime.handleInput({
           key: "enter",
@@ -708,9 +726,8 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("openai/gpt-5.4-mini");
       expect(frame).toContain("think high");
       expect(frame).toContain("┃  /qu");
-      expect(frame).toContain("command /questions");
-      expect(frame).toContain("/questions");
-      expect(frame).not.toContain("List unresolved operator questions.");
+      expect(frame).toContain("command /quit");
+      expect(frame).toContain("/quit");
       expect(frame).toContain("/quit");
       expect(frame).toContain("Exit the interactive shell.");
       expect(countOccurrences(frame, "Exit the interactive shell.")).toBe(1);
@@ -730,19 +747,18 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       frame = testSetup.captureCharFrame();
       expect(frame).toContain("┃  /qu");
-      expect(frame).toContain("command /questions");
-      expect(frame).toContain("/questions");
-      expect(frame).not.toContain("List unresolved operator questions.");
+      expect(frame).toContain("command /quit");
+      expect(frame).toContain("/quit");
       expect(countOccurrences(frame, "Exit the interactive shell.")).toBe(1);
       expect(frame).not.toContain("┌");
       expect(frame).not.toContain("└");
-      expect(runtime.getViewState().composer.completion?.selectedIndex).toBe(1);
+      expect(runtime.getViewState().composer.completion?.selectedIndex).toBe(0);
       expect(
         runtime.getViewState().composer.completion?.items[
           runtime.getViewState().composer.completion?.selectedIndex ?? 0
         ],
       ).toMatchObject({
-        value: "questions",
+        value: "quit",
       });
     } finally {
       runtime.dispose();
@@ -768,7 +784,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     await runtime.start();
-    runtime.ui.setEditorText("/q");
+    runtime.ui.setEditorText("/in");
     await runtime.handleInput({
       key: "down",
       ctrl: false,
@@ -787,7 +803,7 @@ describe("opentui solid shell runtime", () => {
     try {
       await testSetup.renderOnce();
       await testSetup.renderOnce();
-      expect(renderedLineUsesBackground(testSetup, "/questions", "#5bc0eb")).toBe(true);
+      expect(runtime.getViewState().composer.completion?.selectedIndex).toBe(1);
 
       runtime.ui.setEditorText("/qu");
       await testSetup.renderOnce();
@@ -798,7 +814,6 @@ describe("opentui solid shell runtime", () => {
         value: "quit",
       });
       expect(renderedLineUsesBackground(testSetup, "/quit", "#5bc0eb")).toBe(true);
-      expect(renderedLineUsesBackground(testSetup, "/questions", "#5bc0eb")).toBe(false);
     } finally {
       runtime.dispose();
       testSetup.renderer.destroy();
@@ -880,7 +895,7 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("Commands");
       expect(frame).toContain("Switch model");
       expect(frame).toContain("Agent");
-      expect(frame).toContain("/models");
+      expect(frame).toContain("/model");
       expect(frame).toContain("Ctrl+K");
     } finally {
       runtime.dispose();
@@ -1235,13 +1250,7 @@ describe("opentui solid shell runtime", () => {
       const rendererInspector = testSetup.renderer as unknown as OpenTuiTestRendererInspector;
       expect(rendererInspector.root.findDescendantById(`text-${reasoningPart!.id}`)).toBeDefined();
 
-      runtime.ui.setEditorText("/thinking");
-      await runtime.handleInput({
-        key: "enter",
-        ctrl: false,
-        meta: false,
-        shift: false,
-      });
+      await invokePaletteCommand(runtime, "view.thinking");
       await testSetup.renderOnce();
       await testSetup.renderOnce();
 
@@ -1731,8 +1740,7 @@ describe("opentui solid shell runtime", () => {
     });
 
     await runtime.start();
-    runtime.ui.setEditorText("/connect ");
-    await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
+    await invokePaletteCommand(runtime, "agent.connect");
     await runtime.handleInput({ key: "enter", ctrl: false, meta: false, shift: false });
     await Bun.sleep(0);
 
@@ -2701,13 +2709,13 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       await testSetup.renderOnce();
 
+      expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
+        kind: "inbox",
+        selectedIndex: 0,
+      });
       let frame = testSetup.captureCharFrame();
-      expect(frame).toContain("Notifications");
       expect(frame).toContain("latest notification");
-      expect(frame).toContain("Details");
-      expect(frame).toContain("dismiss d");
-      expect(frame).toContain("clear x");
-      expect(frame).toContain("details enter");
+      expect(frame).toContain("Ctrl+N inbox");
 
       await openTuiSolidAct(async () => {
         await runtime.handleInput({
@@ -2721,8 +2729,11 @@ describe("opentui solid shell runtime", () => {
       await testSetup.renderOnce();
       await testSetup.renderOnce();
 
+      expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
+        kind: "inbox",
+        selectedIndex: 0,
+      });
       frame = testSetup.captureCharFrame();
-      expect(frame).toContain("Notifications");
       expect(frame).not.toContain("latest notification");
       expect(frame).toContain("older notification");
     } finally {

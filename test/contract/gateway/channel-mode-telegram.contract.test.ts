@@ -368,7 +368,7 @@ describe("gateway contract: telegram channel dispatch", () => {
     ]);
   });
 
-  test("channel orchestration handles /inspect inline without a model turn", async () => {
+  test("channel orchestration handles /status inline without a model turn", async () => {
     const workspace = createTestWorkspace("channel-telegram-inspect");
     mkdirSync(join(workspace, "src"), { recursive: true });
     writeFileSync(join(workspace, "src", "index.ts"), "export const ok = true;\n", "utf8");
@@ -394,7 +394,7 @@ describe("gateway contract: telegram channel dispatch", () => {
           await input.onInboundTurn(
             createInboundTurn({
               turnId: "turn-inspect-1",
-              text: "/inspect src",
+              text: "/status src",
             }),
           );
           await waitUntil(
@@ -449,21 +449,21 @@ describe("gateway contract: telegram channel dispatch", () => {
     expect(capturedPrompts).toHaveLength(1);
     expect(capturedPrompts[0]).toContain("hello from channel e2e");
 
-    const inspectText = outboundTurns[1]?.parts[0];
-    expect(inspectText).toEqual(
+    const statusText = outboundTurns[1]?.parts[0];
+    expect(statusText).toEqual(
       expect.objectContaining({
         type: "text",
       }),
     );
-    const text = inspectText && "text" in inspectText ? inspectText.text : "";
-    expect(text).toContain("Inspect @default —");
-    expect(text).toContain("Dir: src");
-    expect(text).toContain("Mode: ");
-    expect(text).toContain("Scope: ");
-    expect(text).toContain("Findings:");
+    const text = statusText && "text" in statusText ? statusText.text : "";
+    expect(text).toContain("Status @default");
+    expect(text).toContain("Inspect");
+    expect(text).toContain("  Inspect @default —");
+    expect(text).toContain("  Dir: src");
+    expect(text).toContain("  Findings:");
   });
 
-  test("channel orchestration handles /insights inline with the aggregate report surface", async () => {
+  test("channel orchestration includes insights inside /status output", async () => {
     const workspace = createTestWorkspace("channel-telegram-inspects");
     mkdirSync(join(workspace, "src"), { recursive: true });
     writeFileSync(join(workspace, "src", "index.ts"), "export const ok = true;\n", "utf8");
@@ -489,7 +489,7 @@ describe("gateway contract: telegram channel dispatch", () => {
           await input.onInboundTurn(
             createInboundTurn({
               turnId: "turn-insights-1",
-              text: "/insights .",
+              text: "/status .",
             }),
           );
           await waitUntil(
@@ -544,22 +544,22 @@ describe("gateway contract: telegram channel dispatch", () => {
 
     expect(capturedPrompts).toHaveLength(1);
 
-    const insightsText = outboundTurns[1]?.parts[0];
-    expect(insightsText).toEqual(
+    const statusText = outboundTurns[1]?.parts[0];
+    expect(statusText).toEqual(
       expect.objectContaining({
         type: "text",
       }),
     );
-    const text = insightsText && "text" in insightsText ? insightsText.text : "";
-    expect(text).toContain("Insights @default");
-    expect(text).toContain("Dirs:");
-    expect(text).toContain("Friction:");
-    expect(text).toContain("Verification:");
+    const text = statusText && "text" in statusText ? statusText.text : "";
+    expect(text).toContain("Status @default");
+    expect(text).toContain("Insights");
+    expect(text).toContain("  Insights @default");
+    expect(text).toContain("  Dirs:");
+    expect(text).toContain("  Verification:");
     expect(text).not.toContain("Brewva Project Insights");
-    expect(text.split("\n").length).toBeLessThanOrEqual(5);
   });
 
-  test("channel orchestration handles /questions inline without a model turn", async () => {
+  test("channel orchestration includes operator input inside /status output", async () => {
     const workspace = createTestWorkspace("channel-telegram-questions");
     const configPath = writeChannelConfig(workspace, { orchestrationEnabled: true });
     const channelConfig = {
@@ -604,7 +604,7 @@ describe("gateway contract: telegram channel dispatch", () => {
           await input.onInboundTurn(
             createInboundTurn({
               turnId: "turn-questions-1",
-              text: "/questions",
+              text: "/status",
             }),
           );
           await waitUntil(
@@ -665,15 +665,16 @@ describe("gateway contract: telegram channel dispatch", () => {
     }
 
     expect(capturedPrompts).toHaveLength(1);
-    const questionsText = outboundTurns[1]?.parts[0];
-    expect(questionsText).toEqual(
+    const statusText = outboundTurns[1]?.parts[0];
+    expect(statusText).toEqual(
       expect.objectContaining({
         type: "text",
       }),
     );
-    const text = questionsText && "text" in questionsText ? questionsText.text : "";
-    expect(text).toContain("Operator inbox @default");
-    expect(text).toContain("Follow-up questions:");
+    const text = statusText && "text" in statusText ? statusText.text : "";
+    expect(text).toContain("Operator input");
+    expect(text).toContain("  Operator inbox @default");
+    expect(text).toContain("  Follow-up questions:");
     expect(text).toContain("Should the update target the daemon or the print path?");
     expect(text).toContain(
       "Use /answer [@agent] <question-id> <answer> to resolve one prompt at a time.",
@@ -803,7 +804,7 @@ describe("gateway contract: telegram channel dispatch", () => {
     expect(observedAnswerEventCount).toBe(1);
   });
 
-  test("channel orchestration keeps /questions and /answer durable after agent session eviction", async () => {
+  test("channel orchestration keeps /status and /answer durable after agent session eviction", async () => {
     const workspace = createTestWorkspace("channel-telegram-durable-questions-after-eviction");
     const configPath = writeChannelConfig(workspace, {
       orchestrationEnabled: true,
@@ -863,7 +864,7 @@ describe("gateway contract: telegram channel dispatch", () => {
           await input.onInboundTurn(
             createInboundTurn({
               turnId: "turn-create-analyst-1",
-              text: "/new-agent analyst",
+              text: "/agent new analyst",
             }),
           );
           await input.onInboundTurn(
@@ -881,7 +882,7 @@ describe("gateway contract: telegram channel dispatch", () => {
           await input.onInboundTurn(
             createInboundTurn({
               turnId: "turn-questions-after-evict-1",
-              text: "/questions @default",
+              text: "/status @default",
             }),
           );
           await waitUntil(
@@ -1117,7 +1118,7 @@ describe("gateway contract: telegram channel dispatch", () => {
     expect(observedAnswerEventCount).toBe(0);
   });
 
-  test("channel orchestration lets /inspect target an explicit agent instead of the current focus", async () => {
+  test("channel orchestration lets /status target an explicit agent instead of the current focus", async () => {
     const workspace = createTestWorkspace("channel-telegram-inspect-explicit-agent");
     mkdirSync(join(workspace, "src"), { recursive: true });
     writeFileSync(join(workspace, "src", "index.ts"), "export const ok = true;\n", "utf8");
@@ -1143,7 +1144,7 @@ describe("gateway contract: telegram channel dispatch", () => {
           await input.onInboundTurn(
             createInboundTurn({
               turnId: "turn-create-1",
-              text: "/new-agent analyst",
+              text: "/agent new analyst",
             }),
           );
           await input.onInboundTurn(
@@ -1155,7 +1156,7 @@ describe("gateway contract: telegram channel dispatch", () => {
           await input.onInboundTurn(
             createInboundTurn({
               turnId: "turn-inspect-explicit-1",
-              text: "/inspect @default src",
+              text: "/status @default src",
             }),
           );
           await waitUntil(
@@ -1214,9 +1215,10 @@ describe("gateway contract: telegram channel dispatch", () => {
     const explicitInsightText = outboundTurns[3]?.parts[0];
     const text =
       explicitInsightText && "text" in explicitInsightText ? explicitInsightText.text : "";
-    expect(text).toContain("Inspect @default —");
-    expect(text).toContain("Focus: @analyst · explicit target: @default");
-    expect(text).toContain("Dir: src");
+    expect(text).toContain("Status @default (focus @analyst)");
+    expect(text).toContain("  Inspect @default —");
+    expect(text).toContain("  Focus: @analyst · explicit target: @default");
+    expect(text).toContain("  Dir: src");
   });
 
   test("channel orchestration routes /update through the focused agent with the shared upgrade workflow", async () => {

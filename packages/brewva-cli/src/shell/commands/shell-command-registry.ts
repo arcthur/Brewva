@@ -1,13 +1,8 @@
-import type { ShellCommand, ShellCommandProvider } from "./command-provider.js";
-
-type RuntimeSlashCommand = {
-  readonly id: string;
-  readonly title: string;
-  readonly description: string;
-  readonly category: string;
-  readonly name: string;
-  readonly argumentMode?: "none" | "optional" | "required";
-};
+import type {
+  ShellCommand,
+  ShellCommandProvider,
+  ShellSlashReservation,
+} from "./command-provider.js";
 
 const builtInShellCommands: readonly ShellCommand[] = [
   {
@@ -15,6 +10,7 @@ const builtInShellCommands: readonly ShellCommand[] = [
     title: "Open command palette",
     description: "Search and run available Brewva TUI actions.",
     category: "System",
+    discovery: { help: false },
     keybinding: { key: "k", ctrl: true, meta: false, shift: false },
     suggested: true,
   },
@@ -87,11 +83,11 @@ const builtInShellCommands: readonly ShellCommand[] = [
     slash: { name: "redo" },
   },
   {
-    id: "agent.models",
+    id: "agent.model",
     title: "Switch model",
     description: "Select a model for the current session.",
     category: "Agent",
-    slash: { name: "models", argumentMode: "optional" },
+    slash: { name: "model", argumentMode: "optional" },
     suggested: true,
   },
   {
@@ -99,42 +95,42 @@ const builtInShellCommands: readonly ShellCommand[] = [
     title: "Connect provider",
     description: "Connect a model provider.",
     category: "Agent",
-    slash: { name: "connect", argumentMode: "optional" },
+    discovery: { help: false },
   },
   {
     id: "agent.think",
     title: "Select thinking level",
     description: "Select the model thinking level for future turns.",
     category: "Agent",
-    slash: { name: "think" },
+    discovery: { help: false },
   },
   {
     id: "view.thinking",
     title: "Toggle thinking blocks",
     description: "Show or hide reasoning blocks in the transcript.",
     category: "View",
-    slash: { name: "thinking" },
+    discovery: { help: false },
   },
   {
     id: "view.toolDetails",
     title: "Toggle tool details",
     description: "Show or hide completed tool details in the transcript.",
     category: "View",
-    slash: { name: "tool-details" },
+    discovery: { help: false },
   },
   {
     id: "view.diffWrap",
     title: "Toggle diff wrapping",
     description: "Toggle wrapping in diff views.",
     category: "View",
-    slash: { name: "diffwrap" },
+    discovery: { help: false },
   },
   {
     id: "view.diffStyle",
     title: "Toggle diff style",
     description: "Toggle automatic split diffs and stacked unified diffs.",
     category: "View",
-    slash: { name: "diffstyle" },
+    discovery: { help: false },
   },
   {
     id: "operator.approvals",
@@ -145,11 +141,20 @@ const builtInShellCommands: readonly ShellCommand[] = [
     keybinding: { key: "a", ctrl: true, meta: false, shift: false },
   },
   {
+    id: "operator.inbox",
+    title: "Inbox",
+    description: "Open pending operator questions and shell notifications.",
+    category: "Operator",
+    slash: { name: "inbox" },
+    keybinding: { key: "n", ctrl: true, meta: false, shift: false },
+    suggested: true,
+  },
+  {
     id: "operator.questions",
     title: "Operator questions",
-    description: "Open the operator inbox for pending input.",
+    description: "Open pending operator questions only.",
     category: "Operator",
-    slash: { name: "questions" },
+    discovery: { help: false },
     keybinding: { key: "o", ctrl: true, meta: false, shift: false },
   },
   {
@@ -163,10 +168,9 @@ const builtInShellCommands: readonly ShellCommand[] = [
   {
     id: "operator.notifications",
     title: "Notifications",
-    description: "Open the operator notification inbox.",
+    description: "Open shell notifications only.",
     category: "Operator",
-    slash: { name: "notifications", aliases: ["inbox"] },
-    keybinding: { key: "n", ctrl: true, meta: false, shift: false },
+    discovery: { help: false },
   },
   {
     id: "operator.answer",
@@ -187,7 +191,7 @@ const builtInShellCommands: readonly ShellCommand[] = [
     title: "Stash prompt",
     description: "Browse stashed prompt drafts.",
     category: "Composer",
-    slash: { name: "stash", argumentMode: "optional" },
+    discovery: { help: false },
     keybinding: { key: "s", ctrl: true, meta: false, shift: false },
   },
   {
@@ -195,34 +199,35 @@ const builtInShellCommands: readonly ShellCommand[] = [
     title: "Restore latest stash",
     description: "Restore the latest stashed prompt.",
     category: "Composer",
-    slash: { name: "unstash" },
+    discovery: { help: false },
     keybinding: { key: "y", ctrl: true, meta: false, shift: false },
   },
 ];
 
-const runtimeSlashCommands: readonly RuntimeSlashCommand[] = [
+const reservedShellSlashNames: readonly ShellSlashReservation[] = [
   {
-    id: "runtime.insights",
-    title: "Insights",
-    description: "Workspace-level insights without entering a model turn.",
-    category: "Runtime",
+    name: "questions",
+    owner: "runtime.questions",
+    message:
+      "Use /inbox in the interactive shell; /questions remains a headless runtime-plugin command.",
+  },
+  {
     name: "insights",
-    argumentMode: "optional",
+    owner: "runtime.insights",
+    message:
+      "/insights is reserved for runtime and channel operator flows; it is not an interactive shell slash command.",
   },
   {
-    id: "runtime.agentOverlays",
-    title: "Agent overlays",
-    description: "Inspect authored agent overlays.",
-    category: "Runtime",
-    name: "agent-overlays",
-    argumentMode: "optional",
-  },
-  {
-    id: "runtime.update",
-    title: "Update Brewva",
-    description: "Queue Brewva update workflow.",
-    category: "Runtime",
     name: "update",
+    owner: "runtime.update",
+    message:
+      "/update is reserved for runtime and channel control workflows; it is not an interactive shell slash command.",
+  },
+  {
+    name: "agent-overlays",
+    owner: "runtime.agent-overlays",
+    message:
+      "/agent-overlays is reserved for runtime overlay inspection; it is not an interactive shell slash command.",
   },
 ];
 
@@ -230,17 +235,5 @@ export function registerShellCommands(commandProvider: ShellCommandProvider): vo
   for (const command of builtInShellCommands) {
     commandProvider.register(command);
   }
-  for (const command of runtimeSlashCommands) {
-    commandProvider.register({
-      id: command.id,
-      title: command.title,
-      description: command.description,
-      category: command.category,
-      slash: {
-        name: command.name,
-        argumentMode: command.argumentMode,
-      },
-      enabled: false,
-    });
-  }
+  commandProvider.reserveSlashNames(reservedShellSlashNames);
 }

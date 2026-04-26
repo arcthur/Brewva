@@ -180,7 +180,7 @@ Relevant lesson for Brewva:
   Provider-request reduction operates on a cloned `before_provider_request`
   payload and does not mutate durable history, WAL, compaction receipts, or the
   event tape.
-- **`session_compact` is the only replay-visible compaction authority.**
+- `**session_compact` is the only replay-visible compaction authority.\*\*
   This is correct and must remain correct unless Brewva adds a new durable
   receipt family and recovery contract.
 - **Prompt-stability inspection and evidence exist.**
@@ -246,7 +246,7 @@ Split the contract into two layers:
 - contains only invariant Brewva rules
 - safe to cache for the session lifetime
 
-2. **Dynamic Pressure Guidance**
+1. **Dynamic Pressure Guidance**
 
 - remains in the turn-scoped hidden tail
 - carries current threshold percentages, usage ratios, gate/advisory state,
@@ -599,7 +599,7 @@ off by default:
 - rebuildable or ops-oriented prompt-stability state
 - suitable for debugging and live operator inspection
 
-2. **Future durable iteration metrics**
+1. **Future durable iteration metrics**
 
 - not written automatically in v1
 - if longitudinal analysis becomes necessary later, reuse
@@ -635,7 +635,7 @@ stay separate:
 - appropriate for coarse composition facts such as block counts, token
   totals, and `injectionAccepted`
 
-2. **Durable iteration facts**
+1. **Durable iteration facts**
 
 - `packages/brewva-runtime/src/runtime.ts`
 - payload schema in `packages/brewva-runtime/src/iteration/facts.ts`
@@ -886,12 +886,12 @@ Provider cache counters already enter Brewva through the normal Pi event flow:
 - receives upstream assistant `message_end`
 - forwards the message into `recordAssistantUsageFromMessage(...)`
 
-2. `packages/brewva-runtime/src/cost/assistant-usage.ts`
+1. `packages/brewva-runtime/src/cost/assistant-usage.ts`
 
 - copies `usage.input`, `usage.output`, `usage.cacheRead`,
   `usage.cacheWrite`, and `usage.totalTokens`
 
-3. `packages/brewva-runtime/src/services/cost.ts`
+1. `packages/brewva-runtime/src/services/cost.ts`
 
 - normalizes those values
 - keeps Brewva budget semantics explicit: tracked tokens exclude
@@ -982,15 +982,15 @@ provider-specific cache API was added.
 - static module-level constant contract text (no per-session state)
 - dynamic pressure guidance in the turn-scoped hidden tail
 
-2. Audit `ContextComposer` inputs and remove volatile fields from stable blocks.
-3. Preserve source-level semantic order; normalize unordered collections at the
+1. Audit `ContextComposer` inputs and remove volatile fields from stable blocks.
+2. Preserve source-level semantic order; normalize unordered collections at the
    source boundary instead of adding a global `block.id` sort.
-4. Reuse existing scope-aware primary-injection fingerprinting; do not add a
+3. Reuse existing scope-aware primary-injection fingerprinting; do not add a
    session-wide composed-string cache.
-5. Keep prompt-stability observation keyed only by the static contract hash and
+4. Keep prompt-stability observation keyed only by the static contract hash and
    dynamic-tail hash in v1; do not add a separate tool-schema stability
    dimension before a concrete false-negative case exists.
-6. Add hosted prompt-stability observation in the gateway lifecycle ring, not
+5. Add hosted prompt-stability observation in the gateway lifecycle ring, not
    in runtime cost services or provider payload parsers.
 
 Validation:
@@ -1017,14 +1017,14 @@ Validation:
 - below hard-gate conditions
 - no active recovery posture from `session_turn_transition`
 
-4. Derive request-time pressure from the strongest available signal:
+1. Derive request-time pressure from the strongest available signal:
 
 - prefer live runtime usage when it is present and meaningful
 - otherwise estimate the outbound payload directly, anchored by the current
   session `contextWindow` when available and by Pi model metadata only as a
   final request-local fallback
 
-5. Re-estimate the outbound request after reduction before continuing into the
+1. Re-estimate the outbound request after reduction before continuing into the
    existing compaction-request path.
 
 Validation:
@@ -1059,7 +1059,7 @@ Validation:
   visible in hosted telemetry
 - integration validation: Brewva-inspect cache counters match the underlying Pi
   session stats for the same turn stream
-- no new durable `context_`\* event family is required for cache efficiency
+- no new durable `context_` event family is required for cache efficiency
 
 ## Non-Goals
 

@@ -40,20 +40,72 @@ import { ChannelCoordinator } from "./coordinator.js";
 import { resolveChannelOperatorAction } from "./operator-actions.js";
 import type { ChannelOrchestrationConfig } from "./orchestration-config.js";
 
-function isControlCommand(match: ChannelCommandMatch): boolean {
-  return (
-    match.kind === "cost" ||
-    match.kind === "questions" ||
-    match.kind === "answer" ||
-    match.kind === "inspect" ||
-    match.kind === "insights" ||
-    match.kind === "update" ||
-    match.kind === "new-agent" ||
-    match.kind === "del-agent" ||
-    match.kind === "focus" ||
-    match.kind === "run" ||
-    match.kind === "discuss"
-  );
+function isPublicCommand(match: ChannelCommandMatch): boolean {
+  switch (match.kind) {
+    case "none":
+    case "error":
+    case "agents":
+    case "route-agent":
+      return true;
+    case "status":
+    case "answer":
+    case "update":
+    case "agent-create":
+    case "agent-delete":
+    case "focus":
+    case "run":
+    case "discuss":
+      return false;
+  }
+  const exhaustiveCheck: never = match;
+  return exhaustiveCheck;
+}
+
+function indentBlock(text: string): string {
+  return text
+    .split(/\r?\n/u)
+    .map((line) => `  ${line}`)
+    .join("\n");
+}
+
+function formatStatusSummaryText(input: {
+  targetAgentId: string;
+  focusedAgentId: string;
+  liveSessionId?: string;
+  costText: string;
+  questionsText: string;
+  inspectText: string;
+  insightsText: string;
+}): string {
+  return [
+    `Status @${input.targetAgentId}${input.targetAgentId === input.focusedAgentId ? "" : ` (focus @${input.focusedAgentId})`}`,
+    `Live session: ${input.liveSessionId ?? "none"}`,
+    "",
+    "Cost",
+    indentBlock(input.costText),
+    "",
+    "Operator input",
+    indentBlock(input.questionsText),
+    "",
+    "Inspect",
+    indentBlock(input.inspectText),
+    "",
+    "Insights",
+    indentBlock(input.insightsText),
+  ].join("\n");
+}
+
+function buildStatusSectionFailure(
+  section: "questions" | "inspect" | "insights",
+  message: string,
+): ChannelQuestionsCommandResult | ChannelInspectCommandResult | ChannelInsightsCommandResult {
+  return {
+    text: message,
+    meta: {
+      command: section,
+      status: "dependency_failed",
+    },
+  };
 }
 
 export function createChannelControlRouter(input: {
@@ -201,16 +253,25 @@ export function createChannelControlRouter(input: {
           return { handled: false };
         }
 
-        await input.registry.setFocus(scopeKey, match.agentId);
-        recordRuntimeEvent(input.runtime, {
-          sessionId: turn.sessionId,
-          type: "channel_focus_changed",
-          payload: {
-            scopeKey,
-            agentId: match.agentId,
-            source: "mention",
-          },
-        });
+        const authorized = isOwnerAuthorized(
+          turn,
+          input.orchestrationConfig.owners.telegram,
+          input.orchestrationConfig.aclModeWhenOwnersEmpty,
+        );
+        if (authorized) {
+          const focused = await input.registry.setFocus(scopeKey, match.agentId);
+          if (focused.ok) {
+            recordRuntimeEvent(input.runtime, {
+              sessionId: turn.sessionId,
+              type: "channel_focus_changed",
+              payload: {
+                scopeKey,
+                agentId: focused.agentId,
+                source: "mention",
+              },
+            });
+          }
+        }
         return {
           handled: false,
           routeAgentId: match.agentId,
@@ -218,7 +279,7 @@ export function createChannelControlRouter(input: {
         };
       }
 
-      if (isControlCommand(match)) {
+      if (!isPublicCommand(match)) {
         const authorized = isOwnerAuthorized(
           turn,
           input.orchestrationConfig.owners.telegram,
@@ -253,16 +314,16 @@ export function createChannelControlRouter(input: {
         return { handled: true };
       }
 
-      if (operatorAction?.kind === "inspect_cost") {
+      if (operatorAction?.kind === "status_summary") {
         const focusedAgentId = input.registry.resolveFocus(scopeKey);
         const targetAgentId = operatorAction.agentId ?? focusedAgentId;
         if (!input.registry.isActive(targetAgentId)) {
           await input.replyWriter.sendControllerReply(
             turn,
             scopeKey,
-            `Cost view unavailable: agent @${targetAgentId} is not active in this workspace.`,
+            `Status unavailable: agent @${targetAgentId} is not active in this workspace.`,
             {
-              command: "cost",
+              command: "status",
               agentId: targetAgentId,
               status: "agent_not_active",
             },
@@ -270,80 +331,121 @@ export function createChannelControlRouter(input: {
           return { handled: true };
         }
         const targetSession = input.openLiveSession(scopeKey, targetAgentId);
-        if (!targetSession) {
-          await input.replyWriter.sendControllerReply(
-            turn,
-            scopeKey,
-            `Cost view unavailable: agent @${targetAgentId} does not have a live session.`,
-            {
-              command: "cost",
-              agentId: targetAgentId,
-              status: "session_not_found",
-            },
-          );
-          return { handled: true };
-        }
         const top = typeof operatorAction.top === "number" ? operatorAction.top : 5;
-        await input.replyWriter.sendControllerReply(
-          turn,
-          scopeKey,
-          formatCostViewText(
-            targetSession.runtime.inspect.cost.getSummary(targetSession.agentSessionId),
-            top,
-          ),
-          {
-            command: "cost",
-            agentId: targetAgentId,
-            top,
-          },
-        );
-        return { handled: true };
-      }
-
-      if (operatorAction?.kind === "inspect_questions") {
-        const focusedAgentId = input.registry.resolveFocus(scopeKey);
-        const targetAgentId = operatorAction.agentId ?? focusedAgentId;
-        if (!input.registry.isActive(targetAgentId)) {
-          await input.replyWriter.sendControllerReply(
-            turn,
-            scopeKey,
-            `Operator inbox unavailable: agent @${targetAgentId} is not active in this workspace.`,
-            {
-              command: "questions",
-              agentId: targetAgentId,
-              status: "agent_not_active",
-            },
-          );
-          return { handled: true };
-        }
         let questionSurface: ChannelQuestionSurface | undefined;
+        let questionsResult: ChannelQuestionsCommandResult | undefined;
         try {
           questionSurface = await input.resolveQuestionSurface(scopeKey, targetAgentId);
         } catch (error) {
-          await input.replyWriter.sendControllerReply(
-            turn,
-            scopeKey,
-            `Operator inbox unavailable: failed to load durable session history for @${targetAgentId} (${toErrorMessage(error)}).`,
-            {
-              command: "questions",
-              agentId: targetAgentId,
-              status: "question_surface_unavailable",
-            },
+          questionsResult = buildStatusSectionFailure(
+            "questions",
+            `Operator input unavailable: failed to load durable session history for @${targetAgentId} (${toErrorMessage(error)}).`,
           );
-          return { handled: true };
         }
-        const result = input.dependencies?.handleQuestionsCommand
-          ? await input.dependencies.handleQuestionsCommand({
-              turn,
-              scopeKey,
-              focusedAgentId,
-              targetAgentId,
-              questionSurface,
-            })
-          : {
+        if (!questionsResult) {
+          if (input.dependencies?.handleQuestionsCommand) {
+            try {
+              questionsResult = await input.dependencies.handleQuestionsCommand({
+                turn,
+                scopeKey,
+                focusedAgentId,
+                targetAgentId,
+                questionSurface,
+              });
+            } catch (error) {
+              questionsResult = buildStatusSectionFailure(
+                "questions",
+                `Operator input unavailable: failed to build the questions summary for @${targetAgentId} (${toErrorMessage(error)}).`,
+              );
+            }
+          } else {
+            questionsResult = {
               text: "Operator inbox is unavailable in this host.",
             };
-        await input.replyWriter.sendControllerReply(turn, scopeKey, result.text, result.meta);
+          }
+        }
+        const inspectResult = input.dependencies?.handleInspectCommand
+          ? await input.dependencies
+              .handleInspectCommand({
+                directory: operatorAction.directory,
+                turn,
+                scopeKey,
+                focusedAgentId,
+                targetAgentId,
+                targetSession: targetSession
+                  ? {
+                      agentId: targetSession.agentId,
+                      runtime: createOperatorRuntimePort(targetSession.runtime),
+                      sessionId: targetSession.agentSessionId,
+                    }
+                  : undefined,
+              })
+              .catch((error) =>
+                buildStatusSectionFailure(
+                  "inspect",
+                  `Inspect unavailable: failed to build the inspect summary for @${targetAgentId} (${toErrorMessage(error)}).`,
+                ),
+              )
+          : {
+              text: "Inspect is unavailable in this host.",
+            };
+        const insightsResult = input.dependencies?.handleInsightsCommand
+          ? await input.dependencies
+              .handleInsightsCommand({
+                directory: operatorAction.directory,
+                turn,
+                scopeKey,
+                focusedAgentId,
+                targetAgentId,
+                targetSession: targetSession
+                  ? {
+                      agentId: targetSession.agentId,
+                      runtime: createOperatorRuntimePort(targetSession.runtime),
+                      sessionId: targetSession.agentSessionId,
+                    }
+                  : undefined,
+              })
+              .catch((error) =>
+                buildStatusSectionFailure(
+                  "insights",
+                  `Insights unavailable: failed to build the insights summary for @${targetAgentId} (${toErrorMessage(error)}).`,
+                ),
+              )
+          : {
+              text: "Insights are unavailable in this host.",
+            };
+        const costText = targetSession
+          ? formatCostViewText(
+              targetSession.runtime.inspect.cost.getSummary(targetSession.agentSessionId),
+              top,
+            )
+          : `Cost view unavailable: agent @${targetAgentId} does not have a live session.`;
+        const statusMeta = {
+          command: "status",
+          agentId: targetAgentId,
+          top,
+          directory: operatorAction.directory,
+          liveSessionId: targetSession?.agentSessionId ?? null,
+          sections: {
+            cost: {
+              top,
+              liveSessionId: targetSession?.agentSessionId ?? null,
+            },
+            questions: questionsResult.meta ?? null,
+            inspect: inspectResult.meta ?? null,
+            insights: insightsResult.meta ?? null,
+          },
+        } satisfies Record<string, unknown>;
+        const text = formatStatusSummaryText({
+          targetAgentId,
+          focusedAgentId,
+          liveSessionId: targetSession?.agentSessionId,
+          costText,
+          questionsText: questionsResult.text,
+          inspectText: inspectResult.text,
+          insightsText: insightsResult.text,
+        });
+        await input.replyWriter.sendControllerReply(turn, scopeKey, text, statusMeta);
         return { handled: true };
       }
 
@@ -404,7 +506,7 @@ export function createChannelControlRouter(input: {
           await input.replyWriter.sendControllerReply(
             turn,
             scopeKey,
-            `Answer unavailable: no pending operator prompt '${operatorAction.questionId}' was found for @${targetAgentId}. Use /questions${targetAgentId === focusedAgentId ? "" : ` @${targetAgentId}`} first.`,
+            `Answer unavailable: no pending operator prompt '${operatorAction.questionId}' was found for @${targetAgentId}. Use /status${targetAgentId === focusedAgentId ? "" : ` @${targetAgentId}`} first.`,
             {
               command: "answer",
               agentId: targetAgentId,
@@ -453,86 +555,6 @@ export function createChannelControlRouter(input: {
         };
       }
 
-      if (match.kind === "inspect") {
-        const focusedAgentId = input.registry.resolveFocus(scopeKey);
-        const targetAgentId = match.agentId ?? focusedAgentId;
-        if (!input.registry.isActive(targetAgentId)) {
-          await input.replyWriter.sendControllerReply(
-            turn,
-            scopeKey,
-            `Inspect unavailable: agent @${targetAgentId} is not active in this workspace.`,
-            {
-              command: "inspect",
-              agentId: targetAgentId,
-              status: "agent_not_active",
-            },
-          );
-          return { handled: true };
-        }
-
-        const targetSession = input.openLiveSession(scopeKey, targetAgentId);
-        const result = input.dependencies?.handleInspectCommand
-          ? await input.dependencies.handleInspectCommand({
-              directory: match.directory,
-              turn,
-              scopeKey,
-              focusedAgentId,
-              targetAgentId,
-              targetSession: targetSession
-                ? {
-                    agentId: targetSession.agentId,
-                    runtime: createOperatorRuntimePort(targetSession.runtime),
-                    sessionId: targetSession.agentSessionId,
-                  }
-                : undefined,
-            })
-          : {
-              text: "Inspect is unavailable in this host.",
-            };
-        await input.replyWriter.sendControllerReply(turn, scopeKey, result.text, result.meta);
-        return { handled: true };
-      }
-
-      if (match.kind === "insights") {
-        const focusedAgentId = input.registry.resolveFocus(scopeKey);
-        const targetAgentId = match.agentId ?? focusedAgentId;
-        if (!input.registry.isActive(targetAgentId)) {
-          await input.replyWriter.sendControllerReply(
-            turn,
-            scopeKey,
-            `Insights unavailable: agent @${targetAgentId} is not active in this workspace.`,
-            {
-              command: "insights",
-              agentId: targetAgentId,
-              status: "agent_not_active",
-            },
-          );
-          return { handled: true };
-        }
-
-        const targetSession = input.openLiveSession(scopeKey, targetAgentId);
-        const result = input.dependencies?.handleInsightsCommand
-          ? await input.dependencies.handleInsightsCommand({
-              directory: match.directory,
-              turn,
-              scopeKey,
-              focusedAgentId,
-              targetAgentId,
-              targetSession: targetSession
-                ? {
-                    agentId: targetSession.agentId,
-                    runtime: createOperatorRuntimePort(targetSession.runtime),
-                    sessionId: targetSession.agentSessionId,
-                  }
-                : undefined,
-            })
-          : {
-              text: "Insights are unavailable in this host.",
-            };
-        await input.replyWriter.sendControllerReply(turn, scopeKey, result.text, result.meta);
-        return { handled: true };
-      }
-
       if (match.kind === "update") {
         const targetAgentId = input.registry.resolveFocus(scopeKey);
         if (!input.registry.isActive(targetAgentId)) {
@@ -579,7 +601,7 @@ export function createChannelControlRouter(input: {
         };
       }
 
-      if (match.kind === "new-agent") {
+      if (match.kind === "agent-create") {
         const created = await input.registry.createAgent({
           requestedAgentId: match.agentId,
           model: match.model,
@@ -609,7 +631,7 @@ export function createChannelControlRouter(input: {
         return { handled: true };
       }
 
-      if (match.kind === "del-agent") {
+      if (match.kind === "agent-delete") {
         const deleted = await input.registry.softDeleteAgent(match.agentId);
         if (!deleted.ok) {
           await input.replyWriter.sendControllerReply(

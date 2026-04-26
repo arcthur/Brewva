@@ -167,7 +167,7 @@ export class ShellModelSelectionFlow {
         selectedIndex: items.length > 0 ? 0 : 0,
         providerFilter: input.providerFilter,
         items,
-        emptyMessage: "No connected providers. Use /connect to add provider auth.",
+        emptyMessage: "No connected providers. Use /model to add provider auth.",
       };
     }
 

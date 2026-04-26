@@ -4,45 +4,25 @@ import { CommandRouter } from "@brewva/brewva-gateway";
 describe("channel command router", () => {
   const router = new CommandRouter();
 
-  test("parses new-agent variants", () => {
-    expect(router.match("/new-agent jack")).toEqual({
-      kind: "new-agent",
+  test("parses /agent create variants", () => {
+    expect(router.match("/agent new jack")).toEqual({
+      kind: "agent-create",
       agentId: "jack",
       model: undefined,
     });
-    expect(router.match("/new-agent name=Jack model=openai/gpt-5.3-codex")).toEqual({
-      kind: "new-agent",
+    expect(router.match("/agent new name=Jack model=openai/gpt-5.3-codex")).toEqual({
+      kind: "agent-create",
       agentId: "jack",
       model: "openai/gpt-5.3-codex",
     });
-    expect(router.match("/new-agent name is mike")).toEqual({
-      kind: "new-agent",
-      agentId: "mike",
-      model: undefined,
-    });
-    expect(router.match("/new-agent name is jack,")).toEqual({
-      kind: "new-agent",
-      agentId: "jack",
-      model: undefined,
-    });
-    expect(router.match("/new-agent name is jack model=openai/gpt-5.3-codex")).toEqual({
-      kind: "new-agent",
-      agentId: "jack",
-      model: "openai/gpt-5.3-codex",
-    });
-    expect(router.match("/new-agent name is jack, model=openai/gpt-5.3-codex")).toEqual({
-      kind: "new-agent",
-      agentId: "jack",
-      model: "openai/gpt-5.3-codex",
-    });
-    expect(router.match("/new-agent name=Jack model=openai/gpt-5.3-codex:high")).toEqual({
-      kind: "new-agent",
+    expect(router.match("/agent new name=Jack model=openai/gpt-5.3-codex:high")).toEqual({
+      kind: "agent-create",
       agentId: "jack",
       model: "openai/gpt-5.3-codex:high",
     });
   });
 
-  test("parses run, discuss, inspect, and insights commands", () => {
+  test("parses run, discuss, and status commands", () => {
     expect(router.match("/run @jack,@mike review this")).toEqual({
       kind: "run",
       agentIds: ["jack", "mike"],
@@ -56,68 +36,53 @@ describe("channel command router", () => {
       maxRounds: 4,
     });
 
-    expect(router.match("/inspect")).toEqual({
-      kind: "inspect",
+    expect(router.match("/status")).toEqual({
+      kind: "status",
       agentId: undefined,
       directory: undefined,
-    });
-    expect(router.match("/inspect src/runtime")).toEqual({
-      kind: "inspect",
-      agentId: undefined,
-      directory: "src/runtime",
-    });
-    expect(router.match("/inspect @jack")).toEqual({
-      kind: "inspect",
-      agentId: "jack",
-      directory: undefined,
-    });
-    expect(router.match("/inspect @jack src/runtime")).toEqual({
-      kind: "inspect",
-      agentId: "jack",
-      directory: "src/runtime",
-    });
-    expect(router.match("/insights")).toEqual({
-      kind: "insights",
-      agentId: undefined,
-      directory: undefined,
-    });
-    expect(router.match("/insights src/runtime")).toEqual({
-      kind: "insights",
-      agentId: undefined,
-      directory: "src/runtime",
-    });
-    expect(router.match("/insights @jack")).toEqual({
-      kind: "insights",
-      agentId: "jack",
-      directory: undefined,
-    });
-    expect(router.match("/insights @jack src/runtime")).toEqual({
-      kind: "insights",
-      agentId: "jack",
-      directory: "src/runtime",
-    });
-    expect(router.match("/cost")).toEqual({
-      kind: "cost",
-      agentId: undefined,
       top: undefined,
     });
-    expect(router.match("/cost top=7")).toEqual({
-      kind: "cost",
+    expect(router.match("/status src/runtime")).toEqual({
+      kind: "status",
       agentId: undefined,
-      top: 7,
+      directory: "src/runtime",
+      top: undefined,
     });
-    expect(router.match("/cost @jack top=3")).toEqual({
-      kind: "cost",
+    expect(router.match("/status @jack")).toEqual({
+      kind: "status",
       agentId: "jack",
+      directory: undefined,
+      top: undefined,
+    });
+    expect(router.match("/status @jack src/runtime")).toEqual({
+      kind: "status",
+      agentId: "jack",
+      directory: "src/runtime",
+      top: undefined,
+    });
+    expect(router.match("/status @jack top=3")).toEqual({
+      kind: "status",
+      agentId: "jack",
+      directory: undefined,
       top: 3,
     });
-    expect(router.match("/questions")).toEqual({
-      kind: "questions",
+    expect(router.match("/status dir=src/runtime top=7")).toEqual({
+      kind: "status",
       agentId: undefined,
+      directory: "src/runtime",
+      top: 7,
     });
-    expect(router.match("/questions @jack")).toEqual({
-      kind: "questions",
+    expect(router.match("/agent status @jack src/runtime")).toEqual({
+      kind: "status",
       agentId: "jack",
+      directory: "src/runtime",
+      top: undefined,
+    });
+    expect(router.match("/agent @jack status top=2")).toEqual({
+      kind: "status",
+      agentId: "jack",
+      directory: undefined,
+      top: 2,
     });
     expect(router.match("/answer skill:event-1:1 use node 22")).toEqual({
       kind: "answer",
@@ -140,6 +105,10 @@ describe("channel command router", () => {
       kind: "update",
       instructions: "target=latest safe rollout",
     });
+    expect(router.match("/agent delete jack")).toEqual({
+      kind: "agent-delete",
+      agentId: "jack",
+    });
   });
 
   test("routes @agent mention", () => {
@@ -158,9 +127,9 @@ describe("channel command router", () => {
   });
 
   test("returns syntax error for invalid command shapes", () => {
-    expect(router.match("/new-agent")).toEqual({
+    expect(router.match("/agent")).toEqual({
       kind: "error",
-      message: "Usage: /new-agent <name> [model=<exact-id[:thinking]>]",
+      message: "Usage: /agent <new|delete|status> ...",
     });
     expect(router.match("/run @jack")).toEqual({
       kind: "error",
@@ -170,25 +139,13 @@ describe("channel command router", () => {
       kind: "error",
       message: "Usage: /focus @agent",
     });
-    expect(router.match("/inspect @")).toEqual({
+    expect(router.match("/status @")).toEqual({
       kind: "error",
-      message: "Usage: /inspect [@agent] [dir]",
+      message: "Usage: /status [@agent] [dir] [top=N]",
     });
-    expect(router.match("/cost invalid")).toEqual({
+    expect(router.match("/status @jack top=foo")).toEqual({
       kind: "error",
-      message: "Usage: /cost [@agent] [top=N]",
-    });
-    expect(router.match("/cost top=foo")).toEqual({
-      kind: "error",
-      message: "Usage: /cost [@agent] [top=N]",
-    });
-    expect(router.match("/cost @jack top=foo")).toEqual({
-      kind: "error",
-      message: "Usage: /cost [@agent] [top=N]",
-    });
-    expect(router.match("/questions src")).toEqual({
-      kind: "error",
-      message: "Usage: /questions [@agent]",
+      message: "Usage: /status [@agent] [dir] [top=N]",
     });
     expect(router.match("/answer")).toEqual({
       kind: "error",
@@ -197,11 +154,15 @@ describe("channel command router", () => {
     expect(router.match("/unknown")).toEqual({
       kind: "error",
       message:
-        "Unknown command. Use /inspect, /insights, /cost, /questions, /answer, /agents, /update, /new-agent, /del-agent, /focus, /run, or /discuss.",
+        "Unknown command. Use /status, /answer, /agents, /agent, /update, /focus, /run, or /discuss.",
     });
-    expect(router.match("/insights @")).toEqual({
+    expect(router.match("/agent delete")).toEqual({
       kind: "error",
-      message: "Usage: /insights [@agent] [dir]",
+      message: "Usage: /agent delete <name>",
+    });
+    expect(router.match("/agent new name is mike")).toEqual({
+      kind: "error",
+      message: "Missing agent name for /agent new.",
     });
   });
 });
