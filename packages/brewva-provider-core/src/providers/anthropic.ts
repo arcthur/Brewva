@@ -4,12 +4,12 @@ import type {
   MessageCreateParamsStreaming,
   MessageParam,
 } from "@anthropic-ai/sdk/resources/messages.js";
+import { resolveAnthropicCacheRender } from "../cache-policy.js";
 import { getEnvApiKey } from "../env-api-keys.js";
 import { calculateCost } from "../models.js";
 import type {
   Api,
   AssistantMessage,
-  CacheRetention,
   Context,
   ImageContent,
   Message,
@@ -28,6 +28,7 @@ import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.js";
+import { buildProviderPayloadMetadata } from "./payload-metadata.js";
 import {
   buildAnthropicDocumentBlock,
   materializeResolvedUserMessageContentPart,
@@ -36,34 +37,7 @@ import {
 import { adjustMaxTokensForThinking, buildBaseOptions } from "./simple-options.js";
 import { transformMessages } from "./transform-messages.js";
 
-/**
- * Resolve cache retention preference.
- * Defaults to "short" and uses PI_CACHE_RETENTION for backward compatibility.
- */
-function resolveCacheRetention(cacheRetention?: CacheRetention): CacheRetention {
-  if (cacheRetention) {
-    return cacheRetention;
-  }
-  if (typeof process !== "undefined" && process.env.PI_CACHE_RETENTION === "long") {
-    return "long";
-  }
-  return "short";
-}
-
-function getCacheControl(
-  baseUrl: string,
-  cacheRetention?: CacheRetention,
-): { retention: CacheRetention; cacheControl?: { type: "ephemeral"; ttl?: "1h" } } {
-  const retention = resolveCacheRetention(cacheRetention);
-  if (retention === "none") {
-    return { retention };
-  }
-  const ttl = retention === "long" && baseUrl.includes("api.anthropic.com") ? "1h" : undefined;
-  return {
-    retention,
-    cacheControl: { type: "ephemeral", ...(ttl && { ttl }) },
-  };
-}
+type AnthropicCacheControl = { type: "ephemeral"; ttl?: "1h" };
 
 // Stealth mode: Mimic Claude Code's tool naming exactly
 const claudeCodeVersion = "2.1.75";
@@ -231,10 +205,12 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
     try {
       let client: Anthropic;
       let isOAuth: boolean;
+      let requestHeaders: Record<string, string> | undefined;
 
       if (options?.client) {
         client = options.client;
         isOAuth = false;
+        requestHeaders = options.headers;
       } else {
         const apiKey = options?.apiKey ?? getEnvApiKey(model.provider) ?? "";
 
@@ -256,9 +232,16 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
         );
         client = created.client;
         isOAuth = created.isOAuthToken;
+        requestHeaders = created.headers;
       }
       let params = buildParams(model, context, isOAuth, options);
-      const nextParams = await options?.onPayload?.(params, model);
+      const nextParams = await options?.onPayload?.(
+        params,
+        model,
+        buildProviderPayloadMetadata(model, options, params, undefined, {
+          headers: requestHeaders,
+        }),
+      );
       if (nextParams !== undefined) {
         params = nextParams as MessageCreateParamsStreaming;
       }
@@ -564,7 +547,7 @@ function createClient(
   interleavedThinking: boolean,
   optionsHeaders?: Record<string, string>,
   dynamicHeaders?: Record<string, string>,
-): { client: Anthropic; isOAuthToken: boolean } {
+): { client: Anthropic; isOAuthToken: boolean; headers: Record<string, string> } {
   // Adaptive thinking models (Opus 4.6, Sonnet 4.6) have interleaved thinking built-in.
   // The beta header is deprecated on Opus 4.6 and redundant on Sonnet 4.6, so skip it.
   const needsInterleavedBeta = interleavedThinking && !supportsAdaptiveThinking(model.id);
@@ -576,24 +559,25 @@ function createClient(
       betaFeatures.push("interleaved-thinking-2025-05-14");
     }
 
+    const headers = mergeHeaders(
+      {
+        accept: "application/json",
+        "anthropic-dangerous-direct-browser-access": "true",
+        ...(betaFeatures.length > 0 ? { "anthropic-beta": betaFeatures.join(",") } : {}),
+      },
+      model.headers,
+      dynamicHeaders,
+      optionsHeaders,
+    );
     const client = new Anthropic({
       apiKey: null,
       authToken: apiKey,
       baseURL: model.baseUrl,
       dangerouslyAllowBrowser: true,
-      defaultHeaders: mergeHeaders(
-        {
-          accept: "application/json",
-          "anthropic-dangerous-direct-browser-access": "true",
-          ...(betaFeatures.length > 0 ? { "anthropic-beta": betaFeatures.join(",") } : {}),
-        },
-        model.headers,
-        dynamicHeaders,
-        optionsHeaders,
-      ),
+      defaultHeaders: headers,
     });
 
-    return { client, isOAuthToken: false };
+    return { client, isOAuthToken: false, headers };
   }
 
   const betaFeatures = ["fine-grained-tool-streaming-2025-05-14"];
@@ -603,44 +587,46 @@ function createClient(
 
   // OAuth: Bearer auth, Claude Code identity headers
   if (isOAuthToken(apiKey)) {
+    const headers = mergeHeaders(
+      {
+        accept: "application/json",
+        "anthropic-dangerous-direct-browser-access": "true",
+        "anthropic-beta": `claude-code-20250219,oauth-2025-04-20,${betaFeatures.join(",")}`,
+        "user-agent": `claude-cli/${claudeCodeVersion}`,
+        "x-app": "cli",
+      },
+      model.headers,
+      optionsHeaders,
+    );
     const client = new Anthropic({
       apiKey: null,
       authToken: apiKey,
       baseURL: model.baseUrl,
       dangerouslyAllowBrowser: true,
-      defaultHeaders: mergeHeaders(
-        {
-          accept: "application/json",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "anthropic-beta": `claude-code-20250219,oauth-2025-04-20,${betaFeatures.join(",")}`,
-          "user-agent": `claude-cli/${claudeCodeVersion}`,
-          "x-app": "cli",
-        },
-        model.headers,
-        optionsHeaders,
-      ),
+      defaultHeaders: headers,
     });
 
-    return { client, isOAuthToken: true };
+    return { client, isOAuthToken: true, headers };
   }
 
   // API key auth
+  const headers = mergeHeaders(
+    {
+      accept: "application/json",
+      "anthropic-dangerous-direct-browser-access": "true",
+      "anthropic-beta": betaFeatures.join(","),
+    },
+    model.headers,
+    optionsHeaders,
+  );
   const client = new Anthropic({
     apiKey,
     baseURL: model.baseUrl,
     dangerouslyAllowBrowser: true,
-    defaultHeaders: mergeHeaders(
-      {
-        accept: "application/json",
-        "anthropic-dangerous-direct-browser-access": "true",
-        "anthropic-beta": betaFeatures.join(","),
-      },
-      model.headers,
-      optionsHeaders,
-    ),
+    defaultHeaders: headers,
   });
 
-  return { client, isOAuthToken: false };
+  return { client, isOAuthToken: false, headers };
 }
 
 function buildParams(
@@ -649,10 +635,17 @@ function buildParams(
   isOAuthToken: boolean,
   options?: AnthropicOptions,
 ): MessageCreateParamsStreaming {
-  const { cacheControl } = getCacheControl(model.baseUrl, options?.cacheRetention);
+  const cacheRender = resolveAnthropicCacheRender({
+    baseUrl: model.baseUrl,
+    sessionId: options?.sessionId,
+    policy: options?.cachePolicy,
+  });
+  void options?.onCacheRender?.(cacheRender, model);
+  const cacheControl = cacheRender.cacheControl;
+  const cacheControlAllocator = createAnthropicCacheControlAllocator(cacheControl);
   const params: MessageCreateParamsStreaming = {
     model: model.id,
-    messages: convertMessages(context.messages, model, isOAuthToken, cacheControl, options),
+    messages: [],
     max_tokens: options?.maxTokens || (model.maxTokens / 3) | 0,
     stream: true,
   };
@@ -663,14 +656,12 @@ function buildParams(
       {
         type: "text",
         text: "You are Claude Code, Anthropic's official CLI for Claude.",
-        ...(cacheControl ? { cache_control: cacheControl } : {}),
       },
     ];
     if (context.systemPrompt) {
       params.system.push({
         type: "text",
         text: sanitizeSurrogates(context.systemPrompt),
-        ...(cacheControl ? { cache_control: cacheControl } : {}),
       });
     }
   } else if (context.systemPrompt) {
@@ -679,9 +670,11 @@ function buildParams(
       {
         type: "text",
         text: sanitizeSurrogates(context.systemPrompt),
-        ...(cacheControl ? { cache_control: cacheControl } : {}),
       },
     ];
+  }
+  if (params.system) {
+    applySystemCacheBreakpoint(params.system, cacheControlAllocator);
   }
 
   // Temperature is incompatible with extended thinking (adaptive or budget-based).
@@ -690,8 +683,16 @@ function buildParams(
   }
 
   if (context.tools) {
-    params.tools = convertTools(context.tools, isOAuthToken);
+    params.tools = convertTools(context.tools, isOAuthToken, cacheControlAllocator);
   }
+
+  params.messages = convertMessages(
+    context.messages,
+    model,
+    isOAuthToken,
+    cacheControlAllocator,
+    options,
+  );
 
   // Configure thinking mode: adaptive (Opus 4.6 and Sonnet 4.6),
   // budget-based (older models), or explicitly disabled.
@@ -733,6 +734,48 @@ function buildParams(
   return params;
 }
 
+interface AnthropicCacheControlAllocator {
+  claim(): AnthropicCacheControl | undefined;
+  remaining(): number;
+}
+
+function createAnthropicCacheControlAllocator(
+  cacheControl: AnthropicCacheControl | undefined,
+  maxBreakpoints = 4,
+): AnthropicCacheControlAllocator {
+  let used = 0;
+  return {
+    claim() {
+      if (!cacheControl || used >= maxBreakpoints) {
+        return undefined;
+      }
+      used += 1;
+      return cacheControl;
+    },
+    remaining() {
+      return Math.max(0, maxBreakpoints - used);
+    },
+  };
+}
+
+function applySystemCacheBreakpoint(
+  system: MessageCreateParamsStreaming["system"] | undefined,
+  allocator: AnthropicCacheControlAllocator,
+): void {
+  if (!Array.isArray(system) || system.length === 0) {
+    return;
+  }
+  const cacheControl = allocator.claim();
+  if (!cacheControl) {
+    return;
+  }
+  const lastBlock = system[system.length - 1];
+  if (lastBlock?.type === "text") {
+    (lastBlock as typeof lastBlock & { cache_control?: AnthropicCacheControl }).cache_control =
+      cacheControl;
+  }
+}
+
 // Normalize tool call IDs to match Anthropic's required pattern and length
 function normalizeToolCallId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
@@ -742,7 +785,7 @@ function convertMessages(
   messages: Message[],
   model: Model<"anthropic-messages">,
   isOAuthToken: boolean,
-  cacheControl?: { type: "ephemeral"; ttl?: "1h" },
+  cacheControlAllocator?: AnthropicCacheControlAllocator,
   options?: Pick<StreamOptions, "resolveFile">,
 ): MessageParam[] {
   const params: MessageParam[] = [];
@@ -900,39 +943,100 @@ function convertMessages(
     }
   }
 
-  // Add cache_control to the last user message to cache conversation history
-  if (cacheControl && params.length > 0) {
-    const lastMessage = params[params.length - 1];
-    if (lastMessage.role === "user") {
-      if (Array.isArray(lastMessage.content)) {
-        const lastBlock = lastMessage.content[lastMessage.content.length - 1];
-        if (
-          lastBlock &&
-          (lastBlock.type === "text" ||
-            lastBlock.type === "image" ||
-            lastBlock.type === "tool_result")
-        ) {
-          (lastBlock as any).cache_control = cacheControl;
-        }
-      } else if (typeof lastMessage.content === "string") {
-        lastMessage.content = [
-          {
-            type: "text",
-            text: lastMessage.content,
-            cache_control: cacheControl,
-          },
-        ] as any;
-      }
-    }
-  }
+  applyMessageCacheBreakpoints(params, cacheControlAllocator);
 
   return params;
 }
 
-function convertTools(tools: Tool[], isOAuthToken: boolean): Anthropic.Messages.Tool[] {
+function applyMessageCacheBreakpoints(
+  messages: MessageParam[],
+  allocator: AnthropicCacheControlAllocator | undefined,
+): void {
+  if (!allocator || allocator.remaining() <= 0) {
+    return;
+  }
+  const userMessageIndexes = messages
+    .map((message, index) => (message.role === "user" ? index : -1))
+    .filter((index) => index >= 0);
+  if (userMessageIndexes.length === 0) {
+    return;
+  }
+
+  const currentUserIndex = userMessageIndexes[userMessageIndexes.length - 1];
+  const previousUserIndex =
+    userMessageIndexes.length > 1 ? userMessageIndexes[userMessageIndexes.length - 2] : undefined;
+
+  if (previousUserIndex !== undefined) {
+    applyCacheControlToMessageBlock(messages[previousUserIndex], "last", allocator);
+  }
+  applyCacheControlToMessageBlock(messages[currentUserIndex], "first", allocator);
+  if (allocator.remaining() > 0) {
+    applyCacheControlToMessageBlock(messages[currentUserIndex], "last", allocator);
+  }
+}
+
+function applyCacheControlToMessageBlock(
+  message: MessageParam | undefined,
+  position: "first" | "last",
+  allocator: AnthropicCacheControlAllocator,
+): void {
+  if (!message || message.role !== "user") {
+    return;
+  }
+  if (typeof message.content === "string") {
+    const cacheControl = allocator.claim();
+    if (!cacheControl) {
+      return;
+    }
+    message.content = [
+      {
+        type: "text",
+        text: message.content,
+        cache_control: cacheControl,
+      },
+    ] as any;
+    return;
+  }
+  if (!Array.isArray(message.content) || message.content.length === 0) {
+    return;
+  }
+  const indexes =
+    position === "first"
+      ? message.content.map((_, index) => index)
+      : message.content.map((_, index) => index).reverse();
+  for (const index of indexes) {
+    const block = message.content[index];
+    if (!isCacheControlEligibleBlock(block)) {
+      continue;
+    }
+    if ((block as { cache_control?: unknown }).cache_control) {
+      return;
+    }
+    const cacheControl = allocator.claim();
+    if (!cacheControl) {
+      return;
+    }
+    (block as typeof block & { cache_control?: AnthropicCacheControl }).cache_control =
+      cacheControl;
+    return;
+  }
+}
+
+function isCacheControlEligibleBlock(block: ContentBlockParam | undefined): boolean {
+  if (!block) {
+    return false;
+  }
+  return block.type === "text" || block.type === "image" || block.type === "tool_result";
+}
+
+function convertTools(
+  tools: Tool[],
+  isOAuthToken: boolean,
+  cacheControlAllocator?: AnthropicCacheControlAllocator,
+): Anthropic.Messages.Tool[] {
   if (!tools) return [];
 
-  return tools.map((tool) => {
+  const converted = tools.map((tool) => {
     const jsonSchema = tool.parameters as any; // TypeBox already generates JSON Schema
 
     return {
@@ -945,7 +1049,18 @@ function convertTools(tools: Tool[], isOAuthToken: boolean): Anthropic.Messages.
       },
     };
   });
+  const cacheControl = cacheControlAllocator?.claim();
+  if (cacheControl && converted.length > 0) {
+    const lastTool = converted[converted.length - 1];
+    (lastTool as typeof lastTool & { cache_control?: AnthropicCacheControl }).cache_control =
+      cacheControl;
+  }
+  return converted;
 }
+
+export const ANTHROPIC_MESSAGES_TEST_ONLY = {
+  buildParams,
+} as const;
 
 function mapStopReason(reason: Anthropic.Messages.StopReason | string): StopReason {
   switch (reason) {

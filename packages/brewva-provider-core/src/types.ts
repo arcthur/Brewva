@@ -49,7 +49,96 @@ export interface ThinkingBudgets {
 }
 
 // Base options all providers share
-export type CacheRetention = "none" | "short" | "long";
+export type ProviderCacheRetention = "none" | "short" | "long";
+export type ProviderCacheWriteMode = "readWrite" | "readOnly";
+export type ProviderCacheScope = "session";
+
+export type ProviderCacheStrategy =
+  | "explicitCacheMarker"
+  | "promptCacheKey"
+  | "implicitPrefix"
+  | "unsupported";
+
+export type ProviderCacheCounterSupport = "readWrite" | "readOnly" | "none";
+export type ProviderCacheLongRetention = "none" | "1h" | "24h";
+export type ProviderCacheReadOnlyWriteMode = "supported" | "unsupported";
+
+export type ProviderSessionContinuationFamily = "openai-responses";
+export type ProviderSessionContinuationMode =
+  | "websocketConnection"
+  | "previousResponseId"
+  | "turnStateHeader";
+
+export interface ProviderSessionContinuationCapability {
+  family: ProviderSessionContinuationFamily;
+  modes: ProviderSessionContinuationMode[];
+  authority: "efficiency";
+  reason: string;
+}
+
+export interface ProviderCacheCapability {
+  strategies: ProviderCacheStrategy[];
+  cacheCounters: ProviderCacheCounterSupport;
+  shortRetention: boolean;
+  longRetention: ProviderCacheLongRetention;
+  readOnlyWriteMode: ProviderCacheReadOnlyWriteMode;
+  continuation?: ProviderSessionContinuationCapability;
+  reason: string;
+}
+
+export type ProviderCachePolicyReason =
+  | "default"
+  | "config"
+  | "provider_fallback"
+  | "pressure"
+  | "disabled"
+  | (string & {});
+
+export interface ProviderCachePolicy {
+  retention: ProviderCacheRetention;
+  writeMode: ProviderCacheWriteMode;
+  scope: ProviderCacheScope;
+  reason: ProviderCachePolicyReason;
+}
+
+export type ProviderCacheRenderStatus = "rendered" | "disabled" | "unsupported" | "degraded";
+
+export interface ProviderCacheRenderResult {
+  status: ProviderCacheRenderStatus;
+  reason: string;
+  renderedRetention: ProviderCacheRetention;
+  bucketKey: string;
+  capability?: ProviderCacheCapability;
+}
+
+export interface ProviderRequestFingerprint {
+  bucketKey: string;
+  provider: Provider;
+  api: Api;
+  model: string;
+  transport?: Transport;
+  sessionId?: string;
+  cachePolicyHash: string;
+  toolSchemaSnapshotHash: string;
+  toolSchemaOverlayHash: string;
+  perToolHashes: Record<string, string>;
+  stablePrefixHash: string;
+  dynamicTailHash: string;
+  requestHash: string;
+  activeSkillSetHash: string;
+  skillRoutingEpoch: number;
+  channelContextHash: string;
+  renderedCacheHash: string;
+  cacheCapabilityHash: string;
+  stickyLatchHash: string;
+  reasoningHash: string;
+  thinkingBudgetHash: string;
+  cacheRelevantHeadersHash: string;
+  extraBodyHash: string;
+  visibleHistoryReductionHash: string;
+  recallInjectionHash: string;
+  providerFallbackHash: string;
+}
 
 export type Transport = "sse" | "websocket" | "auto";
 
@@ -64,10 +153,11 @@ export interface StreamOptions {
    */
   transport?: Transport;
   /**
-   * Prompt cache retention preference. Providers map this to their supported values.
-   * Default: "short".
+   * Provider-neutral prompt cache policy. Providers map this to their supported values.
+   * Default: session-scoped short read/write caching.
    */
-  cacheRetention?: CacheRetention;
+  cachePolicy?: ProviderCachePolicy;
+  onCacheRender?: (render: ProviderCacheRenderResult, model: Model<Api>) => void | Promise<void>;
   /**
    * Optional session identifier for providers that support session-based caching.
    * Providers can use this to enable prompt caching, request routing, or other
@@ -81,6 +171,7 @@ export interface StreamOptions {
   onPayload?: (
     payload: unknown,
     model: Model<Api>,
+    metadata?: ProviderPayloadMetadata,
   ) => unknown | undefined | Promise<unknown | undefined>;
   /**
    * Optional custom HTTP headers to include in API requests.
@@ -103,6 +194,18 @@ export interface StreamOptions {
    */
   metadata?: Record<string, unknown>;
   resolveFile?: (part: FileContent, model: Model<Api>) => ResolvedFileContent | undefined;
+}
+
+export interface ProviderPayloadMetadata {
+  cachePolicy?: ProviderCachePolicy;
+  cacheRender?: ProviderCacheRenderResult;
+  cacheCapability?: ProviderCacheCapability;
+  reasoning?: unknown;
+  thinkingBudgets?: ThinkingBudgets;
+  transport?: Transport;
+  headers?: Record<string, string>;
+  extraBody?: unknown;
+  providerFallback?: unknown;
 }
 
 export type ProviderStreamOptions = StreamOptions & Record<string, unknown>;

@@ -31,6 +31,7 @@ import {
   mapToolChoice,
   retainThoughtSignature,
 } from "./google-shared.js";
+import { buildProviderPayloadMetadata } from "./payload-metadata.js";
 import { buildBaseOptions, clampReasoning } from "./simple-options.js";
 
 export interface GoogleOptions extends StreamOptions {
@@ -75,7 +76,11 @@ export const streamGoogle: StreamFunction<"google-generative-ai", GoogleOptions>
       const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
       const client = createClient(model, apiKey, options?.headers);
       let params = buildParams(model, context, options);
-      const nextParams = await options?.onPayload?.(params, model);
+      const nextParams = await options?.onPayload?.(
+        params,
+        model,
+        buildProviderPayloadMetadata(model, options, params),
+      );
       if (nextParams !== undefined) {
         params = nextParams as GenerateContentParameters;
       }

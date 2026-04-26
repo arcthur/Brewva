@@ -1,11 +1,11 @@
 import OpenAI from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
+import { resolveOpenAIResponsesCacheRender } from "../cache-policy.js";
 import { getEnvApiKey } from "../env-api-keys.js";
 import { supportsXhigh } from "../models.js";
 import type {
   Api,
   AssistantMessage,
-  CacheRetention,
   Context,
   Model,
   SimpleStreamOptions,
@@ -20,40 +20,10 @@ import {
   convertResponsesTools,
   processResponsesStream,
 } from "./openai-responses-shared.js";
+import { buildProviderPayloadMetadata } from "./payload-metadata.js";
 import { buildBaseOptions, clampReasoning } from "./simple-options.js";
 
 const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex"]);
-
-/**
- * Resolve cache retention preference.
- * Defaults to "short" and uses PI_CACHE_RETENTION for backward compatibility.
- */
-function resolveCacheRetention(cacheRetention?: CacheRetention): CacheRetention {
-  if (cacheRetention) {
-    return cacheRetention;
-  }
-  if (typeof process !== "undefined" && process.env.PI_CACHE_RETENTION === "long") {
-    return "long";
-  }
-  return "short";
-}
-
-/**
- * Get prompt cache retention based on cacheRetention and base URL.
- * Only applies to direct OpenAI API calls (api.openai.com).
- */
-function getPromptCacheRetention(
-  baseUrl: string,
-  cacheRetention: CacheRetention,
-): "24h" | undefined {
-  if (cacheRetention !== "long") {
-    return undefined;
-  }
-  if (baseUrl.includes("api.openai.com")) {
-    return "24h";
-  }
-  return undefined;
-}
 
 // OpenAI Responses-specific options
 export interface OpenAIResponsesOptions extends StreamOptions {
@@ -97,7 +67,11 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
       const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
       const client = createClient(model, context, apiKey, options?.headers);
       let params = buildParams(model, context, options);
-      const nextParams = await options?.onPayload?.(params, model);
+      const nextParams = await options?.onPayload?.(
+        params,
+        model,
+        buildProviderPayloadMetadata(model, options, params),
+      );
       if (nextParams !== undefined) {
         params = nextParams as ResponseCreateParamsStreaming;
       }
@@ -209,14 +183,25 @@ function buildParams(
     options,
   );
 
-  const cacheRetention = resolveCacheRetention(options?.cacheRetention);
+  const cacheRender = resolveOpenAIResponsesCacheRender({
+    api: "openai-responses",
+    baseUrl: model.baseUrl,
+    provider: model.provider,
+    modelId: model.id,
+    transport: options?.transport,
+    sessionId: options?.sessionId,
+    policy: options?.cachePolicy,
+  });
+  void options?.onCacheRender?.(cacheRender, model);
   const params: ResponseCreateParamsStreaming = {
     model: model.id,
     input: messages,
     stream: true,
-    prompt_cache_key: cacheRetention === "none" ? undefined : options?.sessionId,
-    prompt_cache_retention: getPromptCacheRetention(model.baseUrl, cacheRetention),
     store: false,
+    ...(cacheRender.promptCacheKey ? { prompt_cache_key: cacheRender.promptCacheKey } : {}),
+    ...(cacheRender.promptCacheRetention
+      ? { prompt_cache_retention: cacheRender.promptCacheRetention }
+      : {}),
   };
 
   if (options?.maxTokens) {

@@ -154,6 +154,23 @@ This keeps the Brewva-owned prompt prefix stable while leaving current pressure
 guidance in the same turn-scoped composition path that already owns gate and
 advisory rendering.
 
+## Token-Cache Boundary
+
+Context composition is one input to provider prefix stability, but it is not
+the token-cache owner. The hosted token-cache contract lives in
+`docs/reference/token-cache.md`.
+
+Composer rules that matter for token cache:
+
+- stable Brewva-owned contract text may participate in the hosted stable prefix
+- current pressure, compaction gate state, recall injection, skill-routing
+  diagnostics, channel-derived context, and operational diagnostics stay in the
+  dynamic tail unless an explicit epoch reset owns the prefix change
+- `ContextComposer` does not render provider cache controls, prompt-cache keys,
+  cache-break hashes, cache counters, or cache diagnostic dumps
+- context metrics remain coarse composition telemetry; provider-cache
+  attribution stays on runtime inspect surfaces
+
 ## Capability Rendering
 
 Capability disclosure is derived from the semantic capability view.
@@ -289,7 +306,9 @@ The lifecycle adapter records `context_composed` with:
 
 It intentionally does not carry prompt hashes, prompt-stability booleans, or
 provider cache-token counters. Those belong to live inspect surfaces and the
-existing cost summary path, not the coarse composition receipt.
+existing cost summary path, not the coarse composition receipt. Token-cache
+specific inspection and lifecycle rules are documented in
+`docs/reference/token-cache.md`.
 
 This preserves the product rule:
 

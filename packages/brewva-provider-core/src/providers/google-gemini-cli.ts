@@ -30,6 +30,7 @@ import {
   mapToolChoice,
   retainThoughtSignature,
 } from "./google-shared.js";
+import { buildProviderPayloadMetadata } from "./payload-metadata.js";
 import { buildBaseOptions, clampReasoning } from "./simple-options.js";
 
 /**
@@ -392,11 +393,6 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli", GoogleGe
           ? ANTIGRAVITY_ENDPOINT_FALLBACKS
           : [DEFAULT_ENDPOINT];
 
-      let requestBody = buildRequest(model, context, projectId, options, isAntigravity);
-      const nextRequestBody = await options?.onPayload?.(requestBody, model);
-      if (nextRequestBody !== undefined) {
-        requestBody = nextRequestBody as CloudCodeAssistRequest;
-      }
       const headers = isAntigravity ? getAntigravityHeaders() : GEMINI_CLI_HEADERS;
 
       const requestHeaders = {
@@ -409,6 +405,17 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli", GoogleGe
           : {}),
         ...options?.headers,
       };
+      let requestBody = buildRequest(model, context, projectId, options, isAntigravity);
+      const nextRequestBody = await options?.onPayload?.(
+        requestBody,
+        model,
+        buildProviderPayloadMetadata(model, options, requestBody, undefined, {
+          headers: requestHeaders,
+        }),
+      );
+      if (nextRequestBody !== undefined) {
+        requestBody = nextRequestBody as CloudCodeAssistRequest;
+      }
       const requestBodyJson = JSON.stringify(requestBody);
 
       // Fetch with retry logic for rate limits, transient errors, and endpoint fallbacks.

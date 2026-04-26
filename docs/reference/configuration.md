@@ -59,6 +59,30 @@ Current front-door defaults:
 - raw runtimes without a governance port fail closed by opening the replayable
   operator desk for approval-bound effectful actions
 
+## Hosted Session Cache Settings
+
+Provider token-cache policy is a hosted-session setting, not a top-level
+`BrewvaConfig` key. Hosted settings may read `cachePolicy` from local and
+global settings files, then pass the normalized object through gateway,
+agent-engine, and provider-core.
+
+Supported hosted cache policy fields:
+
+- `retention`: `none`, `short`, or `long`
+- `writeMode`: `readWrite` or `readOnly`
+- `reason`: `default`, `config`, `provider_fallback`, `pressure`, or
+  `disabled`
+
+`scope` is currently fixed to `session` by normalization. Default policy is
+`retention=short`, `writeMode=readWrite`, `scope=session`, and
+`reason=default`.
+
+There is no legacy `cacheRetention` compatibility alias. Provider-specific
+cache fields such as Anthropic cache markers, Bedrock cache points, OpenAI
+prompt-cache keys, and Codex continuation state are rendered only in
+`@brewva/brewva-provider-core`. See `docs/reference/token-cache.md` for the
+full cache contract.
+
 ## Session Index Configuration
 
 There is no public session-index config key in v1. The local DuckDB-backed

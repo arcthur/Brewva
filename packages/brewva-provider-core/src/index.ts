@@ -18,6 +18,15 @@ export {
 } from "./catalog.js";
 
 export { getEnvApiKey } from "./auth.js";
+export {
+  DEFAULT_PROVIDER_CACHE_POLICY,
+  buildProviderCacheBucketKey,
+  normalizeProviderCachePolicy,
+  resolveAnthropicCacheRender,
+  resolveBedrockCacheRender,
+  resolveOpenAIResponsesCacheRender,
+  resolveProviderCacheCapability,
+} from "./cache-policy.js";
 export { complete, completeSimple, stream, streamSimple } from "./stream.js";
 
 export type {
@@ -30,7 +39,24 @@ export type {
   Message,
   Model,
   Provider,
+  ProviderCacheCapability,
+  ProviderCacheCounterSupport,
+  ProviderCacheLongRetention,
+  ProviderCachePolicy,
+  ProviderCachePolicyReason,
+  ProviderCacheReadOnlyWriteMode,
+  ProviderCacheRenderResult,
+  ProviderCacheRenderStatus,
+  ProviderCacheRetention,
+  ProviderCacheScope,
+  ProviderCacheStrategy,
+  ProviderCacheWriteMode,
+  ProviderPayloadMetadata,
+  ProviderRequestFingerprint,
   ProviderStreamOptions,
+  ProviderSessionContinuationCapability,
+  ProviderSessionContinuationFamily,
+  ProviderSessionContinuationMode,
   ResolvedBinaryFileContent,
   ResolvedDirectoryFileContent,
   ResolvedFileContent,
@@ -43,9 +69,11 @@ export type {
   TextContent,
   ThinkingLevel,
   ThinkingContent,
+  ThinkingBudgets,
   Tool,
   ToolCall,
   ToolResultMessage,
+  Transport,
   Usage,
   UserMessage,
 } from "./types.js";

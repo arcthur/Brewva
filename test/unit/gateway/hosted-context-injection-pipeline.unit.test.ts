@@ -562,6 +562,84 @@ describe("hosted context injection pipeline", () => {
     expect(recordedTypes.some((type) => type.startsWith("context_cache_"))).toBe(false);
   });
 
+  test("adds source summaries to hidden context injection details", async () => {
+    const runtime = createRuntimeFixture({
+      context: {
+        observeUsage: () => undefined,
+        getCompactionGateStatus: () => ({
+          required: false,
+          reason: null,
+          pressure: {
+            level: "low",
+            usageRatio: 0.2,
+            hardLimitRatio: 0.95,
+            compactionThresholdRatio: 0.8,
+          },
+          recentCompaction: false,
+          windowTurns: 0,
+          lastCompactionTurn: null,
+          turnsSinceCompaction: null,
+        }),
+        getPendingCompactionReason: () => null,
+        buildInjection: async () => ({
+          text: "remembered fact",
+          entries: [
+            {
+              source: CONTEXT_SOURCES.recallBroker,
+              category: "narrative",
+              budgetClass: "recall",
+              selectionPriority: 10,
+              preservationPolicy: "truncatable",
+              id: "recall-1",
+              content: "remembered fact",
+              estimatedTokens: 3,
+              timestamp: 1,
+              oncePerSession: false,
+              truncated: false,
+            },
+          ],
+          accepted: true,
+          originalTokens: 3,
+          finalTokens: 3,
+          truncated: false,
+        }),
+      },
+    });
+    const telemetry = createHostedContextTelemetry(runtime);
+    const { api } = createMockRuntimePluginApi();
+    const pipeline = createHostedContextInjectionPipeline(api, runtime, telemetry, {
+      getTurnIndex: () => 8,
+      setLastRuntimeGateRequired: () => undefined,
+    });
+
+    const result = await pipeline.beforeAgentStart({
+      sessionId: "s-context-source-summary",
+      sessionManager: {
+        getLeafId: () => "leaf-context-source-summary",
+      },
+      prompt: "continue",
+      systemPrompt: "base prompt",
+      usage: {
+        tokens: 100,
+        contextWindow: 4000,
+        percent: 0.025,
+      },
+    });
+
+    expect(result.message.details.contextSources).toEqual({
+      accepted: true,
+      sources: [
+        expect.objectContaining({
+          source: CONTEXT_SOURCES.recallBroker,
+          count: 1,
+          estimatedTokens: 3,
+          budgetClasses: ["recall"],
+          contentHash: expect.any(String),
+        }),
+      ],
+    });
+  });
+
   test("keeps the system contract static while pressure guidance stays in the dynamic tail", async () => {
     const runtime = createRuntimeFixture({
       context: {

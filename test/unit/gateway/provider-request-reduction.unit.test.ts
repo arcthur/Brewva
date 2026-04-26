@@ -120,6 +120,8 @@ describe("provider request reduction", () => {
         status: "completed",
         eligibleToolResults: 6,
         clearedToolResults: 2,
+        classification: "prefixResetting",
+        expectedCacheBreak: true,
       }),
     );
   });
@@ -529,6 +531,90 @@ describe("provider request reduction", () => {
         pressureLevel: "high",
       }),
     ]);
+  });
+
+  test("preserves a valuable warm provider cache when reduction savings are smaller", () => {
+    const runtime = createRuntimeFixture();
+    const { api, handlers } = createMockRuntimePluginApi();
+    const sessionId = "provider-request-reduction-cache-aware";
+
+    registerProviderRequestReduction(api, createHostedRuntimePort(runtime));
+    runtime.maintain.context.observeUsage(sessionId, {
+      tokens: 88_000,
+      contextWindow: 100_000,
+      percent: 88,
+    });
+    runtime.maintain.context.observeProviderCache(sessionId, {
+      source:
+        "provider=openai|api=openai-responses|model=gpt-5.4|transport=sse|scope=session|retention=short|writeMode=readWrite|session=provider-request-reduction-cache-aware",
+      fingerprint: {
+        bucketKey:
+          "provider=openai|api=openai-responses|model=gpt-5.4|transport=sse|scope=session|retention=short|writeMode=readWrite|session=provider-request-reduction-cache-aware",
+        provider: "openai",
+        api: "openai-responses",
+        model: "gpt-5.4",
+        transport: "sse",
+        sessionId,
+        cachePolicyHash: "policy",
+        toolSchemaSnapshotHash: "tools",
+        toolSchemaOverlayHash: "overlay",
+        perToolHashes: {},
+        stablePrefixHash: "stable",
+        dynamicTailHash: "tail",
+        requestHash: "request",
+        activeSkillSetHash: "skills",
+        skillRoutingEpoch: 0,
+        channelContextHash: "channel",
+        renderedCacheHash: "render",
+        cacheCapabilityHash: "capability",
+        stickyLatchHash: "latch",
+        reasoningHash: "reasoning",
+        thinkingBudgetHash: "budget",
+        cacheRelevantHeadersHash: "headers",
+        extraBodyHash: "extra",
+        visibleHistoryReductionHash: "visible",
+        recallInjectionHash: "recall",
+        providerFallbackHash: "fallback",
+      },
+      render: {
+        status: "rendered",
+        reason: "rendered_openai_prompt_cache",
+        renderedRetention: "short",
+        bucketKey:
+          "openai-responses|session=provider-request-reduction-cache-aware|retention=short|writeMode=readWrite",
+      },
+      breakObservation: {
+        status: "warm",
+        classification: "prefixPreserving",
+        expected: false,
+        reason: null,
+        previousCacheReadTokens: 12_000,
+        cacheReadTokens: 12_000,
+        cacheWriteTokens: 200,
+        cacheMissTokens: 0,
+        thresholdTokens: 2_000,
+        relativeDropThreshold: 0.05,
+        changedFields: [],
+      },
+    });
+
+    const payload = {
+      model: "gpt-5.4",
+      messages: buildToolMessages(6),
+    };
+    const result = invokeBeforeProviderRequestChain(handlers, payload, sessionId);
+
+    expect((result.messages as Array<Record<string, unknown>>)[0]?.content).toBe(
+      `${LARGE_TOOL_RESULT}:1`,
+    );
+    expect(runtime.inspect.context.getTransientReduction(sessionId)).toEqual(
+      expect.objectContaining({
+        status: "skipped",
+        reason: "warm provider cache is more valuable than transient reduction savings",
+        classification: "prefixPreserving",
+        expectedCacheBreak: false,
+      }),
+    );
   });
 
   test("skips reduction during output-budget recovery and preserves the recovery payload patch", () => {

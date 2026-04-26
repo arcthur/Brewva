@@ -20,11 +20,11 @@ import {
   type ToolConfiguration,
   ToolResultStatus,
 } from "@aws-sdk/client-bedrock-runtime";
+import { resolveBedrockCacheRender, type BedrockCacheRender } from "../cache-policy.js";
 import { calculateCost } from "../models.js";
 import type {
   Api,
   AssistantMessage,
-  CacheRetention,
   Context,
   Model,
   SimpleStreamOptions,
@@ -42,6 +42,7 @@ import type {
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
+import { buildProviderPayloadMetadata } from "./payload-metadata.js";
 import { materializeUserMessageContent } from "./prompt-content.js";
 import { adjustMaxTokensForThinking, buildBaseOptions, clampReasoning } from "./simple-options.js";
 import { transformMessages } from "./transform-messages.js";
@@ -153,17 +154,27 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream", BedrockOpt
     try {
       const client = new BedrockRuntimeClient(config);
 
-      const cacheRetention = resolveCacheRetention(options.cacheRetention);
+      const cacheRender = resolveBedrockCacheRender({
+        modelId: model.id,
+        forceCache: typeof process !== "undefined" && process.env.AWS_BEDROCK_FORCE_CACHE === "1",
+        sessionId: options.sessionId,
+        policy: options.cachePolicy,
+      });
+      void options.onCacheRender?.(cacheRender, model);
       let commandInput = {
         modelId: model.id,
-        messages: convertMessages(context, model, cacheRetention, options),
-        system: buildSystemPrompt(context.systemPrompt, model, cacheRetention),
+        messages: convertMessages(context, model, cacheRender, options),
+        system: buildSystemPrompt(context.systemPrompt, cacheRender),
         inferenceConfig: { maxTokens: options.maxTokens, temperature: options.temperature },
         toolConfig: convertToolConfig(context.tools, options.toolChoice),
         additionalModelRequestFields: buildAdditionalModelRequestFields(model, options),
         ...(options.requestMetadata !== undefined && { requestMetadata: options.requestMetadata }),
       };
-      const nextCommandInput = await options?.onPayload?.(commandInput, model);
+      const nextCommandInput = await options?.onPayload?.(
+        commandInput,
+        model,
+        buildProviderPayloadMetadata(model, options, commandInput, cacheRender),
+      );
       if (nextCommandInput !== undefined) {
         commandInput = nextCommandInput as typeof commandInput;
       }
@@ -473,48 +484,6 @@ function mapThinkingLevelToEffort(
 }
 
 /**
- * Resolve cache retention preference.
- * Defaults to "short" and uses PI_CACHE_RETENTION for backward compatibility.
- */
-function resolveCacheRetention(cacheRetention?: CacheRetention): CacheRetention {
-  if (cacheRetention) {
-    return cacheRetention;
-  }
-  if (typeof process !== "undefined" && process.env.PI_CACHE_RETENTION === "long") {
-    return "long";
-  }
-  return "short";
-}
-
-/**
- * Check if the model supports prompt caching.
- * Supported: Claude 3.5 Haiku, Claude 3.7 Sonnet, Claude 4.x models
- *
- * For base models and system-defined inference profiles the model ID / ARN
- * contains the model name, so we can decide locally.
- *
- * For application inference profiles (whose ARNs don't contain the model name),
- * set AWS_BEDROCK_FORCE_CACHE=1 to enable cache points.  Amazon Nova models
- * have automatic caching and don't need explicit cache points.
- */
-function supportsPromptCaching(model: Model<"bedrock-converse-stream">): boolean {
-  const id = model.id.toLowerCase();
-  if (!id.includes("claude")) {
-    // Application inference profiles don't contain the model name in the ARN.
-    // Allow users to force cache points via environment variable.
-    if (typeof process !== "undefined" && process.env.AWS_BEDROCK_FORCE_CACHE === "1") return true;
-    return false;
-  }
-  // Claude 4.x models (opus-4, sonnet-4, haiku-4)
-  if (id.includes("-4-") || id.includes("-4.")) return true;
-  // Claude 3.7 Sonnet
-  if (id.includes("claude-3-7-sonnet")) return true;
-  // Claude 3.5 Haiku
-  if (id.includes("claude-3-5-haiku")) return true;
-  return false;
-}
-
-/**
  * Check if the model supports thinking signatures in reasoningContent.
  * Only Anthropic Claude models support the signature field.
  * Other models (OpenAI, Qwen, Minimax, Moonshot, etc.) reject it with:
@@ -525,22 +494,30 @@ function supportsThinkingSignature(model: Model<"bedrock-converse-stream">): boo
   return id.includes("anthropic.claude") || id.includes("anthropic/claude");
 }
 
+function buildBedrockCachePoint(
+  cacheRender: BedrockCacheRender,
+): NonNullable<SystemContentBlock["cachePoint"]> | undefined {
+  if (!cacheRender.cachePoint) {
+    return undefined;
+  }
+  return {
+    type: CachePointType.DEFAULT,
+    ...(cacheRender.cachePoint.ttl === "1h" ? { ttl: CacheTTL.ONE_HOUR } : {}),
+  };
+}
+
 function buildSystemPrompt(
   systemPrompt: string | undefined,
-  model: Model<"bedrock-converse-stream">,
-  cacheRetention: CacheRetention,
+  cacheRender: BedrockCacheRender,
 ): SystemContentBlock[] | undefined {
   if (!systemPrompt) return undefined;
 
   const blocks: SystemContentBlock[] = [{ text: sanitizeSurrogates(systemPrompt) }];
 
-  // Add cache point for supported Claude models when caching is enabled
-  if (cacheRetention !== "none" && supportsPromptCaching(model)) {
+  const cachePoint = buildBedrockCachePoint(cacheRender);
+  if (cachePoint) {
     blocks.push({
-      cachePoint: {
-        type: CachePointType.DEFAULT,
-        ...(cacheRetention === "long" ? { ttl: CacheTTL.ONE_HOUR } : {}),
-      },
+      cachePoint,
     });
   }
 
@@ -555,7 +532,7 @@ function normalizeToolCallId(id: string): string {
 function convertMessages(
   context: Context,
   model: Model<"bedrock-converse-stream">,
-  cacheRetention: CacheRetention,
+  cacheRender: BedrockCacheRender,
   options?: Pick<StreamOptions, "resolveFile">,
 ): Message[] {
   const result: Message[] = [];
@@ -694,15 +671,12 @@ function convertMessages(
     }
   }
 
-  // Add cache point to the last user message for supported Claude models when caching is enabled
-  if (cacheRetention !== "none" && supportsPromptCaching(model) && result.length > 0) {
+  const cachePoint = buildBedrockCachePoint(cacheRender);
+  if (cachePoint && result.length > 0) {
     const lastMessage = result[result.length - 1];
     if (lastMessage.role === ConversationRole.USER && lastMessage.content) {
       (lastMessage.content as ContentBlock[]).push({
-        cachePoint: {
-          type: CachePointType.DEFAULT,
-          ...(cacheRetention === "long" ? { ttl: CacheTTL.ONE_HOUR } : {}),
-        },
+        cachePoint,
       });
     }
   }

@@ -101,11 +101,139 @@ describe("prompt stability runtime state", () => {
       clearedChars: 2048,
       estimatedTokenSavings: 580,
       pressureLevel: "high",
+      classification: null,
+      expectedCacheBreak: false,
     });
     expect(runtime.inspect.context.getTransientReduction(sessionId)).toEqual(observed);
 
     runtime.maintain.session.clearState(sessionId);
 
     expect(runtime.inspect.context.getTransientReduction(sessionId)).toBeUndefined();
+  });
+
+  test("tracks provider cache observations and clears on session teardown", () => {
+    const runtime = new BrewvaRuntime({ cwd: createTestWorkspace("provider-cache-runtime") });
+    const sessionId = "provider-cache-runtime-1";
+
+    expect(runtime.inspect.context.getProviderCacheObservation(sessionId)).toBeUndefined();
+
+    const observed = runtime.maintain.context.observeProviderCache(sessionId, {
+      source: "openai:gpt-5.4:session-1",
+      fingerprint: {
+        bucketKey:
+          "provider=openai|api=openai-responses|model=gpt-5.4|transport=sse|scope=session|retention=short|writeMode=readWrite|session=session-1",
+        provider: "openai",
+        api: "openai-responses",
+        model: "gpt-5.4",
+        transport: "sse",
+        sessionId: "session-1",
+        cachePolicyHash: "policy-1",
+        toolSchemaSnapshotHash: "tools-1",
+        toolSchemaOverlayHash: "overlay-1",
+        perToolHashes: { read: "tool-read-1" },
+        stablePrefixHash: "prefix-1",
+        dynamicTailHash: "tail-1",
+        requestHash: "request-1",
+        activeSkillSetHash: "skills-1",
+        skillRoutingEpoch: 1,
+        channelContextHash: "channel-1",
+        renderedCacheHash: "render-1",
+        cacheCapabilityHash: "capability-1",
+        stickyLatchHash: "latch-1",
+        reasoningHash: "reasoning-1",
+        thinkingBudgetHash: "budget-1",
+        cacheRelevantHeadersHash: "headers-1",
+        extraBodyHash: "extra-1",
+        visibleHistoryReductionHash: "visible-1",
+        recallInjectionHash: "recall-1",
+        providerFallbackHash: "fallback-1",
+      },
+      render: {
+        status: "rendered",
+        reason: "rendered_openai_prompt_cache",
+        renderedRetention: "short",
+        bucketKey: "openai-responses|session=session-1|retention=short|writeMode=readWrite",
+      },
+      breakObservation: {
+        status: "warm",
+        classification: "prefixPreserving",
+        expected: false,
+        reason: null,
+        previousCacheReadTokens: 10_000,
+        cacheReadTokens: 9_800,
+        cacheWriteTokens: 200,
+        cacheMissTokens: 200,
+        thresholdTokens: 2_000,
+        relativeDropThreshold: 0.05,
+        changedFields: [],
+      },
+      turn: 4,
+      timestamp: 404,
+    });
+
+    expect(observed).toEqual({
+      turn: 4,
+      updatedAt: 404,
+      source: "openai:gpt-5.4:session-1",
+      fingerprint: expect.objectContaining({
+        requestHash: "request-1",
+        perToolHashes: { read: "tool-read-1" },
+      }),
+      render: expect.objectContaining({
+        status: "rendered",
+        reason: "rendered_openai_prompt_cache",
+      }),
+      breakObservation: expect.objectContaining({
+        status: "warm",
+        classification: "prefixPreserving",
+        expected: false,
+      }),
+    });
+    expect(runtime.inspect.context.getProviderCacheObservation(sessionId)).toEqual(observed);
+
+    runtime.maintain.session.clearState(sessionId);
+
+    expect(runtime.inspect.context.getProviderCacheObservation(sessionId)).toBeUndefined();
+  });
+
+  test("tracks visible read epochs through the runtime context contract", () => {
+    const runtime = new BrewvaRuntime({ cwd: createTestWorkspace("visible-read-runtime") });
+    const sessionId = "visible-read-runtime-1";
+
+    const initialEpoch = runtime.inspect.context.getVisibleReadEpoch(sessionId);
+    expect(initialEpoch).toBe(0);
+    const state = {
+      path: "/workspace/src/app.ts",
+      offset: 0,
+      limit: null,
+      encoding: "utf8",
+      signatureHash: "sig-1",
+      visibleHistoryEpoch: initialEpoch,
+      previousReadId: "read-1",
+    };
+    expect(runtime.inspect.context.isVisibleReadStateCurrent(sessionId, state)).toBe(false);
+    runtime.maintain.context.rememberVisibleReadState(sessionId, state);
+    expect(
+      runtime.inspect.context.isVisibleReadStateCurrent(sessionId, {
+        ...state,
+        signatureHash: "sig-2",
+      }),
+    ).toBe(false);
+    expect(runtime.inspect.context.isVisibleReadStateCurrent(sessionId, state)).toBe(true);
+
+    const nextEpoch = runtime.maintain.context.advanceVisibleReadEpoch(sessionId, "history_pruned");
+
+    expect(nextEpoch).toBe(initialEpoch + 1);
+    expect(
+      runtime.inspect.context.isVisibleReadStateCurrent(sessionId, {
+        path: "/workspace/src/app.ts",
+        offset: 0,
+        limit: null,
+        encoding: "utf8",
+        signatureHash: "sig-1",
+        visibleHistoryEpoch: initialEpoch,
+        previousReadId: "read-1",
+      }),
+    ).toBe(false);
   });
 });

@@ -148,6 +148,12 @@ Kernel boundary reminder:
   - hosted turn transitions and bounded recovery posture
   - replayable delegation outcome handoff
   - future orchestration helpers
+- `Efficiency Plane`
+  - provider token-cache policy and render metadata
+  - request fingerprints and cache-break observations
+  - read-unchanged reduction state
+  - sticky cache-capability latches
+  - local diagnostic dumps
 
 Rings define authority. Planes define product behavior.
 
@@ -158,6 +164,9 @@ Boundary note:
 - planes may explain presentation or orchestration, but they must not be used
   to justify hidden stage machines, default injected lane briefs, or
   model-writable control state
+- efficiency-plane objects may reduce latency or provider cost, but losing them
+  must not change replay, recovery, authorization, file truth, or committed
+  tool outcomes
 
 ## Current Transaction Boundary And Platform Growth Rule
 
@@ -308,14 +317,15 @@ Stable decisions:
 
 ## State Taxonomy
 
-| Category                 | Role                                                                                 | Authority                    | Typical carriers                                                                                                   |
-| ------------------------ | ------------------------------------------------------------------------------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `Kernel Commitments`     | authoritative system commitments                                                     | authoritative                | tape, receipts, task, truth, ledger                                                                                |
-| `Working State`          | session-local working view and budgeted context admission                            | non-authoritative            | projection, context arena, active tool surface                                                                     |
-| `Narrative Memory`       | typed collaboration semantics and selective recall                                   | non-authoritative            | self bundle, narrative memory records, explicit promotions                                                         |
-| `Deliberation Artifacts` | non-kernel evidence, derived memory, recall ranking state, and optimization sediment | non-authoritative            | deliberation memory, recall broker state, session query plane, promotion drafts, optimization continuity artifacts |
-| `Tool Surface`           | turn-visible action surface                                                          | policy-governed              | base tools, skill-scoped tools, operator tools                                                                     |
-| `Control Plane`          | scheduling, delegation, and operator-facing orchestration                            | non-authoritative by default | schedulers, wake prompts, child-run controllers                                                                    |
+| Category                   | Role                                                                                 | Authority                    | Typical carriers                                                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `Kernel Commitments`       | authoritative system commitments                                                     | authoritative                | tape, receipts, task, truth, ledger                                                                                |
+| `Working State`            | session-local working view and budgeted context admission                            | non-authoritative            | projection, context arena, active tool surface                                                                     |
+| `Narrative Memory`         | typed collaboration semantics and selective recall                                   | non-authoritative            | self bundle, narrative memory records, explicit promotions                                                         |
+| `Deliberation Artifacts`   | non-kernel evidence, derived memory, recall ranking state, and optimization sediment | non-authoritative            | deliberation memory, recall broker state, session query plane, promotion drafts, optimization continuity artifacts |
+| `Tool Surface`             | turn-visible action surface                                                          | policy-governed              | base tools, skill-scoped tools, operator tools                                                                     |
+| `Control Plane`            | scheduling, delegation, and operator-facing orchestration                            | non-authoritative by default | schedulers, wake prompts, child-run controllers                                                                    |
+| `Efficiency Observability` | cost and latency optimization diagnostics                                            | non-authoritative            | provider cache observations, request fingerprints, read-unchanged state, diagnostic dumps                          |
 
 Important distinctions:
 
@@ -348,6 +358,8 @@ Important distinctions:
 - context arena is an injection planner, not a memory system
 - tool surface should reflect the current commitment boundary, not the whole
   static capability catalog
+- provider token-cache state is efficiency observability, not commitment
+  memory; its stable contract lives in `docs/reference/token-cache.md`
 
 State visibility rule:
 
@@ -422,6 +434,9 @@ Default mappings in Brewva:
   - `cache`
 - transient outbound provider-request reduction and other request-copy-only
   prompt-shaping helpers
+  - `cache`
+- provider token-cache fingerprints, detector baselines, sticky latches, and
+  read-unchanged memoization
   - `cache`
 
 Boundary rule:

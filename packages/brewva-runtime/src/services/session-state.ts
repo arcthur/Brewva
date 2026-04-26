@@ -3,12 +3,14 @@ import type {
   HistoryViewBaselineSnapshot,
   OpenToolCallRecord,
   PromptStabilityState,
+  ProviderCacheObservationState,
   ResourceLeaseRecord,
   SessionHydrationState,
   SessionUncleanShutdownDiagnostic,
   SkillCompletionFailureRecord,
   SkillOutputRecord,
   TransientReductionState,
+  VisibleReadState,
 } from "../contracts/index.js";
 
 interface ReservedContextInjectionTokens {
@@ -37,6 +39,9 @@ export class RuntimeSessionStateCell {
   reservedContextInjectionTokensByScope = new Map<string, ReservedContextInjectionTokens>();
   promptStability?: PromptStabilityState;
   transientReduction?: TransientReductionState;
+  providerCacheObservation?: ProviderCacheObservationState;
+  visibleReadEpoch = 0;
+  visibleReadStates = new Map<string, VisibleReadState>();
   historyViewBaselineCache?: HistoryViewBaselineSnapshot;
   historyViewBaselineCacheLatestEventId?: string | null;
   historyViewBaselineCacheEventCount?: number;
@@ -199,6 +204,40 @@ export class RuntimeSessionStateStore {
     this.getCell(sessionId).transientReduction = state;
   }
 
+  getProviderCacheObservation(sessionId: string): ProviderCacheObservationState | undefined {
+    return this.getExistingCell(sessionId)?.providerCacheObservation;
+  }
+
+  setProviderCacheObservation(sessionId: string, state: ProviderCacheObservationState): void {
+    this.getCell(sessionId).providerCacheObservation = state;
+  }
+
+  getVisibleReadEpoch(sessionId: string): number {
+    return this.getExistingCell(sessionId)?.visibleReadEpoch ?? 0;
+  }
+
+  advanceVisibleReadEpoch(sessionId: string): number {
+    const cell = this.getCell(sessionId);
+    cell.visibleReadEpoch += 1;
+    cell.visibleReadStates.clear();
+    return cell.visibleReadEpoch;
+  }
+
+  rememberVisibleReadState(sessionId: string, state: VisibleReadState): void {
+    this.getCell(sessionId).visibleReadStates.set(buildVisibleReadStateKey(state), {
+      ...state,
+    });
+  }
+
+  isVisibleReadStateCurrent(sessionId: string, state: VisibleReadState): boolean {
+    const cell = this.getExistingCell(sessionId);
+    if (!cell || state.visibleHistoryEpoch !== cell.visibleReadEpoch) {
+      return false;
+    }
+    const remembered = cell.visibleReadStates.get(buildVisibleReadStateKey(state));
+    return remembered?.signatureHash === state.signatureHash;
+  }
+
   getHistoryViewBaselineCache(sessionId: string):
     | {
         snapshot?: HistoryViewBaselineSnapshot;
@@ -265,4 +304,14 @@ export class RuntimeSessionStateStore {
   clearSession(sessionId: string): void {
     this.cells.delete(sessionId);
   }
+}
+
+function buildVisibleReadStateKey(state: VisibleReadState): string {
+  return [
+    state.path,
+    String(Math.max(0, Math.trunc(state.offset))),
+    state.limit === null ? "none" : String(Math.max(0, Math.trunc(state.limit))),
+    state.encoding,
+    state.previousReadId,
+  ].join("\0");
 }

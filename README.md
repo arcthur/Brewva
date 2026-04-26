@@ -66,6 +66,7 @@ Implementation detail and system boundaries:
 - `docs/reference/proposal-boundary.md`
 - `docs/reference/runtime.md`
 - `docs/reference/events.md`
+- `docs/reference/token-cache.md`
 - `docs/reference/exec-threat-model.md`
 - `docs/reference/working-projection.md`
 
@@ -196,6 +197,7 @@ Start from `docs/index.md` for the full documentation map.
 - `docs/guide/orchestration.md`
 - `docs/guide/understanding-runtime-system.md`
 - `docs/reference/commands.md`
+- `docs/reference/token-cache.md`
 
 ## Inspired By
 

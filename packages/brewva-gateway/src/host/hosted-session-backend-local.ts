@@ -273,6 +273,7 @@ async function createHostedLocalSessionResult(input: {
       agentDir: input.services.agentDir,
       sessionStore: sessionManager,
       settings: input.services.settingsManager,
+      runtime: input.services.runtime,
       modelCatalog: input.modelCatalog,
       resourceLoader,
       runtimePlugins: input.services.runtimePlugins,

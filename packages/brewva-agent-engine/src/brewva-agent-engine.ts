@@ -8,6 +8,9 @@ import type {
   BrewvaAgentEngineResolveRequestAuth,
   BrewvaAgentEngineStopAfterToolResults,
   BrewvaAgentEngineStreamFunction,
+  BrewvaAgentEngineCachePolicy,
+  BrewvaAgentEngineCacheRenderResult,
+  BrewvaAgentEnginePayloadMetadata,
   BrewvaAgentEngineThinkingBudgets,
   BrewvaAgentEngineThinkingLevel,
   BrewvaAgentEngineTool,
@@ -139,6 +142,7 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
   readonly #streamFn: BrewvaAgentEngineStreamFunction;
   readonly #resolveRequestAuth: BrewvaAgentEngineResolveRequestAuth | undefined;
   readonly #sessionId: string | undefined;
+  readonly #cachePolicy: BrewvaAgentEngineCachePolicy | undefined;
   readonly #transport: BrewvaAgentEngineTransport;
   readonly #thinkingBudgets: BrewvaAgentEngineThinkingBudgets | undefined;
   readonly #maxRetryDelayMs: number | undefined;
@@ -159,7 +163,17 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
         | undefined
       >)
     | undefined;
-  readonly #onPayload: (payload: unknown) => Promise<unknown>;
+  readonly #onPayload: (
+    payload: unknown,
+    model: BrewvaRegisteredModel,
+    metadata?: BrewvaAgentEnginePayloadMetadata,
+  ) => Promise<unknown>;
+  readonly #onCacheRender:
+    | ((
+        render: BrewvaAgentEngineCacheRenderResult,
+        model: BrewvaRegisteredModel,
+      ) => void | Promise<void>)
+    | undefined;
   readonly #transformContext: (
     messages: BrewvaAgentEngineMessage[],
   ) => Promise<BrewvaAgentEngineMessage[]>;
@@ -183,6 +197,7 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
     thinkingBudgets: BrewvaAgentEngineThinkingBudgets | undefined;
     maxRetryDelayMs: number | undefined;
     sessionId: string | undefined;
+    cachePolicy: BrewvaAgentEngineCachePolicy | undefined;
     beforeToolCall:
       | ((
           input: BrewvaAgentEngineBeforeToolCallContext,
@@ -200,7 +215,17 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
           | undefined
         >)
       | undefined;
-    onPayload: (payload: unknown) => Promise<unknown>;
+    onPayload: (
+      payload: unknown,
+      model: BrewvaRegisteredModel,
+      metadata?: BrewvaAgentEnginePayloadMetadata,
+    ) => Promise<unknown>;
+    onCacheRender:
+      | ((
+          render: BrewvaAgentEngineCacheRenderResult,
+          model: BrewvaRegisteredModel,
+        ) => void | Promise<void>)
+      | undefined;
     transformContext: (messages: BrewvaAgentEngineMessage[]) => Promise<BrewvaAgentEngineMessage[]>;
     shouldStopAfterToolResults: BrewvaAgentEngineStopAfterToolResults | undefined;
     resolveRequestAuth: BrewvaAgentEngineResolveRequestAuth | undefined;
@@ -226,12 +251,14 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
     this.#streamFn = input.streamFn;
     this.#resolveRequestAuth = input.resolveRequestAuth;
     this.#sessionId = input.sessionId;
+    this.#cachePolicy = input.cachePolicy;
     this.#transport = input.transport;
     this.#thinkingBudgets = input.thinkingBudgets;
     this.#maxRetryDelayMs = input.maxRetryDelayMs;
     this.#beforeToolCall = input.beforeToolCall;
     this.#afterToolCall = input.afterToolCall;
     this.#onPayload = input.onPayload;
+    this.#onCacheRender = input.onCacheRender;
     this.#transformContext = input.transformContext;
     this.#shouldStopAfterToolResults = input.shouldStopAfterToolResults;
     this.#resolveFile = input.resolveFile;
@@ -344,6 +371,8 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
       model: this.#state.model,
       reasoning: this.#state.thinkingLevel === "off" ? undefined : this.#state.thinkingLevel,
       sessionId: this.#sessionId,
+      cachePolicy: this.#cachePolicy,
+      onCacheRender: this.#onCacheRender,
       onPayload: this.#onPayload as BrewvaAgentLoopConfig["onPayload"],
       transport: this.#transport,
       thinkingBudgets: this.#thinkingBudgets,
@@ -464,6 +493,7 @@ export function createHostedAgentEngine(input: {
   initialModel: unknown;
   initialThinkingLevel: string;
   sessionId: string;
+  cachePolicy?: BrewvaAgentEngineCachePolicy;
   steeringMode: "all" | "one-at-a-time" | undefined;
   followUpMode: "all" | "one-at-a-time" | undefined;
   transport: BrewvaAgentEngineTransport;
@@ -482,7 +512,15 @@ export function createHostedAgentEngine(input: {
       }
     | undefined
   >;
-  onPayload: (payload: unknown) => Promise<unknown>;
+  onPayload: (
+    payload: unknown,
+    model: BrewvaRegisteredModel,
+    metadata?: BrewvaAgentEnginePayloadMetadata,
+  ) => Promise<unknown>;
+  onCacheRender?: (
+    render: BrewvaAgentEngineCacheRenderResult,
+    model: BrewvaRegisteredModel,
+  ) => void | Promise<void>;
   transformContext: (messages: BrewvaAgentEngineMessage[]) => Promise<BrewvaAgentEngineMessage[]>;
   shouldStopAfterToolResults?: BrewvaAgentEngineStopAfterToolResults;
   resolveRequestAuth?: BrewvaAgentEngineResolveRequestAuth;
@@ -501,9 +539,11 @@ export function createHostedAgentEngine(input: {
     thinkingBudgets: input.thinkingBudgets,
     maxRetryDelayMs: input.maxRetryDelayMs,
     sessionId: input.sessionId,
+    cachePolicy: input.cachePolicy,
     beforeToolCall: input.beforeToolCall,
     afterToolCall: input.afterToolCall,
     onPayload: input.onPayload,
+    onCacheRender: input.onCacheRender,
     transformContext: input.transformContext,
     shouldStopAfterToolResults: input.shouldStopAfterToolResults,
     resolveRequestAuth: input.resolveRequestAuth,

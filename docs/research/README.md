@@ -184,6 +184,7 @@ None currently.
 - `docs/research/promoted/rfc-specialist-subagents-and-adversarial-verification.md`
 - `docs/research/promoted/rfc-stateful-box-plane-and-boxlite-execution-runtime.md`
 - `docs/research/promoted/rfc-tool-search-advisor-and-auto-broadened-discovery.md`
+- `docs/research/promoted/rfc-token-cache-fidelity-and-provider-prefix-stability.md`
 - `docs/research/promoted/rfc-workflow-artifacts-and-posture-control-plane.md`
 
 See `docs/research/promoted/README.md` for thematic grouping and the

@@ -1,4 +1,5 @@
 import { registerApiProvider, unregisterApiProviders } from "../api-registry.js";
+import { buildProviderCacheBucketKey, normalizeProviderCachePolicy } from "../cache-policy.js";
 import type {
   AssistantMessage,
   AssistantMessageEventStream,
@@ -7,6 +8,8 @@ import type {
   ImageContent,
   Message,
   Model,
+  ProviderCacheCapability,
+  ProviderCacheRenderResult,
   SimpleStreamOptions,
   StreamFunction,
   StreamOptions,
@@ -17,6 +20,7 @@ import type {
   Usage,
 } from "../types.js";
 import { createAssistantMessageEventStream } from "../utils/event-stream.js";
+import { buildProviderPayloadMetadata } from "./payload-metadata.js";
 
 const DEFAULT_API = "faux";
 const DEFAULT_PROVIDER = "faux";
@@ -25,6 +29,15 @@ const DEFAULT_MODEL_NAME = "Faux Model";
 const DEFAULT_BASE_URL = "http://localhost:0";
 const DEFAULT_MIN_TOKEN_SIZE = 3;
 const DEFAULT_MAX_TOKEN_SIZE = 5;
+
+const FAUX_CACHE_CAPABILITY: ProviderCacheCapability = {
+  strategies: ["implicitPrefix"],
+  cacheCounters: "readWrite",
+  shortRetention: true,
+  longRetention: "1h",
+  readOnlyWriteMode: "unsupported",
+  reason: "faux_prompt_cache",
+};
 
 const DEFAULT_USAGE: Usage = {
   input: 0,
@@ -218,8 +231,9 @@ function withUsageEstimate(
   let cacheRead = 0;
   let cacheWrite = 0;
   const sessionId = options?.sessionId;
+  const cachePolicy = normalizeProviderCachePolicy(options?.cachePolicy);
 
-  if (sessionId && options?.cacheRetention !== "none") {
+  if (sessionId && cachePolicy.retention !== "none" && cachePolicy.writeMode !== "readOnly") {
     const previousPrompt = promptCache.get(sessionId);
     if (previousPrompt) {
       const cachedChars = commonPrefixLength(previousPrompt, promptText);
@@ -242,6 +256,54 @@ function withUsageEstimate(
       totalTokens: input + outputTokens + cacheRead + cacheWrite,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     },
+  };
+}
+
+function buildFauxPayload(context: Context, model: Model<string>): Record<string, unknown> {
+  return {
+    model: model.id,
+    systemPrompt: context.systemPrompt,
+    messages: context.messages,
+    tools: context.tools,
+  };
+}
+
+function resolveFauxCacheRender(
+  model: Model<string>,
+  options: StreamOptions | undefined,
+): ProviderCacheRenderResult {
+  const policy = normalizeProviderCachePolicy(options?.cachePolicy);
+  const bucketKey = buildProviderCacheBucketKey({
+    provider: model.provider,
+    api: model.api,
+    model: model.id,
+    sessionId: options?.sessionId,
+    policy,
+  });
+  if (policy.retention === "none") {
+    return {
+      status: "disabled",
+      reason: "cache_policy_disabled",
+      renderedRetention: "none",
+      bucketKey,
+      capability: FAUX_CACHE_CAPABILITY,
+    };
+  }
+  if (policy.writeMode === "readOnly") {
+    return {
+      status: "unsupported",
+      reason: "cache_write_mode_read_only_not_supported",
+      renderedRetention: "none",
+      bucketKey,
+      capability: FAUX_CACHE_CAPABILITY,
+    };
+  }
+  return {
+    status: "rendered",
+    reason: "rendered_faux_prompt_cache",
+    renderedRetention: policy.retention,
+    bucketKey,
+    capability: FAUX_CACHE_CAPABILITY,
   };
 }
 
@@ -493,6 +555,15 @@ export function registerFauxProvider(
 
     queueMicrotask(async () => {
       try {
+        const cacheRender = resolveFauxCacheRender(requestModel, streamOptions);
+        await streamOptions?.onCacheRender?.(cacheRender, requestModel);
+        const payload = buildFauxPayload(context, requestModel);
+        await streamOptions?.onPayload?.(
+          payload,
+          requestModel,
+          buildProviderPayloadMetadata(requestModel, streamOptions, payload, cacheRender),
+        );
+
         if (!step) {
           let message = createErrorMessage(
             new Error("No more faux responses queued"),

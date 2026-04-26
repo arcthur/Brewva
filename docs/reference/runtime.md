@@ -322,8 +322,11 @@ Ordering semantics:
 - `sanitizeInput(text)`
 - `getUsage(sessionId)`
 - `getPromptStability(sessionId)`
+- `getProviderCacheObservation(sessionId)`
 - `getHistoryViewBaseline(sessionId)`
 - `getTransientReduction(sessionId)`
+- `getVisibleReadEpoch(sessionId)`
+- `isVisibleReadStateCurrent(sessionId, state)`
 - `getUsageRatio(usage)`
 - `getHardLimitRatio(sessionId, usage?)`
 - `getCompactionThresholdRatio(sessionId, usage?)`
@@ -408,6 +411,12 @@ older convention or converts a documentation-only invariant into enforcement.
 inspection, including history-view baseline reconstruction, uses its own
 kernel constant rather than dynamically deriving the reserved budget from the
 mutable provider registry.
+
+`getProviderCacheObservation(...)`, `getVisibleReadEpoch(...)`, and
+`isVisibleReadStateCurrent(...)` are live token-cache inspection surfaces. They
+support provider-cache attribution and read-unchanged reduction, but they are
+not replay authority and they do not create durable event families. The stable
+token-cache contract is documented in `docs/reference/token-cache.md`.
 
 ### `inspect.tools`
 
@@ -659,7 +668,10 @@ This is the explicit skill-registry rebuild path.
 - `onUserInput(sessionId)`
 - `observeUsage(sessionId, usage)`
 - `observePromptStability(sessionId, input)`
+- `observeProviderCache(sessionId, input)`
 - `observeTransientReduction(sessionId, input)`
+- `advanceVisibleReadEpoch(sessionId, reason)`
+- `rememberVisibleReadState(sessionId, state)`
 - `registerProvider(provider)`
 - `unregisterProvider(source)`
 - `buildInjection(sessionId, prompt, usage?, options?)`

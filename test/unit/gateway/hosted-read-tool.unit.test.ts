@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BrewvaRuntime } from "@brewva/brewva-runtime";
 import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
@@ -240,5 +240,117 @@ describe("hosted compact read tool", () => {
 
     expect(delegateCalls).toBe(1);
     expect(extractText(result)).toBe("ok");
+  });
+
+  test("invalidates unchanged reads when runtime visible-read epoch advances", async () => {
+    const workspace = createTestWorkspace("hosted-read-unchanged-compaction");
+    const runtime = new BrewvaRuntime({ cwd: workspace, config: createOpsRuntimeConfig() });
+    const sessionId = "hosted-read-unchanged-compaction";
+    mkdirSync(join(workspace, "src"), { recursive: true });
+    writeFileSync(join(workspace, "src/app.ts"), "export const app = true;\n", "utf8");
+    const templateTool = createBrewvaReadToolDefinition(workspace);
+    let delegateCalls = 0;
+
+    const compactReadTool = createCompactReadTool({
+      cwd: workspace,
+      runtime,
+      createReadDelegate: () => ({
+        ...templateTool,
+        execute: async () => {
+          delegateCalls += 1;
+          return {
+            content: [{ type: "text", text: "export const app = true;" }],
+            details: { ok: true },
+          };
+        },
+      }),
+    });
+    const ctx = {
+      cwd: workspace,
+      sessionManager: {
+        getSessionId: () => sessionId,
+      },
+    } as never;
+
+    await compactReadTool.execute("read-call-1", { path: "src/app.ts" }, undefined, undefined, ctx);
+    const unchanged = await compactReadTool.execute(
+      "read-call-2",
+      { path: "src/app.ts" },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(delegateCalls).toBe(1);
+    expect(extractText(unchanged)).toContain("File unchanged since previous visible read");
+
+    runtime.maintain.context.advanceVisibleReadEpoch(sessionId, "history_pruned");
+
+    const afterCompact = await compactReadTool.execute(
+      "read-call-3",
+      { path: "src/app.ts" },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(delegateCalls).toBe(2);
+    expect(extractText(afterCompact)).toBe("export const app = true;");
+  });
+
+  test("invalidates unchanged reads when content changes without mtime or size changes", async () => {
+    const workspace = createTestWorkspace("hosted-read-unchanged-content-hash");
+    const runtime = new BrewvaRuntime({ cwd: workspace, config: createOpsRuntimeConfig() });
+    const sessionId = "hosted-read-unchanged-content-hash";
+    mkdirSync(join(workspace, "src"), { recursive: true });
+    const filePath = join(workspace, "src/app.ts");
+    const fixedMtime = new Date("2026-01-01T00:00:00.000Z");
+    writeFileSync(filePath, "aaaa\n", "utf8");
+    utimesSync(filePath, fixedMtime, fixedMtime);
+    const templateTool = createBrewvaReadToolDefinition(workspace);
+    let delegateCalls = 0;
+
+    const compactReadTool = createCompactReadTool({
+      cwd: workspace,
+      runtime,
+      createReadDelegate: () => ({
+        ...templateTool,
+        execute: async () => {
+          delegateCalls += 1;
+          return {
+            content: [{ type: "text", text: readFileSync(filePath, "utf8") }],
+            details: { ok: true },
+          };
+        },
+      }),
+    });
+    const ctx = {
+      cwd: workspace,
+      sessionManager: {
+        getSessionId: () => sessionId,
+      },
+    } as never;
+
+    await compactReadTool.execute(
+      "read-call-content-1",
+      { path: "src/app.ts" },
+      undefined,
+      undefined,
+      ctx,
+    );
+    writeFileSync(filePath, "bbbb\n", "utf8");
+    expect(statSync(filePath).size).toBe(5);
+    utimesSync(filePath, fixedMtime, fixedMtime);
+
+    const afterContentChange = await compactReadTool.execute(
+      "read-call-content-2",
+      { path: "src/app.ts" },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(delegateCalls).toBe(2);
+    expect(extractText(afterContentChange)).toBe("bbbb\n");
   });
 });

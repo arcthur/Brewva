@@ -53,8 +53,8 @@ const LOW_SIGNAL_STRING_KEYS = new Set([
   "response_id",
   "sessionId",
   "session_id",
-  "cacheRetention",
-  "cache_retention",
+  "cachePolicy",
+  "cache_policy",
   "transport",
   "tool_choice",
   "parallel_tool_calls",
@@ -572,6 +572,30 @@ export function applyTransientOutboundReductionToPayload(payload: unknown): Redu
   };
 }
 
+function resolveWarmProviderCachePreservationReason(
+  runtime: BrewvaHostedRuntimePort,
+  sessionId: string,
+  result: ReductionResult,
+): string | null {
+  if (result.status !== "completed" || result.clearedToolResults <= 0) {
+    return null;
+  }
+  const observation = runtime.inspect.context.getProviderCacheObservation(sessionId);
+  if (!observation) {
+    return null;
+  }
+  if (observation.render.status !== "rendered" && observation.render.status !== "degraded") {
+    return null;
+  }
+  if (observation.breakObservation.status !== "warm") {
+    return null;
+  }
+  if (observation.breakObservation.cacheReadTokens <= result.estimatedTokenSavings) {
+    return null;
+  }
+  return "warm provider cache is more valuable than transient reduction savings";
+}
+
 export function registerProviderRequestReduction(
   extensionApi: InternalHostPluginApi,
   runtime: BrewvaHostedRuntimePort,
@@ -594,6 +618,8 @@ export function registerProviderRequestReduction(
         eligibleToolResults: 0,
         clearedToolResults: 0,
         pressureLevel: eligibility.pressureLevel,
+        classification: "prefixPreserving",
+        expectedCacheBreak: false,
       });
       recordTransientReductionEvidence({
         workspaceRoot: runtime.workspaceRoot,
@@ -604,6 +630,31 @@ export function registerProviderRequestReduction(
     }
 
     const result = applyTransientOutboundReductionToPayload(event.payload);
+    const cachePreservationReason = resolveWarmProviderCachePreservationReason(
+      runtime,
+      sessionId,
+      result,
+    );
+    if (cachePreservationReason) {
+      const observed = runtime.maintain.context.observeTransientReduction(sessionId, {
+        status: "skipped",
+        reason: cachePreservationReason,
+        eligibleToolResults: result.eligibleToolResults,
+        clearedToolResults: 0,
+        clearedChars: 0,
+        estimatedTokenSavings: result.estimatedTokenSavings,
+        pressureLevel: eligibility.pressureLevel,
+        classification: "prefixPreserving",
+        expectedCacheBreak: false,
+      });
+      recordTransientReductionEvidence({
+        workspaceRoot: runtime.workspaceRoot,
+        sessionId,
+        observed,
+      });
+      return undefined;
+    }
+
     const observed = runtime.maintain.context.observeTransientReduction(sessionId, {
       status: result.status,
       reason: result.detail,
@@ -612,6 +663,11 @@ export function registerProviderRequestReduction(
       clearedChars: result.clearedChars,
       estimatedTokenSavings: result.estimatedTokenSavings,
       pressureLevel: eligibility.pressureLevel,
+      classification:
+        result.status === "completed" && result.clearedToolResults > 0
+          ? "prefixResetting"
+          : "prefixPreserving",
+      expectedCacheBreak: result.status === "completed" && result.clearedToolResults > 0,
     });
     recordTransientReductionEvidence({
       workspaceRoot: runtime.workspaceRoot,

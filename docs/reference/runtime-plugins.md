@@ -250,6 +250,32 @@ The hosted pipeline therefore preserves one execution spine while still keeping
 runtime access role-shaped: host lifecycle code, operator commands, and bundled
 tools do not all share the same runtime view.
 
+### Hosted Token Cache Hooks
+
+The hosted pipeline carries token-cache policy and diagnostics as an efficiency
+lane over the normal execution spine.
+
+Stable responsibilities:
+
+- hosted settings provide an object-shaped `cachePolicy`
+- agent-engine forwards that policy to provider-core without provider-specific
+  interpretation
+- provider-core renders Anthropic, Bedrock, OpenAI, Codex, Azure OpenAI, and
+  implicit-prefix strategies at the provider edge
+- gateway fingerprints final provider payloads and records provider-cache
+  observations through runtime context inspection
+- provider-request reduction marks expected cache breaks and can preserve a
+  warm provider cache when immediate token savings are smaller than expected
+  cache-read loss
+- the hosted read wrapper may return read-unchanged results only when runtime
+  visible-read state says the prior full content remains visible
+- clear, compact, model/provider switch, tool-surface epoch changes, and
+  visible-history resets clear or advance session-local cache state
+
+These hooks do not create runtime authority. WAL, event tape, proposals, and
+receipts remain the replay source of truth. The detailed contract is in
+`docs/reference/token-cache.md`.
+
 Turn continuation is owned one layer above runtime-plugin registration by the
 gateway-internal `HostedThreadLoop`. Runtime plugins provide lifecycle hooks,
 context admission, tool result distillation, event streaming, and recovery

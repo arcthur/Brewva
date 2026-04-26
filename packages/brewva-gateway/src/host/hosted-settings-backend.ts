@@ -1,5 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import {
+  DEFAULT_PROVIDER_CACHE_POLICY,
+  type ProviderCachePolicy,
+  type ProviderCachePolicyReason,
+  type ProviderCacheRetention,
+  type ProviderCacheWriteMode,
+} from "@brewva/brewva-provider-core";
 import type {
   BrewvaDiffPreferences,
   BrewvaShellViewPreferences,
@@ -32,6 +39,11 @@ interface HostedSettingsData {
   };
   retry?: {
     maxDelayMs?: number;
+  };
+  cachePolicy?: {
+    retention?: unknown;
+    writeMode?: unknown;
+    reason?: unknown;
   };
   thinkingBudgets?: {
     minimal?: number;
@@ -75,6 +87,10 @@ function mergeSettings(base: HostedSettingsData, override: HostedSettingsData): 
     retry: {
       ...base.retry,
       ...override.retry,
+    },
+    cachePolicy: {
+      ...base.cachePolicy,
+      ...override.cachePolicy,
     },
     thinkingBudgets: {
       ...base.thinkingBudgets,
@@ -156,6 +172,24 @@ function normalizeShellViewPreferences(preferences: {
   };
 }
 
+function normalizeCacheRetention(value: unknown): ProviderCacheRetention {
+  return value === "none" || value === "short" || value === "long"
+    ? value
+    : DEFAULT_PROVIDER_CACHE_POLICY.retention;
+}
+
+function normalizeCacheWriteMode(value: unknown): ProviderCacheWriteMode {
+  return value === "readOnly" || value === "readWrite"
+    ? value
+    : DEFAULT_PROVIDER_CACHE_POLICY.writeMode;
+}
+
+function normalizeCacheReason(value: unknown): ProviderCachePolicyReason {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : DEFAULT_PROVIDER_CACHE_POLICY.reason;
+}
+
 const HOSTED_SETTINGS_BRIDGE = Symbol.for("brewva.hosted.settings-backend");
 
 class BrewvaHostedSettingsHandle implements HostedSessionSettings, HostedSessionSettingsBackend {
@@ -230,6 +264,16 @@ class BrewvaHostedSettingsHandle implements HostedSessionSettings, HostedSession
 
   getTransport(): "sse" | "websocket" {
     return this.settings.transport ?? "sse";
+  }
+
+  getCachePolicy(): ProviderCachePolicy {
+    const settings = this.settings.cachePolicy;
+    return {
+      retention: normalizeCacheRetention(settings?.retention),
+      writeMode: normalizeCacheWriteMode(settings?.writeMode),
+      scope: "session",
+      reason: normalizeCacheReason(settings?.reason),
+    };
   }
 
   getThinkingBudgets():

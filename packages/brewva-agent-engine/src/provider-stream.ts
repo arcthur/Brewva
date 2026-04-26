@@ -59,6 +59,8 @@ function toProviderOptions(options: BrewvaAgentEngineStreamOptions): ProviderStr
     apiKey: options.apiKey,
     transport: options.transport,
     sessionId: options.sessionId,
+    cachePolicy: options.cachePolicy,
+    onCacheRender: options.onCacheRender as ProviderStreamOptions["onCacheRender"],
     onPayload: options.onPayload,
     headers: options.headers,
     maxRetryDelayMs: options.maxRetryDelayMs,

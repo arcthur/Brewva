@@ -6,6 +6,7 @@ import {
 } from "@brewva/brewva-runtime";
 import { type ContextInjectionEntry, recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import type { InternalHostPluginApi } from "@brewva/brewva-substrate";
+import { stableHash, stableStringify } from "../cache/hash.js";
 import type { HostedDelegationStore } from "../subagents/delegation-store.js";
 import { type BuildCapabilityViewResult } from "./capability-view.js";
 import { prepareContextComposerSupport } from "./context-composer-support.js";
@@ -71,6 +72,17 @@ export interface HostedContextInjectionMessageDetails {
     names: string[];
     selected: string | null;
     shortestNextAction: string;
+  };
+  contextSources: {
+    accepted: boolean;
+    sources: Array<{
+      source: string;
+      count: number;
+      estimatedTokens: number;
+      categories: string[];
+      budgetClasses: string[];
+      contentHash: string;
+    }>;
   };
 }
 
@@ -184,6 +196,8 @@ function buildMessageDetails(input: {
   composed: ContextComposerResult;
   capabilityView: BuildCapabilityViewResult;
   skillDiagnosis: SkillDiagnosisSet;
+  injectionAccepted: boolean;
+  entries: readonly ContextInjectionEntry[];
 }): HostedContextInjectionMessageDetails {
   return {
     originalTokens: input.originalTokens,
@@ -209,7 +223,51 @@ function buildMessageDetails(input: {
       selected: input.skillDiagnosis.candidates[0]?.name ?? null,
       shortestNextAction: resolveShortestNextAction(input.skillDiagnosis),
     },
+    contextSources: {
+      accepted: input.injectionAccepted,
+      sources: buildContextSourceSummaries(input.entries),
+    },
   };
+}
+
+function buildContextSourceSummaries(entries: readonly ContextInjectionEntry[]) {
+  const bySource = new Map<
+    string,
+    {
+      source: string;
+      count: number;
+      estimatedTokens: number;
+      categories: Set<string>;
+      budgetClasses: Set<string>;
+      contentParts: Array<{ id: string; content: string }>;
+    }
+  >();
+  for (const entry of entries) {
+    const current = bySource.get(entry.source) ?? {
+      source: entry.source,
+      count: 0,
+      estimatedTokens: 0,
+      categories: new Set<string>(),
+      budgetClasses: new Set<string>(),
+      contentParts: [],
+    };
+    current.count += 1;
+    current.estimatedTokens += Math.max(0, Math.trunc(entry.estimatedTokens));
+    current.categories.add(entry.category);
+    current.budgetClasses.add(entry.budgetClass);
+    current.contentParts.push({ id: entry.id, content: entry.content });
+    bySource.set(entry.source, current);
+  }
+  return [...bySource.values()]
+    .toSorted((left, right) => left.source.localeCompare(right.source))
+    .map((entry) => ({
+      source: entry.source,
+      count: entry.count,
+      estimatedTokens: entry.estimatedTokens,
+      categories: [...entry.categories].toSorted(),
+      budgetClasses: [...entry.budgetClasses].toSorted(),
+      contentHash: stableHash(stableStringify(entry.contentParts)),
+    }));
 }
 
 function buildHiddenInjectionResult(input: {
@@ -464,6 +522,8 @@ export function createHostedContextInjectionPipeline(
             composed,
             capabilityView,
             skillDiagnosis,
+            injectionAccepted: false,
+            entries: [],
           }),
         });
       }
@@ -566,6 +626,8 @@ export function createHostedContextInjectionPipeline(
           composed,
           capabilityView,
           skillDiagnosis,
+          injectionAccepted: injection.accepted,
+          entries: injection.entries,
         }),
       });
     },

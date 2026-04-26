@@ -24,10 +24,13 @@ import type {
   ContextPressureStatus,
   PromptStabilityObservationInput,
   PromptStabilityState,
+  ProviderCacheObservationInput,
+  ProviderCacheObservationState,
   SkillDocument,
   TransientReductionObservationInput,
   TransientReductionState,
   TruthState,
+  VisibleReadState,
 } from "../contracts/index.js";
 import type { GovernancePort } from "../governance/port.js";
 import type { RuntimeKernelContext } from "../runtime-kernel.js";
@@ -224,6 +227,8 @@ export class ContextService {
       clearedChars: Math.max(0, Math.trunc(input.clearedChars ?? 0)),
       estimatedTokenSavings: Math.max(0, Math.trunc(input.estimatedTokenSavings ?? 0)),
       pressureLevel: input.pressureLevel ?? "unknown",
+      classification: input.classification ?? null,
+      expectedCacheBreak: input.expectedCacheBreak ?? false,
     };
     this.sessionState.setTransientReduction(sessionId, nextState);
     return nextState;
@@ -231,6 +236,43 @@ export class ContextService {
 
   getTransientReduction(sessionId: string): TransientReductionState | undefined {
     return this.sessionState.getTransientReduction(sessionId);
+  }
+
+  observeProviderCache(
+    sessionId: string,
+    input: ProviderCacheObservationInput,
+  ): ProviderCacheObservationState {
+    const nextState: ProviderCacheObservationState = {
+      turn: input.turn ?? this.getCurrentTurn(sessionId),
+      updatedAt: input.timestamp ?? Date.now(),
+      source: input.source,
+      fingerprint: structuredClone(input.fingerprint),
+      render: structuredClone(input.render),
+      breakObservation: structuredClone(input.breakObservation),
+    };
+    this.sessionState.setProviderCacheObservation(sessionId, nextState);
+    return nextState;
+  }
+
+  getProviderCacheObservation(sessionId: string): ProviderCacheObservationState | undefined {
+    const state = this.sessionState.getProviderCacheObservation(sessionId);
+    return state ? structuredClone(state) : undefined;
+  }
+
+  getVisibleReadEpoch(sessionId: string): number {
+    return this.sessionState.getVisibleReadEpoch(sessionId);
+  }
+
+  advanceVisibleReadEpoch(sessionId: string, _reason: string): number {
+    return this.sessionState.advanceVisibleReadEpoch(sessionId);
+  }
+
+  rememberVisibleReadState(sessionId: string, state: VisibleReadState): void {
+    this.sessionState.rememberVisibleReadState(sessionId, state);
+  }
+
+  isVisibleReadStateCurrent(sessionId: string, state: VisibleReadState): boolean {
+    return this.sessionState.isVisibleReadStateCurrent(sessionId, state);
   }
 
   getReservedPrimaryTokens(sessionId: string, injectionScopeId?: string): number {
@@ -375,7 +417,9 @@ export class ContextService {
       origin: "extension_api" | "auto_compaction" | "hosted_recovery";
     },
   ): BrewvaEventRecord {
-    return commitSessionCompaction(this.contextCompactionDeps, sessionId, input);
+    const event = commitSessionCompaction(this.contextCompactionDeps, sessionId, input);
+    this.advanceVisibleReadEpoch(sessionId, "session_compact");
+    return event;
   }
 
   isContextBudgetEnabled(): boolean {

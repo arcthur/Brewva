@@ -95,6 +95,55 @@ function createStream(
 }
 
 describe("hosted agent engine", () => {
+  test("forwards cache policy to the stream function", async () => {
+    const calls: Array<unknown> = [];
+    const streamFn: BrewvaAgentEngineStreamFunction = async (_model, _context, options) => {
+      calls.push(options.cachePolicy);
+      return createStream(createAssistantMessage([{ type: "text", text: "done" }]));
+    };
+
+    const engine = createHostedAgentEngine({
+      initialModel: TEST_MODEL,
+      initialThinkingLevel: "minimal",
+      sessionId: "session-cache-policy",
+      cachePolicy: {
+        retention: "long",
+        writeMode: "readWrite",
+        scope: "session",
+        reason: "config",
+      },
+      steeringMode: "one-at-a-time",
+      followUpMode: "one-at-a-time",
+      transport: "sse",
+      thinkingBudgets: undefined,
+      maxRetryDelayMs: 1000,
+      beforeToolCall: async () => undefined,
+      afterToolCall: async () => undefined,
+      onPayload: async (payload) => payload,
+      transformContext: async (messages) => messages,
+      resolveRequestAuth: async () => ({
+        ok: true,
+        apiKey: "test-key",
+      }),
+      streamFn,
+    });
+
+    await engine.prompt({
+      role: "user",
+      content: [{ type: "text", text: "hello" }],
+      timestamp: Date.now(),
+    });
+
+    expect(calls).toEqual([
+      {
+        retention: "long",
+        writeMode: "readWrite",
+        scope: "session",
+        reason: "config",
+      },
+    ]);
+  });
+
   test("resolves request auth before invoking the stream function", async () => {
     const calls: Array<{ apiKey?: string; headers?: Record<string, string> }> = [];
     const streamFn: BrewvaAgentEngineStreamFunction = async (_model, _context, options) => {

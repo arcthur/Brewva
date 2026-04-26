@@ -27,6 +27,7 @@ import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { shortHash } from "../utils/hash.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
+import { buildProviderPayloadMetadata } from "./payload-metadata.js";
 import {
   buildMistralDocumentUrlChunk,
   materializeResolvedUserMessageContentPart,
@@ -82,7 +83,11 @@ export const streamMistral: StreamFunction<"mistral-conversations", MistralOptio
       );
 
       let payload = buildChatPayload(model, context, transformedMessages, options);
-      const nextPayload = await options?.onPayload?.(payload, model);
+      const nextPayload = await options?.onPayload?.(
+        payload,
+        model,
+        buildProviderPayloadMetadata(model, options, payload),
+      );
       if (nextPayload !== undefined) {
         payload = nextPayload as ChatCompletionStreamRequest;
       }

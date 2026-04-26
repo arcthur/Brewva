@@ -1,4 +1,9 @@
 import type {
+  ProviderCachePolicy,
+  ProviderCacheRenderResult,
+  ProviderPayloadMetadata,
+} from "@brewva/brewva-provider-core";
+import type {
   BrewvaRegisteredModel,
   BrewvaResolvedRequestAuth,
   ToolExecutionPhase,
@@ -23,6 +28,10 @@ export interface BrewvaAgentEngineThinkingBudgets {
 }
 
 export type BrewvaAgentEngineTransport = "sse" | "websocket" | "auto";
+
+export type BrewvaAgentEngineCachePolicy = ProviderCachePolicy;
+export type BrewvaAgentEngineCacheRenderResult = ProviderCacheRenderResult;
+export type BrewvaAgentEnginePayloadMetadata = ProviderPayloadMetadata;
 
 export interface BrewvaAgentEngineTextContent {
   type: "text";
@@ -335,7 +344,16 @@ export interface BrewvaAgentEngineStreamOptions {
   apiKey?: string;
   transport?: BrewvaAgentEngineTransport;
   sessionId?: string;
-  onPayload?: (payload: unknown, model: BrewvaRegisteredModel) => Promise<unknown>;
+  cachePolicy?: BrewvaAgentEngineCachePolicy;
+  onCacheRender?: (
+    render: BrewvaAgentEngineCacheRenderResult,
+    model: BrewvaRegisteredModel,
+  ) => void | Promise<void>;
+  onPayload?: (
+    payload: unknown,
+    model: BrewvaRegisteredModel,
+    metadata?: BrewvaAgentEnginePayloadMetadata,
+  ) => Promise<unknown>;
   headers?: Record<string, string>;
   maxRetryDelayMs?: number;
   thinkingBudgets?: BrewvaAgentEngineThinkingBudgets;

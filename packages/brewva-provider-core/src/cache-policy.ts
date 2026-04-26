@@ -1,0 +1,498 @@
+import type {
+  Api,
+  ProviderCacheCapability,
+  ProviderCachePolicy,
+  ProviderCacheRenderResult,
+  ProviderCacheRetention,
+  ProviderCacheWriteMode,
+  Transport,
+} from "./types.js";
+
+export const DEFAULT_PROVIDER_CACHE_POLICY: ProviderCachePolicy = {
+  retention: "short",
+  writeMode: "readWrite",
+  scope: "session",
+  reason: "default",
+};
+
+export interface ProviderCacheBucketInput {
+  provider: string;
+  api: Api;
+  model: string;
+  sessionId?: string;
+  policy?: ProviderCachePolicy;
+}
+
+export interface ProviderCacheCapabilityInput {
+  api: Api;
+  provider?: string;
+  modelId?: string;
+  baseUrl?: string;
+  transport?: Transport;
+  forceCache?: boolean;
+}
+
+export interface OpenAIResponsesCacheRender extends ProviderCacheRenderResult {
+  promptCacheKey?: string;
+  promptCacheRetention?: "24h";
+}
+
+export interface AnthropicCacheRender extends ProviderCacheRenderResult {
+  cacheControl?: { type: "ephemeral"; ttl?: "1h" };
+}
+
+export interface BedrockCacheRender extends ProviderCacheRenderResult {
+  cachePoint?: { type: string; ttl?: string };
+}
+
+export function normalizeProviderCachePolicy(
+  policy: ProviderCachePolicy | undefined,
+): ProviderCachePolicy {
+  if (!policy) {
+    return { ...DEFAULT_PROVIDER_CACHE_POLICY };
+  }
+  return {
+    retention: policy.retention,
+    writeMode: policy.writeMode,
+    scope: policy.scope,
+    reason: policy.reason,
+  };
+}
+
+export function buildProviderCacheBucketKey(input: ProviderCacheBucketInput): string {
+  const policy = normalizeProviderCachePolicy(input.policy);
+  return [
+    `provider=${input.provider}`,
+    `api=${input.api}`,
+    `model=${input.model}`,
+    `scope=${policy.scope}`,
+    `retention=${policy.retention}`,
+    `writeMode=${policy.writeMode}`,
+    `session=${input.sessionId ?? "none"}`,
+  ].join("|");
+}
+
+function buildRenderBucketKey(input: {
+  api: string;
+  sessionId?: string;
+  retention: ProviderCacheRetention;
+  writeMode: ProviderCacheWriteMode;
+}): string {
+  return [
+    input.api,
+    `session=${input.sessionId ?? "none"}`,
+    `retention=${input.retention}`,
+    `writeMode=${input.writeMode}`,
+  ].join("|");
+}
+
+function disabledRender(input: {
+  api: string;
+  sessionId?: string;
+  writeMode: ProviderCacheWriteMode;
+  capability?: ProviderCacheCapability;
+}): ProviderCacheRenderResult {
+  return {
+    status: "disabled",
+    reason: "cache_policy_disabled",
+    renderedRetention: "none",
+    bucketKey: buildRenderBucketKey({
+      api: input.api,
+      sessionId: input.sessionId,
+      retention: "none",
+      writeMode: input.writeMode,
+    }),
+    capability: input.capability,
+  };
+}
+
+function missingSessionRender(input: {
+  api: string;
+  writeMode: ProviderCacheWriteMode;
+  capability?: ProviderCacheCapability;
+}): ProviderCacheRenderResult {
+  return {
+    status: "unsupported",
+    reason: "session_id_required_for_session_cache",
+    renderedRetention: "none",
+    bucketKey: buildRenderBucketKey({
+      api: input.api,
+      sessionId: undefined,
+      retention: "none",
+      writeMode: input.writeMode,
+    }),
+    capability: input.capability,
+  };
+}
+
+function unsupportedReadOnlyRender(input: {
+  api: string;
+  sessionId?: string;
+  capability?: ProviderCacheCapability;
+}): ProviderCacheRenderResult {
+  return {
+    status: "unsupported",
+    reason: "cache_write_mode_read_only_not_supported",
+    renderedRetention: "none",
+    bucketKey: buildRenderBucketKey({
+      api: input.api,
+      sessionId: input.sessionId,
+      retention: "none",
+      writeMode: "readOnly",
+    }),
+    capability: input.capability,
+  };
+}
+
+function unsupportedCapabilityRender(input: {
+  api: string;
+  sessionId?: string;
+  writeMode: ProviderCacheWriteMode;
+  capability: ProviderCacheCapability;
+}): ProviderCacheRenderResult {
+  return {
+    status: "unsupported",
+    reason: input.capability.reason,
+    renderedRetention: "none",
+    bucketKey: buildRenderBucketKey({
+      api: input.api,
+      sessionId: input.sessionId,
+      retention: "none",
+      writeMode: input.writeMode,
+    }),
+    capability: input.capability,
+  };
+}
+
+export function resolveProviderCacheCapability(
+  input: ProviderCacheCapabilityInput,
+): ProviderCacheCapability {
+  const api = input.api.toLowerCase();
+  const provider = (input.provider ?? "").toLowerCase();
+  const modelId = (input.modelId ?? "").toLowerCase();
+  const baseUrl = (input.baseUrl ?? "").toLowerCase();
+  const transport = input.transport ?? "auto";
+
+  if (api === "anthropic-messages") {
+    return {
+      strategies: ["explicitCacheMarker"],
+      cacheCounters: "readWrite",
+      shortRetention: true,
+      longRetention: baseUrl.includes("api.anthropic.com") ? "1h" : "none",
+      readOnlyWriteMode: "unsupported",
+      reason: "anthropic_cache_control",
+    };
+  }
+
+  if (api === "bedrock-converse-stream") {
+    const supported = bedrockModelSupportsPromptCaching(modelId, input.forceCache ?? false);
+    return {
+      strategies: supported ? ["explicitCacheMarker"] : ["unsupported"],
+      cacheCounters: supported ? "readWrite" : "none",
+      shortRetention: supported,
+      longRetention: supported ? "1h" : "none",
+      readOnlyWriteMode: "unsupported",
+      reason: supported
+        ? "bedrock_cache_point"
+        : "bedrock_model_does_not_support_explicit_cache_points",
+    };
+  }
+
+  if (api === "openai-codex-responses") {
+    return {
+      strategies: ["promptCacheKey"],
+      cacheCounters: "readOnly",
+      shortRetention: true,
+      longRetention: "none",
+      readOnlyWriteMode: "unsupported",
+      continuation:
+        transport === "sse"
+          ? undefined
+          : {
+              family: "openai-responses",
+              modes: ["websocketConnection", "previousResponseId"],
+              authority: "efficiency",
+              reason: "openai_codex_websocket_previous_response_id_affinity",
+            },
+      reason: "openai_codex_responses_prompt_cache_key",
+    };
+  }
+
+  if (api === "azure-openai-responses") {
+    return {
+      strategies: ["promptCacheKey"],
+      cacheCounters: "readOnly",
+      shortRetention: true,
+      longRetention: "none",
+      readOnlyWriteMode: "unsupported",
+      reason: "azure_openai_responses_prompt_cache_key",
+    };
+  }
+
+  if (api === "openai-responses") {
+    const directOpenAI = baseUrl.includes("api.openai.com");
+    const providerIsOpenAI = provider === "" || provider === "openai";
+    if (directOpenAI && providerIsOpenAI && modelSupportsOpenAIPromptCacheKey(modelId)) {
+      return {
+        strategies: ["promptCacheKey"],
+        cacheCounters: "readOnly",
+        shortRetention: true,
+        longRetention: "24h",
+        readOnlyWriteMode: "unsupported",
+        reason: "openai_responses_prompt_cache_key",
+      };
+    }
+    return {
+      strategies: ["implicitPrefix"],
+      cacheCounters: "none",
+      shortRetention: false,
+      longRetention: "none",
+      readOnlyWriteMode: "unsupported",
+      reason: "provider_model_does_not_advertise_prompt_cache_key",
+    };
+  }
+
+  if (api === "google-generative-ai" || api === "google-gemini-cli" || api === "google-vertex") {
+    return {
+      strategies: ["implicitPrefix"],
+      cacheCounters: "readOnly",
+      shortRetention: true,
+      longRetention: "none",
+      readOnlyWriteMode: "unsupported",
+      reason: "provider_reports_cached_content_without_rendered_policy",
+    };
+  }
+
+  if (api === "openai-completions" || api === "mistral-conversations") {
+    return {
+      strategies: ["implicitPrefix"],
+      cacheCounters: "readOnly",
+      shortRetention: true,
+      longRetention: "none",
+      readOnlyWriteMode: "unsupported",
+      reason: "openai_compatible_implicit_prefix_cache",
+    };
+  }
+
+  return {
+    strategies: ["implicitPrefix"],
+    cacheCounters: "none",
+    shortRetention: false,
+    longRetention: "none",
+    readOnlyWriteMode: "unsupported",
+    reason: "provider_cache_capability_unknown",
+  };
+}
+
+function modelSupportsOpenAIPromptCacheKey(modelId: string): boolean {
+  if (!modelId) {
+    return false;
+  }
+  return (
+    modelId.startsWith("gpt-") ||
+    modelId.startsWith("o1") ||
+    modelId.startsWith("o3") ||
+    modelId.startsWith("o4") ||
+    modelId.startsWith("chatgpt-")
+  );
+}
+
+export function resolveOpenAIResponsesCacheRender(input: {
+  api?: Api;
+  baseUrl: string;
+  provider?: string;
+  modelId?: string;
+  transport?: Transport;
+  sessionId?: string;
+  policy?: ProviderCachePolicy;
+}): OpenAIResponsesCacheRender {
+  const policy = normalizeProviderCachePolicy(input.policy);
+  const api = input.api ?? "openai-responses";
+  const capability = resolveProviderCacheCapability({
+    api,
+    provider: input.provider,
+    modelId: input.modelId,
+    baseUrl: input.baseUrl,
+    transport: input.transport,
+  });
+  if (policy.retention === "none") {
+    return disabledRender({
+      api,
+      sessionId: input.sessionId,
+      writeMode: policy.writeMode,
+      capability,
+    }) as OpenAIResponsesCacheRender;
+  }
+  if (policy.writeMode === "readOnly") {
+    return unsupportedReadOnlyRender({
+      api,
+      sessionId: input.sessionId,
+      capability,
+    }) as OpenAIResponsesCacheRender;
+  }
+  if (!capability.strategies.includes("promptCacheKey")) {
+    return unsupportedCapabilityRender({
+      api,
+      sessionId: input.sessionId,
+      writeMode: policy.writeMode,
+      capability,
+    }) as OpenAIResponsesCacheRender;
+  }
+  if (!input.sessionId) {
+    return missingSessionRender({
+      api,
+      writeMode: policy.writeMode,
+      capability,
+    }) as OpenAIResponsesCacheRender;
+  }
+
+  const renderedRetention =
+    policy.retention === "long" && capability.longRetention !== "24h" ? "short" : policy.retention;
+  return {
+    status: policy.retention === renderedRetention ? "rendered" : "degraded",
+    reason:
+      policy.retention === renderedRetention
+        ? "rendered_openai_prompt_cache"
+        : "long_retention_not_supported_for_provider_model",
+    renderedRetention,
+    bucketKey: buildRenderBucketKey({
+      api,
+      sessionId: input.sessionId,
+      retention: renderedRetention,
+      writeMode: policy.writeMode,
+    }),
+    capability,
+    promptCacheKey: input.sessionId,
+    promptCacheRetention: renderedRetention === "long" ? "24h" : undefined,
+  };
+}
+
+export function resolveAnthropicCacheRender(input: {
+  baseUrl: string;
+  modelId?: string;
+  sessionId?: string;
+  policy?: ProviderCachePolicy;
+}): AnthropicCacheRender {
+  const policy = normalizeProviderCachePolicy(input.policy);
+  const capability = resolveProviderCacheCapability({
+    api: "anthropic-messages",
+    provider: "anthropic",
+    modelId: input.modelId,
+    baseUrl: input.baseUrl,
+  });
+  if (policy.retention === "none") {
+    return disabledRender({
+      api: "anthropic-messages",
+      sessionId: input.sessionId,
+      writeMode: policy.writeMode,
+      capability,
+    }) as AnthropicCacheRender;
+  }
+  if (policy.writeMode === "readOnly") {
+    return unsupportedReadOnlyRender({
+      api: "anthropic-messages",
+      sessionId: input.sessionId,
+      capability,
+    }) as AnthropicCacheRender;
+  }
+
+  const isDirectAnthropic = input.baseUrl.includes("api.anthropic.com");
+  const renderedRetention =
+    policy.retention === "long" && !isDirectAnthropic ? "short" : policy.retention;
+  return {
+    status: policy.retention === renderedRetention ? "rendered" : "degraded",
+    reason:
+      policy.retention === renderedRetention
+        ? "rendered_anthropic_cache_control"
+        : "long_retention_requires_direct_anthropic_base_url",
+    renderedRetention,
+    bucketKey: buildRenderBucketKey({
+      api: "anthropic-messages",
+      sessionId: input.sessionId,
+      retention: renderedRetention,
+      writeMode: policy.writeMode,
+    }),
+    capability,
+    cacheControl: {
+      type: "ephemeral",
+      ...(renderedRetention === "long" ? { ttl: "1h" as const } : {}),
+    },
+  };
+}
+
+function bedrockModelSupportsPromptCaching(modelId: string, forceCache: boolean): boolean {
+  const id = modelId.toLowerCase();
+  if (!id.includes("claude")) {
+    return forceCache;
+  }
+  return (
+    id.includes("-4-") ||
+    id.includes("-4.") ||
+    id.includes("claude-3-7-sonnet") ||
+    id.includes("claude-3-5-sonnet") ||
+    id.includes("claude-3-5-haiku")
+  );
+}
+
+export function resolveBedrockCacheRender(input: {
+  modelId: string;
+  forceCache: boolean;
+  sessionId?: string;
+  policy?: ProviderCachePolicy;
+}): BedrockCacheRender {
+  const policy = normalizeProviderCachePolicy(input.policy);
+  const capability = resolveProviderCacheCapability({
+    api: "bedrock-converse-stream",
+    provider: "amazon-bedrock",
+    modelId: input.modelId,
+    forceCache: input.forceCache,
+  });
+  if (policy.retention === "none") {
+    return disabledRender({
+      api: "bedrock-converse-stream",
+      sessionId: input.sessionId,
+      writeMode: policy.writeMode,
+      capability,
+    }) as BedrockCacheRender;
+  }
+  if (policy.writeMode === "readOnly") {
+    return unsupportedReadOnlyRender({
+      api: "bedrock-converse-stream",
+      sessionId: input.sessionId,
+      capability,
+    }) as BedrockCacheRender;
+  }
+
+  if (!bedrockModelSupportsPromptCaching(input.modelId, input.forceCache)) {
+    return {
+      status: "unsupported",
+      reason: "bedrock_model_does_not_support_explicit_cache_points",
+      renderedRetention: "none",
+      bucketKey: buildRenderBucketKey({
+        api: "bedrock-converse-stream",
+        sessionId: input.sessionId,
+        retention: "none",
+        writeMode: policy.writeMode,
+      }),
+      capability,
+      cachePoint: undefined,
+    };
+  }
+
+  return {
+    status: "rendered",
+    reason: "rendered_bedrock_cache_point",
+    renderedRetention: policy.retention,
+    bucketKey: buildRenderBucketKey({
+      api: "bedrock-converse-stream",
+      sessionId: input.sessionId,
+      retention: policy.retention,
+      writeMode: policy.writeMode,
+    }),
+    capability,
+    cachePoint: {
+      type: "default",
+      ...(policy.retention === "long" ? { ttl: "1h" } : {}),
+    },
+  };
+}

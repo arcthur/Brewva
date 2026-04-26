@@ -1097,6 +1097,8 @@ describe("runtime facade coverage", () => {
       clearedChars: 1536,
       estimatedTokenSavings: 431,
       pressureLevel: "high",
+      classification: null,
+      expectedCacheBreak: false,
     });
     expect(runtime.inspect.context.getTransientReduction(sessionId)).toEqual(observed);
 

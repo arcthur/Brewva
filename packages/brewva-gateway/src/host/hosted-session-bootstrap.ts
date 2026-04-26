@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { createRecallContextProvider } from "@brewva/brewva-recall";
@@ -27,6 +29,7 @@ import {
   type BrewvaSemanticReranker,
   type BrewvaToolOrchestration,
 } from "@brewva/brewva-tools";
+import { createReadUnchangedState } from "../cache/index.js";
 import {
   createHostedTurnPipeline,
   type InternalRuntimePlugin,
@@ -69,6 +72,8 @@ import { DEFAULT_HOSTED_ROUTING_SCOPES } from "./routing-defaults.js";
 import { createHostedSemanticReranker } from "./semantic-reranker.js";
 
 export type HostedSession = BrewvaManagedPromptSession;
+
+const READ_SIGNATURE_CONTENT_HASH_MAX_BYTES = 1024 * 1024;
 
 export interface HostedSessionResult {
   session: HostedSession;
@@ -234,9 +239,74 @@ function didReadToolSucceed(result: { details?: unknown } | undefined): boolean 
   return true;
 }
 
+function isTextReadResult(result: { content?: unknown } | undefined): boolean {
+  if (!Array.isArray(result?.content)) {
+    return false;
+  }
+  return !result.content.some(
+    (item) => item && typeof item === "object" && (item as { type?: unknown }).type === "image",
+  );
+}
+
+function buildReadStateKey(cwd: string, requestedPath: string, params: Record<string, unknown>) {
+  return {
+    path: resolve(cwd, requestedPath),
+    offset: typeof params.offset === "number" ? Math.max(0, Math.trunc(params.offset)) : 0,
+    limit: typeof params.limit === "number" ? Math.max(0, Math.trunc(params.limit)) : null,
+    encoding: "utf8",
+  };
+}
+
+function readFileSignature(path: string) {
+  try {
+    const stat = statSync(path);
+    if (!stat.isFile()) {
+      return undefined;
+    }
+    return {
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+      contentHash:
+        stat.size <= READ_SIGNATURE_CONTENT_HASH_MAX_BYTES
+          ? createHash("sha256").update(readFileSync(path)).digest("hex")
+          : null,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveVisibleReadHistoryEpoch(
+  runtime: BrewvaRuntime | undefined,
+  sessionId: string,
+): number {
+  return runtime?.inspect.context.getVisibleReadEpoch(sessionId) ?? 0;
+}
+
+function buildReadSignatureHash(input: {
+  key: ReturnType<typeof buildReadStateKey>;
+  signature: ReturnType<typeof readFileSignature>;
+}): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        path: input.key.path,
+        offset: input.key.offset,
+        limit: input.key.limit,
+        encoding: input.key.encoding,
+        size: input.signature?.size ?? null,
+        mtimeMs: input.signature?.mtimeMs ?? null,
+        contentHash: input.signature?.contentHash ?? null,
+      }),
+    )
+    .digest("hex");
+}
+
 export function createCompactReadTool(input: CompactReadToolInput): HostedSessionCustomTool {
   const createReadDelegate = input.createReadDelegate ?? createHostedReadTool;
   const originalRead = createReadDelegate(input.cwd);
+  const readUnchangedState = createReadUnchangedState();
+  input.runtime?.maintain.session.onClearState((sessionId) => readUnchangedState.clear(sessionId));
   const tool: typeof originalRead = {
     name: originalRead.name,
     label: originalRead.label,
@@ -245,6 +315,55 @@ export function createCompactReadTool(input: CompactReadToolInput): HostedSessio
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const requestedPath = resolveRequestedReadPath(params as Record<string, unknown> | undefined);
       const sessionId = resolveReadSessionId(ctx);
+      const readKey =
+        requestedPath && sessionId
+          ? buildReadStateKey(input.cwd, requestedPath, params as Record<string, unknown>)
+          : undefined;
+      const signature = readKey ? readFileSignature(readKey.path) : undefined;
+      const visibleHistoryEpoch = sessionId
+        ? resolveVisibleReadHistoryEpoch(input.runtime, sessionId)
+        : 0;
+      if (sessionId && readKey && signature) {
+        const unchanged = readUnchangedState.match({
+          sessionId,
+          key: readKey,
+          signature,
+          visibleHistoryEpoch,
+        });
+        const visibleReadState = unchanged
+          ? {
+              path: readKey.path,
+              offset: readKey.offset,
+              limit: readKey.limit,
+              encoding: readKey.encoding,
+              signatureHash: buildReadSignatureHash({ key: readKey, signature }),
+              visibleHistoryEpoch: unchanged.visibleHistoryEpoch,
+              previousReadId: unchanged.previousReadId,
+            }
+          : undefined;
+        const priorContentStillVisible =
+          !visibleReadState ||
+          !input.runtime ||
+          input.runtime.inspect.context.isVisibleReadStateCurrent(sessionId, visibleReadState);
+        if (unchanged && priorContentStillVisible) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `File unchanged since previous visible read: ${requestedPath}`,
+              },
+            ],
+            details: {
+              ok: true,
+              unchanged: {
+                path: requestedPath,
+                previousReadId: unchanged.previousReadId,
+                visibleHistoryEpoch: unchanged.visibleHistoryEpoch,
+              },
+            },
+          } as unknown as Awaited<ReturnType<HostedSessionCustomTool["execute"]>>;
+        }
+      }
       if (input.runtime && requestedPath && sessionId) {
         const recoveryState = analyzeReadPathRecoveryState(input.runtime, sessionId);
         if (recoveryState.active && !isReadPathVerified(recoveryState, requestedPath, input.cwd)) {
@@ -267,6 +386,27 @@ export function createCompactReadTool(input: CompactReadToolInput): HostedSessio
         onUpdate,
         ctx,
       );
+      if (sessionId && readKey && didReadToolSucceed(result) && isTextReadResult(result)) {
+        const recordedSignature = readFileSignature(readKey.path);
+        if (recordedSignature) {
+          readUnchangedState.recordFullRead({
+            sessionId,
+            key: readKey,
+            signature: recordedSignature,
+            visibleHistoryEpoch,
+            readId: toolCallId,
+          });
+          input.runtime?.maintain.context.rememberVisibleReadState(sessionId, {
+            path: readKey.path,
+            offset: readKey.offset,
+            limit: readKey.limit,
+            encoding: readKey.encoding,
+            signatureHash: buildReadSignatureHash({ key: readKey, signature: recordedSignature }),
+            visibleHistoryEpoch,
+            previousReadId: toolCallId,
+          });
+        }
+      }
       if (input.runtime && requestedPath && sessionId && didReadToolSucceed(result)) {
         const discoveryPayload = buildReadPathDiscoveryObservationPayload({
           baseCwd: input.cwd,

@@ -279,6 +279,9 @@ export interface BrewvaInspectionPort {
     | "getUsage"
     | "getPromptStability"
     | "getTransientReduction"
+    | "getProviderCacheObservation"
+    | "getVisibleReadEpoch"
+    | "isVisibleReadStateCurrent"
     | "getReservedPrimaryTokens"
     | "getReservedSupplementalTokens"
     | "getUsageRatio"
@@ -353,6 +356,9 @@ export interface BrewvaMaintenancePort {
     | "observeUsage"
     | "observePromptStability"
     | "observeTransientReduction"
+    | "observeProviderCache"
+    | "advanceVisibleReadEpoch"
+    | "rememberVisibleReadState"
     | "registerProvider"
     | "unregisterProvider"
     | "buildInjection"
@@ -907,6 +913,9 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
           "getUsage",
           "getPromptStability",
           "getTransientReduction",
+          "getProviderCacheObservation",
+          "getVisibleReadEpoch",
+          "isVisibleReadStateCurrent",
           "getReservedPrimaryTokens",
           "getReservedSupplementalTokens",
           "getUsageRatio",
@@ -977,6 +986,9 @@ export class BrewvaRuntime implements BrewvaHostedRuntimePort {
           "observeUsage",
           "observePromptStability",
           "observeTransientReduction",
+          "observeProviderCache",
+          "advanceVisibleReadEpoch",
+          "rememberVisibleReadState",
           "registerProvider",
           "unregisterProvider",
           "buildInjection",

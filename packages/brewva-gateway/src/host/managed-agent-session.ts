@@ -1,7 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, extname, resolve } from "node:path";
-import type { SessionLifecycleSnapshot, SessionWireFrame } from "@brewva/brewva-runtime";
+import { basename, extname, join, resolve } from "node:path";
+import type {
+  Api,
+  ProviderCachePolicy,
+  ProviderRequestFingerprint,
+  ProviderPayloadMetadata,
+} from "@brewva/brewva-provider-core";
+import {
+  buildProviderCacheBucketKey,
+  resolveProviderCacheCapability,
+} from "@brewva/brewva-provider-core";
+import type {
+  BrewvaRuntime,
+  ExpectedProviderCacheBreak,
+  ProviderCacheRenderState,
+  SessionLifecycleSnapshot,
+  SessionWireFrame,
+} from "@brewva/brewva-runtime";
 import {
   DEFAULT_CONTEXT_STATE,
   advanceSessionPhaseResult,
@@ -44,6 +60,16 @@ import {
   BrewvaToolResult,
   type BrewvaToolUiPort,
 } from "@brewva/brewva-substrate";
+import {
+  ProviderCacheBreakDetector,
+  ProviderCacheStickyLatches,
+  createProviderRequestFingerprint,
+  createToolSchemaSnapshotStore,
+  stableHash,
+  stableStringify,
+  type ToolSchemaSnapshot,
+  type ToolSchemaSnapshotTool,
+} from "../cache/index.js";
 import { HOSTED_PROMPT_ATTEMPT_DISPATCH } from "../session/hosted-prompt-attempt.js";
 import {
   deriveSessionPhaseFromRuntimeFactFrame,
@@ -56,6 +82,7 @@ import {
   type BrewvaAgentEngine,
   type BrewvaAgentEngineAfterToolCallContext,
   type BrewvaAgentEngineBeforeToolCallContext,
+  type BrewvaAgentEngineCachePolicy,
   type BrewvaAgentEngineEvent,
   type BrewvaAgentEngineFileContent,
   type BrewvaAgentEngineMessage,
@@ -81,11 +108,331 @@ function applyMessageEndTransform(
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function resolveActiveSkillSet(runtime: BrewvaRuntime, sessionId: string): string[] {
+  const active = runtime.inspect.skills.getActive(sessionId) as unknown;
+  if (typeof active === "string" && active.trim().length > 0) {
+    return [active.trim()];
+  }
+  if (isRecord(active)) {
+    const name = active.name;
+    if (typeof name === "string" && name.trim().length > 0) {
+      return [name.trim()];
+    }
+  }
+  return [];
+}
+
+function resolveSkillRoutingEpoch(runtime: BrewvaRuntime, sessionId: string): number {
+  const state = runtime.inspect.skills.getActiveState(sessionId) as unknown;
+  if (isRecord(state) && typeof state.epoch === "number" && Number.isFinite(state.epoch)) {
+    return Math.max(0, Math.trunc(state.epoch));
+  }
+  return 0;
+}
+
+function normalizePromptSource(
+  source: BrewvaPromptOptions["source"] | undefined,
+): string | undefined {
+  if (typeof source !== "string") {
+    return undefined;
+  }
+  const normalized = source.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function resolveChannelContext(source: string | undefined): { source: string } | "" {
+  return source ? { source } : "";
+}
+
+const RECALL_CONTEXT_SOURCE_NAMES = new Set(["brewva.recall-broker"]);
+
+interface RecallInjectionFingerprintInput {
+  present: boolean;
+  scope: "dynamic_tail";
+  accepted: boolean;
+  sourceCount: number;
+  sources: string[];
+  estimatedTokens: number;
+  contentHash: string | null;
+}
+
+const EMPTY_RECALL_INJECTION_FINGERPRINT: RecallInjectionFingerprintInput = {
+  present: false,
+  scope: "dynamic_tail",
+  accepted: false,
+  sourceCount: 0,
+  sources: [],
+  estimatedTokens: 0,
+  contentHash: null,
+};
+
+function isRecallContextSource(sourceName: string, budgetClasses: readonly unknown[]): boolean {
+  return (
+    RECALL_CONTEXT_SOURCE_NAMES.has(sourceName) ||
+    sourceName.startsWith("brewva.recall.") ||
+    budgetClasses.some((entry) => entry === "recall")
+  );
+}
+
+function resolveRecallSourceContentHash(input: {
+  source: string;
+  count: number;
+  estimatedTokens: number;
+  contentHash: unknown;
+}): string {
+  if (typeof input.contentHash === "string" && input.contentHash.trim().length > 0) {
+    return input.contentHash;
+  }
+  return stableHash(
+    stableStringify({
+      source: input.source,
+      count: input.count,
+      estimatedTokens: input.estimatedTokens,
+    }),
+  );
+}
+
+function resolveRecallInjectionFingerprint(
+  messages: readonly BrewvaHostCustomMessage[] | undefined,
+): RecallInjectionFingerprintInput {
+  const recallSources: Array<{
+    source: string;
+    count: number;
+    estimatedTokens: number;
+    contentHash: string;
+  }> = [];
+  let accepted = false;
+  for (const message of messages ?? []) {
+    if (message.customType !== "brewva-context-injection") {
+      continue;
+    }
+    const contextSources = isRecord(message.details) ? message.details.contextSources : undefined;
+    if (!isRecord(contextSources)) {
+      continue;
+    }
+    accepted = accepted || contextSources.accepted === true;
+    const sources = Array.isArray(contextSources.sources) ? contextSources.sources : [];
+    for (const source of sources) {
+      if (!isRecord(source)) {
+        continue;
+      }
+      const sourceName = typeof source.source === "string" ? source.source : "";
+      const budgetClasses = Array.isArray(source.budgetClasses) ? source.budgetClasses : [];
+      if (!isRecallContextSource(sourceName, budgetClasses)) {
+        continue;
+      }
+      const count = typeof source.count === "number" ? Math.max(0, Math.trunc(source.count)) : 0;
+      const estimatedTokens =
+        typeof source.estimatedTokens === "number"
+          ? Math.max(0, Math.trunc(source.estimatedTokens))
+          : 0;
+      recallSources.push({
+        source: sourceName,
+        count,
+        estimatedTokens,
+        contentHash: resolveRecallSourceContentHash({
+          source: sourceName,
+          count,
+          estimatedTokens,
+          contentHash: source.contentHash,
+        }),
+      });
+    }
+  }
+  if (recallSources.length === 0) {
+    return { ...EMPTY_RECALL_INJECTION_FINGERPRINT };
+  }
+  return {
+    present: true,
+    scope: "dynamic_tail",
+    accepted,
+    sourceCount: recallSources.length,
+    sources: recallSources.map((entry) => entry.source).toSorted(),
+    estimatedTokens: recallSources.reduce((sum, entry) => sum + entry.estimatedTokens, 0),
+    contentHash: stableHash(stableStringify(recallSources)),
+  };
+}
+
+export const MANAGED_AGENT_SESSION_TEST_ONLY = {
+  resolveRecallInjectionFingerprint,
+} as const;
+
+function buildProviderDynamicTailSummary(input: {
+  payload: unknown;
+  channelContext: unknown;
+  recallInjection: RecallInjectionFingerprintInput;
+  visibleHistoryReduction: unknown;
+}): unknown {
+  return {
+    version: 1,
+    payloadTail: summarizeProviderPayloadTail(input.payload),
+    channelContext: input.channelContext,
+    recallInjection: input.recallInjection,
+    visibleHistoryReduction: input.visibleHistoryReduction,
+  };
+}
+
+function summarizeProviderPayloadTail(payload: unknown): unknown {
+  if (!isRecord(payload)) {
+    const serialized = stableStringify(payload);
+    return {
+      kind: typeof payload,
+      bytes: serialized.length,
+      tailHash: stableHash(serialized.slice(-4096)),
+    };
+  }
+  const messages = Array.isArray(payload.messages)
+    ? payload.messages
+    : Array.isArray(payload.input)
+      ? payload.input
+      : [];
+  return {
+    messageCount: messages.length,
+    lastMessages: messages.slice(-4).map((message) => summarizeProviderPayloadMessage(message)),
+    hasTools: Array.isArray(payload.tools) && payload.tools.length > 0,
+    toolCount: Array.isArray(payload.tools) ? payload.tools.length : 0,
+  };
+}
+
+function summarizeProviderPayloadMessage(message: unknown): unknown {
+  const serialized = stableStringify(message);
+  const role = isRecord(message) && typeof message.role === "string" ? message.role : null;
+  const type = isRecord(message) && typeof message.type === "string" ? message.type : null;
+  const content = isRecord(message) ? message.content : undefined;
+  const contentSerialized = stableStringify(content ?? null);
+  return {
+    role,
+    type,
+    bytes: serialized.length,
+    contentBytes: contentSerialized.length,
+    contentTailHash: stableHash(contentSerialized.slice(-4096)),
+  };
+}
+
+function resolveExpectedProviderCacheBreak(
+  runtime: BrewvaRuntime,
+  sessionId: string,
+): ExpectedProviderCacheBreak | undefined {
+  const transientReduction = runtime.inspect.context.getTransientReduction(sessionId);
+  if (!transientReduction?.expectedCacheBreak || !transientReduction.classification) {
+    return undefined;
+  }
+  if (transientReduction.classification === "cacheCold") {
+    return undefined;
+  }
+  return {
+    classification: transientReduction.classification,
+    reason: transientReduction.reason ?? "expected_provider_cache_break",
+  };
+}
+
+function resolveProviderCacheDiagnosticDumpDirectory(cwd: string): string | undefined {
+  const explicit =
+    process.env.BREWVA_CACHE_BREAK_DUMP_DIR?.trim() ||
+    process.env.BREWVA_PROVIDER_CACHE_DEBUG_DIR?.trim();
+  if (explicit) {
+    return resolve(explicit);
+  }
+  return process.env.BREWVA_PROVIDER_CACHE_DEBUG_DUMP === "1"
+    ? join(cwd, ".brewva", "diagnostics", "provider-cache")
+    : undefined;
+}
+
+interface ProviderCacheModelIdentity {
+  provider: string;
+  api: Api;
+  id: string;
+  baseUrl?: string;
+}
+
+function buildProviderCacheModelKey(model: ProviderCacheModelIdentity): string {
+  return `${model.provider}\0${model.api}\0${model.id}`;
+}
+
+function buildUnsupportedProviderCacheRender(input: {
+  model: ProviderCacheModelIdentity;
+  transport: BrewvaAgentEngineTransport;
+  sessionId: string;
+  cachePolicy: ProviderCachePolicy;
+}): ProviderCacheRenderState {
+  const capability = resolveProviderCacheCapability({
+    api: input.model.api,
+    provider: input.model.provider,
+    modelId: input.model.id,
+    baseUrl: input.model.baseUrl,
+    transport: input.transport,
+  });
+  const observableWithoutRenderedPolicy = capability.cacheCounters !== "none";
+  return {
+    status:
+      input.cachePolicy.retention === "none"
+        ? "disabled"
+        : observableWithoutRenderedPolicy
+          ? "degraded"
+          : "unsupported",
+    reason:
+      input.cachePolicy.retention === "none"
+        ? "cache_policy_disabled"
+        : observableWithoutRenderedPolicy
+          ? capability.reason
+          : "provider_cache_observability_unavailable",
+    renderedRetention: "none",
+    bucketKey: buildProviderCacheBucketKey({
+      provider: input.model.provider,
+      api: input.model.api,
+      model: input.model.id,
+      sessionId: input.sessionId,
+      policy: input.cachePolicy,
+    }),
+    capability,
+  };
+}
+
+function normalizeProviderCacheRender(input: {
+  metadata?: ProviderPayloadMetadata;
+  model: ProviderCacheModelIdentity;
+  transport: BrewvaAgentEngineTransport;
+  sessionId: string;
+  cachePolicy: ProviderCachePolicy;
+  previousRender?: ProviderCacheRenderState;
+  previousRenderModelKey?: string;
+}): ProviderCacheRenderState {
+  const metadataRender = input.metadata?.cacheRender;
+  if (metadataRender) {
+    return {
+      status: metadataRender.status,
+      reason: metadataRender.reason,
+      renderedRetention: metadataRender.renderedRetention,
+      bucketKey: metadataRender.bucketKey,
+      capability: metadataRender.capability ?? input.metadata?.cacheCapability,
+    };
+  }
+  if (
+    input.previousRenderModelKey === buildProviderCacheModelKey(input.model) &&
+    input.previousRender
+  ) {
+    return input.previousRender;
+  }
+  return buildUnsupportedProviderCacheRender(input);
+}
+
+function providerCacheCountersAvailable(render: ProviderCacheRenderState): boolean {
+  if (render.capability?.cacheCounters === "none") {
+    return false;
+  }
+  return render.status === "rendered" || render.status === "degraded";
+}
+
 export interface BrewvaManagedAgentSessionSettingsPort {
   getQuietStartup(): boolean;
   getSteeringMode(): "all" | "one-at-a-time" | undefined;
   getFollowUpMode(): "all" | "one-at-a-time" | undefined;
   getTransport(): BrewvaAgentEngineTransport;
+  getCachePolicy(): BrewvaAgentEngineCachePolicy;
   getThinkingBudgets(): BrewvaAgentEngineThinkingBudgets | undefined;
   getRetrySettings(): { maxDelayMs: number } | undefined;
   setDefaultModelAndProvider(provider: string, modelId: string): void;
@@ -103,6 +450,7 @@ export interface CreateBrewvaManagedAgentSessionOptions {
   agentDir: string;
   sessionStore: ManagedAgentSessionStore;
   settings: BrewvaManagedAgentSessionSettingsPort;
+  runtime?: BrewvaRuntime;
   modelCatalog: BrewvaMutableModelCatalog;
   resourceLoader: BrewvaHostedResourceLoader;
   runtimePlugins?: CreateBrewvaHostPluginRunnerOptions["plugins"];
@@ -204,12 +552,14 @@ const NOOP_UI: BrewvaToolUiPort = {
 function toAgentTool(
   tool: BrewvaToolDefinition,
   ctxFactory: () => BrewvaToolContext,
+  schemaOverride?: ToolSchemaSnapshotTool,
 ): BrewvaAgentEngineTool {
   return {
     name: tool.name,
     label: tool.label,
-    description: tool.description,
-    parameters: tool.parameters,
+    description: schemaOverride?.description ?? tool.description,
+    parameters: (schemaOverride?.parameters ??
+      tool.parameters) as BrewvaAgentEngineTool["parameters"],
     prepareArguments: tool.prepareArguments,
     execute: (
       toolCallId: string,
@@ -706,6 +1056,8 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
   readonly #toolDefinitions = new Map<string, BrewvaToolDefinition>();
   readonly #toolPromptSnippets = new Map<string, string>();
   readonly #toolPromptGuidelines = new Map<string, string[]>();
+  readonly #toolSchemaSnapshotStore = createToolSchemaSnapshotStore();
+  readonly #providerCacheStickyLatches = new ProviderCacheStickyLatches();
   readonly #listeners = new Set<(event: BrewvaPromptSessionEvent) => void>();
   #ui: BrewvaToolUiPort;
   readonly #queuedSteering: string[] = [];
@@ -724,7 +1076,15 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
   #turnIndex = 0;
   #turnStartTimestamp = 0;
   #contextState: ContextState = { ...DEFAULT_CONTEXT_STATE };
+  #activePromptSource: string | undefined;
+  #lastRecallInjectionFingerprint: RecallInjectionFingerprintInput = {
+    ...EMPTY_RECALL_INJECTION_FINGERPRINT,
+  };
   readonly #logger: HostedSessionLogger | null;
+  readonly #onProviderAssistantMessage:
+    | ((message: Extract<BrewvaAgentEngineMessage, { role: "assistant" }>) => void)
+    | undefined;
+  readonly #onDispose: (() => void) | undefined;
 
   constructor(input: {
     cwd: string;
@@ -736,7 +1096,12 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     runner: BrewvaHostPluginRunner;
     agent: BrewvaAgentEngine;
     ui?: BrewvaToolUiPort;
+    runtime?: BrewvaRuntime;
     logger?: HostedSessionLogger;
+    onProviderAssistantMessage?: (
+      message: Extract<BrewvaAgentEngineMessage, { role: "assistant" }>,
+    ) => void;
+    onDispose?: () => void;
   }) {
     this.#cwd = input.cwd;
     this.#settings = input.settings;
@@ -750,6 +1115,8 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     this.#runner = input.runner;
     this.#agent = input.agent;
     this.#logger = input.logger ?? null;
+    this.#onProviderAssistantMessage = input.onProviderAssistantMessage;
+    this.#onDispose = input.onDispose;
   }
 
   static async create(
@@ -812,15 +1179,33 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       );
     }
 
+    let lastProviderFingerprint: ProviderRequestFingerprint | undefined;
+    let lastCacheRender: ProviderCacheRenderState | undefined;
+    let lastCacheRenderModelKey: string | undefined;
+    const cacheBreakDetector = new ProviderCacheBreakDetector({
+      diagnosticDumpDirectory: resolveProviderCacheDiagnosticDumpDirectory(options.cwd),
+    });
+    const sessionId = options.sessionStore.getSessionId();
+    const clearCacheState = options.runtime?.maintain.session.onClearState((clearedSessionId) => {
+      if (clearedSessionId === sessionId) {
+        cacheBreakDetector.clear();
+        lastProviderFingerprint = undefined;
+        lastCacheRender = undefined;
+        lastCacheRenderModelKey = undefined;
+        session?.clearProviderCacheSessionState();
+      }
+    });
+
     const agent = createHostedAgentEngine({
       initialModel: options.initialModel,
       initialThinkingLevel: options.initialThinkingLevel ?? "off",
       steeringMode: options.settings.getSteeringMode(),
       followUpMode: options.settings.getFollowUpMode(),
       transport: options.settings.getTransport(),
+      cachePolicy: options.settings.getCachePolicy(),
       thinkingBudgets: options.settings.getThinkingBudgets(),
       maxRetryDelayMs: options.settings.getRetrySettings()?.maxDelayMs,
-      sessionId: options.sessionStore.getSessionId(),
+      sessionId,
       resolveRequestAuth: async (model) => options.modelCatalog.getApiKeyAndHeaders(model),
       beforeToolCall: async (input: BrewvaAgentEngineBeforeToolCallContext) => {
         if (!session) {
@@ -862,14 +1247,88 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
           isError: result.isError,
         };
       },
-      onPayload: async (payload) => {
+      onPayload: async (payload, model, metadata) => {
         if (!session) {
           return payload;
         }
-        return runner.emitBeforeProviderRequest(
+        const nextPayload = await runner.emitBeforeProviderRequest(
           { type: "before_provider_request", payload },
           session.createHostContext(),
         );
+        if (options.runtime) {
+          const channelContext = session.resolveProviderCacheChannelContext();
+          const cachePolicy = options.settings.getCachePolicy();
+          const cacheRender = normalizeProviderCacheRender({
+            metadata,
+            model,
+            transport: options.settings.getTransport(),
+            sessionId,
+            cachePolicy,
+            previousRender: lastCacheRender,
+            previousRenderModelKey: lastCacheRenderModelKey,
+          });
+          lastCacheRender = cacheRender;
+          lastCacheRenderModelKey = buildProviderCacheModelKey(model);
+          const toolSchemaSnapshot = session.resolveProviderToolSchemaSnapshot("provider_payload");
+          const stickyLatches = session.observeProviderCacheStickyLatches({
+            cachePolicy,
+            cacheRender,
+            transport: options.settings.getTransport(),
+            reasoning: metadata?.reasoning ?? agent.state.thinkingLevel,
+            channelContext,
+          });
+          const transientReduction =
+            options.runtime.inspect.context.getTransientReduction(sessionId);
+          const visibleHistoryReduction = {
+            epoch: options.runtime.inspect.context.getVisibleReadEpoch(sessionId),
+            transientReductionStatus: transientReduction?.status ?? "none",
+            transientReductionClassification: transientReduction?.classification ?? null,
+            expectedCacheBreak: transientReduction?.expectedCacheBreak ?? false,
+          };
+          const recallInjection = session.#lastRecallInjectionFingerprint;
+          lastProviderFingerprint = createProviderRequestFingerprint({
+            provider: model.provider,
+            api: model.api,
+            model: model.id,
+            transport: options.settings.getTransport(),
+            sessionId,
+            cachePolicy,
+            toolSchemaSnapshot,
+            stablePrefixParts: [agent.state.systemPrompt],
+            dynamicTailParts: [
+              buildProviderDynamicTailSummary({
+                payload: nextPayload,
+                channelContext,
+                recallInjection,
+                visibleHistoryReduction,
+              }),
+            ],
+            activeSkillSet: resolveActiveSkillSet(options.runtime, sessionId),
+            skillRoutingEpoch: resolveSkillRoutingEpoch(options.runtime, sessionId),
+            channelContext,
+            renderedCache: cacheRender,
+            stickyLatches,
+            reasoning: metadata?.reasoning ?? agent.state.thinkingLevel,
+            thinkingBudgets: metadata?.thinkingBudgets ?? options.settings.getThinkingBudgets(),
+            cacheRelevantHeaders: metadata?.headers,
+            extraBody: metadata?.extraBody,
+            visibleHistoryReduction,
+            recallInjection,
+            providerFallback: metadata?.providerFallback ?? { active: false },
+            payload: nextPayload,
+          });
+        }
+        return nextPayload;
+      },
+      onCacheRender: (render, model) => {
+        lastCacheRender = {
+          status: render.status,
+          reason: render.reason,
+          renderedRetention: render.renderedRetention,
+          bucketKey: render.bucketKey,
+          capability: render.capability,
+        };
+        lastCacheRenderModelKey = buildProviderCacheModelKey(model);
       },
       transformContext: async (messages) => {
         if (!session) {
@@ -895,7 +1354,39 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       runner,
       agent,
       ui: options.ui,
+      runtime: options.runtime,
       logger: options.logger,
+      onProviderAssistantMessage: (message) => {
+        if (!options.runtime || !lastProviderFingerprint || !lastCacheRender) {
+          return;
+        }
+        const expectedBreak = resolveExpectedProviderCacheBreak(options.runtime, sessionId);
+        const breakObservation = cacheBreakDetector.observe({
+          source: lastProviderFingerprint.bucketKey,
+          fingerprint: lastProviderFingerprint,
+          usage: {
+            cacheRead: message.usage.cacheRead,
+            cacheWrite: message.usage.cacheWrite,
+          },
+          expectedBreak,
+          observability: {
+            cacheCountersAvailable: providerCacheCountersAvailable(lastCacheRender),
+            reason: providerCacheCountersAvailable(lastCacheRender)
+              ? undefined
+              : lastCacheRender.reason,
+          },
+          observedAt: Date.now(),
+        });
+        options.runtime.maintain.context.observeProviderCache(sessionId, {
+          source: lastProviderFingerprint.bucketKey,
+          fingerprint: lastProviderFingerprint,
+          render: lastCacheRender,
+          breakObservation,
+        });
+      },
+      onDispose: () => {
+        clearCacheState?.();
+      },
     });
     await session.initialize();
     await session.emitSessionStart();
@@ -955,6 +1446,10 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
 
   getRegisteredTools(): readonly BrewvaToolDefinition[] {
     return [...this.#registeredTools];
+  }
+
+  resolveProviderCacheChannelContext(): { source: string } | "" {
+    return resolveChannelContext(this.#activePromptSource);
   }
 
   async prompt(
@@ -1047,6 +1542,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       },
       this.createHostContext(),
     );
+    this.#lastRecallInjectionFingerprint = resolveRecallInjectionFingerprint(beforeStart?.messages);
     if (beforeStart?.messages) {
       for (const message of beforeStart.messages) {
         messages.push({
@@ -1062,7 +1558,13 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
 
     this.#agent.setSystemPrompt(beforeStart?.systemPrompt ?? this.#baseSystemPrompt);
     await this.syncContextState();
-    await this.#agent.prompt(messages);
+    const previousPromptSource = this.#activePromptSource;
+    this.#activePromptSource = normalizePromptSource(options?.source);
+    try {
+      await this.#agent.prompt(messages);
+    } finally {
+      this.#activePromptSource = previousPromptSource;
+    }
   }
 
   subscribe(listener: (event: BrewvaPromptSessionEvent) => void): () => void {
@@ -1099,6 +1601,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       previousModel.provider !== resolved.provider ||
       previousModel.id !== resolved.id
     ) {
+      this.clearProviderCacheSessionState();
       this.sessionManager.appendModelChange(resolved.provider, resolved.id);
       await this.#runner.emit(
         "model_select",
@@ -1170,6 +1673,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     this.#disposed = true;
     this.#unsubscribeSessionWire?.();
     this.#unsubscribeSessionWire = null;
+    this.#onDispose?.();
     this.sessionManager.dispose?.();
     this.#listeners.clear();
     void this.#runner.emit(
@@ -1187,6 +1691,53 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     );
   }
 
+  private resolveToolSchemaSnapshot(
+    tools: readonly BrewvaToolDefinition[],
+    invalidationReason: string,
+  ): ToolSchemaSnapshot {
+    return this.#toolSchemaSnapshotStore.resolve(
+      tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      })),
+      invalidationReason,
+    );
+  }
+
+  private buildAgentToolsFromSnapshot(
+    tools: readonly BrewvaToolDefinition[],
+    snapshot: ToolSchemaSnapshot,
+  ): BrewvaAgentEngineTool[] {
+    const schemasByName = new Map(snapshot.tools.map((tool) => [tool.name, tool]));
+    return tools.map((tool) =>
+      toAgentTool(tool, () => this.createToolContext(), schemasByName.get(tool.name)),
+    );
+  }
+
+  private resolveProviderToolSchemaSnapshot(invalidationReason: string): ToolSchemaSnapshot {
+    const activeToolNames = new Set(this.getActiveToolNames());
+    const activeDefinitions = [...this.#toolDefinitions.values()].filter((tool) =>
+      activeToolNames.has(tool.name),
+    );
+    return this.resolveToolSchemaSnapshot(activeDefinitions, invalidationReason);
+  }
+
+  private clearProviderCacheSessionState(): void {
+    this.#toolSchemaSnapshotStore.clear("session_clear");
+    this.#providerCacheStickyLatches.clear();
+  }
+
+  private observeProviderCacheStickyLatches(
+    input: Parameters<ProviderCacheStickyLatches["observe"]>[0],
+  ) {
+    return this.#providerCacheStickyLatches.observe(input);
+  }
+
+  private markSessionCompactedForCacheState(): void {
+    this.clearProviderCacheSessionState();
+  }
+
   private refreshTools(): void {
     this.#toolDefinitions.clear();
     this.#toolPromptSnippets.clear();
@@ -1196,9 +1747,9 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       this.indexToolDefinition(tool);
     }
 
-    const tools = [...this.#toolDefinitions.values()].map((tool) =>
-      toAgentTool(tool, () => this.createToolContext()),
-    );
+    const toolDefinitions = [...this.#toolDefinitions.values()];
+    const snapshot = this.resolveToolSchemaSnapshot(toolDefinitions, "tool_refresh");
+    const tools = this.buildAgentToolsFromSnapshot(toolDefinitions, snapshot);
     this.#agent.setTools(tools);
     this.#baseSystemPrompt = this.rebuildSystemPrompt();
     this.#agent.setSystemPrompt(this.#baseSystemPrompt);
@@ -1304,10 +1855,11 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
   }
 
   private setActiveTools(toolNames: string[]): void {
-    const tools = toolNames
+    const selectedDefinitions = toolNames
       .map((toolName) => this.#toolDefinitions.get(toolName))
-      .filter((tool): tool is BrewvaToolDefinition => tool !== undefined)
-      .map((tool) => toAgentTool(tool, () => this.createToolContext()));
+      .filter((tool): tool is BrewvaToolDefinition => tool !== undefined);
+    const snapshot = this.resolveToolSchemaSnapshot(selectedDefinitions, "active_tool_set_changed");
+    const tools = this.buildAgentToolsFromSnapshot(selectedDefinitions, snapshot);
     this.#agent.setTools(tools);
     this.#baseSystemPrompt = this.rebuildSystemPrompt();
     this.#agent.setSystemPrompt(this.#baseSystemPrompt);
@@ -1534,6 +2086,12 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       await this.executeDeferredCompaction();
       await this.syncContextState();
     }
+    if (
+      eventForListeners.type === "message_end" &&
+      eventForListeners.message.role === "assistant"
+    ) {
+      this.#onProviderAssistantMessage?.(eventForListeners.message);
+    }
     return eventForListeners;
   }
 
@@ -1633,6 +2191,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       try {
         await this.#runner.emit("session_compact", compactEvent, this.createHostContext());
         this.emitToListeners(compactEvent);
+        this.markSessionCompactedForCacheState();
         request.onComplete?.(compactEvent);
       } catch (error) {
         for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -1650,6 +2209,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
           ) {
             this.replaceMessages(persistedContext.messages);
             this.emitToListeners(compactEvent);
+            this.markSessionCompactedForCacheState();
             request.onComplete?.(compactEvent);
             return;
           }
@@ -1668,6 +2228,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
         if (settledLeaf?.type === "compaction") {
           this.replaceMessages(settledContext.messages);
           this.emitToListeners(pendingCompactEvent);
+          this.markSessionCompactedForCacheState();
           request.onComplete?.(pendingCompactEvent);
           return;
         }

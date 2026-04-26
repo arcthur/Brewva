@@ -5,6 +5,8 @@ export type {
   BrewvaAgentEngineAssistantMessageEvent,
   BrewvaAgentEngineBeforeToolCallContext,
   BrewvaAgentEngineBranchSummaryMessage,
+  BrewvaAgentEngineCachePolicy,
+  BrewvaAgentEngineCacheRenderResult,
   BrewvaAgentEngineCompactionSummaryMessage,
   BrewvaAgentEngineContext,
   BrewvaAgentEngineCustomMessage,

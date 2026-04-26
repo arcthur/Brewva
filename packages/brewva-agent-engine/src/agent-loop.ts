@@ -18,6 +18,9 @@ import type {
   BrewvaAgentEngineToolResultMessage,
   BrewvaAgentEngineTransport,
   BrewvaAgentEngineStopAfterToolResults,
+  BrewvaAgentEngineCachePolicy,
+  BrewvaAgentEngineCacheRenderResult,
+  BrewvaAgentEnginePayloadMetadata,
 } from "./agent-engine-types.js";
 import { convertToLlm } from "./agent-messages.js";
 import {
@@ -40,7 +43,16 @@ export interface BrewvaAgentLoopConfig {
   model: BrewvaRegisteredModel;
   reasoning?: BrewvaAgentEngineThinkingLevel;
   sessionId?: string;
-  onPayload?: (payload: unknown, model: BrewvaRegisteredModel) => Promise<unknown>;
+  cachePolicy?: BrewvaAgentEngineCachePolicy;
+  onCacheRender?: (
+    render: BrewvaAgentEngineCacheRenderResult,
+    model: BrewvaRegisteredModel,
+  ) => void | Promise<void>;
+  onPayload?: (
+    payload: unknown,
+    model: BrewvaRegisteredModel,
+    metadata?: BrewvaAgentEnginePayloadMetadata,
+  ) => Promise<unknown>;
   transport: BrewvaAgentEngineTransport;
   thinkingBudgets?: BrewvaAgentEngineThinkingBudgets;
   maxRetryDelayMs?: number;
@@ -260,6 +272,8 @@ async function streamAssistantResponse(
     apiKey: requestAuth.apiKey,
     transport: config.transport,
     sessionId: config.sessionId,
+    cachePolicy: config.cachePolicy,
+    onCacheRender: config.onCacheRender,
     onPayload: config.onPayload,
     headers: requestAuth.headers,
     maxRetryDelayMs: config.maxRetryDelayMs,

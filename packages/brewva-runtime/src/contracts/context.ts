@@ -57,6 +57,8 @@ export interface TransientReductionObservationInput {
   clearedChars?: number;
   estimatedTokenSavings?: number;
   pressureLevel?: ContextPressureLevel | "unknown";
+  classification?: ProviderCacheBreakClassification;
+  expectedCacheBreak?: boolean;
   turn?: number;
   timestamp?: number;
 }
@@ -71,6 +73,121 @@ export interface TransientReductionState {
   clearedChars: number;
   estimatedTokenSavings: number;
   pressureLevel: ContextPressureLevel | "unknown";
+  classification: ProviderCacheBreakClassification | null;
+  expectedCacheBreak: boolean;
+}
+
+export type ProviderCacheBreakClassification =
+  | "prefixPreserving"
+  | "prefixResetting"
+  | "providerEdit"
+  | "cacheCold";
+
+export interface ProviderCacheFingerprintState {
+  bucketKey: string;
+  provider: string;
+  api: string;
+  model: string;
+  transport?: string;
+  sessionId?: string;
+  cachePolicyHash: string;
+  toolSchemaSnapshotHash: string;
+  toolSchemaOverlayHash: string;
+  perToolHashes: Record<string, string>;
+  stablePrefixHash: string;
+  dynamicTailHash: string;
+  requestHash: string;
+  activeSkillSetHash: string;
+  skillRoutingEpoch: number;
+  channelContextHash: string;
+  renderedCacheHash: string;
+  cacheCapabilityHash: string;
+  stickyLatchHash: string;
+  reasoningHash: string;
+  thinkingBudgetHash: string;
+  cacheRelevantHeadersHash: string;
+  extraBodyHash: string;
+  visibleHistoryReductionHash: string;
+  recallInjectionHash: string;
+  providerFallbackHash: string;
+}
+
+export type ProviderCacheCapabilityStrategy =
+  | "explicitCacheMarker"
+  | "promptCacheKey"
+  | "implicitPrefix"
+  | "unsupported";
+
+export interface ProviderSessionContinuationCapabilityState {
+  family: "openai-responses";
+  modes: ("websocketConnection" | "previousResponseId" | "turnStateHeader")[];
+  authority: "efficiency";
+  reason: string;
+}
+
+export interface ProviderCacheCapabilityState {
+  strategies: ProviderCacheCapabilityStrategy[];
+  cacheCounters: "readWrite" | "readOnly" | "none";
+  shortRetention: boolean;
+  longRetention: "none" | "1h" | "24h";
+  readOnlyWriteMode: "supported" | "unsupported";
+  continuation?: ProviderSessionContinuationCapabilityState;
+  reason: string;
+}
+
+export interface ProviderCacheRenderState {
+  status: "rendered" | "disabled" | "unsupported" | "degraded";
+  reason: string;
+  renderedRetention: "none" | "short" | "long";
+  bucketKey: string;
+  capability?: ProviderCacheCapabilityState;
+}
+
+export interface ProviderCacheBreakObservation {
+  status: "cold" | "warm" | "break" | "limited";
+  classification: ProviderCacheBreakClassification;
+  expected: boolean;
+  reason: string | null;
+  previousCacheReadTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cacheMissTokens: number;
+  thresholdTokens: number;
+  relativeDropThreshold: number;
+  changedFields: string[];
+}
+
+export interface ExpectedProviderCacheBreak {
+  classification: Exclude<ProviderCacheBreakClassification, "cacheCold">;
+  reason: string;
+}
+
+export interface ProviderCacheObservationInput {
+  source: string;
+  fingerprint: ProviderCacheFingerprintState;
+  render: ProviderCacheRenderState;
+  breakObservation: ProviderCacheBreakObservation;
+  turn?: number;
+  timestamp?: number;
+}
+
+export interface ProviderCacheObservationState {
+  turn: number;
+  updatedAt: number;
+  source: string;
+  fingerprint: ProviderCacheFingerprintState;
+  render: ProviderCacheRenderState;
+  breakObservation: ProviderCacheBreakObservation;
+}
+
+export interface VisibleReadState {
+  path: string;
+  offset: number;
+  limit: number | null;
+  encoding: string;
+  signatureHash: string;
+  visibleHistoryEpoch: number;
+  previousReadId: string;
 }
 
 export type SessionCompactionOrigin = "extension_api" | "auto_compaction" | "hosted_recovery";

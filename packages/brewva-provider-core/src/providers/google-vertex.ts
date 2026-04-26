@@ -31,6 +31,7 @@ import {
   mapToolChoice,
   retainThoughtSignature,
 } from "./google-shared.js";
+import { buildProviderPayloadMetadata } from "./payload-metadata.js";
 import { buildBaseOptions, clampReasoning } from "./simple-options.js";
 
 export interface GoogleVertexOptions extends StreamOptions {
@@ -90,7 +91,11 @@ export const streamGoogleVertex: StreamFunction<"google-vertex", GoogleVertexOpt
         ? createClientWithApiKey(model, apiKey, options?.headers)
         : createClient(model, resolveProject(options), resolveLocation(options), options?.headers);
       let params = buildParams(model, context, options);
-      const nextParams = await options?.onPayload?.(params, model);
+      const nextParams = await options?.onPayload?.(
+        params,
+        model,
+        buildProviderPayloadMetadata(model, options, params),
+      );
       if (nextParams !== undefined) {
         params = nextParams as GenerateContentParameters;
       }

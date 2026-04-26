@@ -2,6 +2,7 @@ export type {
   BrewvaAgentEngine,
   BrewvaAgentEngineAfterToolCallContext,
   BrewvaAgentEngineBeforeToolCallContext,
+  BrewvaAgentEngineCachePolicy,
   BrewvaAgentEngineEvent,
   BrewvaAgentEngineFileContent,
   BrewvaAgentEngineImageContent,

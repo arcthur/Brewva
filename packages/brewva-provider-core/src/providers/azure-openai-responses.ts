@@ -1,5 +1,6 @@
 import { AzureOpenAI } from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
+import { resolveOpenAIResponsesCacheRender } from "../cache-policy.js";
 import { getEnvApiKey } from "../env-api-keys.js";
 import { supportsXhigh } from "../models.js";
 import type {
@@ -17,6 +18,7 @@ import {
   convertResponsesTools,
   processResponsesStream,
 } from "./openai-responses-shared.js";
+import { buildProviderPayloadMetadata } from "./payload-metadata.js";
 import { buildBaseOptions, clampReasoning } from "./simple-options.js";
 
 const DEFAULT_AZURE_API_VERSION = "v1";
@@ -98,7 +100,11 @@ export const streamAzureOpenAIResponses: StreamFunction<
       const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
       const client = createClient(model, apiKey, options);
       let params = buildParams(model, context, options, deploymentName);
-      const nextParams = await options?.onPayload?.(params, model);
+      const nextParams = await options?.onPayload?.(
+        params,
+        model,
+        buildProviderPayloadMetadata(model, options, params),
+      );
       if (nextParams !== undefined) {
         params = nextParams as ResponseCreateParamsStreaming;
       }
@@ -235,12 +241,22 @@ function buildParams(
   deploymentName: string,
 ) {
   const messages = convertResponsesMessages(model, context, AZURE_TOOL_CALL_PROVIDERS);
+  const cacheRender = resolveOpenAIResponsesCacheRender({
+    api: "azure-openai-responses",
+    baseUrl: model.baseUrl,
+    provider: model.provider,
+    modelId: model.id,
+    transport: options?.transport,
+    sessionId: options?.sessionId,
+    policy: options?.cachePolicy,
+  });
+  void options?.onCacheRender?.(cacheRender, model);
 
   const params: ResponseCreateParamsStreaming = {
     model: deploymentName,
     input: messages,
     stream: true,
-    prompt_cache_key: options?.sessionId,
+    ...(cacheRender.promptCacheKey ? { prompt_cache_key: cacheRender.promptCacheKey } : {}),
   };
 
   if (options?.maxTokens) {

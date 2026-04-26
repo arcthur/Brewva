@@ -18,11 +18,18 @@ import {
   type BrewvaToolUiPort,
   type RuntimePluginCapability,
 } from "@brewva/brewva-substrate";
+import { stableHash, stableStringify } from "../../../packages/brewva-gateway/src/cache/index.js";
 import type { HostedSessionLogger } from "../../../packages/brewva-gateway/src/host/logger.js";
-import { createBrewvaManagedAgentSession } from "../../../packages/brewva-gateway/src/host/managed-agent-session.js";
+import {
+  MANAGED_AGENT_SESSION_TEST_ONLY,
+  createBrewvaManagedAgentSession,
+} from "../../../packages/brewva-gateway/src/host/managed-agent-session.js";
 import { HostedRuntimeTapeSessionStore } from "../../../packages/brewva-gateway/src/host/runtime-projection-session-store.js";
 import { createHostedTurnPipeline } from "../../../packages/brewva-gateway/src/runtime-plugins/index.js";
-import { registerFauxProvider } from "../../../packages/brewva-provider-core/src/providers/faux.js";
+import {
+  fauxAssistantMessage,
+  registerFauxProvider,
+} from "../../../packages/brewva-provider-core/src/providers/faux.js";
 import { createTestWorkspace } from "../../helpers/workspace.js";
 
 type TestRuntimePlugin = NonNullable<CreateBrewvaHostPluginRunnerOptions["plugins"]>[number];
@@ -136,6 +143,14 @@ function createSettingsStub() {
     getTransport() {
       return "sse" as const;
     },
+    getCachePolicy() {
+      return {
+        retention: "short" as const,
+        writeMode: "readWrite" as const,
+        scope: "session" as const,
+        reason: "default" as const,
+      };
+    },
     getThinkingBudgets() {
       return undefined;
     },
@@ -199,6 +214,7 @@ async function createManagedSessionFixture(
     agentDir: join(workspace, ".brewva-agent"),
     sessionStore,
     settings: createSettingsStub(),
+    runtime,
     modelCatalog,
     resourceLoader: await createResourceLoader(workspace),
     customTools: [],
@@ -211,7 +227,87 @@ async function createManagedSessionFixture(
   return { workspace, runtime, sessionStore, session };
 }
 
+function registerModelCatalogProvider(
+  modelCatalog: ReturnType<typeof createInMemoryModelCatalog>,
+  model: BrewvaRegisteredModel,
+): void {
+  modelCatalog.registerProvider(model.provider, {
+    baseUrl: model.baseUrl,
+    apiKey: "test-key",
+    models: [
+      {
+        id: model.id,
+        name: model.name,
+        api: model.api,
+        reasoning: model.reasoning,
+        input: model.input,
+        cost: model.cost,
+        contextWindow: model.contextWindow,
+        maxTokens: model.maxTokens,
+      },
+    ],
+  });
+}
+
 describe("managed agent session compaction", () => {
+  test("recall fingerprinting uses precise source matching and content-hash fallback", () => {
+    const fallbackContentHash = stableHash(
+      stableStringify({
+        source: "brewva.recall-broker",
+        count: 2,
+        estimatedTokens: 34,
+      }),
+    );
+
+    const fingerprint = MANAGED_AGENT_SESSION_TEST_ONLY.resolveRecallInjectionFingerprint([
+      {
+        customType: "brewva-context-injection",
+        visibility: "hidden",
+        content: [],
+        details: {
+          contextSources: {
+            accepted: true,
+            sources: [
+              {
+                source: "brewva.recall-broker",
+                count: 2,
+                estimatedTokens: 34,
+                budgetClasses: ["recall"],
+              },
+              {
+                source: "brewva.recall-eval",
+                count: 1,
+                estimatedTokens: 10,
+                budgetClasses: ["working"],
+                contentHash: "should-not-match",
+              },
+            ],
+          },
+        },
+      } as never,
+    ]);
+
+    expect(fingerprint).toEqual(
+      expect.objectContaining({
+        present: true,
+        accepted: true,
+        sourceCount: 1,
+        sources: ["brewva.recall-broker"],
+        estimatedTokens: 34,
+        contentHash: stableHash(
+          stableStringify([
+            {
+              source: "brewva.recall-broker",
+              count: 2,
+              estimatedTokens: 34,
+              contentHash: fallbackContentHash,
+            },
+          ]),
+        ),
+      }),
+    );
+  });
+
   test("compacts history into a durable projection entry and replaces the active context", async () => {
     const { runtime, sessionStore, session } = await createManagedSessionFixture(
       "managed-agent-session-compaction",
@@ -562,6 +658,99 @@ describe("managed agent session compaction", () => {
     ]);
 
     session.dispose();
+  });
+
+  test("clears provider cache detector state on runtime session clear", async () => {
+    const workspace = createTestWorkspace("managed-agent-session-provider-cache-clear");
+    const runtime = new BrewvaRuntime({ cwd: workspace });
+    const sessionStore = new HostedRuntimeTapeSessionStore(
+      runtime,
+      workspace,
+      "managed-agent-session-provider-cache-clear-session",
+    );
+    const fauxProvider = registerFauxProvider({
+      api: "managed-session-provider-cache-faux",
+      provider: "managed-session-provider-cache",
+      models: [
+        {
+          id: "managed-session-provider-cache-model",
+          name: "Managed Session Provider Cache Model",
+          reasoning: false,
+          input: ["text"],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 128000,
+          maxTokens: 4096,
+        },
+      ],
+    });
+    const model = fauxProvider.getModel() as BrewvaRegisteredModel;
+    const modelCatalog = createInMemoryModelCatalog();
+    registerModelCatalogProvider(modelCatalog, model);
+
+    try {
+      sessionStore.appendModelChange(model.provider, model.id);
+      sessionStore.appendThinkingLevelChange("off");
+      fauxProvider.setResponses([
+        () => fauxAssistantMessage("first"),
+        () => fauxAssistantMessage("second"),
+        () => fauxAssistantMessage("third"),
+      ]);
+
+      const session = await createBrewvaManagedAgentSession({
+        cwd: workspace,
+        agentDir: join(workspace, ".brewva-agent"),
+        sessionStore,
+        settings: createSettingsStub(),
+        runtime,
+        modelCatalog,
+        resourceLoader: await createResourceLoader(workspace),
+        customTools: [],
+        runtimePlugins: [createHostedTurnPipeline({ runtime, registerTools: false })],
+        initialModel: model,
+        initialThinkingLevel: "off",
+      });
+
+      try {
+        await session.prompt(textPrompt("Repeat cacheable prompt."), {
+          expandPromptTemplates: false,
+          source: "channel:telegram",
+        });
+        await session.waitForIdle();
+        expect(
+          runtime.inspect.context.getProviderCacheObservation(sessionStore.getSessionId())
+            ?.breakObservation.status,
+        ).toBe("cold");
+
+        await session.prompt(textPrompt("Repeat cacheable prompt."), {
+          expandPromptTemplates: false,
+          source: "channel:telegram",
+        });
+        await session.waitForIdle();
+        const warmObservation = runtime.inspect.context.getProviderCacheObservation(
+          sessionStore.getSessionId(),
+        );
+        expect(warmObservation?.breakObservation.status).toBe("warm");
+        expect(warmObservation?.fingerprint.channelContextHash).toBe(
+          stableHash(stableStringify({ source: "channel:telegram" })),
+        );
+
+        runtime.maintain.session.clearState(sessionStore.getSessionId());
+
+        await session.prompt(textPrompt("Repeat cacheable prompt."), {
+          expandPromptTemplates: false,
+          source: "channel:telegram",
+        });
+        await session.waitForIdle();
+        expect(
+          runtime.inspect.context.getProviderCacheObservation(sessionStore.getSessionId())
+            ?.breakObservation.status,
+        ).toBe("cold");
+      } finally {
+        session.dispose();
+      }
+    } finally {
+      fauxProvider.unregister();
+    }
   });
 
   test("replays persisted session context into the first hosted context request", async () => {

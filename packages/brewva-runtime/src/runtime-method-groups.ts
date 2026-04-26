@@ -40,6 +40,8 @@ import type {
   PendingEffectCommitmentRequest,
   PromptStabilityObservationInput,
   PromptStabilityState,
+  ProviderCacheObservationInput,
+  ProviderCacheObservationState,
   ReasoningCheckpointRecord,
   ReasoningRevertInput,
   ReasoningRevertRecord,
@@ -110,6 +112,7 @@ import type {
   TruthState,
   VerificationLevel,
   VerificationReport,
+  VisibleReadState,
   WorkerApplyReport,
   WorkerMergeReport,
   WorkerResult,
@@ -234,9 +237,18 @@ export interface BrewvaRuntimeMethodGroups {
       sessionId: string,
       input: TransientReductionObservationInput,
     ): TransientReductionState;
+    observeProviderCache(
+      sessionId: string,
+      input: ProviderCacheObservationInput,
+    ): ProviderCacheObservationState;
     getUsage(sessionId: string): ContextBudgetUsage | undefined;
     getPromptStability(sessionId: string): PromptStabilityState | undefined;
     getTransientReduction(sessionId: string): TransientReductionState | undefined;
+    getProviderCacheObservation(sessionId: string): ProviderCacheObservationState | undefined;
+    getVisibleReadEpoch(sessionId: string): number;
+    advanceVisibleReadEpoch(sessionId: string, reason: string): number;
+    rememberVisibleReadState(sessionId: string, state: VisibleReadState): void;
+    isVisibleReadStateCurrent(sessionId: string, state: VisibleReadState): boolean;
     getReservedPrimaryTokens(sessionId: string, injectionScopeId?: string): number;
     getReservedSupplementalTokens(sessionId: string, injectionScopeId?: string): number;
     getUsageRatio(usage: ContextBudgetUsage | undefined): number | null;
@@ -737,10 +749,22 @@ export function createRuntimeMethodGroups(
       },
       observeTransientReduction: (sessionId: string, input: TransientReductionObservationInput) =>
         deps.contextService.observeTransientReduction(sessionId, input),
+      observeProviderCache: (sessionId: string, input: ProviderCacheObservationInput) =>
+        deps.contextService.observeProviderCache(sessionId, input),
       getUsage: (sessionId: string) => deps.contextService.getContextUsage(sessionId),
       getPromptStability: (sessionId: string) => deps.contextService.getPromptStability(sessionId),
       getTransientReduction: (sessionId: string) =>
         deps.contextService.getTransientReduction(sessionId),
+      getProviderCacheObservation: (sessionId: string) =>
+        deps.contextService.getProviderCacheObservation(sessionId),
+      getVisibleReadEpoch: (sessionId: string) =>
+        deps.contextService.getVisibleReadEpoch(sessionId),
+      advanceVisibleReadEpoch: (sessionId: string, reason: string) =>
+        deps.contextService.advanceVisibleReadEpoch(sessionId, reason),
+      rememberVisibleReadState: (sessionId: string, state: VisibleReadState) =>
+        deps.contextService.rememberVisibleReadState(sessionId, state),
+      isVisibleReadStateCurrent: (sessionId: string, state: VisibleReadState) =>
+        deps.contextService.isVisibleReadStateCurrent(sessionId, state),
       getReservedPrimaryTokens: (sessionId: string, injectionScopeId?: string) =>
         deps.contextService.getReservedPrimaryTokens(sessionId, injectionScopeId),
       getReservedSupplementalTokens: (sessionId: string, injectionScopeId?: string) =>
