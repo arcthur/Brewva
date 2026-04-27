@@ -118,6 +118,7 @@ export type ShellEffect =
   | { type: "session.projectEvent"; event: BrewvaPromptSessionEvent }
   | { type: "session.abort"; notification?: string }
   | { type: "session.create" }
+  | { type: "session.steer"; sessionGeneration: number; text: string }
   | { type: "session.undoCorrection" }
   | { type: "session.redoCorrection" }
   | { type: "model.open"; query?: string }

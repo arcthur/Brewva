@@ -47,8 +47,9 @@ The accepted decision is:
    surfaces are overlays or pagers, not separate terminal modes with their own
    truth.
 2. Keyboard and completion are first-class shell contracts.
-   Submit, multiline compose, steering, completion dismissal, list navigation,
-   and approval/question shortcuts are documented and reducer-driven.
+   Submit, multiline compose, queued-prompt controls, in-flight steer,
+   completion dismissal, list navigation, and approval/question shortcuts are
+   documented and reducer-driven.
 3. The status bar is a stable control-plane disclosure surface.
    It carries mode, model or thinking posture, follow state, approval/question
    badges, task hints, and contextual action suggestions.

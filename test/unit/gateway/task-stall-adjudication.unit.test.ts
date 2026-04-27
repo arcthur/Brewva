@@ -165,7 +165,7 @@ describe("task stall adjudication", () => {
     });
 
     expect(first).toMatchObject({
-      decision: "nudge",
+      decision: "steer",
       source: "heuristic",
     });
     expect(second).toBeNull();

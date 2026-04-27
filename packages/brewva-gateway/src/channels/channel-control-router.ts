@@ -48,6 +48,7 @@ function isPublicCommand(match: ChannelCommandMatch): boolean {
     case "route-agent":
       return true;
     case "status":
+    case "steer":
     case "answer":
     case "update":
     case "agent-create":
@@ -446,6 +447,66 @@ export function createChannelControlRouter(input: {
           insightsText: insightsResult.text,
         });
         await input.replyWriter.sendControllerReply(turn, scopeKey, text, statusMeta);
+        return { handled: true };
+      }
+
+      if (match.kind === "steer") {
+        const focusedAgentId = input.registry.resolveFocus(scopeKey);
+        const targetAgentId = match.agentId ?? focusedAgentId;
+        if (!input.registry.isActive(targetAgentId)) {
+          await input.replyWriter.sendControllerReply(
+            turn,
+            scopeKey,
+            `Steer unavailable: agent @${targetAgentId} is not active in this workspace.`,
+            {
+              command: "steer",
+              agentId: targetAgentId,
+              status: "agent_not_active",
+            },
+          );
+          return { handled: true };
+        }
+        const targetSession = input.openLiveSession(scopeKey, targetAgentId);
+        if (!targetSession) {
+          await input.replyWriter.sendControllerReply(
+            turn,
+            scopeKey,
+            `Steer unavailable: no live session exists for @${targetAgentId} in this conversation.`,
+            {
+              command: "steer",
+              agentId: targetAgentId,
+              status: "session_not_found",
+            },
+          );
+          return { handled: true };
+        }
+        const outcome = await targetSession.steer(match.text);
+        if (outcome.status === "queued") {
+          await input.replyWriter.sendControllerReply(
+            turn,
+            scopeKey,
+            `Queued steer for @${targetAgentId}.`,
+            {
+              command: "steer",
+              agentId: targetAgentId,
+              status: "queued",
+              chars: outcome.chars,
+              agentSessionId: targetSession.agentSessionId,
+            },
+          );
+          return { handled: true };
+        }
+        await input.replyWriter.sendControllerReply(
+          turn,
+          scopeKey,
+          `Steer unavailable: no turn is currently streaming for @${targetAgentId}.`,
+          {
+            command: "steer",
+            agentId: targetAgentId,
+            status: outcome.status,
+            agentSessionId: targetSession.agentSessionId,
+          },
+        );
         return { handled: true };
       }
 

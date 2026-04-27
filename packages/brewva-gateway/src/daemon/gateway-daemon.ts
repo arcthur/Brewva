@@ -1520,6 +1520,30 @@ export class GatewayDaemon {
           accepted: payload.accepted,
         };
       }
+      case "sessions.steer": {
+        const input = params as {
+          sessionId: string;
+          text: string;
+        };
+        const sessionId = input.sessionId.trim();
+        this.subscribeConnectionToSession(state, sessionId);
+        try {
+          const outcome = await this.supervisor.steerSession(sessionId, input.text);
+          return outcome.status === "queued"
+            ? { sessionId, status: outcome.status, chars: outcome.chars }
+            : { sessionId, status: outcome.status };
+        } catch (error) {
+          if (isSessionBackendStateError(error)) {
+            throw gatewayError(ErrorCodes.BAD_STATE, toErrorMessage(error), {
+              retryable: false,
+              details: {
+                kind: error.code,
+              },
+            });
+          }
+          throw error;
+        }
+      }
       case "sessions.abort": {
         const input = params as { sessionId: string; reason?: "user_submit" };
         const aborted = await this.supervisor.abortSession(input.sessionId, input.reason);

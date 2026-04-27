@@ -13,7 +13,7 @@ export interface BrewvaPromptEnvelope {
 }
 
 export type BrewvaPromptQueueMode = "all" | "one-at-a-time";
-export type BrewvaPromptKind = "prompt" | "steer" | "follow_up";
+export type BrewvaPromptKind = "prompt" | "queue" | "follow_up";
 
 export interface BrewvaQueuedPrompt extends BrewvaPromptEnvelope {
   kind: BrewvaPromptKind;
@@ -23,9 +23,9 @@ export interface BrewvaSessionHost {
   getPhase(): SessionPhase;
   getQueuedPrompts(): readonly BrewvaQueuedPrompt[];
   submitPrompt(prompt: BrewvaPromptEnvelope): void;
-  queueSteer(prompt: BrewvaPromptEnvelope): void;
+  queuePrompt(prompt: BrewvaPromptEnvelope): void;
   queueFollowUp(prompt: BrewvaPromptEnvelope): void;
-  setSteeringMode(mode: BrewvaPromptQueueMode): void;
+  setQueueMode(mode: BrewvaPromptQueueMode): void;
   setFollowUpMode(mode: BrewvaPromptQueueMode): void;
   releaseNextBatch(): readonly BrewvaQueuedPrompt[];
   shiftPrompt(): BrewvaPromptEnvelope | undefined;
@@ -42,11 +42,11 @@ class InMemorySessionHost implements BrewvaSessionHost {
 
   private readonly primaryQueue: BrewvaQueuedPrompt[] = [];
 
-  private readonly steeringQueue: BrewvaQueuedPrompt[] = [];
+  private readonly queuedPromptQueue: BrewvaQueuedPrompt[] = [];
 
   private readonly followUpQueue: BrewvaQueuedPrompt[] = [];
 
-  private steeringMode: BrewvaPromptQueueMode = "one-at-a-time";
+  private queueMode: BrewvaPromptQueueMode = "one-at-a-time";
 
   private followUpMode: BrewvaPromptQueueMode = "one-at-a-time";
 
@@ -60,23 +60,23 @@ class InMemorySessionHost implements BrewvaSessionHost {
   }
 
   getQueuedPrompts(): readonly BrewvaQueuedPrompt[] {
-    return [...this.primaryQueue, ...this.steeringQueue, ...this.followUpQueue];
+    return [...this.primaryQueue, ...this.queuedPromptQueue, ...this.followUpQueue];
   }
 
   submitPrompt(prompt: BrewvaPromptEnvelope): void {
     this.primaryQueue.push({ ...prompt, kind: "prompt" });
   }
 
-  queueSteer(prompt: BrewvaPromptEnvelope): void {
-    this.steeringQueue.push({ ...prompt, kind: "steer" });
+  queuePrompt(prompt: BrewvaPromptEnvelope): void {
+    this.queuedPromptQueue.push({ ...prompt, kind: "queue" });
   }
 
   queueFollowUp(prompt: BrewvaPromptEnvelope): void {
     this.followUpQueue.push({ ...prompt, kind: "follow_up" });
   }
 
-  setSteeringMode(mode: BrewvaPromptQueueMode): void {
-    this.steeringMode = mode;
+  setQueueMode(mode: BrewvaPromptQueueMode): void {
+    this.queueMode = mode;
   }
 
   setFollowUpMode(mode: BrewvaPromptQueueMode): void {
@@ -88,8 +88,8 @@ class InMemorySessionHost implements BrewvaSessionHost {
       const next = this.primaryQueue.shift();
       return next ? [next] : [];
     }
-    if (this.steeringQueue.length > 0) {
-      return this.drainQueue(this.steeringQueue, this.steeringMode);
+    if (this.queuedPromptQueue.length > 0) {
+      return this.drainQueue(this.queuedPromptQueue, this.queueMode);
     }
     if (this.followUpQueue.length > 0) {
       return this.drainQueue(this.followUpQueue, this.followUpMode);

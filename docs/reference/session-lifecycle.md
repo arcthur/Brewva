@@ -119,8 +119,9 @@ is that runtime lifecycle owns aggregate posture semantics.
      of the ordinary human fast path
    - `scheduled`, `heartbeat`, `wal_recovery`, `channel`, and `subagent`
      profiles opt into the control-plane features their entrypoint needs
-   - the low-level agent loop still owns model streaming, tool calls, steering,
-     follow-up messages, request authorization, context transformation,
+   - the low-level agent loop still owns model streaming, tool calls, queued
+     prompts, in-flight steer application, follow-up messages, request
+     authorization, context transformation,
      compaction/reasoning recovery, and process-local loop diagnostics
 6. Expose derived session wire replay through the runtime-owned session-wire
    compiler surface and dispose session resources

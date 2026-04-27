@@ -18,6 +18,7 @@ import type {
   SessionLifecycleSnapshot,
   SessionWireFrame,
 } from "@brewva/brewva-runtime";
+import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   DEFAULT_CONTEXT_STATE,
   advanceSessionPhaseResult,
@@ -43,6 +44,8 @@ import {
   type BrewvaModelPreferences,
   type BrewvaMutableModelCatalog,
   type BrewvaCompactionRequest,
+  type BrewvaSteerOptions,
+  type BrewvaSteerOutcome,
   type BrewvaPromptContentPart,
   type BrewvaPromptOptions,
   type BrewvaPromptQueueBehavior,
@@ -142,6 +145,21 @@ function normalizePromptSource(
   }
   const normalized = source.trim();
   return normalized.length > 0 ? normalized : undefined;
+}
+
+const STEER_QUEUED_EVENT_TYPE = "steer_queued" as const;
+const STEER_APPLIED_EVENT_TYPE = "steer_applied" as const;
+const STEER_DROPPED_EVENT_TYPE = "steer_dropped" as const;
+
+function buildSteerAuditPayload(
+  text: string,
+  extra?: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    chars: text.length,
+    hash: stableHash(text),
+    ...extra,
+  };
 }
 
 function resolveChannelContext(source: string | undefined): { source: string } | "" {
@@ -429,7 +447,7 @@ function providerCacheCountersAvailable(render: ProviderCacheRenderState): boole
 
 export interface BrewvaManagedAgentSessionSettingsPort {
   getQuietStartup(): boolean;
-  getSteeringMode(): "all" | "one-at-a-time" | undefined;
+  getQueueMode(): "all" | "one-at-a-time" | undefined;
   getFollowUpMode(): "all" | "one-at-a-time" | undefined;
   getTransport(): BrewvaAgentEngineTransport;
   getCachePolicy(): BrewvaAgentEngineCachePolicy;
@@ -1047,6 +1065,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
   readonly modelRegistry: BrewvaSessionModelCatalogView;
 
   readonly #cwd: string;
+  readonly #runtime: BrewvaRuntime | undefined;
   readonly #settings: BrewvaManagedAgentSessionSettingsPort;
   readonly #catalog: BrewvaMutableModelCatalog;
   readonly #resourceLoader: BrewvaHostedResourceLoader;
@@ -1060,7 +1079,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
   readonly #providerCacheStickyLatches = new ProviderCacheStickyLatches();
   readonly #listeners = new Set<(event: BrewvaPromptSessionEvent) => void>();
   #ui: BrewvaToolUiPort;
-  readonly #queuedSteering: string[] = [];
+  readonly #queuedPrompts: string[] = [];
   readonly #queuedFollowUps: string[] = [];
   readonly #pendingNextTurnMessages: Array<Extract<BrewvaAgentEngineMessage, { role: "custom" }>> =
     [];
@@ -1088,6 +1107,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
 
   constructor(input: {
     cwd: string;
+    runtime?: BrewvaRuntime;
     settings: BrewvaManagedAgentSessionSettingsPort;
     catalog: BrewvaMutableModelCatalog;
     resourceLoader: BrewvaHostedResourceLoader;
@@ -1096,7 +1116,6 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     runner: BrewvaHostPluginRunner;
     agent: BrewvaAgentEngine;
     ui?: BrewvaToolUiPort;
-    runtime?: BrewvaRuntime;
     logger?: HostedSessionLogger;
     onProviderAssistantMessage?: (
       message: Extract<BrewvaAgentEngineMessage, { role: "assistant" }>,
@@ -1104,6 +1123,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     onDispose?: () => void;
   }) {
     this.#cwd = input.cwd;
+    this.#runtime = input.runtime;
     this.#settings = input.settings;
     this.#catalog = input.catalog;
     this.#resourceLoader = input.resourceLoader;
@@ -1199,7 +1219,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     const agent = createHostedAgentEngine({
       initialModel: options.initialModel,
       initialThinkingLevel: options.initialThinkingLevel ?? "off",
-      steeringMode: options.settings.getSteeringMode(),
+      queueMode: options.settings.getQueueMode(),
       followUpMode: options.settings.getFollowUpMode(),
       transport: options.settings.getTransport(),
       cachePolicy: options.settings.getCachePolicy(),
@@ -1509,7 +1529,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       const behavior = options?.streamingBehavior;
       if (!behavior) {
         throw new Error(
-          "Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
+          "Agent is already processing. Specify streamingBehavior ('queue' or 'followUp') to queue the message.",
         );
       }
       await this.queueUserMessage(currentParts, behavior);
@@ -1565,6 +1585,23 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     } finally {
       this.#activePromptSource = previousPromptSource;
     }
+  }
+
+  async steer(text: string, options?: BrewvaSteerOptions): Promise<BrewvaSteerOutcome> {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return { status: "rejected_empty" };
+    }
+    if (!this.#agent.steer(trimmed)) {
+      return { status: "no_active_run" };
+    }
+    this.#recordRuntimeEvent(
+      STEER_QUEUED_EVENT_TYPE,
+      buildSteerAuditPayload(trimmed, {
+        source: normalizePromptSource(options?.source) ?? null,
+      }),
+    );
+    return { status: "queued", chars: trimmed.length };
   }
 
   subscribe(listener: (event: BrewvaPromptSessionEvent) => void): () => void {
@@ -1914,8 +1951,8 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       });
       return;
     }
-    this.#queuedSteering.push(text);
-    this.#agent.steer({
+    this.#queuedPrompts.push(text);
+    this.#agent.queue({
       role: "user",
       content,
       timestamp: Date.now(),
@@ -1969,7 +2006,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
       if (options?.deliverAs === "followUp") {
         this.#agent.followUp(customMessage);
       } else {
-        this.#agent.steer(customMessage);
+        this.#agent.queue(customMessage);
       }
       return;
     }
@@ -2007,7 +2044,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
 
   private async sendUserMessage(
     content: BrewvaPromptContentPart[],
-    options?: { deliverAs?: "steer" | "followUp" },
+    options?: { deliverAs?: "queue" | "followUp" },
   ): Promise<void> {
     if (this.#commandDispatchBuffer && !this.isStreaming) {
       this.#commandDispatchBuffer.push({
@@ -2073,6 +2110,23 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     if (event.type === "message_start" && event.message.role === "user") {
       const userText = this.extractUserMessageText(event.message);
       this.deleteQueuedMessage(userText);
+    }
+    if (event.type === "steer_applied") {
+      this.#recordRuntimeEvent(
+        STEER_APPLIED_EVENT_TYPE,
+        buildSteerAuditPayload(event.text, {
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+        }),
+      );
+    }
+    if (event.type === "steer_dropped") {
+      this.#recordRuntimeEvent(
+        STEER_DROPPED_EVENT_TYPE,
+        buildSteerAuditPayload(event.text, {
+          reason: event.reason,
+        }),
+      );
     }
 
     await this.advanceSessionPhaseFromAgentEvent(event);
@@ -2531,6 +2585,17 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     }
   }
 
+  #recordRuntimeEvent(type: string, payload: Record<string, unknown>): void {
+    if (!this.#runtime) {
+      return;
+    }
+    recordRuntimeEvent(this.#runtime, {
+      sessionId: this.sessionManager.getSessionId(),
+      type,
+      payload,
+    });
+  }
+
   private async syncContextState(): Promise<void> {
     const next = this.sessionManager.readContextState?.() ?? DEFAULT_CONTEXT_STATE;
     if (sameContextState(this.#contextState, next)) {
@@ -2571,9 +2636,9 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
   }
 
   private deleteQueuedMessage(text: string): void {
-    const steeringIndex = this.#queuedSteering.indexOf(text);
-    if (steeringIndex !== -1) {
-      this.#queuedSteering.splice(steeringIndex, 1);
+    const queuedPromptIndex = this.#queuedPrompts.indexOf(text);
+    if (queuedPromptIndex !== -1) {
+      this.#queuedPrompts.splice(queuedPromptIndex, 1);
       return;
     }
     const followUpIndex = this.#queuedFollowUps.indexOf(text);

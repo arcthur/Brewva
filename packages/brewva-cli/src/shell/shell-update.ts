@@ -164,6 +164,29 @@ function updateCommandIntent(
       });
     case "agent.think":
       return handled({ effects: [{ type: "thinking.open" }] });
+    case "agent.steer": {
+      const text = intent.args.trim();
+      if (!text) {
+        return handled({
+          effects: [
+            {
+              type: "notification.show",
+              message: "Usage: /steer <text>",
+              level: "warning",
+            },
+          ],
+        });
+      }
+      return handled({
+        effects: [
+          {
+            type: "session.steer",
+            sessionGeneration: context.sessionGeneration,
+            text,
+          },
+        ],
+      });
+    }
     case "view.thinking":
       return handled({ effects: [{ type: "view.toggleThinking" }] });
     case "view.toolDetails":

@@ -134,7 +134,7 @@ function createSettingsStub() {
     getQuietStartup() {
       return true;
     },
-    getSteeringMode() {
+    getQueueMode() {
       return "one-at-a-time" as const;
     },
     getFollowUpMode() {

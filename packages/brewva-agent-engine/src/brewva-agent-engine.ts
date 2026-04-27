@@ -137,7 +137,7 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
       event: BrewvaAgentEngineEvent,
     ) => Promise<BrewvaAgentEngineEvent | void> | BrewvaAgentEngineEvent | void
   >();
-  readonly #steeringQueue: PendingMessageQueue;
+  readonly #queuedPromptQueue: PendingMessageQueue;
   readonly #followUpQueue: PendingMessageQueue;
   readonly #streamFn: BrewvaAgentEngineStreamFunction;
   readonly #resolveRequestAuth: BrewvaAgentEngineResolveRequestAuth | undefined;
@@ -187,11 +187,12 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
 
   #state: MutableEngineState;
   #activeRun: ActiveRun | undefined;
+  #pendingSteer: string | undefined;
 
   constructor(input: {
     initialModel: BrewvaRegisteredModel | undefined;
     initialThinkingLevel: BrewvaAgentEngineThinkingLevel | "off";
-    steeringMode: QueueMode | undefined;
+    queueMode: QueueMode | undefined;
     followUpMode: QueueMode | undefined;
     transport: BrewvaAgentEngineTransport;
     thinkingBudgets: BrewvaAgentEngineThinkingBudgets | undefined;
@@ -246,7 +247,7 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
       isStreaming: false,
       errorMessage: undefined,
     };
-    this.#steeringQueue = new PendingMessageQueue(input.steeringMode ?? "one-at-a-time");
+    this.#queuedPromptQueue = new PendingMessageQueue(input.queueMode ?? "one-at-a-time");
     this.#followUpQueue = new PendingMessageQueue(input.followUpMode ?? "one-at-a-time");
     this.#streamFn = input.streamFn;
     this.#resolveRequestAuth = input.resolveRequestAuth;
@@ -295,7 +296,7 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
   async prompt(message: BrewvaAgentEngineMessage | BrewvaAgentEngineMessage[]): Promise<void> {
     if (this.#activeRun) {
       throw new Error(
-        "Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion.",
+        "Agent is already processing a prompt. Use queue() or followUp() to queue messages, or wait for completion.",
       );
     }
     const messages = Array.isArray(message) ? [...message] : [message];
@@ -334,8 +335,24 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
     this.#followUpQueue.enqueue(message);
   }
 
-  steer(message: BrewvaAgentEngineMessage): void {
-    this.#steeringQueue.enqueue(message);
+  queue(message: BrewvaAgentEngineMessage): void {
+    this.#queuedPromptQueue.enqueue(message);
+  }
+
+  steer(text: string): boolean {
+    if (!this.#activeRun) {
+      return false;
+    }
+    const cleaned = text.trim();
+    if (!cleaned) {
+      return false;
+    }
+    this.#pendingSteer = this.#pendingSteer ? `${this.#pendingSteer}\n${cleaned}` : cleaned;
+    return true;
+  }
+
+  hasPendingSteer(): boolean {
+    return typeof this.#pendingSteer === "string" && this.#pendingSteer.length > 0;
   }
 
   appendMessage(message: BrewvaAgentEngineMessage): void {
@@ -343,7 +360,7 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
   }
 
   hasQueuedMessages(): boolean {
-    return this.#steeringQueue.hasItems() || this.#followUpQueue.hasItems();
+    return this.#queuedPromptQueue.hasItems() || this.#followUpQueue.hasItems();
   }
 
   async #runPromptMessages(messages: BrewvaAgentEngineMessage[]): Promise<void> {
@@ -381,8 +398,9 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
       beforeToolCall: this.#beforeToolCall,
       afterToolCall: this.#afterToolCall as BrewvaAgentLoopConfig["afterToolCall"],
       transformContext: this.#transformContext,
-      getSteeringMessages: async () => this.#steeringQueue.drain(),
+      getQueuedMessages: async () => this.#queuedPromptQueue.drain(),
       getFollowUpMessages: async () => this.#followUpQueue.drain(),
+      consumePendingSteer: async () => this.#consumePendingSteer(),
       getCurrentContext: () => ({
         systemPrompt: this.#state.systemPrompt,
         tools: [...this.#state.tools],
@@ -423,6 +441,18 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
   }
 
   async #handleRunFailure(error: unknown, aborted: boolean): Promise<void> {
+    // Note: runAgentLoop handles the normal stopReason === "error" | "aborted"
+    // return path itself and drains pendingSteer there. This method only runs
+    // when runAgentLoop throws an uncaught error, so the two paths are
+    // mutually exclusive and cannot emit steer_dropped twice.
+    const pendingSteer = this.#consumePendingSteer();
+    if (pendingSteer) {
+      await this.#processEvents({
+        type: "steer_dropped",
+        text: pendingSteer,
+        reason: aborted ? "aborted" : "failed",
+      });
+    }
     const failureMessage = {
       role: "assistant",
       content: [{ type: "text", text: "" }],
@@ -453,6 +483,12 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
       messageEnd.type === "message_end" ? messageEnd.message : failureMessage;
     await this.#processEvents({ type: "turn_end", message: committedFailure, toolResults: [] });
     await this.#processEvents({ type: "agent_end", messages: [committedFailure] });
+  }
+
+  #consumePendingSteer(): string | undefined {
+    const text = this.#pendingSteer;
+    this.#pendingSteer = undefined;
+    return text;
   }
 
   #finishRun(): void {
@@ -494,7 +530,7 @@ export function createHostedAgentEngine(input: {
   initialThinkingLevel: string;
   sessionId: string;
   cachePolicy?: BrewvaAgentEngineCachePolicy;
-  steeringMode: "all" | "one-at-a-time" | undefined;
+  queueMode: "all" | "one-at-a-time" | undefined;
   followUpMode: "all" | "one-at-a-time" | undefined;
   transport: BrewvaAgentEngineTransport;
   thinkingBudgets: BrewvaAgentEngineThinkingBudgets | undefined;
@@ -533,7 +569,7 @@ export function createHostedAgentEngine(input: {
   return new HostedBrewvaAgentEngine({
     initialModel: input.initialModel as BrewvaRegisteredModel | undefined,
     initialThinkingLevel: input.initialThinkingLevel as BrewvaAgentEngineThinkingLevel | "off",
-    steeringMode: input.steeringMode,
+    queueMode: input.queueMode,
     followUpMode: input.followUpMode,
     transport: input.transport,
     thinkingBudgets: input.thinkingBudgets,

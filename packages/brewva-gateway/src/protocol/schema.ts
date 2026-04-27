@@ -25,6 +25,7 @@ export const GatewayMethods = [
   "sessions.subscribe",
   "sessions.unsubscribe",
   "sessions.send",
+  "sessions.steer",
   "sessions.abort",
   "sessions.close",
   "heartbeat.reload",
@@ -227,6 +228,15 @@ export const SessionsSendParamsSchema = Type.Object(
 );
 export type SessionsSendParams = Static<typeof SessionsSendParamsSchema>;
 
+export const SessionsSteerParamsSchema = Type.Object(
+  {
+    sessionId: NonEmptyString,
+    text: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+export type SessionsSteerParams = Static<typeof SessionsSteerParamsSchema>;
+
 export const SessionsSubscribeParamsSchema = Type.Object(
   {
     sessionId: NonEmptyString,
@@ -287,6 +297,7 @@ export type GatewayParamsByMethod = {
   "sessions.subscribe": SessionsSubscribeParams;
   "sessions.unsubscribe": SessionsUnsubscribeParams;
   "sessions.send": SessionsSendParams;
+  "sessions.steer": SessionsSteerParams;
   "sessions.abort": SessionsAbortParams;
   "sessions.close": SessionsCloseParams;
   "heartbeat.reload": HeartbeatReloadParams;

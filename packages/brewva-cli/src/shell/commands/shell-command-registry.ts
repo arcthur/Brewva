@@ -105,6 +105,13 @@ const builtInShellCommands: readonly ShellCommand[] = [
     discovery: { help: false },
   },
   {
+    id: "agent.steer",
+    title: "Steer current turn",
+    description: "Append an in-flight hint to the current tool-result boundary.",
+    category: "Agent",
+    slash: { name: "steer", argumentMode: "required" },
+  },
+  {
     id: "view.thinking",
     title: "Toggle thinking blocks",
     description: "Show or hide reasoning blocks in the transcript.",

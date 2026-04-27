@@ -96,6 +96,7 @@ describe("gateway contract: schedule runner", () => {
           },
         };
       },
+      steerSession: async () => ({ status: "no_active_run" }),
       abortSession: async () => false,
       stopSession: async (sessionId) => {
         stoppedSessionIds.push(sessionId);
@@ -268,6 +269,7 @@ describe("gateway contract: schedule runner", () => {
           },
         };
       },
+      steerSession: async () => ({ status: "no_active_run" }),
       abortSession: async () => false,
       stopSession: async () => true,
       listWorkers: () => [],
@@ -332,6 +334,7 @@ describe("gateway contract: schedule runner", () => {
       sendPrompt: async () => {
         throw new Error("worker failed");
       },
+      steerSession: async () => ({ status: "no_active_run" }),
       abortSession: async () => false,
       stopSession: async (sessionId) => {
         stoppedSessionIds.push(sessionId);

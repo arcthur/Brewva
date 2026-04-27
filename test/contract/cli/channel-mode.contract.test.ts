@@ -15,7 +15,7 @@ type SessionLike = {
   subscribe: (listener: (event: BrewvaPromptSessionEvent) => void) => () => void;
   prompt: (
     parts: readonly BrewvaPromptContentPart[],
-    options?: { streamingBehavior?: "followUp" | "steer" },
+    options?: { streamingBehavior?: "followUp" | "queue" },
   ) => Promise<void>;
   waitForIdle: () => Promise<void>;
 };

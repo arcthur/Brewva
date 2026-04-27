@@ -982,7 +982,7 @@ Derived workflow inspection surface.
 - implementation may be `pending` when delegated patch results still await
   parent merge/apply
 - surfaces the latest durable stall adjudication when the control plane has
-  classified an idle session as `continue`, `nudge`,
+  classified an idle session as `continue`, `steer`,
   `compact_recommended`, or `abort_recommended`
 - reports blockers such as stale review/QA/verification/ship evidence, task
   blockers, incomplete or stale planning evidence, unsatisfied plan-declared

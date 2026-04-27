@@ -17,6 +17,7 @@ import {
   RecoveryWalStore,
   querySessionWireFramesFromEventLog,
 } from "@brewva/brewva-runtime/internal";
+import type { BrewvaSteerOutcome } from "@brewva/brewva-substrate";
 import type { WorkerToParentMessage } from "../session/worker-protocol.js";
 import {
   FileGatewayStateStore,
@@ -513,6 +514,35 @@ export class SessionSupervisor implements SessionBackend {
     });
     void this.turnQueue.pump(handle);
     return queued;
+  }
+
+  async steerSession(sessionId: string, text: string): Promise<BrewvaSteerOutcome> {
+    const handle = this.workers.get(sessionId);
+    if (!handle) {
+      throw new SessionBackendStateError("session_not_found", `session not found: ${sessionId}`);
+    }
+    this.touchActivity(handle);
+    const payload = await this.workerRpc.request(handle, {
+      kind: "steer",
+      requestId: randomUUID(),
+      payload: { text },
+    });
+    const status = payload?.status;
+    if (status !== "queued" && status !== "no_active_run" && status !== "rejected_empty") {
+      throw new Error("worker returned an invalid steer result");
+    }
+    switch (status) {
+      case "queued":
+        if (typeof payload?.chars !== "number") {
+          throw new Error("worker returned an invalid queued steer result");
+        }
+        return { status: "queued", chars: payload.chars };
+      case "no_active_run":
+        return { status: "no_active_run" };
+      case "rejected_empty":
+        return { status: "rejected_empty" };
+    }
+    throw new Error("worker returned an unreachable steer result");
   }
 
   async abortSession(sessionId: string, reason?: "user_submit"): Promise<boolean> {

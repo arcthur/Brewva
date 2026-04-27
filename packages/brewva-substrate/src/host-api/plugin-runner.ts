@@ -78,7 +78,7 @@ export interface BrewvaHostPluginRunnerActionPort {
   ): void;
   sendUserMessage(
     content: BrewvaPromptContentPart[],
-    options?: { deliverAs?: "steer" | "followUp" },
+    options?: { deliverAs?: "queue" | "followUp" },
   ): void;
   getActiveTools(): string[];
   getAllTools(): {

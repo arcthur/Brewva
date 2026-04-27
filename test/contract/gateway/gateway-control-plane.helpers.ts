@@ -153,7 +153,7 @@ export function createBroadcastSpy(daemon: GatewayDaemon): {
 }
 
 export function createSessionBackendStub(overrides: Partial<SessionBackend> = {}): SessionBackend {
-  return {
+  const base: SessionBackend = {
     start: async () => undefined,
     stop: async () => undefined,
     openSession: async (input: OpenSessionInput): Promise<OpenSessionResult> => ({
@@ -170,12 +170,18 @@ export function createSessionBackendStub(overrides: Partial<SessionBackend> = {}
       turnId: "turn-1",
       accepted: true,
     }),
+    steerSession: async () => ({ status: "no_active_run" }),
     abortSession: async () => false,
     stopSession: async () => false,
     listWorkers: (): SessionWorkerInfo[] => [],
     querySessionWire: async () => [],
     querySessionContextPressure: async (): Promise<ContextPressureView | undefined> => undefined,
     querySessionLifecycle: async () => undefined,
+  };
+  return {
+    ...base,
     ...overrides,
+    steerSession:
+      overrides.steerSession ?? ((sessionId, text) => base.steerSession(sessionId, text)),
   };
 }

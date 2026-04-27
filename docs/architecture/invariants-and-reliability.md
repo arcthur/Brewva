@@ -26,6 +26,9 @@ Relevant implementation:
 - Hosted continuation posture must be queryable through durable
   `session_turn_transition` events rather than inferred only from transient
   logs or prompt text.
+- In-flight steer must be durably represented by the final committed
+  `message_end(toolResult)` boundary; steer audit events remain secondary
+  observability, not replay authority.
 
 Relevant implementation:
 

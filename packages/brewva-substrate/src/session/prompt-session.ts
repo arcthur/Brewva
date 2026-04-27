@@ -4,8 +4,13 @@ import type { ToolExecutionPhase } from "../execution/tool-phase.js";
 import type { BrewvaToolUiPort } from "../host-api/ui.js";
 import type { BrewvaPromptContentPart } from "./prompt-content.js";
 
-export type BrewvaPromptQueueBehavior = "steer" | "followUp";
+export type BrewvaPromptQueueBehavior = "queue" | "followUp";
 export type BrewvaPromptInputSource = "interactive" | "extension" | (string & {});
+export type BrewvaSteerDropReason = "aborted" | "failed" | "no_tool_boundary";
+export type BrewvaSteerOutcome =
+  | { status: "queued"; chars: number }
+  | { status: "no_active_run" }
+  | { status: "rejected_empty" };
 export type BrewvaPromptThinkingLevel =
   | "off"
   | "minimal"
@@ -18,6 +23,10 @@ export type BrewvaPromptThinkingLevel =
 export interface BrewvaPromptOptions {
   expandPromptTemplates?: boolean;
   streamingBehavior?: BrewvaPromptQueueBehavior;
+  source?: BrewvaPromptInputSource;
+}
+
+export interface BrewvaSteerOptions {
   source?: BrewvaPromptInputSource;
 }
 
@@ -109,6 +118,7 @@ export interface BrewvaManagedSessionSettingsView extends BrewvaSessionSettingsV
 
 export interface BrewvaPromptDispatchSession {
   prompt(parts: readonly BrewvaPromptContentPart[], options?: BrewvaPromptOptions): Promise<void>;
+  steer?(text: string, options?: BrewvaSteerOptions): Promise<BrewvaSteerOutcome>;
   sessionManager?: BrewvaPromptSessionManagerView;
   settingsManager?: BrewvaSessionSettingsView;
   model?: BrewvaSessionModelDescriptor;
@@ -249,6 +259,18 @@ export type BrewvaPromptSessionEvent =
       previousState?: ContextState;
     }
   | {
+      type: "steer_applied";
+      text: string;
+      toolCallId: string;
+      toolName: string;
+      message: unknown;
+    }
+  | {
+      type: "steer_dropped";
+      text: string;
+      reason: BrewvaSteerDropReason;
+    }
+  | {
       type: string;
       [key: string]: unknown;
     };
@@ -264,6 +286,7 @@ export interface BrewvaManagedPromptSession extends BrewvaSubscribablePromptSess
   getContextState(): ContextState;
   waitForIdle(): Promise<void>;
   setUiPort(ui: BrewvaToolUiPort): void;
+  steer(text: string, options?: BrewvaSteerOptions): Promise<BrewvaSteerOutcome>;
   abort(): Promise<void>;
   dispose(): void;
 }

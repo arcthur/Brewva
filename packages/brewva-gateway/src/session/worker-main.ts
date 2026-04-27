@@ -584,6 +584,40 @@ async function handleAbort(
   }
 }
 
+async function handleSteer(
+  message: Extract<ParentToWorkerMessage, { kind: "steer" }>,
+): Promise<void> {
+  if (!sessionResult) {
+    send({
+      kind: "result",
+      requestId: message.requestId,
+      ok: false,
+      error: "worker session not initialized",
+    });
+    return;
+  }
+
+  try {
+    const outcome = await sessionResult.session.steer(message.payload.text, { source: "gateway" });
+    send({
+      kind: "result",
+      requestId: message.requestId,
+      ok: true,
+      payload:
+        outcome.status === "queued"
+          ? { status: outcome.status, chars: outcome.chars }
+          : { status: outcome.status },
+    });
+  } catch (error) {
+    send({
+      kind: "result",
+      requestId: message.requestId,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function handleSessionContextPressureQuery(
   message: Extract<ParentToWorkerMessage, { kind: "sessionContextPressure.query" }>,
 ): Promise<void> {
@@ -674,6 +708,11 @@ async function handleMessage(raw: unknown): Promise<void> {
 
   if (kind === "abort") {
     await handleAbort(raw as Extract<ParentToWorkerMessage, { kind: "abort" }>);
+    return;
+  }
+
+  if (kind === "steer") {
+    await handleSteer(raw as Extract<ParentToWorkerMessage, { kind: "steer" }>);
     return;
   }
 

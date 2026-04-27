@@ -22,6 +22,8 @@ import type {
   BrewvaDiffPreferences,
   BrewvaShellViewPreferences,
   BrewvaModelPreferences,
+  BrewvaSteerOptions,
+  BrewvaSteerOutcome,
   BrewvaPromptContentPart,
   BrewvaPromptOptions,
   BrewvaPromptSessionEvent,
@@ -123,6 +125,7 @@ export interface SessionViewPort {
   getShellViewPreferences(): BrewvaShellViewPreferences;
   setShellViewPreferences(preferences: BrewvaShellViewPreferences): void;
   prompt(parts: readonly BrewvaPromptContentPart[], options?: BrewvaPromptOptions): Promise<void>;
+  steer(text: string, options?: BrewvaSteerOptions): Promise<BrewvaSteerOutcome>;
   waitForIdle(): Promise<void>;
   abort(): Promise<void>;
   subscribe(listener: (event: BrewvaPromptSessionEvent) => void): () => void;

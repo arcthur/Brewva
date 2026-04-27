@@ -8,6 +8,7 @@ import type {
   ToolOutputView,
   TruthFact,
 } from "@brewva/brewva-runtime";
+import type { BrewvaSteerOutcome } from "@brewva/brewva-substrate";
 
 export interface OpenSessionInput {
   sessionId: string;
@@ -87,6 +88,7 @@ export interface SessionBackend {
     prompt: string,
     options?: SendPromptOptions,
   ): Promise<SendPromptResult>;
+  steerSession(sessionId: string, text: string): Promise<BrewvaSteerOutcome>;
   abortSession(sessionId: string, reason?: SessionAbortReason): Promise<boolean>;
   stopSession(sessionId: string, reason?: string, timeoutMs?: number): Promise<boolean>;
   listWorkers(): SessionWorkerInfo[];

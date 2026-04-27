@@ -13,7 +13,7 @@ export type ThreadLoopProfileName =
 export type ThreadLoopContinuationCause =
   | "initial"
   | "tool_result"
-  | "steering"
+  | "queue"
   | "follow_up"
   | "approval_resume"
   | "compaction_resume"

@@ -205,7 +205,7 @@ describe("task progress watchdog", () => {
         sessionId,
         now: () => now,
         adjudicator: (packet) => ({
-          decision: "nudge",
+          decision: "steer",
           rationale: `Hook inspected ${packet.task.blockerCount} blocker(s).`,
           signalSummary: ["custom_hook"],
           source: "hook",
@@ -221,7 +221,7 @@ describe("task progress watchdog", () => {
       })[0];
       expect(adjudicated?.payload).toMatchObject({
         schema: "brewva.task-stall-adjudication.v1",
-        decision: "nudge",
+        decision: "steer",
         source: "hook",
         rationale: "Hook inspected 1 blocker(s).",
         signalSummary: ["custom_hook"],

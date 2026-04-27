@@ -15,6 +15,7 @@ import {
   SchedulerResumeParamsSchema,
   SessionsAbortParamsSchema,
   SessionsCloseParamsSchema,
+  SessionsSteerParamsSchema,
   SessionsOpenParamsSchema,
   SessionsSubscribeParamsSchema,
   SessionsSendParamsSchema,
@@ -43,6 +44,7 @@ export const validateSessionsOpenParams = ajv.compile(SessionsOpenParamsSchema);
 export const validateSessionsSubscribeParams = ajv.compile(SessionsSubscribeParamsSchema);
 export const validateSessionsUnsubscribeParams = ajv.compile(SessionsUnsubscribeParamsSchema);
 export const validateSessionsSendParams = ajv.compile(SessionsSendParamsSchema);
+export const validateSessionsSteerParams = ajv.compile(SessionsSteerParamsSchema);
 export const validateSessionsAbortParams = ajv.compile(SessionsAbortParamsSchema);
 export const validateSessionsCloseParams = ajv.compile(SessionsCloseParamsSchema);
 export const validateHeartbeatReloadParams = ajv.compile(HeartbeatReloadParamsSchema);
@@ -90,6 +92,10 @@ const methodValidators: {
   "sessions.send": {
     validate: validateSessionsSendParams,
     errors: () => validateSessionsSendParams.errors,
+  },
+  "sessions.steer": {
+    validate: validateSessionsSteerParams,
+    errors: () => validateSessionsSteerParams.errors,
   },
   "sessions.abort": {
     validate: validateSessionsAbortParams,

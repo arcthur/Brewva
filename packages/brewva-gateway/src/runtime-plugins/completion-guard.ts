@@ -23,7 +23,7 @@ import {
   type SkillClassificationHint,
 } from "./skill-first.js";
 
-const MAX_NUDGES_PER_PROMPT = 2;
+const MAX_STEERS_PER_PROMPT = 2;
 
 function formatGuardMessage(
   skill: SkillDocument,
@@ -221,7 +221,7 @@ export function createCompletionGuardLifecycle(
   runtime: BrewvaHostedRuntimePort,
   options: CompletionGuardOptions = {},
 ): CompletionGuardLifecycle {
-  const nudgeCounts = new Map<string, number>();
+  const steerCounts = new Map<string, number>();
   const latestPromptBySession = new Map<string, string>();
   const fulfilledPromptBySession = new Map<string, string>();
   const failureGuardKeyBySession = new Map<string, string>();
@@ -275,12 +275,12 @@ export function createCompletionGuardLifecycle(
       });
       const latestFailure = runtime.inspect.skills.getLatestFailure(sessionId);
       if (diagnosis.activationPosture.kind === "repair_failed_contract") {
-        nudgeCounts.delete(sessionId);
+        steerCounts.delete(sessionId);
         enqueueFailedContractNotice(sessionId, latestFailure);
         return;
       }
       if (hasFulfilledCurrentPrompt(sessionId)) {
-        nudgeCounts.delete(sessionId);
+        steerCounts.delete(sessionId);
         return;
       }
       if (
@@ -289,20 +289,20 @@ export function createCompletionGuardLifecycle(
           diagnosis.activationPosture.kind !== "recommend_skill_load") ||
         diagnosis.candidates.length === 0
       ) {
-        nudgeCounts.delete(sessionId);
+        steerCounts.delete(sessionId);
         return;
       }
 
-      const count = (nudgeCounts.get(sessionId) ?? 0) + 1;
-      nudgeCounts.set(sessionId, count);
+      const count = (steerCounts.get(sessionId) ?? 0) + 1;
+      steerCounts.set(sessionId, count);
       const content = formatSkillLoadGuardMessage(diagnosis);
       if (!content) {
-        nudgeCounts.delete(sessionId);
+        steerCounts.delete(sessionId);
         return;
       }
       if (
         diagnosis.activationPosture.kind === "require_skill_load" &&
-        count > MAX_NUDGES_PER_PROMPT
+        count > MAX_STEERS_PER_PROMPT
       ) {
         ctx.ui.notify(
           `Brewva guard: routed skill '${diagnosis.candidates[0]?.name}' was not loaded before final answer.`,
@@ -329,14 +329,14 @@ export function createCompletionGuardLifecycle(
       return;
     }
     if (!activeState) {
-      nudgeCounts.delete(sessionId);
+      steerCounts.delete(sessionId);
       return;
     }
 
-    const count = (nudgeCounts.get(sessionId) ?? 0) + 1;
-    nudgeCounts.set(sessionId, count);
+    const count = (steerCounts.get(sessionId) ?? 0) + 1;
+    steerCounts.set(sessionId, count);
 
-    if (count > MAX_NUDGES_PER_PROMPT) {
+    if (count > MAX_STEERS_PER_PROMPT) {
       ctx.ui.notify(
         `Brewva guard: active skill '${active.name}' was not completed (missing skill_complete).`,
         "warning",
@@ -391,7 +391,7 @@ export function createCompletionGuardLifecycle(
       const sessionId = ctx.sessionManager.getSessionId();
       if (event.toolName.trim().toLowerCase() === "skill_complete" && !event.isError) {
         fulfilledPromptBySession.set(sessionId, currentPromptKey(sessionId));
-        nudgeCounts.delete(sessionId);
+        steerCounts.delete(sessionId);
       }
       return undefined;
     },
@@ -408,11 +408,11 @@ export function createCompletionGuardLifecycle(
       const active = runtime.inspect.skills.getActive(sessionId);
       const activeState = runtime.inspect.skills.getActiveState(sessionId);
       if (!active) {
-        nudgeCounts.delete(sessionId);
+        steerCounts.delete(sessionId);
         return undefined;
       }
       if (!activeState) {
-        nudgeCounts.delete(sessionId);
+        steerCounts.delete(sessionId);
         return undefined;
       }
 
@@ -425,7 +425,7 @@ export function createCompletionGuardLifecycle(
     },
     sessionShutdown(_event, ctx) {
       const sessionId = ctx.sessionManager.getSessionId();
-      nudgeCounts.delete(sessionId);
+      steerCounts.delete(sessionId);
       latestPromptBySession.delete(sessionId);
       fulfilledPromptBySession.delete(sessionId);
       failureGuardKeyBySession.delete(sessionId);

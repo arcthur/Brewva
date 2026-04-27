@@ -30,7 +30,7 @@ interface HostedSettingsData {
   defaultModel?: string;
   defaultThinkingLevel?: HostedThinkingLevel;
   transport?: "sse" | "websocket";
-  steeringMode?: "all" | "one-at-a-time";
+  queueMode?: "all" | "one-at-a-time";
   followUpMode?: "all" | "one-at-a-time";
   quietStartup?: boolean;
   images?: {
@@ -254,8 +254,8 @@ class BrewvaHostedSettingsHandle implements HostedSessionSettings, HostedSession
     return this.settings.defaultThinkingLevel;
   }
 
-  getSteeringMode(): "all" | "one-at-a-time" {
-    return this.settings.steeringMode ?? "one-at-a-time";
+  getQueueMode(): "all" | "one-at-a-time" {
+    return this.settings.queueMode ?? "one-at-a-time";
   }
 
   getFollowUpMode(): "all" | "one-at-a-time" {

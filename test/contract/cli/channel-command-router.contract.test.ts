@@ -154,7 +154,12 @@ describe("channel command router", () => {
     expect(router.match("/unknown")).toEqual({
       kind: "error",
       message:
-        "Unknown command. Use /status, /answer, /agents, /agent, /update, /focus, /run, or /discuss.",
+        "Unknown command. Use /status, /steer, /answer, /agents, /agent, /update, /focus, /run, or /discuss.",
+    });
+    expect(router.match("/steer @jack stay focused")).toEqual({
+      kind: "steer",
+      agentId: "jack",
+      text: "stay focused",
     });
     expect(router.match("/agent delete")).toEqual({
       kind: "error",

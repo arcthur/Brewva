@@ -595,7 +595,7 @@ describe("event pipeline level classification", () => {
           detectedAt: 301000,
           baselineProgressAt: 1000,
           adjudicatedAt: 301500,
-          decision: "nudge",
+          decision: "steer",
           source: "heuristic",
           rationale: "Recorded blockers explain the stall.",
           signalSummary: ["blockers=1"],

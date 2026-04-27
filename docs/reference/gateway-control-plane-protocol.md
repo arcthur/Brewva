@@ -55,6 +55,7 @@ Server implementation: `packages/brewva-gateway/src/daemon/gateway-daemon.ts`.
 - `sessions.subscribe`
 - `sessions.unsubscribe`
 - `sessions.send`
+- `sessions.steer`
 - `sessions.abort`
 - `sessions.close`
 - `heartbeat.reload`
@@ -72,6 +73,7 @@ Parameter summary (current semantics):
 - `sessions.subscribe`: `{ sessionId }`
 - `sessions.unsubscribe`: `{ sessionId }`
 - `sessions.send`: `{ sessionId, prompt, turnId? }`
+- `sessions.steer`: `{ sessionId, text }`
 - `sessions.abort`: `{ sessionId, reason? }`
 - `sessions.close`: `{ sessionId }`
 - `heartbeat.reload`: `{}`
@@ -123,6 +125,7 @@ Rule semantics:
 - `connect`: `hello-ok` payload with `protocol`, `server`, `features`, and `policy`.
 - `sessions.open`: `{ requestedSessionId, sessionId, created, workerPid, agentSessionId? }`.
 - `sessions.send`: immediate ack payload `{ sessionId, agentSessionId?, turnId, accepted: true }`; final turn outcome arrives through `session.wire.frame`.
+- `sessions.steer`: `{ sessionId, status: "queued" | "no_active_run" }` plus `chars` when the status is `queued`. It targets the currently streaming turn only and is not gated by the busy rejection path used by `sessions.send`.
 - `sessions.abort`: accepts optional `reason: "user_submit"` so hosted execution can emit `user_submit_interrupt` as a `session_turn_transition` without widening kernel authority.
 - `status.deep`: includes `heartbeat` plus live `scheduler` execution state. The `heartbeat` block exposes `sourcePath`, `loadedAt`, and the currently loaded rules with their live `nextRunAt` timestamps. The `scheduler` block exposes availability, config-vs-execution enablement (`configEnabled`, `executionEnabled`), pause state, current projection/timer counters, and `unavailableReason` when scheduling is unavailable.
 - `heartbeat.reload`: `{ sourcePath, loadedAt, rules, removedRules, closedSessions, removedRuleIds, closedSessionIds }`. `closedSessionIds` only covers daemon-owned default heartbeat sessions (`heartbeat:<id>`) that became orphaned after rule removal or rule retargeting; explicitly named `sessionId` targets are not force-closed by reload cleanup.

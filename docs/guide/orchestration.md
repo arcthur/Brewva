@@ -156,7 +156,7 @@ gateway worker now adds a second, inspectable adjudication step.
   state, tape pressure, recent failed tool outcomes, blocked tool calls, and
   pending worker results
 - the adjudicator records a durable `task_stall_adjudicated` event with
-  `continue`, `nudge`, `compact_recommended`, or `abort_recommended`
+  `continue`, `steer`, `compact_recommended`, or `abort_recommended`
 - inspection surfaces such as `workflow_status` can expose that recommendation
   together with planning assurance posture such as `plan_complete`,
   `plan_fresh`, `review_required`, `qa_required`, and

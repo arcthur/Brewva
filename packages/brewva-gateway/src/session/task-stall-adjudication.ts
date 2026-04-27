@@ -290,7 +290,7 @@ export function adjudicateTaskStallPacket(
     packet.signals.recentToolFailures.length > 0
   ) {
     return {
-      decision: "nudge",
+      decision: "steer",
       rationale:
         "The stall has concrete secondary signals and should surface a directed next step instead of silently waiting.",
       signalSummary,

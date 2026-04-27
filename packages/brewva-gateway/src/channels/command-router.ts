@@ -5,6 +5,7 @@ export type ChannelCommandMatch =
   | { kind: "error"; message: string }
   | { kind: "agents" }
   | { kind: "status"; agentId?: string; directory?: string; top?: number }
+  | { kind: "steer"; agentId?: string; text: string }
   | { kind: "answer"; agentId?: string; questionId: string; answerText: string }
   | { kind: "update"; instructions?: string }
   | { kind: "agent-create"; agentId: string; model?: string }
@@ -131,6 +132,23 @@ export class CommandRouter {
 
     if (command === "/status") {
       return parseStatusCommand(body, "Usage: /status [@agent] [dir] [top=N]");
+    }
+
+    if (command === "/steer") {
+      if (!body) {
+        return { kind: "error", message: "Usage: /steer [@agent] <text>" };
+      }
+      const tokens = body.split(/\s+/u).filter((token) => token.length > 0);
+      const firstToken = tokens[0] ?? "";
+      if (firstToken.startsWith("@")) {
+        const agentId = parseAgentRef(firstToken);
+        const steerText = tokens.slice(1).join(" ").trim();
+        if (!agentId || !steerText) {
+          return { kind: "error", message: "Usage: /steer [@agent] <text>" };
+        }
+        return { kind: "steer", agentId, text: steerText };
+      }
+      return { kind: "steer", text: body };
     }
 
     if (command === "/answer") {
@@ -291,7 +309,7 @@ export class CommandRouter {
     return {
       kind: "error",
       message:
-        "Unknown command. Use /status, /answer, /agents, /agent, /update, /focus, /run, or /discuss.",
+        "Unknown command. Use /status, /steer, /answer, /agents, /agent, /update, /focus, /run, or /discuss.",
     };
   }
 }

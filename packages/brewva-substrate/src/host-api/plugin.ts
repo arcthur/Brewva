@@ -111,7 +111,7 @@ export interface BrewvaHostCustomMessage {
   details?: unknown;
 }
 
-export type BrewvaHostCustomMessageDelivery = "steer" | "followUp" | "nextTurn" | "transcript";
+export type BrewvaHostCustomMessageDelivery = "queue" | "followUp" | "nextTurn" | "transcript";
 
 export interface BrewvaHostSessionStartEvent {
   type: "session_start";
@@ -409,7 +409,7 @@ export interface InternalHostPluginApi {
   ): void;
   sendUserMessage(
     content: BrewvaPromptContentPart[],
-    options?: { deliverAs?: "steer" | "followUp" },
+    options?: { deliverAs?: "queue" | "followUp" },
   ): void;
   getActiveTools(): string[];
   getAllTools(): BrewvaHostToolInfo[];

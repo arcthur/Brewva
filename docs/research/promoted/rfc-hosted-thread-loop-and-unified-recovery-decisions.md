@@ -21,8 +21,9 @@ The accepted decision is:
 - `HostedThreadLoop` is the gateway-internal continuation owner above the
   low-level agent loop.
 - `packages/brewva-agent-engine/src/agent-loop.ts` remains the low-level
-  model/tool primitive for streaming, tool calls, steering, follow-up messages,
-  request authorization, and context transformation.
+  model/tool primitive for streaming, tool calls, queued prompts, in-flight
+  steer application, follow-up messages, request authorization, and context
+  transformation.
 - hosted entrypoints enter the canonical hosted turn envelope, which resolves
   explicit profiles before running the loop: `interactive`, `print`,
   `channel`, `scheduled`, `heartbeat`, `wal_recovery`, or `subagent`.

@@ -1012,6 +1012,20 @@ export class CliShellRuntime {
       case "session.create":
         await this.#sessionWorkflow.switchBundle(await this.#operatorPort.createSession());
         return;
+      case "session.steer":
+        if (effect.sessionGeneration === this.#sessionGeneration) {
+          const result = await this.#sessionPort.steer(effect.text, { source: "interactive" });
+          if (result.status === "no_active_run") {
+            this.ui.notify("No turn is currently streaming.", "warning");
+            return;
+          }
+          if (result.status === "rejected_empty") {
+            this.ui.notify("Usage: /steer <text>", "warning");
+            return;
+          }
+          this.ui.notify("Queued steer for the current turn.", "info");
+        }
+        return;
       case "session.undoCorrection":
         await this.#sessionWorkflow.undoLastCorrection();
         return;

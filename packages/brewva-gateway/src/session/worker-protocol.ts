@@ -33,6 +33,13 @@ export type ParentToWorkerMessage =
       };
     }
   | {
+      kind: "steer";
+      requestId: string;
+      payload: {
+        text: string;
+      };
+    }
+  | {
       kind: "abort";
       requestId: string;
       payload?: {

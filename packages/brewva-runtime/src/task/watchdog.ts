@@ -29,7 +29,7 @@ export interface TaskStuckClearedPayload {
 
 export type TaskStallAdjudicationDecision =
   | "continue"
-  | "nudge"
+  | "steer"
   | "compact_recommended"
   | "abort_recommended";
 
@@ -232,7 +232,7 @@ export function coerceTaskStallAdjudicatedPayload(
     !Number.isFinite(baselineProgressAt) ||
     !Number.isFinite(adjudicatedAt) ||
     (decision !== "continue" &&
-      decision !== "nudge" &&
+      decision !== "steer" &&
       decision !== "compact_recommended" &&
       decision !== "abort_recommended") ||
     (source !== "heuristic" && source !== "hook") ||

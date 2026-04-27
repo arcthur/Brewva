@@ -80,8 +80,9 @@ export interface BrewvaAgentLoopConfig {
     messages: BrewvaAgentEngineMessage[],
     signal?: AbortSignal,
   ) => Promise<BrewvaAgentEngineMessage[]>;
-  getSteeringMessages?: () => Promise<BrewvaAgentEngineMessage[]>;
+  getQueuedMessages?: () => Promise<BrewvaAgentEngineMessage[]>;
   getFollowUpMessages?: () => Promise<BrewvaAgentEngineMessage[]>;
+  consumePendingSteer?: () => Promise<string | undefined>;
   getCurrentContext?: () => Pick<BrewvaAgentLoopContext, "systemPrompt" | "tools">;
   resolveRequestAuth?: BrewvaAgentEngineResolveRequestAuth;
   toolExecution?: "parallel" | "sequential";
@@ -108,6 +109,13 @@ type ExecutedToolCallOutcome = {
   result: BrewvaAgentEngineToolResult;
   isError: boolean;
   phase: "execute";
+};
+
+type ToolCallOutcomeEnvelope = {
+  message: BrewvaAgentEngineToolResultMessage;
+  toolCall: BrewvaAgentEngineToolCall;
+  previousPhase: "classify" | "authorize" | "record";
+  args: unknown;
 };
 
 export async function runAgentLoop(
@@ -143,7 +151,7 @@ async function runLoop(
   emit: BrewvaAgentEventSink,
 ): Promise<void> {
   let firstTurn = true;
-  let pendingMessages = (await config.getSteeringMessages?.()) ?? [];
+  let pendingMessages = (await config.getQueuedMessages?.()) ?? [];
 
   while (true) {
     let hasMoreToolCalls = true;
@@ -172,6 +180,14 @@ async function runLoop(
       newMessages.push(message);
 
       if (message.stopReason === "error" || message.stopReason === "aborted") {
+        const pendingSteer = await config.consumePendingSteer?.();
+        if (pendingSteer) {
+          await emit({
+            type: "steer_dropped",
+            text: pendingSteer,
+            reason: message.stopReason === "aborted" ? "aborted" : "failed",
+          });
+        }
         await emit({ type: "turn_end", message, toolResults: [] });
         await emit({ type: "agent_end", messages: newMessages });
         return;
@@ -184,12 +200,65 @@ async function runLoop(
 
       const toolResults: BrewvaAgentEngineToolResultMessage[] = [];
       if (hasMoreToolCalls) {
-        toolResults.push(
-          ...(await executeToolCalls(currentContext, message, toolCalls, config, signal, emit)),
+        const toolResultEnvelopes = await executeToolCalls(
+          currentContext,
+          message,
+          toolCalls,
+          config,
+          signal,
+          emit,
         );
+        const pendingSteer = await config.consumePendingSteer?.();
+        let appliedSteer:
+          | {
+              text: string;
+              toolCallId: string;
+              toolName: string;
+            }
+          | undefined;
+        if (pendingSteer) {
+          const target = toolResultEnvelopes[toolResultEnvelopes.length - 1];
+          if (target) {
+            appendSteerToToolResultMessage(target.message, pendingSteer);
+            appliedSteer = {
+              text: pendingSteer,
+              toolCallId: target.toolCall.id,
+              toolName: target.toolCall.name,
+            };
+          } else {
+            await emit({
+              type: "steer_dropped",
+              text: pendingSteer,
+              reason: "no_tool_boundary",
+            });
+          }
+        }
+        for (const outcome of toolResultEnvelopes) {
+          const committedMessage = await emitToolCallMessageOutcome(outcome, emit);
+          toolResults.push(committedMessage);
+          if (appliedSteer && outcome.toolCall.id === appliedSteer.toolCallId) {
+            await emit({
+              type: "steer_applied",
+              text: appliedSteer.text,
+              toolCallId: appliedSteer.toolCallId,
+              toolName: appliedSteer.toolName,
+              message: committedMessage,
+            });
+            appliedSteer = undefined;
+          }
+        }
         for (const result of toolResults) {
           currentContext.messages.push(result);
           newMessages.push(result);
+        }
+      } else {
+        const pendingSteer = await config.consumePendingSteer?.();
+        if (pendingSteer) {
+          await emit({
+            type: "steer_dropped",
+            text: pendingSteer,
+            reason: "no_tool_boundary",
+          });
         }
       }
 
@@ -201,7 +270,7 @@ async function runLoop(
         await emit({ type: "agent_end", messages: newMessages });
         return;
       }
-      pendingMessages = (await config.getSteeringMessages?.()) ?? [];
+      pendingMessages = (await config.getQueuedMessages?.()) ?? [];
     }
 
     const followUpMessages = (await config.getFollowUpMessages?.()) ?? [];
@@ -363,7 +432,7 @@ async function executeToolCalls(
   config: BrewvaAgentLoopConfig,
   signal: AbortSignal | undefined,
   emit: BrewvaAgentEventSink,
-): Promise<BrewvaAgentEngineToolResultMessage[]> {
+): Promise<ToolCallOutcomeEnvelope[]> {
   if (config.toolExecution === "sequential") {
     return executeToolCallsSequential(
       currentContext,
@@ -391,8 +460,8 @@ async function executeToolCallsSequential(
   config: BrewvaAgentLoopConfig,
   signal: AbortSignal | undefined,
   emit: BrewvaAgentEventSink,
-): Promise<BrewvaAgentEngineToolResultMessage[]> {
-  const results: BrewvaAgentEngineToolResultMessage[] = [];
+): Promise<ToolCallOutcomeEnvelope[]> {
+  const results: ToolCallOutcomeEnvelope[] = [];
   for (const toolCall of toolCalls) {
     await emit({
       type: "tool_execution_start",
@@ -412,7 +481,7 @@ async function executeToolCallsSequential(
     );
     if (preparation.kind === "immediate") {
       results.push(
-        await emitToolCallOutcome(
+        await buildToolCallOutcome(
           toolCall,
           preparation.result,
           preparation.isError,
@@ -446,8 +515,8 @@ async function executeToolCallsParallel(
   config: BrewvaAgentLoopConfig,
   signal: AbortSignal | undefined,
   emit: BrewvaAgentEventSink,
-): Promise<BrewvaAgentEngineToolResultMessage[]> {
-  const results: BrewvaAgentEngineToolResultMessage[] = [];
+): Promise<ToolCallOutcomeEnvelope[]> {
+  const results: ToolCallOutcomeEnvelope[] = [];
   const runnableCalls: PreparedToolCall[] = [];
 
   for (const toolCall of toolCalls) {
@@ -469,7 +538,7 @@ async function executeToolCallsParallel(
     );
     if (preparation.kind === "immediate") {
       results.push(
-        await emitToolCallOutcome(
+        await buildToolCallOutcome(
           toolCall,
           preparation.result,
           preparation.isError,
@@ -640,7 +709,7 @@ async function finalizeExecutedToolCall(
   config: BrewvaAgentLoopConfig,
   signal: AbortSignal | undefined,
   emit: BrewvaAgentEventSink,
-): Promise<BrewvaAgentEngineToolResultMessage> {
+): Promise<ToolCallOutcomeEnvelope> {
   let result = executed.result;
   let isError = executed.isError;
   await emitToolExecutionPhaseChange(
@@ -673,7 +742,7 @@ async function finalizeExecutedToolCall(
     }
   }
 
-  return emitToolCallOutcome(prepared.toolCall, result, isError, "record", prepared.args, emit);
+  return buildToolCallOutcome(prepared.toolCall, result, isError, "record", prepared.args, emit);
 }
 
 function createErrorToolResult(message: string): BrewvaAgentEngineToolResult {
@@ -684,14 +753,14 @@ function createErrorToolResult(message: string): BrewvaAgentEngineToolResult {
   };
 }
 
-async function emitToolCallOutcome(
+async function buildToolCallOutcome(
   toolCall: BrewvaAgentEngineToolCall,
   result: BrewvaAgentEngineToolResult,
   isError: boolean,
   previousPhase: "classify" | "authorize" | "record",
   args: unknown,
   emit: BrewvaAgentEventSink,
-): Promise<BrewvaAgentEngineToolResultMessage> {
+): Promise<ToolCallOutcomeEnvelope> {
   await emit({
     type: "tool_execution_end",
     toolCallId: toolCall.id,
@@ -709,10 +778,43 @@ async function emitToolCallOutcome(
     isError,
     timestamp: Date.now(),
   };
-  await emit({ type: "message_start", message: toolResultMessage });
-  await emit({ type: "message_end", message: toolResultMessage });
-  await emitToolExecutionPhaseChange(toolCall, "cleanup", emit, previousPhase, args);
-  return toolResultMessage;
+  return {
+    message: toolResultMessage,
+    toolCall,
+    previousPhase,
+    args,
+  };
+}
+
+async function emitToolCallMessageOutcome(
+  outcome: ToolCallOutcomeEnvelope,
+  emit: BrewvaAgentEventSink,
+): Promise<BrewvaAgentEngineToolResultMessage> {
+  await emit({ type: "message_start", message: outcome.message });
+  const messageEnd = await emit({ type: "message_end", message: outcome.message });
+  await emitToolExecutionPhaseChange(
+    outcome.toolCall,
+    "cleanup",
+    emit,
+    outcome.previousPhase,
+    outcome.args,
+  );
+  return messageEnd?.type === "message_end" && messageEnd.message.role === "toolResult"
+    ? messageEnd.message
+    : outcome.message;
+}
+
+function appendSteerToToolResultMessage(
+  message: BrewvaAgentEngineToolResultMessage,
+  text: string,
+): void {
+  message.content = [
+    ...message.content,
+    {
+      type: "text",
+      text: `\n\nUser guidance: ${text}`,
+    },
+  ];
 }
 
 async function emitToolExecutionPhaseChange(

@@ -482,7 +482,7 @@ Current behavior:
   contract state, unresolved Tier A/B fields, the next blocking consumer, and
   the remaining repair budget instead of insisting on canonical full-schema
   retry for advisory drift
-- after the per-prompt nudge budget is exhausted, it degrades to a UI warning
+- after the per-prompt steer budget is exhausted, it degrades to a UI warning
   instead of silently succeeding or writing a new durable authority receipt
 
 `createNarrativeMemoryLifecycle(...)` is also part of the canonical hosted

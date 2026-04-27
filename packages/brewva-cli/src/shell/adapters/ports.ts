@@ -140,6 +140,9 @@ export function createSessionViewPort(bundle: CliShellSessionBundle): SessionVie
         throw output.error instanceof Error ? output.error : new Error(String(output.error));
       }
     },
+    steer(text, options) {
+      return bundle.session.steer(text, options);
+    },
     waitForIdle() {
       return bundle.session.waitForIdle();
     },

@@ -115,6 +115,22 @@ These commands are thin session-local veneers over existing replay, workflow,
 delegation, authored-overlay, and update surfaces. They do not introduce hidden
 planner state or generic self-command injection.
 
+Interactive shell turn control also exposes:
+
+- `/steer <text>`
+
+`/steer` is a shell-owned in-flight control, not a runtime-plugin command. It
+is accepted only while the current turn is actively streaming and appends a
+short hint to the final tool-result boundary of the current tool batch without
+creating a new user message.
+
+Queued prompt delivery remains separate from `/steer`:
+
+- `streamingBehavior: "queue"` inserts a new `role:"user"` message between the
+  current tool batch and the next assistant call
+- `streamingBehavior: "followUp"` waits until `agent_end`
+- `/steer` does **not** silently fall back to either queued mode
+
 `/inspect` and `/insights` are read-only operator products built from existing
 `runtime.inspect.*` data. The slash forms here describe invocation and
 interactive-session UX, not a second inspection API.
@@ -137,6 +153,7 @@ control-plane command set:
 
 - `/agents`
 - `/status [@agent] [dir] [top=N]`
+- `/steer [@agent] <text>`
 - `/answer [@agent] <question-id> <answer>`
 - `/update [operator hints]`
 - `/agent new <name> [model=<exact-id[:thinking]>]`
@@ -149,8 +166,9 @@ control-plane command set:
 
 `/status` is the canonical channel inspection summary. It composes cost,
 operator inbox, inspect, and insights output into one controller reply without
-introducing a second durable read model. `/answer` remains the only write path
-for durable operator-input resolution.
+introducing a second durable read model. `/steer` is the live-session in-flight
+control-plane path and bypasses queued prompt delivery. `/answer` remains the
+only write path for durable operator-input resolution.
 
 These channel commands are transport veneers over the same underlying runtime
 surfaces. `@agent` routing, focus resolution, and inline delivery are channel

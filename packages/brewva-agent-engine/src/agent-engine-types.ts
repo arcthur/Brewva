@@ -90,6 +90,7 @@ export interface BrewvaAgentEngineUsage {
 }
 
 export type BrewvaAgentEngineStopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
+export type BrewvaAgentEngineSteerDropReason = "aborted" | "failed" | "no_tool_boundary";
 
 export interface BrewvaAgentEngineUserMessage extends BrewvaAgentEngineMessageVisibility {
   role: "user";
@@ -302,6 +303,18 @@ export type BrewvaAgentEngineEvent =
       phase: ToolExecutionPhase;
       previousPhase?: ToolExecutionPhase;
       args?: unknown;
+    }
+  | {
+      type: "steer_applied";
+      text: string;
+      toolCallId: string;
+      toolName: string;
+      message: BrewvaAgentEngineToolResultMessage;
+    }
+  | {
+      type: "steer_dropped";
+      text: string;
+      reason: BrewvaAgentEngineSteerDropReason;
     };
 
 export interface BrewvaAgentEngine {
@@ -327,7 +340,9 @@ export interface BrewvaAgentEngine {
   setTools(tools: BrewvaAgentEngineTool[]): void;
   setSystemPrompt(prompt: string): void;
   followUp(message: BrewvaAgentEngineMessage): void;
-  steer(message: BrewvaAgentEngineMessage): void;
+  queue(message: BrewvaAgentEngineMessage): void;
+  steer(text: string): boolean;
+  hasPendingSteer(): boolean;
   appendMessage(message: BrewvaAgentEngineMessage): void;
   hasQueuedMessages(): boolean;
 }
