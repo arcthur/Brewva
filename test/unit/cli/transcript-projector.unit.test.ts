@@ -3,7 +3,6 @@ import type { BrewvaPromptSessionEvent } from "@brewva/brewva-substrate";
 import { ShellTranscriptProjector } from "../../../packages/brewva-cli/src/shell/projectors/transcript-projector.js";
 import type { CliShellAction } from "../../../packages/brewva-cli/src/shell/state/index.js";
 import type { CliShellTranscriptMessage } from "../../../packages/brewva-cli/src/shell/transcript.js";
-import { TRUST_LOOP_COPY } from "../../../packages/brewva-cli/src/shell/trust-loop/projection.js";
 import type { CliShellUiPort } from "../../../packages/brewva-cli/src/shell/types.js";
 
 function createProjectorHarness() {
@@ -63,7 +62,7 @@ describe("shell transcript projector", () => {
         type: "status.setTrust",
         trust: expect.objectContaining({
           source: "idle",
-          statusText: TRUST_LOOP_COPY.inspectReplayUndo,
+          statusText: "Record",
         }),
       }),
     );

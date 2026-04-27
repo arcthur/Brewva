@@ -166,7 +166,7 @@ describe("trust loop projection", () => {
     expect(buildTrustLoopSessionProjection({ phase: { kind: "idle" } })).toMatchObject({
       phase: "record",
       source: "idle",
-      statusText: TRUST_LOOP_COPY.inspectReplayUndo,
+      statusText: "Record",
     });
   });
 });

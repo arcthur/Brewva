@@ -86,7 +86,8 @@ function InlinePromptCard(input: {
           }
         : {
             position: "relative",
-            maxHeight: 15,
+            minHeight: 20,
+            maxHeight: 26,
           })}
     >
       <box

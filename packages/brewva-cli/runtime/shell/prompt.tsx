@@ -68,20 +68,24 @@ export function PromptPanel(input: {
     () => narrow() || Boolean(input.composer.completion) || input.width < 128,
   );
   const promptPartStyle = createMemo(() => createPromptPartStyle(input.theme));
-  const promptStatus = createMemo(() => {
+  const promptStatus = createMemo((): string | undefined => {
     if (input.status.workingMessage) {
       return input.status.workingMessage;
     }
     if (input.status.hiddenThinkingLabel) {
       return input.status.hiddenThinkingLabel;
     }
-    if (input.status.trust?.statusText) {
-      return input.status.trust.statusText;
+    const trust = input.status.trust;
+    if (trust?.statusText && trust.source !== "idle") {
+      return trust.statusText;
     }
     const phase = input.status.entries.phase;
     const pressure = input.status.entries.pressure;
     const correction = input.status.entries.correction;
-    let baseStatus = "idle";
+    if (!phase && !pressure && !correction) {
+      return undefined;
+    }
+    let baseStatus = "";
     if (phase && pressure) {
       baseStatus = `${phase} · pressure=${pressure}`;
     } else if (phase) {
@@ -89,7 +93,7 @@ export function PromptPanel(input: {
     } else if (pressure) {
       baseStatus = `pressure=${pressure}`;
     }
-    return correction ? `${baseStatus} · ${correction}` : baseStatus;
+    return correction ? (baseStatus ? `${baseStatus} · ${correction}` : correction) : baseStatus;
   });
   const operatorCounts = createMemo(() => {
     const approvals = input.status.entries.approvals ?? "0";
@@ -118,7 +122,9 @@ export function PromptPanel(input: {
     const auxText = completion && selected ? completionItemAuxText(selected) : undefined;
     return auxText ?? promptStatus();
   });
-  const showFooterStatus = createMemo(() => !input.composer.completion || input.overlayActive);
+  const showFooterStatus = createMemo(
+    () => (!input.composer.completion || input.overlayActive) && Boolean(footerStatus()),
+  );
   const completionHints = createMemo(() =>
     input.composer.completion
       ? input.composer.completion.trigger === "/"

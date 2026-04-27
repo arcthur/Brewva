@@ -2148,7 +2148,6 @@ describe("opentui solid shell runtime", () => {
       expect(frame).toContain("ctrl+k");
       expect(frame).toContain("/help");
       expect(frame).toContain("ctrl+o");
-      expect(frame).toContain("Brewva keeps receipts you can inspect, replay, and undo from.");
       expect(frame).toContain("approvals=0");
       expect(frame).toContain("questions=0");
     } finally {
@@ -2363,7 +2362,7 @@ describe("opentui solid shell runtime", () => {
       createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
       {
         width: 120,
-        height: 32,
+        height: 40,
       },
     );
 

@@ -456,7 +456,6 @@ export function buildTrustLoopIdleProjection(): TrustLoopSessionProjection {
       tone: "success",
       headline: TRUST_LOOP_COPY.inspectReplayUndo,
       subline: TRUST_LOOP_COPY.reasonReceiptRecovery,
-      statusText: TRUST_LOOP_COPY.inspectReplayUndo,
     }),
     kind: "session",
     source: "idle",
