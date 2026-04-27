@@ -8,6 +8,7 @@ import { recordRuntimeEvent } from "@brewva/brewva-runtime/internal";
 import {
   buildBrewvaPromptText,
   type BrewvaPromptContentPart,
+  type BrewvaQueuedPromptView,
   type BrewvaPromptSessionEvent,
 } from "@brewva/brewva-substrate";
 import {
@@ -27,6 +28,14 @@ describe("cli shell session port", () => {
       cwd: mkdtempSync(join(tmpdir(), "brewva-shell-port-")),
     });
     const sentMessages: string[] = [];
+    const queuedPrompts: BrewvaQueuedPromptView[] = [
+      {
+        promptId: "queued-1",
+        text: "queued hello",
+        submittedAt: 10,
+        behavior: "queue",
+      },
+    ];
     let listener: ((event: BrewvaPromptSessionEvent) => void) | undefined;
     const session = {
       model: {
@@ -75,6 +84,17 @@ describe("cli shell session port", () => {
       async waitForIdle() {},
       async abort() {},
       dispose() {},
+      getQueuedPrompts() {
+        return queuedPrompts;
+      },
+      removeQueuedPrompt(promptId: string) {
+        const index = queuedPrompts.findIndex((item) => item.promptId === promptId);
+        if (index < 0) {
+          return false;
+        }
+        queuedPrompts.splice(index, 1);
+        return true;
+      },
       getRegisteredTools() {
         return [];
       },
@@ -96,6 +116,9 @@ describe("cli shell session port", () => {
         toolDetails: false,
       }),
     ).not.toThrow();
+    expect(port.getQueuedPrompts()).toEqual(queuedPrompts);
+    expect(port.removeQueuedPrompt("queued-1")).toBe(true);
+    expect(port.getQueuedPrompts()).toEqual([]);
 
     await port.prompt([{ type: "text", text: "hello shell" }], { source: "interactive" });
 

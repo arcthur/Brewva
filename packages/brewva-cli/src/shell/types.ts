@@ -26,6 +26,7 @@ import type {
   BrewvaSteerOutcome,
   BrewvaPromptContentPart,
   BrewvaPromptOptions,
+  BrewvaQueuedPromptView,
   BrewvaPromptSessionEvent,
   BrewvaToolDefinition,
   BrewvaToolUiPort,
@@ -125,6 +126,8 @@ export interface SessionViewPort {
   getShellViewPreferences(): BrewvaShellViewPreferences;
   setShellViewPreferences(preferences: BrewvaShellViewPreferences): void;
   prompt(parts: readonly BrewvaPromptContentPart[], options?: BrewvaPromptOptions): Promise<void>;
+  getQueuedPrompts(): readonly BrewvaQueuedPromptView[];
+  removeQueuedPrompt(promptId: string): boolean;
   steer(text: string, options?: BrewvaSteerOptions): Promise<BrewvaSteerOutcome>;
   waitForIdle(): Promise<void>;
   abort(): Promise<void>;
@@ -183,6 +186,12 @@ export interface CliTasksOverlayPayload {
   kind: "tasks";
   selectedIndex: number;
   snapshot: OperatorSurfaceSnapshot;
+}
+
+export interface CliQueueOverlayPayload {
+  kind: "queue";
+  selectedIndex: number;
+  items: readonly BrewvaQueuedPromptView[];
 }
 
 export interface CliSessionsOverlayPayload {
@@ -376,6 +385,7 @@ export type CliShellOverlayPayload =
   | CliApprovalOverlayPayload
   | CliQuestionOverlayPayload
   | CliTasksOverlayPayload
+  | CliQueueOverlayPayload
   | CliSessionsOverlayPayload
   | CliInboxOverlayPayload
   | CliNotificationsOverlayPayload

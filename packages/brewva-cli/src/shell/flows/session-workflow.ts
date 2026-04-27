@@ -165,7 +165,6 @@ export class ShellSessionWorkflow {
         ) as readonly BrewvaPromptContentPart[],
         options: {
           source: "interactive",
-          streamingBehavior: this.context.getBundle().session.isStreaming ? "followUp" : undefined,
         },
       },
     ]);

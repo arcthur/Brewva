@@ -234,7 +234,9 @@ describe("shell command provider", () => {
     expect(provider.slashCommands().map((command) => command.id)).toContain("agent.model");
     expect(provider.slashCommands().map((command) => command.id)).toContain("operator.inbox");
     expect(provider.helpCommands().map((command) => command.id)).not.toContain("agent.connect");
+    expect(provider.helpCommands().map((command) => command.id)).not.toContain("session.queue");
     expect(provider.helpCommands().map((command) => command.id)).not.toContain("view.thinking");
+    expect(provider.paletteCommands().map((command) => command.id)).toContain("session.queue");
     expect(provider.searchPaletteCommands("connect").map((command) => command.id)).toContain(
       "agent.connect",
     );

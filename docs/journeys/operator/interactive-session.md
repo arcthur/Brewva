@@ -92,6 +92,17 @@ flowchart TD
     boundary renders Markdown tables and bounded Mermaid diagrams as terminal
     presentation. This does not alter event tape, replay, or runtime
     inspection truth.
+12. If the operator submits another prompt while the current turn is still
+    streaming, the interactive composer defaults that submission to queued
+    delivery instead of requiring an explicit queue mode switch. Explicit
+    `followUp` producers remain separate low-level flows; the ordinary composer
+    path now means "run this after the current turn."
+13. While queued prompts are waiting, the shell renders up to three one-line
+    `(pending)` rows above the model/operator footer. When more than three
+    queued prompts exist, the shell appends `+N more · Ctrl+B to manage`.
+14. `Ctrl+B` opens the queued-prompt overlay, which lets the operator inspect
+    pending prompt details and delete queued entries without aborting the live
+    turn.
 
 ## Execution Semantics
 
@@ -109,6 +120,10 @@ flowchart TD
   instead of flattening inconclusive validation into failure
 - verification freshness is evaluated against the latest
   `verification_write_marked` boundary, not against any historical passing run
+- interactive queue UX remains queue-only: the pending strip and `Ctrl+B`
+  overlay surface queued future turns, while explicit `followUp` delivery
+  remains a separate continuation primitive rather than a user-visible queue
+  item
 
 ## Failure And Recovery
 

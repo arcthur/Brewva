@@ -50,6 +50,9 @@ The shell is a dual-layer operator surface:
   - submit composer
 - `Ctrl-J` / `Alt-Enter`
   - insert newline
+- `Ctrl-B`
+  - open queued prompts, inspect full details, and delete queued future turns
+    without aborting the live run
 - `Ctrl-O`
   - open pending questions
 - `Ctrl-E`
@@ -79,7 +82,7 @@ Completion and overlays are part of the stable command contract:
   controls remain palette-first rather than top-level slash commands
 - workspace path completion is triggered by `@`
 - interactive overlays include approval, inbox, question, task, model,
-  provider, thinking, inspect, session, and pager surfaces
+  provider, thinking, inspect, session, queue, and pager surfaces
 - task drill-down must expose recent output, structured result data, and
   artifact refs rather than only listing task metadata
 
@@ -126,9 +129,15 @@ creating a new user message.
 
 Queued prompt delivery remains separate from `/steer`:
 
+- interactive composer submissions now omit `streamingBehavior` and rely on the
+  queued default; only programmatic callers that need explicit `followUp`
+  semantics should pass it directly
 - `streamingBehavior: "queue"` inserts a new `role:"user"` message between the
   current tool batch and the next assistant call
 - `streamingBehavior: "followUp"` waits until `agent_end`
+- ordinary interactive composer submissions now default to queued delivery while
+  the current turn is streaming; `Ctrl+B` exposes the queued prompt manager for
+  inspect/delete actions
 - `/steer` does **not** silently fall back to either queued mode
 
 `/inspect` and `/insights` are read-only operator products built from existing

@@ -3,6 +3,10 @@
 import { truncateToWidth, visibleWidth } from "@brewva/brewva-tui";
 import { TextAttributes } from "@opentui/core";
 import { For, Match, Show, Switch, createMemo, type JSX } from "solid-js";
+import {
+  buildQueuePromptDetailLines,
+  renderQueuePromptSummary,
+} from "../../src/shell/overlay-view.js";
 import type { CliShellViewState } from "../../src/shell/state/index.js";
 import { buildTaskRunListLabel, buildTaskRunPreviewLines } from "../../src/shell/task-details.js";
 import type {
@@ -15,6 +19,7 @@ import type {
   CliInspectOverlayPayload,
   CliModelPickerOverlayPayload,
   CliNotificationsOverlayPayload,
+  CliQueueOverlayPayload,
   CliOAuthWaitOverlayPayload,
   CliPagerOverlayPayload,
   CliProviderPickerOverlayPayload,
@@ -502,6 +507,47 @@ function SessionsOverlay(input: {
                 color={input.theme.text}
               />
             )}
+          </Show>
+        </box>
+      </box>
+    </OverlaySurface>
+  );
+}
+
+function QueueOverlay(input: {
+  payload: CliQueueOverlayPayload;
+  theme: SessionPalette;
+  width: number;
+  height: number;
+}) {
+  const queueListLabelWidth = 34 - visibleWidth("queued · ") - 1;
+  const item = createMemo(() => input.payload.items[input.payload.selectedIndex]);
+  const detailLines = createMemo(() => {
+    const entry = item();
+    return entry ? buildQueuePromptDetailLines(entry) : [];
+  });
+  return (
+    <OverlaySurface
+      title="Queued prompts"
+      width={input.width}
+      height={input.height}
+      theme={input.theme}
+      footer="Enter details · d delete · Esc close"
+    >
+      <box flexDirection="row" gap={1} flexGrow={1}>
+        <box width={34} flexShrink={0}>
+          <SelectionList
+            items={input.payload.items.map(
+              (entry) => `queued · ${renderQueuePromptSummary(entry.text, queueListLabelWidth)}`,
+            )}
+            selectedIndex={input.payload.selectedIndex}
+            theme={input.theme}
+            maxVisible={10}
+          />
+        </box>
+        <box flexGrow={1} flexDirection="column">
+          <Show when={item()} fallback={<text fg={input.theme.textMuted}>No queued prompts.</text>}>
+            <TextLineBlock lines={detailLines()} color={input.theme.text} />
           </Show>
         </box>
       </box>
@@ -1089,6 +1135,14 @@ export function ModalOverlay(input: {
       <Match when={input.overlay.payload?.kind === "sessions"}>
         <SessionsOverlay
           payload={input.overlay.payload as CliSessionsOverlayPayload}
+          theme={input.theme}
+          width={input.width}
+          height={input.height}
+        />
+      </Match>
+      <Match when={input.overlay.payload?.kind === "queue"}>
+        <QueueOverlay
+          payload={input.overlay.payload as CliQueueOverlayPayload}
           theme={input.theme}
           width={input.width}
           height={input.height}

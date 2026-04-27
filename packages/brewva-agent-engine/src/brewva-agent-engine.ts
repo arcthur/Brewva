@@ -111,6 +111,15 @@ class PendingMessageQueue {
     return this.#messages.length > 0;
   }
 
+  remove(message: BrewvaAgentEngineMessage): boolean {
+    const index = this.#messages.indexOf(message);
+    if (index < 0) {
+      return false;
+    }
+    this.#messages.splice(index, 1);
+    return true;
+  }
+
   drain(): BrewvaAgentEngineMessage[] {
     if (this.mode === "all") {
       const drained = [...this.#messages];
@@ -337,6 +346,12 @@ class HostedBrewvaAgentEngine implements BrewvaAgentEngine {
 
   queue(message: BrewvaAgentEngineMessage): void {
     this.#queuedPromptQueue.enqueue(message);
+  }
+
+  removeQueuedMessage(message: BrewvaAgentEngineMessage, queue: "queue" | "followUp"): boolean {
+    return queue === "followUp"
+      ? this.#followUpQueue.remove(message)
+      : this.#queuedPromptQueue.remove(message);
   }
 
   steer(text: string): boolean {

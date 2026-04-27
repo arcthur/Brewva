@@ -79,6 +79,27 @@ In particular:
   UI state, but it no longer defines the authoritative meaning of durable
   session lifecycle
 
+## Queued Prompt Contract
+
+Queued prompts remain a hosted-loop concern with three stable rules:
+
+1. Interactive composer submissions made during active streaming default to
+   queued delivery when the caller omits `streamingBehavior`. Explicit
+   `followUp` producers remain explicit and do not silently widen into queued
+   future turns.
+2. Queued prompt inspection is prompt-id based. Managed sessions project queued
+   items as `BrewvaQueuedPromptView` records carrying `promptId`, text,
+   `submittedAt`, and `behavior`.
+3. Queued prompt removal is id-based and race-safe. `removeQueuedPrompt(id)`
+   removes the still-pending entry when it exists and returns `false` when the
+   prompt is already consumed or missing; that outcome is advisory, not an
+   exceptional lifecycle error.
+
+The CLI's pending strip and queue overlay intentionally surface only
+`behavior="queue"` entries. Explicit `followUp` delivery remains a distinct
+continuation lane even though both travel through the hosted loop's pending
+message machinery.
+
 Compatibility fallbacks may still exist during migration, but the stable rule
 is that runtime lifecycle owns aggregate posture semantics.
 

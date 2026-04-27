@@ -1,8 +1,9 @@
 /** @jsxImportSource @opentui/solid */
 
+import { truncateToWidth, visibleWidth } from "@brewva/brewva-tui";
 import type { OpenTuiTextareaHandle } from "@brewva/brewva-tui/internal-opentui-runtime";
 import { SyntaxStyle, decodePasteBytes, type BoxRenderable, type PasteEvent } from "@opentui/core";
-import { Show, createMemo } from "solid-js";
+import { For, Show, createMemo } from "solid-js";
 import {
   cloneCliShellPromptParts,
   rebasePromptPartsAfterTextReplace,
@@ -50,9 +51,24 @@ export function createPromptPartTokenId(prefix: "agent" | "file" | "text"): stri
   return `${prefix}-part:${Date.now()}:${Math.random().toString(16).slice(2, 10)}`;
 }
 
+function summarizeQueuedPrompt(text: string, width: number): string {
+  const firstLine = text.split(/\r?\n/u)[0]?.trim() || "(empty prompt)";
+  const pendingSuffix = " (pending)";
+  const promptStripGutterWidth = 3;
+  const availableWidth = Math.max(12, width - visibleWidth(pendingSuffix) - promptStripGutterWidth);
+  if (visibleWidth(firstLine) <= availableWidth) {
+    return firstLine;
+  }
+  if (availableWidth <= 1) {
+    return "…";
+  }
+  return `${truncateToWidth(firstLine, availableWidth - 1)}…`;
+}
+
 export function PromptPanel(input: {
   runtime: CliShellRuntime;
   composer: CliShellViewState["composer"];
+  queue: CliShellViewState["queue"];
   status: CliShellViewState["status"];
   overlayActive: boolean;
   theme: SessionPalette;
@@ -147,6 +163,7 @@ export function PromptPanel(input: {
       "ctrl+k commands",
       "/help",
       "/ slash",
+      "ctrl+b queue",
       "ctrl+o questions",
       "ctrl+s stash",
       completionHints(),
@@ -247,6 +264,22 @@ export function PromptPanel(input: {
             placeholderColor={input.theme.textDim}
             syntaxStyle={promptPartStyle()}
           />
+          <Show when={input.queue.length > 0}>
+            <box paddingTop={1} flexDirection="column">
+              <For each={input.queue.slice(0, 3)}>
+                {(entry) => (
+                  <text fg={input.theme.textMuted} wrapMode="none">
+                    {`${summarizeQueuedPrompt(entry.text, input.width)} (pending)`}
+                  </text>
+                )}
+              </For>
+              <Show when={input.queue.length > 3}>
+                <text fg={input.theme.textDim} wrapMode="none">
+                  {`+${input.queue.length - 3} more · Ctrl+B to manage`}
+                </text>
+              </Show>
+            </box>
+          </Show>
           <box
             paddingTop={1}
             flexDirection={narrow() ? "column" : "row"}

@@ -22,6 +22,7 @@ export interface BrewvaQueuedPrompt extends BrewvaPromptEnvelope {
 export interface BrewvaSessionHost {
   getPhase(): SessionPhase;
   getQueuedPrompts(): readonly BrewvaQueuedPrompt[];
+  removeQueuedPrompt(promptId: string): boolean;
   submitPrompt(prompt: BrewvaPromptEnvelope): void;
   queuePrompt(prompt: BrewvaPromptEnvelope): void;
   queueFollowUp(prompt: BrewvaPromptEnvelope): void;
@@ -61,6 +62,16 @@ class InMemorySessionHost implements BrewvaSessionHost {
 
   getQueuedPrompts(): readonly BrewvaQueuedPrompt[] {
     return [...this.primaryQueue, ...this.queuedPromptQueue, ...this.followUpQueue];
+  }
+
+  removeQueuedPrompt(promptId: string): boolean {
+    // Hosted gateway sessions remove queued prompts through BrewvaAgentEngine.
+    // This in-memory host path exists for direct substrate-backed session flows.
+    return (
+      this.removeFromQueue(this.primaryQueue, promptId) ||
+      this.removeFromQueue(this.queuedPromptQueue, promptId) ||
+      this.removeFromQueue(this.followUpQueue, promptId)
+    );
   }
 
   submitPrompt(prompt: BrewvaPromptEnvelope): void {
@@ -133,6 +144,15 @@ class InMemorySessionHost implements BrewvaSessionHost {
     }
     const next = queue.shift();
     return next ? [next] : [];
+  }
+
+  private removeFromQueue(queue: BrewvaQueuedPrompt[], promptId: string): boolean {
+    const index = queue.findIndex((entry) => entry.promptId === promptId);
+    if (index < 0) {
+      return false;
+    }
+    queue.splice(index, 1);
+    return true;
   }
 }
 

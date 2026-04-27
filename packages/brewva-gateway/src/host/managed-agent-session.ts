@@ -49,6 +49,7 @@ import {
   type BrewvaPromptContentPart,
   type BrewvaPromptOptions,
   type BrewvaPromptQueueBehavior,
+  type BrewvaQueuedPromptView,
   type BrewvaPromptSessionEvent,
   type BrewvaPromptThinkingLevel,
   type BrewvaRegisteredModel,
@@ -282,6 +283,13 @@ export const MANAGED_AGENT_SESSION_TEST_ONLY = {
   resolveRecallInjectionFingerprint,
   isCachedContentUnsupportedStreamError,
 } as const;
+
+interface QueuedPromptEntry {
+  view: BrewvaQueuedPromptView;
+  message: QueuedUserMessage;
+}
+
+type QueuedUserMessage = Extract<BrewvaAgentEngineMessage, { role: "user" }>;
 
 function buildProviderDynamicTailSummary(input: {
   payload: unknown;
@@ -1095,8 +1103,8 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
   readonly #providerCacheStickyLatches = new ProviderCacheStickyLatches();
   readonly #listeners = new Set<(event: BrewvaPromptSessionEvent) => void>();
   #ui: BrewvaToolUiPort;
-  readonly #queuedPrompts: string[] = [];
-  readonly #queuedFollowUps: string[] = [];
+  readonly #queuedPrompts: QueuedPromptEntry[] = [];
+  readonly #queuedPromptIdsByMessage = new WeakMap<QueuedUserMessage, string>();
   readonly #pendingNextTurnMessages: Array<Extract<BrewvaAgentEngineMessage, { role: "custom" }>> =
     [];
   readonly #commandUnsupported = async (): Promise<{ cancelled: boolean }> => ({ cancelled: true });
@@ -1543,6 +1551,29 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     return { ...this.#contextState };
   }
 
+  getQueuedPrompts(): readonly BrewvaQueuedPromptView[] {
+    return this.#queuedPrompts.map((entry) => entry.view);
+  }
+
+  removeQueuedPrompt(promptId: string): boolean {
+    const index = this.#queuedPrompts.findIndex((entry) => entry.view.promptId === promptId);
+    if (index < 0) {
+      return false;
+    }
+    const entry = this.#queuedPrompts[index];
+    if (!entry) {
+      return false;
+    }
+    const removed = this.#agent.removeQueuedMessage(entry.message, entry.view.behavior);
+    if (!removed) {
+      return false;
+    }
+    this.#queuedPrompts.splice(index, 1);
+    this.#queuedPromptIdsByMessage.delete(entry.message);
+    this.emitQueuedPromptChange();
+    return true;
+  }
+
   getRegisteredTools(): readonly BrewvaToolDefinition[] {
     return [...this.#registeredTools];
   }
@@ -1605,12 +1636,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     }
 
     if (this.isStreaming) {
-      const behavior = options?.streamingBehavior;
-      if (!behavior) {
-        throw new Error(
-          "Agent is already processing. Specify streamingBehavior ('queue' or 'followUp') to queue the message.",
-        );
-      }
+      const behavior = options?.streamingBehavior ?? "queue";
       await this.queueUserMessage(currentParts, behavior);
       return;
     }
@@ -2019,23 +2045,30 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     parts: readonly BrewvaPromptContentPart[],
     behavior: BrewvaPromptQueueBehavior,
   ): Promise<void> {
-    const text = buildBrewvaPromptText(parts);
-    const content = toAgentUserContent(parts);
-    if (behavior === "followUp") {
-      this.#queuedFollowUps.push(text);
-      this.#agent.followUp({
-        role: "user",
-        content,
-        timestamp: Date.now(),
-      });
-      return;
-    }
-    this.#queuedPrompts.push(text);
-    this.#agent.queue({
+    const submittedAt = Date.now();
+    const promptId = randomUUID();
+    const message: QueuedUserMessage = {
       role: "user",
-      content,
-      timestamp: Date.now(),
+      content: toAgentUserContent(parts),
+      timestamp: submittedAt,
+    };
+    const view: BrewvaQueuedPromptView = Object.freeze({
+      promptId,
+      text: buildBrewvaPromptText(parts),
+      submittedAt,
+      behavior,
     });
+    this.#queuedPromptIdsByMessage.set(message, promptId);
+    this.#queuedPrompts.push({
+      view,
+      message,
+    });
+    if (behavior === "followUp") {
+      this.#agent.followUp(message);
+    } else {
+      this.#agent.queue(message);
+    }
+    this.emitQueuedPromptChange();
   }
 
   private async sendCustomMessage(
@@ -2187,8 +2220,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
 
   private async handleAgentEvent(event: BrewvaAgentEngineEvent): Promise<BrewvaAgentEngineEvent> {
     if (event.type === "message_start" && event.message.role === "user") {
-      const userText = this.extractUserMessageText(event.message);
-      this.deleteQueuedMessage(userText);
+      this.deleteQueuedMessage(event.message);
     }
     if (event.type === "steer_applied") {
       this.#recordRuntimeEvent(
@@ -2664,6 +2696,13 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     }
   }
 
+  private emitQueuedPromptChange(): void {
+    this.emitToListeners({
+      type: "queue.changed",
+      items: this.getQueuedPrompts(),
+    });
+  }
+
   #recordRuntimeEvent(type: string, payload: Record<string, unknown>): void {
     if (!this.#runtime) {
       return;
@@ -2698,32 +2737,19 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     });
   }
 
-  private extractUserMessageText(
-    message: Extract<BrewvaAgentEngineMessage, { role: "user" }>,
-  ): string {
-    return message.content
-      .map((block) => {
-        if (block.type === "text") {
-          return block.text;
-        }
-        if (block.type === "file") {
-          return block.displayText ?? block.name ?? block.uri;
-        }
-        return "";
-      })
-      .join("");
-  }
-
-  private deleteQueuedMessage(text: string): void {
-    const queuedPromptIndex = this.#queuedPrompts.indexOf(text);
-    if (queuedPromptIndex !== -1) {
-      this.#queuedPrompts.splice(queuedPromptIndex, 1);
+  private deleteQueuedMessage(message: Extract<BrewvaAgentEngineMessage, { role: "user" }>): void {
+    const promptId = this.#queuedPromptIdsByMessage.get(message);
+    const index = this.#queuedPrompts.findIndex(
+      (entry) => entry.message === message || entry.view.promptId === promptId,
+    );
+    if (index < 0) {
       return;
     }
-    const followUpIndex = this.#queuedFollowUps.indexOf(text);
-    if (followUpIndex !== -1) {
-      this.#queuedFollowUps.splice(followUpIndex, 1);
+    const [entry] = this.#queuedPrompts.splice(index, 1);
+    if (entry) {
+      this.#queuedPromptIdsByMessage.delete(entry.message);
     }
+    this.emitQueuedPromptChange();
   }
 }
 

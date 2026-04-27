@@ -1,4 +1,6 @@
 import { asBrewvaSessionId } from "@brewva/brewva-runtime";
+import type { BrewvaQueuedPromptView } from "@brewva/brewva-substrate";
+import { truncateToWidth, visibleWidth } from "@brewva/brewva-tui";
 import { formatInspectAnalysisText } from "../inspect-analysis.js";
 import { buildSessionInspectReport } from "../inspect.js";
 import {
@@ -11,6 +13,7 @@ import {
 import { buildTaskRunListLabel, buildTaskRunPreviewLines } from "./task-details.js";
 import type {
   CliNotificationsOverlayPayload,
+  CliQueueOverlayPayload,
   CliInboxOverlayPayload,
   CliInboxOverlayItem,
   CliOverlayNotification,
@@ -65,6 +68,8 @@ export function resolveOverlayFocusOwner(
       return "sessionSwitcher";
     case "notifications":
       return "notificationCenter";
+    case "queue":
+      return "dialog";
     case "inspect":
       return "inspectOverlay";
     case "pager":
@@ -328,6 +333,20 @@ export function buildOverlayView(payload: CliShellOverlayPayload): {
       }
       return { title: "Sessions", lines };
     }
+    case "queue": {
+      const lines = [
+        `Queued prompts: ${payload.items.length}`,
+        "Use ↑/↓ to choose, Enter to inspect, d to delete, Esc to close.",
+      ];
+      for (const [index, item] of payload.items.entries()) {
+        const marker = index === payload.selectedIndex ? ">" : " ";
+        lines.push(`${marker} [queued] ${renderQueuePromptSummary(item.text)}`);
+      }
+      if (payload.items.length === 0) {
+        lines.push("No queued prompts.");
+      }
+      return { title: "Queued prompts", lines };
+    }
     case "notifications": {
       const lines = [
         `Notifications: ${payload.notifications.length}`,
@@ -447,6 +466,49 @@ export function buildNotificationsOverlayPayload(
         ? selectedIndexById
         : Math.max(0, Math.min(selection.index ?? 0, Math.max(0, notifications.length - 1))),
   };
+}
+
+export function buildQueueOverlayPayload(input: {
+  items: readonly BrewvaQueuedPromptView[];
+  selection?: {
+    promptId?: string;
+    index?: number;
+  };
+}): CliQueueOverlayPayload {
+  const selectedIndexById =
+    typeof input.selection?.promptId === "string"
+      ? input.items.findIndex((item) => item.promptId === input.selection?.promptId)
+      : -1;
+  return {
+    kind: "queue",
+    items: input.items,
+    selectedIndex:
+      selectedIndexById >= 0
+        ? selectedIndexById
+        : Math.max(0, Math.min(input.selection?.index ?? 0, Math.max(0, input.items.length - 1))),
+  };
+}
+
+export function buildQueuePromptDetailLines(item: BrewvaQueuedPromptView): string[] {
+  return [
+    `promptId: ${item.promptId}`,
+    `behavior: ${item.behavior}`,
+    `submittedAt: ${new Date(item.submittedAt).toISOString()}`,
+    "",
+    ...item.text.split(/\r?\n/u),
+  ];
+}
+
+export function renderQueuePromptSummary(text: string, maxWidth = 72): string {
+  const normalized = text.split(/\r?\n/u).join(" ").trim();
+  const summary = normalized || "(empty prompt)";
+  if (visibleWidth(summary) <= maxWidth) {
+    return summary;
+  }
+  if (maxWidth <= 1) {
+    return "…";
+  }
+  return `${truncateToWidth(summary, maxWidth - 1)}…`;
 }
 
 export function buildInboxOverlayPayload(

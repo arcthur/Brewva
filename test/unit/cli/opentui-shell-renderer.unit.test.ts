@@ -10,6 +10,7 @@ import {
   type SessionWireFrame,
 } from "@brewva/brewva-runtime";
 import type {
+  BrewvaQueuedPromptView,
   BrewvaPromptSessionEvent,
   BrewvaRenderableComponent,
   BrewvaSessionModelDescriptor,
@@ -211,6 +212,7 @@ function createFakeBundle(
     models?: BrewvaSessionModelDescriptor[];
     availableModelKeys?: string[];
     seedMessages?: unknown[];
+    queuedPrompts?: BrewvaQueuedPromptView[];
     sessionId?: string;
     replaySessions?: BrewvaReplaySession[];
     sessionWireBySessionId?: Record<string, SessionWireFrame[]>;
@@ -227,6 +229,7 @@ function createFakeBundle(
 ) {
   let attachedUi: BrewvaToolUiPort | undefined;
   let sessionListener: ((event: BrewvaPromptSessionEvent) => void) | undefined;
+  let queuedPrompts = [...(options.queuedPrompts ?? [])];
   const approvals = Array.from({ length: options.approvals ?? 0 }, (_, index) => ({
     requestId: `approval-${index + 1}`,
     proposalId: `proposal-${index + 1}`,
@@ -325,6 +328,21 @@ function createFakeBundle(
       };
     },
     async prompt() {},
+    getQueuedPrompts() {
+      return queuedPrompts;
+    },
+    removeQueuedPrompt(promptId: string) {
+      const index = queuedPrompts.findIndex((item) => item.promptId === promptId);
+      if (index < 0) {
+        return false;
+      }
+      queuedPrompts.splice(index, 1);
+      sessionListener?.({
+        type: "queue.changed",
+        items: [...queuedPrompts],
+      });
+      return true;
+    },
     async waitForIdle() {},
     async abort() {},
     async setModel(model: BrewvaSessionModelDescriptor) {
@@ -3623,6 +3641,98 @@ describe("opentui solid shell runtime", () => {
       expect(runtime.getViewState().transcript.scrollOffset).toBeGreaterThan(0);
       expect(runtime.getViewState().transcript.followMode).toBe("scrolled");
       expect(runtime.getViewState().composer.text).toBe("");
+    } finally {
+      runtime.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
+  test("renders queued prompts in the composer strip and queue overlay", async () => {
+    const { bundle } = createFakeBundle({
+      queuedPrompts: [
+        {
+          promptId: "queued-1",
+          text: "First queued prompt",
+          submittedAt: 1,
+          behavior: "queue",
+        },
+        {
+          promptId: "queued-2",
+          text: "Second queued prompt",
+          submittedAt: 2,
+          behavior: "queue",
+        },
+      ],
+    });
+    const runtime = new CliShellRuntime(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await runtime.start();
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime: runtime }),
+      {
+        width: 100,
+        height: 28,
+      },
+    );
+
+    try {
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+      let frame = testSetup.captureCharFrame();
+      expect(frame).toContain("First queued prompt (pending)");
+      expect(frame).toContain("Second queued prompt (pending)");
+
+      await openTuiSolidAct(async () => {
+        await runtime.handleInput({
+          key: "b",
+          ctrl: true,
+          meta: false,
+          shift: false,
+        });
+      });
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+
+      frame = testSetup.captureCharFrame();
+      expect(runtime.getViewState().overlay.active?.payload?.kind).toBe("queue");
+      expect(frame).toContain("Queued prompts");
+      expect(frame).toContain("queued · Second queued promp");
+
+      await openTuiSolidAct(async () => {
+        await runtime.handleInput({
+          key: "character",
+          text: "d",
+          ctrl: false,
+          meta: false,
+          shift: false,
+        });
+      });
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+
+      frame = testSetup.captureCharFrame();
+      expect(runtime.getViewState().queue).toHaveLength(1);
+      expect(frame).toContain("Second queued prompt");
+      expect(frame).not.toContain("First queued prompt");
+
+      await openTuiSolidAct(async () => {
+        await runtime.handleInput({
+          key: "escape",
+          ctrl: false,
+          meta: false,
+          shift: false,
+        });
+      });
+      await testSetup.renderOnce();
+      await testSetup.renderOnce();
+
+      frame = testSetup.captureCharFrame();
+      expect(frame).toContain("Second queued prompt (pending)");
     } finally {
       runtime.dispose();
       testSetup.renderer.destroy();

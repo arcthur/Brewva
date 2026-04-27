@@ -70,6 +70,28 @@ describe("substrate session host", () => {
     ]);
   });
 
+  test("removes queued prompts by prompt id", () => {
+    const host = createInMemorySessionHost({
+      plugins: [],
+      pluginContext: createPluginContext(),
+    });
+
+    host.submitPrompt({
+      promptId: "prompt_1",
+      parts: [{ type: "text", text: "First queued prompt" }],
+      submittedAt: 1,
+    });
+    host.queuePrompt({
+      promptId: "prompt_2",
+      parts: [{ type: "text", text: "Second queued prompt" }],
+      submittedAt: 2,
+    });
+
+    expect(host.removeQueuedPrompt("prompt_2")).toBe(true);
+    expect(host.removeQueuedPrompt("missing")).toBe(false);
+    expect(host.getQueuedPrompts().map((prompt) => prompt.promptId)).toEqual(["prompt_1"]);
+  });
+
   test("can terminate from any non-terminal phase", async () => {
     const host = createInMemorySessionHost({
       plugins: [],

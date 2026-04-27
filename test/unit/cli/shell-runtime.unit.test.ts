@@ -13,6 +13,7 @@ import {
 import {
   buildBrewvaPromptText,
   type BrewvaPromptContentPart,
+  type BrewvaQueuedPromptView,
   type BrewvaPromptSessionEvent,
   type BrewvaShellViewPreferences,
   type BrewvaSessionModelDescriptor,
@@ -67,10 +68,12 @@ function createFakeBundle(
       inputs?: Record<string, string>,
     ) => Promise<ProviderOAuthAuthorization | undefined>;
     completeOAuth?: (provider: string, methodId: string, code?: string) => Promise<void>;
+    queuedPrompts?: BrewvaQueuedPromptView[];
   } = {},
 ) {
   let attachedUi: BrewvaToolUiPort | undefined;
   let sessionListener: ((event: BrewvaPromptSessionEvent) => void) | undefined;
+  let queuedPrompts = [...(options.queuedPrompts ?? [])];
   const approvalDecisions: Array<{ requestId: string; input: unknown }> = [];
   const sessionId = options.sessionId ?? "session-1";
   const replaySessions = options.replaySessions ?? [
@@ -196,6 +199,21 @@ function createFakeBundle(
     },
     async prompt(parts: readonly BrewvaPromptContentPart[]) {
       await options.promptHandler?.(buildBrewvaPromptText(parts));
+    },
+    getQueuedPrompts() {
+      return queuedPrompts;
+    },
+    removeQueuedPrompt(promptId: string) {
+      const index = queuedPrompts.findIndex((item) => item.promptId === promptId);
+      if (index < 0) {
+        return false;
+      }
+      queuedPrompts.splice(index, 1);
+      sessionListener?.({
+        type: "queue.changed",
+        items: [...queuedPrompts],
+      });
+      return true;
     },
     async waitForIdle() {},
     async abort() {},
@@ -3773,6 +3791,160 @@ describe("shell runtime", () => {
 
     expect(runtime.getSessionBundle().session.sessionManager.getSessionId()).toBe("session-1");
     expect(runtime.ui.getEditorText()).toBe("draft one");
+    runtime.dispose();
+  });
+
+  test("session switching seeds queued prompts from the target session immediately", async () => {
+    const replaySessions = [
+      {
+        sessionId: asBrewvaSessionId("session-1"),
+        eventCount: 14,
+        lastEventAt: 1_710_000_000_000,
+      },
+      {
+        sessionId: asBrewvaSessionId("session-2"),
+        eventCount: 9,
+        lastEventAt: 1_710_000_100_000,
+      },
+    ] satisfies BrewvaReplaySession[];
+
+    const first = createFakeBundle({
+      sessionId: "session-1",
+      replaySessions,
+    });
+    const secondQueuedPrompts: BrewvaQueuedPromptView[] = [
+      {
+        promptId: "queued-1",
+        text: "Queued prompt from session two",
+        submittedAt: 2,
+        behavior: "queue",
+      },
+    ];
+    const second = createFakeBundle({
+      sessionId: "session-2",
+      replaySessions,
+      queuedPrompts: secondQueuedPrompts,
+    });
+
+    const bundles = new Map([
+      ["session-1", first.bundle],
+      ["session-2", second.bundle],
+    ]);
+
+    const runtime = new CliShellRuntime(first.bundle, {
+      cwd: process.cwd(),
+      openSession: async (sessionId) => bundles.get(sessionId) ?? first.bundle,
+      createSession: async () => second.bundle,
+    });
+
+    runtime.openOverlay({
+      kind: "sessions",
+      selectedIndex: 1,
+      sessions: replaySessions,
+      currentSessionId: "session-1",
+      draftStateBySessionId: {},
+    });
+
+    await runtime.handleInput({
+      key: "enter",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(runtime.getSessionBundle().session.sessionManager.getSessionId()).toBe("session-2");
+    expect(runtime.getViewState().queue).toEqual(secondQueuedPrompts);
+    runtime.dispose();
+  });
+
+  test("queue overlay closes after deleting the last queued prompt", async () => {
+    const queuedPrompts: BrewvaQueuedPromptView[] = [
+      {
+        promptId: "queued-1",
+        text: "Queued prompt",
+        submittedAt: 1,
+        behavior: "queue",
+      },
+    ];
+    const { bundle } = createFakeBundle({ queuedPrompts });
+    const runtime = new CliShellRuntime(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    await runtime.start();
+    runtime.ui.setEditorText("draft");
+    await runtime.handleInput({
+      key: "b",
+      ctrl: true,
+      meta: false,
+      shift: false,
+    });
+
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
+      kind: "queue",
+      selectedIndex: 0,
+    });
+    expect(runtime.ui.getEditorText()).toBe("draft");
+
+    await runtime.handleInput({
+      key: "character",
+      text: "d",
+      ctrl: false,
+      meta: false,
+      shift: false,
+    });
+
+    expect(runtime.getViewState().queue).toEqual([]);
+    expect(runtime.getViewState().overlay.active).toBeUndefined();
+    runtime.dispose();
+  });
+
+  test("queue overlay notifies when the selected queued prompt leaves the queue", async () => {
+    const firstQueuedPrompt: BrewvaQueuedPromptView = {
+      promptId: "queued-1",
+      text: "First queued prompt",
+      submittedAt: 1,
+      behavior: "queue",
+    };
+    const secondQueuedPrompt: BrewvaQueuedPromptView = {
+      promptId: "queued-2",
+      text: "Second queued prompt",
+      submittedAt: 2,
+      behavior: "queue",
+    };
+    const fixture = createFakeBundle({
+      queuedPrompts: [firstQueuedPrompt, secondQueuedPrompt],
+    });
+    const { bundle } = fixture;
+    const runtime = new CliShellRuntime(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+    });
+
+    await runtime.start();
+    await runtime.handleInput({
+      key: "b",
+      ctrl: true,
+      meta: false,
+      shift: false,
+    });
+
+    fixture.emitSessionEvent({
+      type: "queue.changed",
+      items: [secondQueuedPrompt],
+    });
+
+    expect(
+      runtime.getViewState().notifications.map((notification) => notification.message),
+    ).toContain("Selected queued prompt left the queue.");
+    expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
+      kind: "queue",
+      selectedIndex: 0,
+      items: [secondQueuedPrompt],
+    });
     runtime.dispose();
   });
 

@@ -36,6 +36,11 @@ current mode, selected model / thinking posture, follow state (`live` vs
 `scrolled`), pending approval or question badges, background-task hints, and
 concise action suggestions.
 
+When the current turn is still streaming, submitting another composer prompt
+queues it automatically for the next turn. The shell then renders a compact
+pending strip above the footer: up to three one-line `(pending)` rows plus a
+`+N more · Ctrl+B to manage` overflow hint when more queued prompts exist.
+
 The shell chooses a built-in dark or light theme from the terminal background
 at startup, and the operator can switch themes explicitly with `/theme <name>`.
 
@@ -60,6 +65,9 @@ The first-pass keyboard contract is:
 - `Ctrl-E` opens the external editor from the composer, and opens an external
   pager when the active surface exposes long-form details such as pager,
   inspect sections, task output, or inbox drill-down
+- `Ctrl-B` opens the queued-prompt overlay so the operator can inspect or
+  delete prompts that are waiting behind the current live turn; inside the
+  composer this overrides the familiar readline-style backward-char behavior
 - `Ctrl-A` / `Ctrl-O` / `Ctrl-T` / `Ctrl-G` / `Ctrl-I` / `Ctrl-N` open
   approvals, questions, tasks, sessions, inspect, and the inbox
 - `PageUp` / `PageDown` move the transcript or the active detail surface by a
@@ -93,6 +101,7 @@ The shell keeps operator actions inside the same interactive surface:
 - approval overlay
 - question overlay
 - task browser
+- queued-prompt manager
 - model picker
 - provider connection picker
 - thinking-level picker

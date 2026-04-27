@@ -463,6 +463,7 @@ export function BrewvaOpenTuiShell(input: {
           <PromptPanel
             runtime={input.runtime}
             composer={state.composer}
+            queue={state.queue}
             status={state.status}
             overlayActive={Boolean(state.overlay.active)}
             theme={theme()}

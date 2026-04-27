@@ -209,6 +209,7 @@ export {
   type BrewvaPromptMessageDeltaEvent,
   type BrewvaPromptOptions,
   type BrewvaPromptQueueBehavior,
+  type BrewvaQueuedPromptView,
   type BrewvaPromptSessionEvent,
   type BrewvaPromptSessionManagerView,
   type BrewvaPromptThinkingLevel,

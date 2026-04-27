@@ -1,9 +1,12 @@
+import { randomUUID } from "node:crypto";
 import { createOperatorRuntimePort } from "@brewva/brewva-runtime";
 import type { OverlayPriority } from "@brewva/brewva-tui";
 import { buildSessionInspectReport, resolveInspectDirectory } from "../../inspect.js";
 import { buildCommandPalettePayload, buildHelpHubPayload } from "../commands/command-palette.js";
 import type { ShellCommandProvider } from "../commands/command-provider.js";
 import {
+  buildQueueOverlayPayload,
+  buildQueuePromptDetailLines,
   buildInboxOverlayPayload,
   buildInspectSections,
   buildNotificationDetailLines,
@@ -139,6 +142,9 @@ function selectableItemCount(payload: CliShellOverlayPayload): number | undefine
   }
   if (payload.kind === "sessions") {
     return payload.sessions.length;
+  }
+  if (payload.kind === "queue") {
+    return payload.items.length;
   }
   if (payload.kind === "notifications") {
     return payload.notifications.length;
@@ -391,6 +397,28 @@ export class ShellOverlayLifecycleFlow {
       return true;
     }
 
+    if (active.kind === "queue" && key === "d") {
+      const item = active.items[active.selectedIndex];
+      if (!item) {
+        return true;
+      }
+      const removed = this.context.getSessionPort().removeQueuedPrompt(item.promptId);
+      if (!removed) {
+        this.context.commit([
+          {
+            type: "notification.add",
+            notification: {
+              id: `queue-warning:${randomUUID()}`,
+              level: "warning",
+              message: "Queued prompt is already running.",
+              createdAt: Date.now(),
+            },
+          },
+        ]);
+      }
+      return true;
+    }
+
     if (active.kind === "oauthWait" && key === "c") {
       await this.context.providerAuth.copyOAuthWaitText(active);
       return true;
@@ -471,6 +499,17 @@ export class ShellOverlayLifecycleFlow {
       case "oauthWait":
         void this.context.providerAuth.submitOAuthWaitManualCode(active);
         return;
+      case "queue": {
+        const item = active.items[active.selectedIndex];
+        if (!item) {
+          return;
+        }
+        this.openPagerOverlay({
+          title: `Queued prompt ${active.selectedIndex + 1}`,
+          lines: buildQueuePromptDetailLines(item),
+        });
+        return;
+      }
       default:
         this.closeActiveOverlay(false);
     }
@@ -522,6 +561,14 @@ export class ShellOverlayLifecycleFlow {
     this.openOverlay(this.buildSessionsOverlayPayload());
   }
 
+  openQueueOverlay(): void {
+    this.openOverlay(
+      buildQueueOverlayPayload({
+        items: this.context.getState().queue,
+      }),
+    );
+  }
+
   async openInspectOverlay(): Promise<void> {
     const operatorRuntime = createOperatorRuntimePort(this.context.getBundle().runtime);
     const report = buildSessionInspectReport({
@@ -565,6 +612,43 @@ export class ShellOverlayLifecycleFlow {
       this.buildNotificationsOverlayPayload({
         id: active.notifications[active.selectedIndex]?.id,
         index: active.selectedIndex,
+      }),
+    );
+  }
+
+  syncQueueOverlay(items: CliShellViewState["queue"]): void {
+    const active = this.context.getState().overlay.active?.payload;
+    if (active?.kind !== "queue") {
+      return;
+    }
+    const selectedPromptId = active.items[active.selectedIndex]?.promptId;
+    if (items.length === 0) {
+      this.closeActiveOverlay(false);
+      return;
+    }
+    if (
+      typeof selectedPromptId === "string" &&
+      !items.some((item) => item.promptId === selectedPromptId)
+    ) {
+      this.context.commit([
+        {
+          type: "notification.add",
+          notification: {
+            id: `queue-info:${randomUUID()}`,
+            level: "info",
+            message: "Selected queued prompt left the queue.",
+            createdAt: Date.now(),
+          },
+        },
+      ]);
+    }
+    this.replaceActiveOverlay(
+      buildQueueOverlayPayload({
+        items,
+        selection: {
+          promptId: selectedPromptId,
+          index: active.selectedIndex,
+        },
       }),
     );
   }

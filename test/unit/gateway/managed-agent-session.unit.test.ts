@@ -2433,4 +2433,96 @@ describe("managed agent session compaction", () => {
       fauxProvider.unregister();
     }
   });
+
+  test("queues interactive prompts by prompt id while streaming and removes them explicitly", async () => {
+    const fauxProvider = registerFauxProvider({
+      provider: "faux-queue",
+      api: "faux",
+      tokensPerSecond: 80,
+      models: [{ id: "queue-model" }],
+    });
+
+    try {
+      const workspace = createTestWorkspace("managed-session-queue");
+      const runtime = new BrewvaRuntime({ cwd: workspace });
+      const sessionStore = new HostedRuntimeTapeSessionStore(
+        runtime,
+        workspace,
+        "managed-session-queue",
+      );
+      const modelCatalog = createInMemoryModelCatalog();
+      const model: BrewvaRegisteredModel = {
+        provider: "faux-queue",
+        id: "queue-model",
+        name: "Queue Model",
+        api: "faux",
+        baseUrl: "http://localhost:0",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 32000,
+        maxTokens: 4096,
+      };
+      registerModelCatalogProvider(modelCatalog, model);
+      fauxProvider.setResponses([
+        fauxAssistantMessage("stream ".repeat(60)),
+        fauxAssistantMessage("done"),
+      ]);
+
+      const session = await createBrewvaManagedAgentSession({
+        cwd: workspace,
+        agentDir: join(workspace, ".brewva-agent"),
+        sessionStore,
+        settings: createSettingsStub(),
+        runtime,
+        modelCatalog,
+        resourceLoader: await createResourceLoader(workspace),
+        customTools: [],
+        runtimePlugins: [createHostedTurnPipeline({ runtime, registerTools: false })],
+        initialModel: model,
+        initialThinkingLevel: "off",
+      });
+
+      const queueSnapshots: string[][] = [];
+      const unsubscribe = session.subscribe((event) => {
+        if (event.type === "queue.changed" && Array.isArray(event.items)) {
+          queueSnapshots.push(
+            event.items.map((item) =>
+              typeof item === "object" && item !== null && "promptId" in item
+                ? String(item.promptId)
+                : "",
+            ),
+          );
+        }
+      });
+
+      try {
+        const firstPrompt = session.prompt(textPrompt("First prompt"), { source: "interactive" });
+        for (let attempt = 0; attempt < 20 && !session.isStreaming; attempt += 1) {
+          await Bun.sleep(20);
+        }
+
+        expect(session.isStreaming).toBe(true);
+
+        await session.prompt(textPrompt("Second queued prompt"), { source: "interactive" });
+
+        const queued = session.getQueuedPrompts();
+        expect(queued).toHaveLength(1);
+        expect(queued[0]).toMatchObject({
+          text: "Second queued prompt",
+          behavior: "queue",
+        });
+        expect(session.removeQueuedPrompt(queued[0]!.promptId)).toBe(true);
+        expect(session.getQueuedPrompts()).toEqual([]);
+        expect(queueSnapshots).toEqual([[queued[0]!.promptId], []]);
+        await firstPrompt;
+        await session.waitForIdle();
+      } finally {
+        unsubscribe();
+        session.dispose();
+      }
+    } finally {
+      fauxProvider.unregister();
+    }
+  });
 });

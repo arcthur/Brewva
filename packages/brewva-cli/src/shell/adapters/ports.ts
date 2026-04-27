@@ -140,6 +140,12 @@ export function createSessionViewPort(bundle: CliShellSessionBundle): SessionVie
         throw output.error instanceof Error ? output.error : new Error(String(output.error));
       }
     },
+    getQueuedPrompts() {
+      return bundle.session.getQueuedPrompts();
+    },
+    removeQueuedPrompt(promptId) {
+      return bundle.session.removeQueuedPrompt(promptId);
+    },
     steer(text, options) {
       return bundle.session.steer(text, options);
     },

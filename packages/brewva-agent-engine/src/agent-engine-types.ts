@@ -341,6 +341,7 @@ export interface BrewvaAgentEngine {
   setSystemPrompt(prompt: string): void;
   followUp(message: BrewvaAgentEngineMessage): void;
   queue(message: BrewvaAgentEngineMessage): void;
+  removeQueuedMessage(message: BrewvaAgentEngineMessage, queue: "queue" | "followUp"): boolean;
   steer(text: string): boolean;
   hasPendingSteer(): boolean;
   appendMessage(message: BrewvaAgentEngineMessage): void;

@@ -3,6 +3,7 @@ import type { BrewvaToolDefinition } from "../contracts/tool.js";
 import type { ToolExecutionPhase } from "../execution/tool-phase.js";
 import type { BrewvaToolUiPort } from "../host-api/ui.js";
 import type { BrewvaPromptContentPart } from "./prompt-content.js";
+import type { BrewvaPromptEnvelope } from "./session-host.js";
 
 export type BrewvaPromptQueueBehavior = "queue" | "followUp";
 export type BrewvaPromptInputSource = "interactive" | "extension" | (string & {});
@@ -24,6 +25,14 @@ export interface BrewvaPromptOptions {
   expandPromptTemplates?: boolean;
   streamingBehavior?: BrewvaPromptQueueBehavior;
   source?: BrewvaPromptInputSource;
+}
+
+export interface BrewvaQueuedPromptView extends Pick<
+  BrewvaPromptEnvelope,
+  "promptId" | "submittedAt"
+> {
+  text: string;
+  behavior: BrewvaPromptQueueBehavior;
 }
 
 export interface BrewvaSteerOptions {
@@ -271,6 +280,10 @@ export type BrewvaPromptSessionEvent =
       reason: BrewvaSteerDropReason;
     }
   | {
+      type: "queue.changed";
+      items: readonly BrewvaQueuedPromptView[];
+    }
+  | {
       type: string;
       [key: string]: unknown;
     };
@@ -284,6 +297,8 @@ export interface BrewvaManagedPromptSession extends BrewvaSubscribablePromptSess
   settingsManager: BrewvaManagedSessionSettingsView;
   getRegisteredTools(): readonly BrewvaToolDefinition[];
   getContextState(): ContextState;
+  getQueuedPrompts(): readonly BrewvaQueuedPromptView[];
+  removeQueuedPrompt(promptId: string): boolean;
   waitForIdle(): Promise<void>;
   setUiPort(ui: BrewvaToolUiPort): void;
   steer(text: string, options?: BrewvaSteerOptions): Promise<BrewvaSteerOutcome>;

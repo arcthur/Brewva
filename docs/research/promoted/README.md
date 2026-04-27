@@ -69,6 +69,7 @@ refresh the pointer summary and `Last reviewed` metadata here.
 - [`rfc-hosted-thread-loop-and-unified-recovery-decisions.md`](./rfc-hosted-thread-loop-and-unified-recovery-decisions.md)
 - [`rfc-hosted-turn-transitions-and-bounded-recovery.md`](./rfc-hosted-turn-transitions-and-bounded-recovery.md)
 - [`rfc-in-flight-steer-control-primitive.md`](./rfc-in-flight-steer-control-primitive.md)
+- [`rfc-interactive-prompt-queue-and-pending-strip.md`](./rfc-interactive-prompt-queue-and-pending-strip.md)
 - [`rfc-kimi-code-token-cache-adapter.md`](./rfc-kimi-code-token-cache-adapter.md)
 - [`rfc-preparse-normalization-model-capability-and-live-audit-split.md`](./rfc-preparse-normalization-model-capability-and-live-audit-split.md)
 - [`rfc-runtime-owned-session-lifecycle-aggregate-and-authority-gate.md`](./rfc-runtime-owned-session-lifecycle-aggregate-and-authority-gate.md)

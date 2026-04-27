@@ -2,6 +2,7 @@ import { type SessionQuestionRequest } from "@brewva/brewva-gateway";
 import { normalizeQuestionPrompt } from "@brewva/brewva-substrate";
 import type {
   BrewvaInteractiveQuestionRequest,
+  BrewvaQueuedPromptView,
   BrewvaUiDialogOptions,
 } from "@brewva/brewva-substrate";
 import {
@@ -153,6 +154,24 @@ function buildInteractiveQuestionRequest(input: {
     sourceLabel: "tool:question",
     questions,
   };
+}
+
+function isQueuedPromptView(value: unknown): value is BrewvaQueuedPromptView {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.promptId === "string" &&
+    typeof record.text === "string" &&
+    typeof record.submittedAt === "number" &&
+    Number.isFinite(record.submittedAt) &&
+    (record.behavior === "queue" || record.behavior === "followUp")
+  );
+}
+
+function isQueuedPromptViewArray(value: unknown): value is readonly BrewvaQueuedPromptView[] {
+  return Array.isArray(value) && value.every((item) => isQueuedPromptView(item));
 }
 
 interface PendingInteractiveQuestionRequest {
@@ -722,6 +741,10 @@ export class CliShellRuntime {
         type: "transcript.setMessages",
         messages: this.#transcriptProjector.buildMessagesFromSession(),
       },
+      {
+        type: "queue.set",
+        items: this.projectQueuedPrompts(this.#sessionPort.getQueuedPrompts()),
+      },
     ];
     if (restoredDraft) {
       actions.push({
@@ -799,8 +822,33 @@ export class CliShellRuntime {
     this.options.onBundleChange?.(bundle);
     this.#unsubscribeSession?.();
     this.#unsubscribeSession = this.#sessionPort.subscribe((event) => {
+      if (event.type === "queue.changed" && isQueuedPromptViewArray(event.items)) {
+        this.applyQueueProjection(event.items);
+        return;
+      }
       void this.handleShellIntent({ type: "session.event", event });
     });
+  }
+
+  private applyQueueProjection(items: ReturnType<SessionViewPort["getQueuedPrompts"]>): void {
+    const projectedItems = this.projectQueuedPrompts(items);
+    this.commit(
+      [
+        {
+          type: "queue.set",
+          items: projectedItems,
+        },
+      ],
+      { debounceStatus: false, refreshCompletions: false },
+    );
+    this.#overlayFlow.syncQueueOverlay(projectedItems);
+  }
+
+  private projectQueuedPrompts(
+    items: ReturnType<SessionViewPort["getQueuedPrompts"]>,
+  ): ReturnType<SessionViewPort["getQueuedPrompts"]> {
+    // followUp prompts merge into the current turn and are not part of the queue UI.
+    return items.filter((item) => item.behavior === "queue");
   }
 
   private commit(input: ShellCommitInput, options: ShellCommitOptions = {}): void {
@@ -974,6 +1022,9 @@ export class CliShellRuntime {
         return;
       case "overlay.openSessions":
         this.#overlayFlow.openSessionsOverlay();
+        return;
+      case "overlay.openQueue":
+        this.#overlayFlow.openQueueOverlay();
         return;
       case "overlay.openInspect":
         await this.#overlayFlow.openInspectOverlay();

@@ -1,3 +1,4 @@
+import type { BrewvaQueuedPromptView } from "@brewva/brewva-substrate";
 import { DEFAULT_TUI_THEME, type TuiTheme } from "@brewva/brewva-tui";
 import { FocusManager, OverlayManager, type OverlayEntry } from "@brewva/brewva-tui";
 import type { ShellCompletionCandidate, ShellCompletionRange } from "../completion-provider.js";
@@ -103,6 +104,7 @@ export interface CliShellViewState {
     lines: string[];
   };
   notifications: CliShellNotification[];
+  queue: readonly BrewvaQueuedPromptView[];
   status: CliShellStatusState;
   diff: CliShellDiffState;
   view: CliShellDisplayState;
@@ -176,6 +178,10 @@ export type CliShellAction =
       type: "notification.clear";
     }
   | {
+      type: "queue.set";
+      items: readonly BrewvaQueuedPromptView[];
+    }
+  | {
       type: "status.set";
       key: string;
       text: string | undefined;
@@ -232,6 +238,7 @@ export function createCliShellState(): CliShellViewState {
       parts: [],
     },
     notifications: [],
+    queue: [],
     status: {
       entries: {},
       trust: buildTrustLoopIdleProjection(),
@@ -425,6 +432,17 @@ export function reduceCliShellState(
       return {
         ...state,
         notifications: [],
+      };
+    case "queue.set":
+      if (
+        state.queue.length === action.items.length &&
+        state.queue.every((item, index) => item.promptId === action.items[index]?.promptId)
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        queue: [...action.items],
       };
     case "status.set": {
       const nextEntries = { ...state.status.entries };

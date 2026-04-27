@@ -172,6 +172,11 @@ export function cloneOverlayPayload(payload: CliShellOverlayPayload): CliShellOv
         ...payload,
         items: [...payload.items],
       };
+    case "queue":
+      return {
+        ...payload,
+        items: [...payload.items],
+      };
     case "oauthWait":
       return {
         ...payload,

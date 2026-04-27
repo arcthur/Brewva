@@ -161,6 +161,7 @@ None currently.
 - `docs/research/promoted/rfc-gateway-experience-ring-decomposition.md`
 - `docs/research/promoted/rfc-hosted-turn-transitions-and-bounded-recovery.md`
 - `docs/research/promoted/rfc-hosted-thread-loop-and-unified-recovery-decisions.md`
+- `docs/research/promoted/rfc-interactive-prompt-queue-and-pending-strip.md`
 - `docs/research/promoted/rfc-inspectable-operator-experience-overlays.md`
 - `docs/research/promoted/rfc-iteration-facts-and-model-native-optimization-protocols.md`
 - `docs/research/promoted/rfc-kernel-first-subtraction-and-control-plane-deferral.md`
