@@ -4,6 +4,7 @@ import type { ProviderRequestFingerprint } from "@brewva/brewva-provider-core";
 import type {
   ExpectedProviderCacheBreak,
   ProviderCacheBreakObservation,
+  ProviderCacheRenderState,
 } from "@brewva/brewva-runtime";
 import { stableHash, stableStringify } from "./hash.js";
 import { SourceTracker } from "./source-tracker.js";
@@ -24,6 +25,7 @@ export interface ProviderCacheUsageInput {
 export interface ProviderCacheBreakDetectorInput {
   source: string;
   fingerprint: ProviderRequestFingerprint;
+  render?: ProviderCacheRenderState;
   usage: ProviderCacheUsageInput;
   expectedBreak?: ExpectedProviderCacheBreak;
   observability?: {
@@ -167,6 +169,7 @@ export class ProviderCacheBreakDetector {
         elapsedMs: Math.max(0, observedAt - previous.observedAt),
         shortTtlMs: this.#shortTtlMs,
         longTtlMs: this.#longTtlMs,
+        render: input.render,
       }),
       previousCacheReadTokens: previous.cacheReadTokens,
       cacheReadTokens,
@@ -298,14 +301,64 @@ function classifyUnexpectedBreakReason(input: {
   elapsedMs: number;
   shortTtlMs: number;
   longTtlMs: number;
+  render?: ProviderCacheRenderState;
 }): string {
   if (input.changedFields.length === 0) {
+    const renderedTtlMs = resolveRenderedCacheTtlMs(input);
+    if (renderedTtlMs !== undefined && input.elapsedMs >= renderedTtlMs) {
+      return `possible_cache_ttl_expiry_${formatTtlLabel(renderedTtlMs)}`;
+    }
     if (input.elapsedMs >= input.longTtlMs) {
-      return "possible_cache_ttl_expiry_1h";
+      return `possible_cache_ttl_expiry_${formatTtlLabel(input.longTtlMs)}`;
     }
     if (input.elapsedMs >= input.shortTtlMs) {
-      return "possible_cache_ttl_expiry_5m";
+      return `possible_cache_ttl_expiry_${formatTtlLabel(input.shortTtlMs)}`;
     }
   }
   return "cache_read_drop_exceeded_threshold";
+}
+
+function resolveRenderedCacheTtlMs(input: {
+  render?: ProviderCacheRenderState;
+  shortTtlMs: number;
+  longTtlMs: number;
+}): number | undefined {
+  const explicitTtlSeconds = input.render?.cachedContentTtlSeconds;
+  if (
+    typeof explicitTtlSeconds === "number" &&
+    Number.isFinite(explicitTtlSeconds) &&
+    explicitTtlSeconds > 0
+  ) {
+    return Math.trunc(explicitTtlSeconds) * 1000;
+  }
+  if (input.render?.renderedRetention === "long") {
+    const label = input.render.capability?.longRetention;
+    if (label && label !== "none") {
+      return parseRetentionHours(label) * 60 * 60 * 1000;
+    }
+    return input.longTtlMs;
+  }
+  if (input.render?.renderedRetention === "short") {
+    return input.shortTtlMs;
+  }
+  return undefined;
+}
+
+function parseRetentionHours(value: string): number {
+  const match = /^(\d+)h$/.exec(value);
+  const hours = match?.[1];
+  if (!hours) {
+    return 1;
+  }
+  return Math.max(1, Number.parseInt(hours, 10));
+}
+
+function formatTtlLabel(ttlMs: number): string {
+  if (ttlMs % (60 * 60 * 1000) === 0) {
+    return `${ttlMs / (60 * 60 * 1000)}h`;
+  }
+  if (ttlMs % (60 * 1000) === 0) {
+    return `${ttlMs / (60 * 1000)}m`;
+  }
+  return `${Math.max(1, Math.round(ttlMs / 1000))}s`;
 }

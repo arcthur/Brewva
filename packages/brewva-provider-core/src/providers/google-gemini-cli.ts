@@ -1,9 +1,10 @@
 /**
  * Google Gemini CLI provider.
- * Uses the Cloud Code Assist API endpoint to access Gemini and Claude models.
+ * Implements the user-facing Google provider over the Cloud Code Assist API endpoint.
  */
 
 import type { Content, ThinkingConfig } from "@google/genai";
+import { parseGoogleGeminiCliCredential } from "../google-cached-content.js";
 import { calculateCost } from "../models.js";
 import type {
   Api,
@@ -250,6 +251,7 @@ interface CloudCodeAssistRequest {
   request: {
     contents: Content[];
     sessionId?: string;
+    cachedContent?: string;
     systemInstruction?: { role?: string; parts: { text: string }[] };
     generationConfig?: {
       maxOutputTokens?: number;
@@ -290,6 +292,7 @@ interface CloudCodeAssistResponseChunk {
       promptTokenCount?: number;
       candidatesTokenCount?: number;
       thoughtsTokenCount?: number;
+      toolUsePromptTokenCount?: number;
       totalTokenCount?: number;
       cachedContentTokenCount?: number;
     };
@@ -334,24 +337,8 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli", GoogleGe
         );
       }
 
-      let accessToken: string;
-      let projectId: string;
-
-      try {
-        const parsed = JSON.parse(apiKeyRaw) as { token: string; projectId: string };
-        accessToken = parsed.token;
-        projectId = parsed.projectId;
-      } catch {
-        throw new Error(
-          "Invalid Google Cloud Code Assist credentials. Use /login to re-authenticate.",
-        );
-      }
-
-      if (!accessToken || !projectId) {
-        throw new Error(
-          "Missing token or projectId in Google Cloud credentials. Use /login to re-authenticate.",
-        );
-      }
+      const parsedCredential = parseGoogleGeminiCliCredential(apiKeyRaw);
+      const { token: accessToken, projectId } = parsedCredential;
 
       const baseUrl = model.baseUrl?.trim();
       const endpoints = baseUrl ? [baseUrl] : [DEFAULT_ENDPOINT];
@@ -697,14 +684,22 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli", GoogleGe
                 // promptTokenCount includes cachedContentTokenCount, so subtract to get fresh input
                 const promptTokens = responseData.usageMetadata.promptTokenCount || 0;
                 const cacheReadTokens = responseData.usageMetadata.cachedContentTokenCount || 0;
+                const candidateTokens = responseData.usageMetadata.candidatesTokenCount || 0;
+                const thoughtsTokens = responseData.usageMetadata.thoughtsTokenCount || 0;
+                const toolUsePromptTokens = responseData.usageMetadata.toolUsePromptTokenCount || 0;
                 output.usage = {
                   input: promptTokens - cacheReadTokens,
-                  output:
-                    (responseData.usageMetadata.candidatesTokenCount || 0) +
-                    (responseData.usageMetadata.thoughtsTokenCount || 0),
+                  output: candidateTokens + thoughtsTokens,
                   cacheRead: cacheReadTokens,
                   cacheWrite: 0,
                   totalTokens: responseData.usageMetadata.totalTokenCount || 0,
+                  details: {
+                    promptTokens,
+                    candidateTokens,
+                    thoughtsTokens,
+                    toolUsePromptTokens,
+                    cachedContentTokens: cacheReadTokens,
+                  },
                   cost: {
                     input: 0,
                     output: 0,

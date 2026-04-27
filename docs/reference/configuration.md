@@ -81,7 +81,9 @@ There is no legacy `cacheRetention` compatibility alias. Provider-specific
 cache fields such as Anthropic cache markers, OpenAI prompt-cache keys, and
 Codex continuation state are rendered only in
 `@brewva/brewva-provider-core`. See `docs/reference/token-cache.md` for the
-full cache contract.
+full cache contract. Google's explicit CachedContent lifecycle and any local
+Vertex cached-content endpoint overrides remain implementation-level or
+environment-level concerns, not top-level `BrewvaConfig` keys.
 
 ## Session Index Configuration
 

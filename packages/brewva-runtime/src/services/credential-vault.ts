@@ -54,9 +54,6 @@ const DISCOVERY_MAPPINGS: Array<{
   { provider: "anthropic", envVar: "ANTHROPIC_API_KEY", credentialRef: "vault://anthropic/apiKey" },
   { provider: "github", envVar: "GITHUB_TOKEN", credentialRef: "vault://github/token" },
   { provider: "github", envVar: "GH_TOKEN", credentialRef: "vault://github/token" },
-  { provider: "gemini", envVar: "GEMINI_API_KEY", credentialRef: "vault://gemini/apiKey" },
-  { provider: "google", envVar: "GOOGLE_API_KEY", credentialRef: "vault://google/apiKey" },
-  { provider: "groq", envVar: "GROQ_API_KEY", credentialRef: "vault://groq/apiKey" },
   { provider: "kimi-coding", envVar: "KIMI_API_KEY", credentialRef: "vault://kimi-coding/apiKey" },
   {
     provider: "moonshot-cn",
@@ -69,7 +66,6 @@ const DISCOVERY_MAPPINGS: Array<{
     credentialRef: "vault://moonshot-ai/apiKey",
   },
   { provider: "together", envVar: "TOGETHER_API_KEY", credentialRef: "vault://together/apiKey" },
-  { provider: "xai", envVar: "XAI_API_KEY", credentialRef: "vault://xai/apiKey" },
 ];
 
 function readString(value: unknown): string | undefined {

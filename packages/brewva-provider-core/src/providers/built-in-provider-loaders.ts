@@ -69,12 +69,6 @@ const STANDARD_BUILT_IN_PROVIDER_REGISTRATION_DESCRIPTORS = [
     streamSimpleExport: "streamSimpleOpenAICodexResponses",
   }),
   createBuiltInProviderRegistrationDescriptor({
-    api: "google-generative-ai",
-    loadModule: () => import("./google.js"),
-    streamExport: "streamGoogle",
-    streamSimpleExport: "streamSimpleGoogle",
-  }),
-  createBuiltInProviderRegistrationDescriptor({
     api: "google-gemini-cli",
     loadModule: () => import("./google-gemini-cli.js"),
     streamExport: "streamGoogleGeminiCli",

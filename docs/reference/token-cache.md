@@ -3,8 +3,10 @@
 Implementation anchors:
 
 - `packages/brewva-provider-core/src/cache-policy.ts`
+- `packages/brewva-provider-core/src/google-cached-content.ts`
 - `packages/brewva-provider-core/src/providers/payload-metadata.ts`
 - `packages/brewva-provider-core/src/providers/anthropic.ts`
+- `packages/brewva-provider-core/src/providers/google-gemini-cli.ts`
 - `packages/brewva-provider-core/src/providers/openai-responses.ts`
 - `packages/brewva-provider-core/src/providers/openai-codex-responses.ts`
 - `packages/brewva-gateway/src/cache/`
@@ -78,6 +80,13 @@ model, base URL, and transport. The normalized strategy vocabulary is:
   - OpenAI Responses and OpenAI Codex Responses can use a stable prompt cache
     key when the provider/model supports it.
   - Direct OpenAI can expose longer prompt-cache retention where supported.
+- `explicitCachedContent`
+  - Google can upgrade `retention=long` from implicit prefix behavior to an
+    explicit CachedContent resource when the Vertex adapter and Cloud Code Assist
+    request path are both usable.
+  - Provider-core owns the region-aware Vertex adapter. Gateway owns the shared
+    or injected lifecycle manager that creates, reuses, downgrades, and releases
+    workspace-scoped CachedContent resources.
 - `implicitPrefix`
   - Providers such as Gemini and OpenAI-compatible completions may rely on
     provider-side implicit prefix behavior when no explicit cache field is
@@ -109,6 +118,32 @@ Every provider-family cache adapter must document:
 - sticky-latch material that can affect prefix bytes or cache eligibility
 - bucket-key material
 - live or contract tests that prove the behavior
+
+Google is the current hybrid example:
+
+- user-facing provider name: `Google`
+- transport/API envelope: Cloud Code Assist (`google-gemini-cli`)
+- short retention: implicit prefix behavior only
+- long retention: may render explicit CachedContent if the gateway lifecycle
+  manager can provision a region-specific Vertex resource and the request path
+  continues to show cache reads
+- failure posture: fail closed; repeated zero-read explicit-cache observations or
+  field-level cachedContent rejection signals (for example `cachedContent not
+supported` or `unknown field`) downgrade the endpoint capability instead of
+  repeatedly retrying a broken long-retention path
+- lifecycle: the default gateway path uses a shared-or-injected manager because
+  CachedContent resources are workspace-scoped, provider-external objects rather
+  than purely session-local bytes
+
+Optional local Vertex override environment variables:
+
+- `BREWVA_GOOGLE_VERTEX_CACHE_BASE_URL`
+- `BREWVA_GOOGLE_VERTEX_CACHE_LOCATION`
+
+The base URL, when set, must be a region-specific Vertex host such as
+`https://us-central1-aiplatform.googleapis.com`. A bare global
+`https://aiplatform.googleapis.com` value is rejected because CachedContent
+resources are region-bound.
 
 Kimi is the current guardrail example. Brewva exposes a single `Kimi` connect
 surface, but the provider families remain separate underneath:
@@ -334,8 +369,14 @@ The lifecycle covers:
 - expected-break markers
 - source-text caches tied to visible session behavior, including TOC cache
 
-There is intentionally no global cache manager. Each bounded cache keeps its own
-implementation, but they share the same invalidation vocabulary.
+There is no provider-agnostic global cache authority. Most token-cache state
+remains session-local, but Google explicit CachedContent uses a shared-or-
+injected gateway lifecycle manager because the underlying Vertex resource is
+workspace-scoped and self-expiring. That manager is still non-authoritative: it
+may be dropped, rebuilt, or downgraded without affecting replay truth. Auth-
+scoped Google capability downgrades are also reset on session clear and may be
+re-probed after credential changes so refreshed login state does not require a
+process restart.
 
 ## Inspect Surfaces
 
@@ -356,6 +397,9 @@ Current regression coverage includes:
 
 - provider-core cache policy and provider render behavior
 - Anthropic multi-breakpoint cache marker placement
+- Google explicit CachedContent lifecycle behavior, including immutable payload
+  injection, bounded pending-delete retries, and per-resource zero-read
+  downgrade evidence
 - OpenAI Codex WebSocket plus `previous_response_id` continuation
 - provider request fingerprint attribution and cache-break detector behavior
 - expected-break rebasing
@@ -375,4 +419,8 @@ BREWVA_TEST_LIVE=1 bun test test/live/provider/token-cache.live.test.ts
 ```
 
 Live tests require a configured OpenAI/Codex auth environment. Non-live test
-runs skip these checks.
+runs skip these checks. The optional Google CachedContent smoke additionally
+accepts either `BREWVA_GOOGLE_GEMINI_CREDENTIAL` or a matching `google` /
+`google-gemini-cli` credential in `auth.json`. Because that smoke is opt-in and
+depends on external Google behavior, keep a periodic live run in CI or release
+verification if Google explicit CachedContent is a relied-on path.

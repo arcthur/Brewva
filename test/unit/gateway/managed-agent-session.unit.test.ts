@@ -308,6 +308,19 @@ describe("managed agent session compaction", () => {
     );
   });
 
+  test("cachedContent stream-error detection only downgrades field-level unsupported messages", () => {
+    expect(
+      MANAGED_AGENT_SESSION_TEST_ONLY.isCachedContentUnsupportedStreamError(
+        'Invalid JSON payload received. Unknown name "cachedContent" at "request".',
+      ),
+    ).toBe(true);
+    expect(
+      MANAGED_AGENT_SESSION_TEST_ONLY.isCachedContentUnsupportedStreamError(
+        "cached content telemetry was omitted for this turn",
+      ),
+    ).toBe(false);
+  });
+
   test("compacts history into a durable projection entry and replaces the active context", async () => {
     const { runtime, sessionStore, session } = await createManagedSessionFixture(
       "managed-agent-session-compaction",

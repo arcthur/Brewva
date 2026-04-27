@@ -114,6 +114,7 @@ export interface ProviderCacheFingerprintState {
 
 export type ProviderCacheCapabilityStrategy =
   | "explicitCacheMarker"
+  | "explicitCachedContent"
   | "promptCacheKey"
   | "implicitPrefix"
   | "unsupported";
@@ -141,6 +142,8 @@ export interface ProviderCacheRenderState {
   renderedRetention: "none" | "short" | "long";
   bucketKey: string;
   capability?: ProviderCacheCapabilityState;
+  cachedContentName?: string;
+  cachedContentTtlSeconds?: number;
 }
 
 export interface ProviderCacheBreakObservation {

@@ -20,12 +20,20 @@ export {
 export { getEnvApiKey } from "./auth.js";
 export {
   DEFAULT_PROVIDER_CACHE_POLICY,
+  buildRenderBucketKey,
   buildProviderCacheBucketKey,
   normalizeProviderCachePolicy,
   resolveAnthropicCacheRender,
+  resolveGoogleGeminiCliCacheRender,
   resolveOpenAIResponsesCacheRender,
   resolveProviderCacheCapability,
 } from "./cache-policy.js";
+export {
+  createGoogleCachedContent,
+  deleteGoogleCachedContent,
+  parseGoogleGeminiCliCredential,
+  resolveGoogleCachedContentEndpoint,
+} from "./google-cached-content.js";
 export { complete, completeSimple, stream, streamSimple } from "./stream.js";
 
 export type {
@@ -76,3 +84,9 @@ export type {
   Usage,
   UserMessage,
 } from "./types.js";
+export type {
+  GoogleCachedContentConfigInput,
+  GoogleCachedContentEndpointConfig,
+  GoogleCachedContentError,
+  GoogleCachedContentResource,
+} from "./google-cached-content.js";

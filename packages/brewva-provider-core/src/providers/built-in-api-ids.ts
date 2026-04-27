@@ -3,7 +3,6 @@ export const BUILT_IN_API_PROVIDER_APIS = [
   "openai-completions",
   "openai-responses",
   "openai-codex-responses",
-  "google-generative-ai",
   "google-gemini-cli",
 ] as const;
 

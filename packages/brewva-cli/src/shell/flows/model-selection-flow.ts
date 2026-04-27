@@ -24,6 +24,7 @@ import {
   modelSearchScore,
   providerConnectionFooter,
   providerCoversModelProvider,
+  providerDisplayName,
   providerSearchScore,
 } from "./model-provider-utils.js";
 
@@ -217,10 +218,11 @@ export class ShellModelSelectionFlow {
     for (const [provider, models] of [...byProvider.entries()].toSorted((left, right) =>
       left[0].localeCompare(right[0]),
     )) {
+      const sectionLabel = providerDisplayName(provider);
       for (const model of models.toSorted((left, right) =>
         modelDisplayName(left).localeCompare(modelDisplayName(right)),
       )) {
-        addModel(provider, model);
+        addModel(sectionLabel, model);
       }
     }
 
@@ -236,7 +238,9 @@ export class ShellModelSelectionFlow {
       items.length === 0 ? 0 : Math.max(0, Math.min(requestedIndex ?? 0, items.length - 1));
     return {
       kind: "modelPicker",
-      title: input.providerFilter ? `Models · ${input.providerFilter}` : "Models",
+      title: input.providerFilter
+        ? `Models · ${providerDisplayName(input.providerFilter)}`
+        : "Models",
       query,
       selectedIndex,
       providerFilter: input.providerFilter,

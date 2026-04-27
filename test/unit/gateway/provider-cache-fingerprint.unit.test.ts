@@ -471,4 +471,359 @@ describe("provider cache fingerprinting", () => {
       }),
     );
   });
+
+  test("uses rendered Google cached-content TTL instead of the generic 1h label", () => {
+    const detector = new ProviderCacheBreakDetector();
+    const fingerprint = createProviderRequestFingerprint({
+      provider: "google",
+      api: "google-gemini-cli",
+      model: "gemini-2.5-pro",
+      transport: "sse",
+      sessionId: "google-explicit-cache",
+      cachePolicy: {
+        retention: "long",
+        writeMode: "readWrite",
+        scope: "session",
+        reason: "config",
+      },
+      toolSchemaSnapshot: createToolSchemaSnapshot([]),
+      stablePrefixParts: ["stable"],
+      dynamicTailParts: ["tail"],
+      activeSkillSet: [],
+      skillRoutingEpoch: 0,
+      channelContext: "",
+      payload: { input: "same" },
+    });
+
+    detector.observe({
+      source: fingerprint.bucketKey,
+      fingerprint,
+      render: {
+        status: "rendered",
+        reason: "rendered_google_cached_content",
+        renderedRetention: "long",
+        bucketKey:
+          "google-gemini-cli|session=google-explicit-cache|retention=long|writeMode=readWrite",
+        cachedContentName: "cachedContents/brewva-google",
+        cachedContentTtlSeconds: 7_200,
+        capability: {
+          strategies: ["implicitPrefix", "explicitCachedContent"],
+          cacheCounters: "readOnly",
+          shortRetention: true,
+          longRetention: "1h",
+          readOnlyWriteMode: "supported",
+          reason: "google_gemini_context_caching",
+        },
+      },
+      usage: { cacheRead: 12_000, cacheWrite: 200 },
+      observedAt: 0,
+    });
+    const observation = detector.observe({
+      source: fingerprint.bucketKey,
+      fingerprint,
+      render: {
+        status: "rendered",
+        reason: "rendered_google_cached_content",
+        renderedRetention: "long",
+        bucketKey:
+          "google-gemini-cli|session=google-explicit-cache|retention=long|writeMode=readWrite",
+        cachedContentName: "cachedContents/brewva-google",
+        cachedContentTtlSeconds: 7_200,
+        capability: {
+          strategies: ["implicitPrefix", "explicitCachedContent"],
+          cacheCounters: "readOnly",
+          shortRetention: true,
+          longRetention: "1h",
+          readOnlyWriteMode: "supported",
+          reason: "google_gemini_context_caching",
+        },
+      },
+      usage: { cacheRead: 100, cacheWrite: 12_000 },
+      observedAt: 2 * 60 * 60 * 1000,
+    });
+
+    expect(observation).toEqual(
+      expect.objectContaining({
+        status: "break",
+        expected: false,
+        reason: "possible_cache_ttl_expiry_2h",
+      }),
+    );
+  });
+
+  test("ignores zero-second explicit cache TTLs when classifying unexpected breaks", () => {
+    const detector = new ProviderCacheBreakDetector();
+    const fingerprint = createProviderRequestFingerprint({
+      provider: "google",
+      api: "google-gemini-cli",
+      model: "gemini-2.5-pro",
+      transport: "sse",
+      sessionId: "google-zero-ttl",
+      cachePolicy: {
+        retention: "long",
+        writeMode: "readWrite",
+        scope: "session",
+        reason: "config",
+      },
+      toolSchemaSnapshot: createToolSchemaSnapshot([]),
+      stablePrefixParts: ["stable"],
+      dynamicTailParts: ["tail"],
+      activeSkillSet: [],
+      skillRoutingEpoch: 0,
+      channelContext: "",
+      payload: { input: "same" },
+    });
+
+    detector.observe({
+      source: fingerprint.bucketKey,
+      fingerprint,
+      render: {
+        status: "rendered",
+        reason: "rendered_google_cached_content",
+        renderedRetention: "long",
+        bucketKey: "google-gemini-cli|session=google-zero-ttl|retention=long|writeMode=readWrite",
+        cachedContentName: "cachedContents/brewva-google",
+        cachedContentTtlSeconds: 0,
+        capability: {
+          strategies: ["implicitPrefix", "explicitCachedContent"],
+          cacheCounters: "readOnly",
+          shortRetention: true,
+          longRetention: "1h",
+          readOnlyWriteMode: "supported",
+          reason: "google_gemini_context_caching",
+        },
+      },
+      usage: { cacheRead: 12_000, cacheWrite: 200 },
+      observedAt: 0,
+    });
+    const observation = detector.observe({
+      source: fingerprint.bucketKey,
+      fingerprint,
+      render: {
+        status: "rendered",
+        reason: "rendered_google_cached_content",
+        renderedRetention: "long",
+        bucketKey: "google-gemini-cli|session=google-zero-ttl|retention=long|writeMode=readWrite",
+        cachedContentName: "cachedContents/brewva-google",
+        cachedContentTtlSeconds: 0,
+        capability: {
+          strategies: ["implicitPrefix", "explicitCachedContent"],
+          cacheCounters: "readOnly",
+          shortRetention: true,
+          longRetention: "1h",
+          readOnlyWriteMode: "supported",
+          reason: "google_gemini_context_caching",
+        },
+      },
+      usage: { cacheRead: 100, cacheWrite: 12_000 },
+      observedAt: 10 * 1000,
+    });
+
+    expect(observation.reason).toBe("cache_read_drop_exceeded_threshold");
+  });
+
+  test("request fingerprints change once Google cachedContent is injected into the payload", () => {
+    const sharedInput = {
+      provider: "google" as const,
+      api: "google-gemini-cli" as const,
+      model: "gemini-2.5-pro",
+      transport: "sse" as const,
+      sessionId: "google-injected-cache",
+      cachePolicy: {
+        retention: "long" as const,
+        writeMode: "readWrite" as const,
+        scope: "session" as const,
+        reason: "config" as const,
+      },
+      toolSchemaSnapshot: createToolSchemaSnapshot([]),
+      stablePrefixParts: ["stable"],
+      dynamicTailParts: ["tail"],
+      activeSkillSet: [],
+      skillRoutingEpoch: 0,
+      channelContext: "",
+    };
+
+    const before = createProviderRequestFingerprint({
+      ...sharedInput,
+      renderedCache: {
+        status: "unsupported",
+        reason: "cached_content_resource_unavailable",
+        renderedRetention: "none",
+        bucketKey:
+          "google-gemini-cli|session=google-injected-cache|retention=none|writeMode=readWrite",
+        capability: {
+          strategies: ["implicitPrefix", "explicitCachedContent"],
+          cacheCounters: "readOnly",
+          shortRetention: true,
+          longRetention: "1h",
+          readOnlyWriteMode: "supported",
+          reason: "google_gemini_context_caching",
+        },
+      },
+      payload: {
+        model: "gemini-2.5-pro",
+        request: { contents: [{ role: "user", parts: [{ text: "hello" }] }] },
+      },
+    });
+    const after = createProviderRequestFingerprint({
+      ...sharedInput,
+      renderedCache: {
+        status: "rendered",
+        reason: "rendered_google_cached_content",
+        renderedRetention: "long",
+        bucketKey:
+          "google-gemini-cli|session=google-injected-cache|retention=long|writeMode=readWrite",
+        cachedContentName: "cachedContents/brewva-google",
+        cachedContentTtlSeconds: 3600,
+        capability: {
+          strategies: ["implicitPrefix", "explicitCachedContent"],
+          cacheCounters: "readOnly",
+          shortRetention: true,
+          longRetention: "1h",
+          readOnlyWriteMode: "supported",
+          reason: "google_gemini_context_caching",
+        },
+      },
+      payload: {
+        model: "gemini-2.5-pro",
+        request: {
+          contents: [{ role: "user", parts: [{ text: "hello" }] }],
+          cachedContent: "cachedContents/brewva-google",
+        },
+      },
+    });
+
+    expect(after.requestHash).not.toBe(before.requestHash);
+    expect(after.renderedCacheHash).not.toBe(before.renderedCacheHash);
+  });
+
+  test("switching Google cache mode from short implicit to long explicit starts a new cold bucket instead of reporting a break", () => {
+    const detector = new ProviderCacheBreakDetector();
+    const shortFingerprint = createProviderRequestFingerprint({
+      provider: "google",
+      api: "google-gemini-cli",
+      model: "gemini-2.5-pro",
+      transport: "sse",
+      sessionId: "google-mode-switch",
+      cachePolicy: {
+        retention: "short",
+        writeMode: "readWrite",
+        scope: "session",
+        reason: "default",
+      },
+      toolSchemaSnapshot: createToolSchemaSnapshot([]),
+      stablePrefixParts: ["stable"],
+      dynamicTailParts: ["tail"],
+      activeSkillSet: [],
+      skillRoutingEpoch: 0,
+      channelContext: "",
+      renderedCache: {
+        status: "rendered",
+        reason: "rendered_google_implicit_prefix_cache",
+        renderedRetention: "short",
+        bucketKey:
+          "google-gemini-cli|session=google-mode-switch|retention=short|writeMode=readWrite",
+        capability: {
+          strategies: ["implicitPrefix", "explicitCachedContent"],
+          cacheCounters: "readOnly",
+          shortRetention: true,
+          longRetention: "1h",
+          readOnlyWriteMode: "supported",
+          reason: "google_gemini_context_caching",
+        },
+      },
+      payload: { model: "gemini-2.5-pro", request: { contents: [{ role: "user", text: "hi" }] } },
+    });
+    const longFingerprint = createProviderRequestFingerprint({
+      provider: "google",
+      api: "google-gemini-cli",
+      model: "gemini-2.5-pro",
+      transport: "sse",
+      sessionId: "google-mode-switch",
+      cachePolicy: {
+        retention: "long",
+        writeMode: "readWrite",
+        scope: "session",
+        reason: "config",
+      },
+      toolSchemaSnapshot: createToolSchemaSnapshot([]),
+      stablePrefixParts: ["stable"],
+      dynamicTailParts: ["tail"],
+      activeSkillSet: [],
+      skillRoutingEpoch: 0,
+      channelContext: "",
+      renderedCache: {
+        status: "rendered",
+        reason: "rendered_google_cached_content",
+        renderedRetention: "long",
+        bucketKey:
+          "google-gemini-cli|session=google-mode-switch|retention=long|writeMode=readWrite",
+        cachedContentName: "cachedContents/brewva-google",
+        cachedContentTtlSeconds: 3600,
+        capability: {
+          strategies: ["implicitPrefix", "explicitCachedContent"],
+          cacheCounters: "readOnly",
+          shortRetention: true,
+          longRetention: "1h",
+          readOnlyWriteMode: "supported",
+          reason: "google_gemini_context_caching",
+        },
+      },
+      payload: {
+        model: "gemini-2.5-pro",
+        request: {
+          contents: [{ role: "user", text: "hi" }],
+          cachedContent: "cachedContents/brewva-google",
+        },
+      },
+    });
+
+    expect(shortFingerprint.bucketKey).not.toBe(longFingerprint.bucketKey);
+    expect(
+      detector.observe({
+        source: shortFingerprint.bucketKey,
+        fingerprint: shortFingerprint,
+        render: {
+          status: "rendered",
+          reason: "rendered_google_implicit_prefix_cache",
+          renderedRetention: "short",
+          bucketKey:
+            "google-gemini-cli|session=google-mode-switch|retention=short|writeMode=readWrite",
+          capability: {
+            strategies: ["implicitPrefix", "explicitCachedContent"],
+            cacheCounters: "readOnly",
+            shortRetention: true,
+            longRetention: "1h",
+            readOnlyWriteMode: "supported",
+            reason: "google_gemini_context_caching",
+          },
+        },
+        usage: { cacheRead: 0, cacheWrite: 0 },
+      }),
+    ).toEqual(expect.objectContaining({ status: "cold" }));
+    expect(
+      detector.observe({
+        source: longFingerprint.bucketKey,
+        fingerprint: longFingerprint,
+        render: {
+          status: "rendered",
+          reason: "rendered_google_cached_content",
+          renderedRetention: "long",
+          bucketKey:
+            "google-gemini-cli|session=google-mode-switch|retention=long|writeMode=readWrite",
+          cachedContentName: "cachedContents/brewva-google",
+          cachedContentTtlSeconds: 3600,
+          capability: {
+            strategies: ["implicitPrefix", "explicitCachedContent"],
+            cacheCounters: "readOnly",
+            shortRetention: true,
+            longRetention: "1h",
+            readOnlyWriteMode: "supported",
+            reason: "google_gemini_context_caching",
+          },
+        },
+        usage: { cacheRead: 8_000, cacheWrite: 0 },
+      }),
+    ).toEqual(expect.objectContaining({ status: "cold" }));
+  });
 });

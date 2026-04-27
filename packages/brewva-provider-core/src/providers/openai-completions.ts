@@ -784,7 +784,7 @@ function parseChunkUsage(
 
   const input = Math.max(0, promptTokens - cacheReadTokens - cacheWriteTokens);
   // Compute totalTokens ourselves since we add reasoning_tokens to output
-  // and some providers (e.g., Groq) don't include them in total_tokens
+  // and some Groq-compatible endpoints do not include them in total_tokens.
   const outputTokens = (rawUsage.completion_tokens || 0) + reasoningTokens;
   const usage: AssistantMessage["usage"] = {
     input,
@@ -834,18 +834,17 @@ function detectCompat(model: Model<"openai-completions">): Required<OpenAIComple
   const baseUrl = model.baseUrl;
 
   const isNonStandard =
-    provider === "xai" ||
     baseUrl.includes("api.x.ai") ||
     baseUrl.includes("chutes.ai") ||
     baseUrl.includes("deepseek.com");
 
   const useMaxTokens = baseUrl.includes("chutes.ai");
 
-  const isGrok = provider === "xai" || baseUrl.includes("api.x.ai");
-  const isGroq = provider === "groq" || baseUrl.includes("groq.com");
+  const hasXaiReasoningLimits = baseUrl.includes("api.x.ai");
+  const hasGroqEndpointQuirk = baseUrl.includes("groq.com");
 
   const reasoningEffortMap =
-    isGroq && model.id === "qwen/qwen3-32b"
+    hasGroqEndpointQuirk && model.id === "qwen/qwen3-32b"
       ? {
           minimal: "default",
           low: "default",
@@ -857,7 +856,7 @@ function detectCompat(model: Model<"openai-completions">): Required<OpenAIComple
   return {
     supportsStore: !isNonStandard,
     supportsDeveloperRole: !isNonStandard,
-    supportsReasoningEffort: !isGrok,
+    supportsReasoningEffort: !hasXaiReasoningLimits,
     reasoningEffortMap,
     supportsUsageInStreaming: true,
     maxTokensField: useMaxTokens ? "max_tokens" : "max_completion_tokens",

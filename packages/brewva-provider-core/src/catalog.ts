@@ -1,21 +1,8 @@
 import { MODELS } from "./models.generated.js";
 import type { Api, KnownProvider, Model, Usage } from "./types.js";
 
-const RETIRED_MODEL_KEYS = new Set([
-  "google/gemini-1.5-flash",
-  "google/gemini-1.5-flash-8b",
-  "google/gemini-1.5-pro",
-  "google/gemini-2.5-flash-lite-preview-06-17",
-  "google/gemini-2.5-flash-lite-preview-09-2025",
-  "google/gemini-2.5-flash-preview-04-17",
-  "google/gemini-2.5-flash-preview-05-20",
-  "google/gemini-2.5-flash-preview-09-2025",
-  "google/gemini-2.5-pro-preview-05-06",
-  "google/gemini-2.5-pro-preview-06-05",
-  "google/gemini-live-2.5-flash",
-  "google/gemini-live-2.5-flash-preview-native-audio",
-  "google/gemma-4-26b-it",
-]);
+// Retained as an extension hook for future provider/model deprecations.
+const RETIRED_MODEL_KEYS = new Set<string>();
 
 type ModelApi<
   TProvider extends KnownProvider,

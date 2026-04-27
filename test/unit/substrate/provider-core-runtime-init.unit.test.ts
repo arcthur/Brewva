@@ -16,7 +16,6 @@ describe("provider core runtime initialization", () => {
     expect(apis).toEqual([
       "anthropic-messages",
       "google-gemini-cli",
-      "google-generative-ai",
       "openai-codex-responses",
       "openai-completions",
       "openai-responses",

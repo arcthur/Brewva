@@ -47,4 +47,22 @@ describe("credential vault", () => {
     );
     expect(discovered.some((entry) => entry.envVar === "MOONSHOT_API_KEY")).toBe(false);
   });
+
+  test("does not discover credentials for removed connect-only providers", () => {
+    const workspace = createTestWorkspace("credential-vault-removed-connect-discovery");
+    const vault = new CredentialVaultService({
+      vaultPath: join(workspace, "credentials.vault"),
+      allowDerivedKeyFallback: true,
+      env: {},
+      machineHostname: "test-host",
+      machineHomeDir: workspace,
+    });
+
+    const discovered = vault.discover({
+      GEMINI_API_KEY: "sk-google",
+      GOOGLE_API_KEY: "sk-google-legacy",
+    });
+
+    expect(discovered).toEqual([]);
+  });
 });

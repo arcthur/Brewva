@@ -270,6 +270,31 @@ describe("provider connection port", () => {
     }
   });
 
+  test("keeps only the Gemini CLI-backed Google provider identity", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "brewva-provider-connection-"));
+    const restoreEnv = patchProcessEnv({ BREWVA_VAULT_KEY: "provider-connection-test-key" });
+    try {
+      const runtime = new BrewvaRuntime({ cwd: workspace });
+      const authStore = HostedAuthStore.inMemory();
+      const registry = HostedModelRegistry.inMemory(authStore);
+      registerSingleModelProvider(registry, "google", "gemini-2.5-pro");
+      const port = createProviderConnectionPort({ runtime, modelRegistry: registry, authStore });
+
+      const providers = await port.listProviders();
+
+      expect(providers.map((provider) => provider.id)).toContain("google");
+      expect(providers.find((provider) => provider.id === "google")).toMatchObject({
+        name: "Google",
+        description: "Gemini CLI",
+        group: "popular",
+      });
+      expect(port.listAuthMethods("google")).toEqual([]);
+    } finally {
+      restoreEnv();
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   test("exposes OAuth auth methods for providers backed by hosted auth storage", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "brewva-provider-connection-"));
     const restoreEnv = patchProcessEnv({ BREWVA_VAULT_KEY: "provider-connection-test-key" });

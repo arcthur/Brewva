@@ -64,6 +64,7 @@ import {
   type BrewvaToolUiPort,
 } from "@brewva/brewva-substrate";
 import {
+  GoogleCachedContentManager,
   ProviderCacheBreakDetector,
   ProviderCacheStickyLatches,
   createProviderRequestFingerprint,
@@ -96,6 +97,8 @@ import {
   type BrewvaAgentEngineTransport,
 } from "./hosted-agent-engine.js";
 import type { HostedSessionLogger } from "./logger.js";
+
+const DEFAULT_GOOGLE_CACHED_CONTENT_MANAGER = new GoogleCachedContentManager();
 
 function applyMessageEndTransform(
   original: BrewvaAgentEngineMessage,
@@ -277,6 +280,7 @@ function resolveRecallInjectionFingerprint(
 
 export const MANAGED_AGENT_SESSION_TEST_ONLY = {
   resolveRecallInjectionFingerprint,
+  isCachedContentUnsupportedStreamError,
 } as const;
 
 function buildProviderDynamicTailSummary(input: {
@@ -427,6 +431,8 @@ function normalizeProviderCacheRender(input: {
       renderedRetention: metadataRender.renderedRetention,
       bucketKey: metadataRender.bucketKey,
       capability: metadataRender.capability ?? input.metadata?.cacheCapability,
+      cachedContentName: metadataRender.cachedContentName,
+      cachedContentTtlSeconds: metadataRender.cachedContentTtlSeconds,
     };
   }
   if (
@@ -443,6 +449,15 @@ function providerCacheCountersAvailable(render: ProviderCacheRenderState): boole
     return false;
   }
   return render.status === "rendered" || render.status === "degraded";
+}
+
+function isCachedContentUnsupportedStreamError(message: string): boolean {
+  if (!/\bcached(?:_|\s*)content\b/i.test(message)) {
+    return false;
+  }
+  return /\b(?:not\s+supported|unsupported|unknown\s+(?:field|name)|unrecognized\s+field|unexpected\s+field|cannot\s+find\s+field|ignored)\b/i.test(
+    message,
+  );
 }
 
 export interface BrewvaManagedAgentSessionSettingsPort {
@@ -477,6 +492,7 @@ export interface CreateBrewvaManagedAgentSessionOptions {
   initialThinkingLevel?: BrewvaPromptThinkingLevel;
   ui?: BrewvaToolUiPort;
   logger?: HostedSessionLogger;
+  googleCachedContentManager?: GoogleCachedContentManager;
 }
 
 type PendingQueuedItem =
@@ -1202,16 +1218,30 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
     let lastProviderFingerprint: ProviderRequestFingerprint | undefined;
     let lastCacheRender: ProviderCacheRenderState | undefined;
     let lastCacheRenderModelKey: string | undefined;
+    let lastGoogleCredential: string | undefined;
+    let lastGoogleModelBaseUrl: string | undefined;
     const cacheBreakDetector = new ProviderCacheBreakDetector({
       diagnosticDumpDirectory: resolveProviderCacheDiagnosticDumpDirectory(options.cwd),
     });
+    const googleCachedContentManager =
+      options.googleCachedContentManager ?? DEFAULT_GOOGLE_CACHED_CONTENT_MANAGER;
     const sessionId = options.sessionStore.getSessionId();
+    const releaseGoogleCachedContent = () => {
+      // Best-effort cleanup uses the latest Google credential. If the user rotates accounts mid-session,
+      // delete may fail and fall back to the manager's pending-delete retry policy.
+      void googleCachedContentManager
+        .releaseSession(options.cwd, sessionId, lastGoogleCredential)
+        .catch(() => undefined);
+    };
     const clearCacheState = options.runtime?.maintain.session.onClearState((clearedSessionId) => {
       if (clearedSessionId === sessionId) {
         cacheBreakDetector.clear();
         lastProviderFingerprint = undefined;
         lastCacheRender = undefined;
         lastCacheRenderModelKey = undefined;
+        googleCachedContentManager.resetCapability(options.cwd, lastGoogleModelBaseUrl);
+        lastGoogleModelBaseUrl = undefined;
+        releaseGoogleCachedContent();
         session?.clearProviderCacheSessionState();
       }
     });
@@ -1271,14 +1301,14 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
         if (!session) {
           return payload;
         }
-        const nextPayload = await runner.emitBeforeProviderRequest(
+        let nextPayload = await runner.emitBeforeProviderRequest(
           { type: "before_provider_request", payload },
           session.createHostContext(),
         );
         if (options.runtime) {
           const channelContext = session.resolveProviderCacheChannelContext();
           const cachePolicy = options.settings.getCachePolicy();
-          const cacheRender = normalizeProviderCacheRender({
+          let cacheRender = normalizeProviderCacheRender({
             metadata,
             model,
             transport: options.settings.getTransport(),
@@ -1287,6 +1317,31 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
             previousRender: lastCacheRender,
             previousRenderModelKey: lastCacheRenderModelKey,
           });
+          if (model.api === "google-gemini-cli") {
+            const auth = await options.modelCatalog.getApiKeyAndHeaders(model);
+            lastGoogleCredential = auth.ok ? auth.apiKey : undefined;
+            lastGoogleModelBaseUrl = model.baseUrl;
+            const googleCache = await googleCachedContentManager.apply({
+              workspaceRoot: options.cwd,
+              sessionId,
+              cachePolicy,
+              credential: auth.ok ? auth.apiKey : undefined,
+              payload: nextPayload,
+              modelBaseUrl: model.baseUrl,
+            });
+            nextPayload = googleCache.payload;
+            if (googleCache.render) {
+              cacheRender = {
+                status: googleCache.render.status,
+                reason: googleCache.render.reason,
+                renderedRetention: googleCache.render.renderedRetention,
+                bucketKey: googleCache.render.bucketKey,
+                capability: googleCache.render.capability,
+                cachedContentName: googleCache.render.cachedContentName,
+                cachedContentTtlSeconds: googleCache.render.cachedContentTtlSeconds,
+              };
+            }
+          }
           lastCacheRender = cacheRender;
           lastCacheRenderModelKey = buildProviderCacheModelKey(model);
           const toolSchemaSnapshot = session.resolveProviderToolSchemaSnapshot("provider_payload");
@@ -1347,6 +1402,8 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
           renderedRetention: render.renderedRetention,
           bucketKey: render.bucketKey,
           capability: render.capability,
+          cachedContentName: render.cachedContentName,
+          cachedContentTtlSeconds: render.cachedContentTtlSeconds,
         };
         lastCacheRenderModelKey = buildProviderCacheModelKey(model);
       },
@@ -1380,10 +1437,31 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
         if (!options.runtime || !lastProviderFingerprint || !lastCacheRender) {
           return;
         }
+        if (message.api === "google-gemini-cli") {
+          if (
+            message.stopReason === "error" &&
+            typeof message.errorMessage === "string" &&
+            isCachedContentUnsupportedStreamError(message.errorMessage)
+          ) {
+            googleCachedContentManager.markUnsupportedFromStreamError({
+              workspaceRoot: options.cwd,
+              modelBaseUrl: lastGoogleModelBaseUrl,
+              reason: message.errorMessage,
+            });
+          } else {
+            googleCachedContentManager.observeUsage({
+              workspaceRoot: options.cwd,
+              modelBaseUrl: lastGoogleModelBaseUrl,
+              render: lastCacheRender,
+              cacheRead: message.usage.cacheRead,
+            });
+          }
+        }
         const expectedBreak = resolveExpectedProviderCacheBreak(options.runtime, sessionId);
         const breakObservation = cacheBreakDetector.observe({
           source: lastProviderFingerprint.bucketKey,
           fingerprint: lastProviderFingerprint,
+          render: lastCacheRender,
           usage: {
             cacheRead: message.usage.cacheRead,
             cacheWrite: message.usage.cacheWrite,
@@ -1405,6 +1483,7 @@ class BrewvaManagedAgentSession implements BrewvaManagedPromptSession {
         });
       },
       onDispose: () => {
+        releaseGoogleCachedContent();
         clearCacheState?.();
       },
     });

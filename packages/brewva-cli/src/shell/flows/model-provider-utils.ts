@@ -5,6 +5,9 @@ import type {
 import type { ProviderAuthMethod, ProviderConnection } from "../types.js";
 
 export const RECENT_MODEL_LIMIT = 10;
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  google: "Google",
+};
 
 export function modelKey(model: Pick<BrewvaSessionModelDescriptor, "provider" | "id">): string {
   return `${model.provider}/${model.id}`;
@@ -84,6 +87,10 @@ export function providerSearchScore(provider: ProviderConnection, query: string)
   ]);
 }
 
+export function providerDisplayName(provider: string): string {
+  return PROVIDER_DISPLAY_NAMES[provider] ?? provider;
+}
+
 export function providerCoversModelProvider(
   provider: ProviderConnection,
   modelProvider: string,
@@ -109,6 +116,9 @@ export function providerConnectionFooter(provider: ProviderConnection): string {
   if (!provider.connected) {
     if (provider.id === "openai" || provider.id === "openai-codex") {
       return "OAuth/API key";
+    }
+    if (provider.id === "google") {
+      return "Gemini CLI";
     }
     if (provider.id === "kimi-coding") {
       return "Kimi Code/Moonshot API key";
@@ -188,7 +198,7 @@ export function modelPickerDetail(input: {
   favorite: boolean;
 }): string | undefined {
   if (input.section === "Favorites" || input.section === "Recent") {
-    return input.model.provider;
+    return providerDisplayName(input.model.provider);
   }
   return input.favorite ? "(Favorite)" : undefined;
 }

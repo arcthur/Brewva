@@ -966,7 +966,7 @@ describe("shell runtime", () => {
 
     expect(payload.items[0]).toMatchObject({
       kind: "model",
-      section: "google",
+      section: "Google",
       label: "Gemini 2.5 Flash Lite Preview 06-17",
       detail: undefined,
       footer: undefined,

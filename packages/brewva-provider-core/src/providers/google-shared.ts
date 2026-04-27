@@ -1,5 +1,5 @@
 /**
- * Shared utilities for Google Generative AI and Google Cloud Code Assist providers.
+ * Shared utilities for the Google Cloud Code Assist-backed provider.
  */
 
 import { type Content, FinishReason, FunctionCallingConfigMode, type Part } from "@google/genai";
@@ -20,7 +20,7 @@ import {
 } from "./prompt-content.js";
 import { transformMessages } from "./transform-messages.js";
 
-type GoogleApiType = "google-generative-ai" | "google-gemini-cli";
+export type GoogleApiType = "google-gemini-cli";
 
 /**
  * Determines whether a streamed Gemini `Part` should be treated as "thinking".

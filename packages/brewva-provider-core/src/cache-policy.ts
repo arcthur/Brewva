@@ -41,6 +41,11 @@ export interface AnthropicCacheRender extends ProviderCacheRenderResult {
   cacheControl?: { type: "ephemeral"; ttl?: "1h" };
 }
 
+export interface GoogleGeminiCliCacheRender extends ProviderCacheRenderResult {
+  cachedContentName?: string;
+  cachedContentTtlSeconds?: number;
+}
+
 const KIMI_CODE_CACHE_REASON = "kimi_code_cache_contract_not_verified";
 
 export function normalizeProviderCachePolicy(
@@ -70,7 +75,7 @@ export function buildProviderCacheBucketKey(input: ProviderCacheBucketInput): st
   ].join("|");
 }
 
-function buildRenderBucketKey(input: {
+export function buildRenderBucketKey(input: {
   api: string;
   sessionId?: string;
   retention: ProviderCacheRetention;
@@ -236,14 +241,14 @@ export function resolveProviderCacheCapability(
     };
   }
 
-  if (api === "google-generative-ai" || api === "google-gemini-cli") {
+  if (api === "google-gemini-cli") {
     return {
-      strategies: ["implicitPrefix"],
+      strategies: ["implicitPrefix", "explicitCachedContent"],
       cacheCounters: "readOnly",
       shortRetention: true,
-      longRetention: "none",
-      readOnlyWriteMode: "unsupported",
-      reason: "provider_reports_cached_content_without_rendered_policy",
+      longRetention: "1h",
+      readOnlyWriteMode: "supported",
+      reason: "google_gemini_context_caching",
     };
   }
 
@@ -422,5 +427,77 @@ export function resolveAnthropicCacheRender(input: {
       type: "ephemeral",
       ...(renderedRetention === "long" ? { ttl: "1h" as const } : {}),
     },
+  };
+}
+
+export function resolveGoogleGeminiCliCacheRender(input: {
+  sessionId?: string;
+  policy?: ProviderCachePolicy;
+  cachedContentName?: string;
+  cachedContentTtlSeconds?: number;
+}): GoogleGeminiCliCacheRender {
+  const api = "google-gemini-cli" as const;
+  const policy = normalizeProviderCachePolicy(input.policy);
+  const capability = resolveProviderCacheCapability({ api });
+  if (policy.retention === "none") {
+    return disabledRender({
+      api,
+      sessionId: input.sessionId,
+      writeMode: policy.writeMode,
+      capability,
+    }) as GoogleGeminiCliCacheRender;
+  }
+  if (policy.retention === "short") {
+    return {
+      status: "rendered",
+      reason: "rendered_google_implicit_prefix_cache",
+      renderedRetention: "short",
+      bucketKey: buildRenderBucketKey({
+        api,
+        sessionId: input.sessionId,
+        retention: "short",
+        writeMode: policy.writeMode,
+      }),
+      capability,
+    };
+  }
+  if (!capability.strategies.includes("explicitCachedContent")) {
+    return unsupportedCapabilityRender({
+      api,
+      sessionId: input.sessionId,
+      writeMode: policy.writeMode,
+      capability,
+    }) as GoogleGeminiCliCacheRender;
+  }
+  if (!input.cachedContentName) {
+    return {
+      status: "unsupported",
+      reason:
+        policy.writeMode === "readOnly"
+          ? "cached_content_required_for_read_only_mode"
+          : "cached_content_resource_unavailable",
+      renderedRetention: "none",
+      bucketKey: buildRenderBucketKey({
+        api,
+        sessionId: input.sessionId,
+        retention: "none",
+        writeMode: policy.writeMode,
+      }),
+      capability,
+    };
+  }
+  return {
+    status: "rendered",
+    reason: "rendered_google_cached_content",
+    renderedRetention: "long",
+    bucketKey: buildRenderBucketKey({
+      api,
+      sessionId: input.sessionId,
+      retention: "long",
+      writeMode: policy.writeMode,
+    }),
+    capability,
+    cachedContentName: input.cachedContentName,
+    cachedContentTtlSeconds: input.cachedContentTtlSeconds,
   };
 }

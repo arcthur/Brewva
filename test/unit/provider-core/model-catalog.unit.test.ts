@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { getModel, getModels } from "@brewva/brewva-provider-core";
 
 describe("provider core model catalog", () => {
-  test("does not expose retired Gemini generateContent models", () => {
+  test("exposes only the curated Google Gemini CLI catalog", () => {
     const retiredModelIds = [
       "gemini-1.5-flash",
       "gemini-1.5-flash-8b",
@@ -19,19 +19,33 @@ describe("provider core model catalog", () => {
       "gemma-4-26b-it",
     ];
 
-    const googleModelIds = getModels("google").map((model) => model.id);
+    const googleModelIds = getModels("google")
+      .map((model) => model.id)
+      .toSorted();
 
     for (const modelId of retiredModelIds) {
       expect(googleModelIds).not.toContain(modelId);
     }
-    expect(googleModelIds).toContain("gemini-2.5-flash");
-    expect(googleModelIds).toContain("gemini-2.5-pro");
+    expect(googleModelIds).toEqual([
+      "gemini-2.0-flash",
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-2.5-pro",
+      "gemini-3-flash-preview",
+      "gemini-3-pro-preview",
+      "gemini-3.1-flash-lite-preview",
+      "gemini-3.1-pro-preview",
+      "gemini-3.1-pro-preview-customtools",
+      "gemma-4-26b-a4b-it",
+      "gemma-4-31b-it",
+    ]);
   });
 
-  test("rejects direct lookup of retired Gemini models", () => {
-    expect(() => getModel("google", "gemini-2.5-flash-preview-04-17")).toThrow(
-      'Model "google/gemini-2.5-flash-preview-04-17" is retired.',
-    );
+  test("uses clean Google model names after the provider migration", () => {
+    const googleModelNames = getModels("google").map((model) => model.name);
+
+    expect(googleModelNames).toContain("Gemini 2.5 Pro");
+    expect(googleModelNames.some((name) => name.includes("Cloud Code Assist"))).toBe(false);
   });
 
   test("exposes documented Kimi Code and Moonshot platform model routes", () => {

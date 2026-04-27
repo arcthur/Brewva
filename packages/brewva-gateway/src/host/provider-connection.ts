@@ -152,7 +152,8 @@ const POPULAR_PROVIDER_ORDER = [
 ] as const;
 
 const TOKEN_PROVIDERS = new Set(["github-copilot"]);
-const API_KEY_UNSUPPORTED_PROVIDERS = new Set(["google-gemini-cli"]);
+// Google connect uses Gemini CLI OAuth instead of a direct API key entry flow.
+const API_KEY_UNSUPPORTED_PROVIDERS = new Set(["google"]);
 const OPENAI_PROVIDER = "openai";
 const OPENAI_CODEX_PROVIDER = "openai-codex";
 const KIMI_PROVIDER = "kimi-coding";
@@ -186,23 +187,18 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   anthropic: "Anthropic",
   "github-copilot": "GitHub Copilot",
   google: "Google",
-  "google-gemini-cli": "Google Gemini CLI",
-  groq: "Groq",
   "kimi-coding": "Kimi",
-  minimax: "MiniMax",
-  "minimax-cn": "MiniMax CN",
   "moonshot-ai": "Moonshot AI Open Platform (moonshot.ai)",
   "moonshot-cn": "Moonshot AI Open Platform (moonshot.cn)",
   openai: "OpenAI",
   "openai-codex": "OpenAI Codex",
   openrouter: "OpenRouter",
-  xai: "xAI",
 };
 
 const PROVIDER_DESCRIPTIONS: Record<string, string> = {
   anthropic: "API key",
   "github-copilot": "GitHub OAuth or token",
-  google: "API key",
+  google: "Gemini CLI",
   "kimi-coding": "Kimi Code or Moonshot API key",
   "moonshot-ai": "API key",
   "moonshot-cn": "API key",

@@ -3,6 +3,7 @@ import {
   buildProviderCacheBucketKey,
   normalizeProviderCachePolicy,
   resolveAnthropicCacheRender,
+  resolveGoogleGeminiCliCacheRender,
   resolveProviderCacheCapability,
   resolveOpenAIResponsesCacheRender,
 } from "../../../packages/brewva-provider-core/src/cache-policy.js";
@@ -197,6 +198,24 @@ describe("provider cache policy", () => {
         reason: "kimi_code_cache_contract_not_verified",
       }),
     );
+
+    expect(
+      resolveProviderCacheCapability({
+        api: "google-gemini-cli",
+        provider: "google",
+        modelId: "gemini-2.5-pro",
+        baseUrl: "https://cloudcode-pa.googleapis.com",
+        transport: "sse",
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        strategies: ["implicitPrefix", "explicitCachedContent"],
+        cacheCounters: "readOnly",
+        longRetention: "1h",
+        readOnlyWriteMode: "supported",
+        reason: "google_gemini_context_caching",
+      }),
+    );
   });
 
   test("reports read-only cache mode as unsupported when providers cannot honor it", () => {
@@ -287,6 +306,78 @@ describe("provider cache policy", () => {
         longRetention: "none",
       }),
       cacheControl: { type: "ephemeral" },
+    });
+  });
+
+  test("renders Google short retention as implicit cache and long retention as explicit cached content", () => {
+    expect(
+      resolveGoogleGeminiCliCacheRender({
+        sessionId: "session-google-short",
+        policy: {
+          retention: "short",
+          writeMode: "readWrite",
+          scope: "session",
+          reason: "default",
+        },
+      }),
+    ).toEqual({
+      status: "rendered",
+      reason: "rendered_google_implicit_prefix_cache",
+      renderedRetention: "short",
+      bucketKey:
+        "google-gemini-cli|session=session-google-short|retention=short|writeMode=readWrite",
+      capability: expect.objectContaining({
+        strategies: ["implicitPrefix", "explicitCachedContent"],
+        longRetention: "1h",
+      }),
+    });
+
+    expect(
+      resolveGoogleGeminiCliCacheRender({
+        sessionId: "session-google-long",
+        policy: {
+          retention: "long",
+          writeMode: "readWrite",
+          scope: "session",
+          reason: "config",
+        },
+        cachedContentName: "cachedContents/brewva-google",
+        cachedContentTtlSeconds: 3600,
+      }),
+    ).toEqual({
+      status: "rendered",
+      reason: "rendered_google_cached_content",
+      renderedRetention: "long",
+      bucketKey: "google-gemini-cli|session=session-google-long|retention=long|writeMode=readWrite",
+      cachedContentName: "cachedContents/brewva-google",
+      cachedContentTtlSeconds: 3600,
+      capability: expect.objectContaining({
+        strategies: ["implicitPrefix", "explicitCachedContent"],
+        longRetention: "1h",
+      }),
+    });
+
+    expect(
+      resolveGoogleGeminiCliCacheRender({
+        sessionId: "session-google-read-only",
+        policy: {
+          retention: "long",
+          writeMode: "readOnly",
+          scope: "session",
+          reason: "config",
+        },
+      }),
+    ).toEqual({
+      status: "unsupported",
+      reason: "cached_content_required_for_read_only_mode",
+      renderedRetention: "none",
+      bucketKey:
+        "google-gemini-cli|session=session-google-read-only|retention=none|writeMode=readOnly",
+      capability: expect.objectContaining({
+        readOnlyWriteMode: "supported",
+      }),
+      cachedContentName: undefined,
+      cachedContentTtlSeconds: undefined,
     });
   });
 

@@ -7,7 +7,6 @@ export type KnownApi =
   | "openai-responses"
   | "openai-codex-responses"
   | "anthropic-messages"
-  | "google-generative-ai"
   | "google-gemini-cli";
 
 export type Api = KnownApi | (string & {});
@@ -15,15 +14,10 @@ export type Api = KnownApi | (string & {});
 export type KnownProvider =
   | "anthropic"
   | "google"
-  | "google-gemini-cli"
   | "openai"
   | "openai-codex"
   | "github-copilot"
-  | "xai"
-  | "groq"
   | "openrouter"
-  | "minimax"
-  | "minimax-cn"
   | "kimi-coding"
   | "moonshot-cn"
   | "moonshot-ai";
@@ -46,6 +40,7 @@ export type ProviderCacheScope = "session";
 
 export type ProviderCacheStrategy =
   | "explicitCacheMarker"
+  | "explicitCachedContent"
   | "promptCacheKey"
   | "implicitPrefix"
   | "unsupported";
@@ -100,6 +95,8 @@ export interface ProviderCacheRenderResult {
   renderedRetention: ProviderCacheRetention;
   bucketKey: string;
   capability?: ProviderCacheCapability;
+  cachedContentName?: string;
+  cachedContentTtlSeconds?: number;
 }
 
 export interface ProviderRequestFingerprint {
@@ -310,6 +307,13 @@ export interface Usage {
   cacheRead: number;
   cacheWrite: number;
   totalTokens: number;
+  details?: {
+    promptTokens?: number;
+    candidateTokens?: number;
+    thoughtsTokens?: number;
+    toolUsePromptTokens?: number;
+    cachedContentTokens?: number;
+  };
   cost: {
     input: number;
     output: number;

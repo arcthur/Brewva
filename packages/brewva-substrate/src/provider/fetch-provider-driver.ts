@@ -53,8 +53,6 @@ class FetchProviderCompletionDriver implements BrewvaProviderCompletionDriver {
         return this.#completeOpenAIResponses(input, { codex: true });
       case "anthropic-messages":
         return this.#completeAnthropic(input);
-      case "google-generative-ai":
-        return this.#completeGoogleGenerativeAI(input);
       default:
         throw new UnsupportedBrewvaProviderApiError(input.model.api);
     }
@@ -160,41 +158,6 @@ class FetchProviderCompletionDriver implements BrewvaProviderCompletionDriver {
     };
   }
 
-  async #completeGoogleGenerativeAI(
-    input: BrewvaProviderCompletionRequest,
-  ): Promise<BrewvaProviderCompletionResponse> {
-    const response = await this.#postJson(
-      resolveGoogleGenerativeAiUrl(input.model),
-      {
-        systemInstruction: {
-          parts: [{ text: input.systemPrompt }],
-        },
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: input.userText }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0,
-          maxOutputTokens: resolveMaxOutputTokens(input.model, this.#maxOutputTokens),
-        },
-      },
-      buildGoogleHeaders(input),
-    );
-
-    const firstCandidate = firstRecord(readArray(response.candidates));
-    return {
-      role: "assistant",
-      provider: input.model.provider,
-      model: input.model.id,
-      stopReason: normalizeGoogleStopReason(readString(firstCandidate?.finishReason)),
-      timestamp: Date.now(),
-      usage: buildGoogleUsage(response.usageMetadata),
-      content: buildTextContent(extractGoogleText(firstCandidate?.content)),
-    };
-  }
-
   async #postJson(
     url: string,
     payload: Record<string, unknown>,
@@ -290,18 +253,6 @@ function resolveAnthropicMessagesUrl(baseUrl: string): string {
   return normalized.endsWith("/messages") ? normalized : `${normalized}/messages`;
 }
 
-function resolveGoogleGenerativeAiUrl(model: BrewvaRegisteredModel): string {
-  const normalized = normalizeBaseUrl(model.baseUrl);
-  const encodedModelId = encodeURIComponent(model.id);
-  if (normalized.includes(`/models/${encodedModelId}:generateContent`)) {
-    return normalized;
-  }
-  if (normalized.endsWith("/models")) {
-    return `${normalized}/${encodedModelId}:generateContent`;
-  }
-  return `${normalized}/models/${encodedModelId}:generateContent`;
-}
-
 function mergeHeaders(
   ...sources: Array<Record<string, string> | undefined>
 ): Record<string, string> {
@@ -341,15 +292,6 @@ function buildAnthropicHeaders(input: BrewvaProviderCompletionRequest): Record<s
     } else {
       headers["x-api-key"] = input.auth.apiKey;
     }
-  }
-  headers["content-type"] = "application/json";
-  return headers;
-}
-
-function buildGoogleHeaders(input: BrewvaProviderCompletionRequest): Record<string, string> {
-  const headers = mergeHeaders(input.model.headers, input.auth.headers);
-  if (input.auth.apiKey && !headers.Authorization && !headers["x-goog-api-key"]) {
-    headers["x-goog-api-key"] = input.auth.apiKey;
   }
   headers["content-type"] = "application/json";
   return headers;
@@ -411,22 +353,6 @@ function extractAnthropicText(content: unknown): string | undefined {
   return text.length > 0 ? text : undefined;
 }
 
-function extractGoogleText(content: unknown): string | undefined {
-  const record = readRecord(content);
-  const parts = readArray(record?.parts);
-  if (!parts) {
-    return undefined;
-  }
-  const text = parts
-    .flatMap((part) => {
-      const partRecord = readRecord(part);
-      const value = readString(partRecord?.text);
-      return value ? [value] : [];
-    })
-    .join("\n");
-  return text.length > 0 ? text : undefined;
-}
-
 function buildOpenAIUsage(usage: unknown): BrewvaProviderCompletionUsage {
   if (!isRecord(usage)) {
     return {
@@ -471,39 +397,6 @@ function buildAnthropicUsage(usage: unknown): BrewvaProviderCompletionUsage {
     cacheWrite: 0,
     totalTokens: input + output,
   };
-}
-
-function buildGoogleUsage(usage: unknown): BrewvaProviderCompletionUsage {
-  if (!isRecord(usage)) {
-    return {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 0,
-    };
-  }
-  const input = readNumber(usage.promptTokenCount) ?? 0;
-  const output = readNumber(usage.candidatesTokenCount) ?? 0;
-  const totalTokens = readNumber(usage.totalTokenCount) ?? input + output;
-  return {
-    input,
-    output,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens,
-  };
-}
-
-function normalizeGoogleStopReason(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const normalized = value.toLowerCase();
-  if (normalized === "stop") {
-    return "stop";
-  }
-  return normalized;
 }
 
 export function createFetchProviderCompletionDriver(

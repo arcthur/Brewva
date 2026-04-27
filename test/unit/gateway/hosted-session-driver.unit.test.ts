@@ -117,18 +117,13 @@ describe("hosted session driver", () => {
       ANTHROPIC_API_KEY: undefined,
       ANTHROPIC_OAUTH_TOKEN: undefined,
       COPILOT_GITHUB_TOKEN: undefined,
-      GEMINI_API_KEY: undefined,
       GH_TOKEN: undefined,
       GITHUB_TOKEN: undefined,
-      GROQ_API_KEY: undefined,
       KIMI_API_KEY: undefined,
-      MINIMAX_API_KEY: undefined,
-      MINIMAX_CN_API_KEY: undefined,
       MOONSHOT_AI_API_KEY: undefined,
       MOONSHOT_CN_API_KEY: undefined,
       OPENAI_API_KEY: undefined,
       OPENROUTER_API_KEY: undefined,
-      XAI_API_KEY: undefined,
     });
     try {
       const workspace = createTestWorkspace("hosted-session-driver-explicit-model-no-auth");
