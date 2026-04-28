@@ -84,6 +84,43 @@ describe("ShellCompletionProvider", () => {
     });
   });
 
+  test("/ completion shows empty-query commands in slash-name order", () => {
+    const commands = new ShellCommandProvider();
+    commands.register({
+      id: "system.gamma",
+      title: "Gamma",
+      description: "Third",
+      category: "System",
+      slash: { name: "zeta" },
+      suggested: true,
+    });
+    commands.register({
+      id: "system.alpha",
+      title: "Alpha",
+      description: "First",
+      category: "System",
+      slash: { name: "alpha" },
+    });
+    commands.register({
+      id: "system.beta",
+      title: "Beta",
+      description: "Second",
+      category: "System",
+      slash: { name: "beta" },
+    });
+
+    const provider = new ShellCompletionProvider({
+      sources: [createCommandCompletionSource(commands)],
+      usageStore: createInMemoryCompletionUsageStore(),
+    });
+
+    expect(provider.resolve(completionRange("/", "")).map((candidate) => candidate.value)).toEqual([
+      "alpha",
+      "beta",
+      "zeta",
+    ]);
+  });
+
   test("/ completion ranks slash name matches ahead of command metadata matches", () => {
     const provider = new ShellCompletionProvider({
       sources: [createCommandCompletionSource(createCommandProvider())],

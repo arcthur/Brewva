@@ -82,6 +82,21 @@ function takeBetterScore(current: number | null, next: number | null): number | 
   return current === null ? next : Math.max(current, next);
 }
 
+type ShellSlashCommandListItem = ShellCommandListItem & {
+  readonly slashName: string;
+};
+
+function compareSlashCommandItems(
+  left: ShellSlashCommandListItem,
+  right: ShellSlashCommandListItem,
+): number {
+  return (
+    left.slashName.localeCompare(right.slashName) ||
+    left.title.localeCompare(right.title) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
 function commandSearchScore(command: ShellCommandListItem, query: string): number | null {
   const normalized = normalizeSearchQuery(query);
   if (!normalized) {
@@ -223,13 +238,23 @@ export class ShellCommandProvider {
   slashCommands(): ShellCommandListItem[] {
     return [...this.#commands.values()]
       .filter((command) => ShellCommandProvider.#isSlashVisible(command))
-      .map((command) => this.toListItem(command))
-      .toSorted(
-        (left, right) =>
-          Number(right.suggested) - Number(left.suggested) ||
-          left.category.localeCompare(right.category) ||
-          left.title.localeCompare(right.title),
-      );
+      .map((command): ShellSlashCommandListItem => {
+        const item = this.toListItem(command);
+        if (!item.slashName) {
+          throw new Error(`Slash-visible shell command ${command.id} is missing a slash name`);
+        }
+        return {
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          category: item.category,
+          slashName: item.slashName,
+          slashAliases: item.slashAliases,
+          keybinding: item.keybinding,
+          suggested: item.suggested,
+        };
+      })
+      .toSorted(compareSlashCommandItems);
   }
 
   keyboundCommands(): KeybindingDefinition[] {

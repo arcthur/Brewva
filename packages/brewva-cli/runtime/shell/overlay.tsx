@@ -4,6 +4,7 @@ import { truncateToWidth, visibleWidth } from "@brewva/brewva-tui";
 import { TextAttributes } from "@opentui/core";
 import { For, Match, Show, Switch, createMemo, type JSX } from "solid-js";
 import {
+  buildNotificationDetailLines,
   buildQueuePromptDetailLines,
   renderQueuePromptSummary,
 } from "../../src/shell/overlay-view.js";
@@ -15,6 +16,7 @@ import type {
   CliCommandPaletteOverlayPayload,
   CliConfirmOverlayPayload,
   CliHelpHubOverlayPayload,
+  CliInboxOverlayPayload,
   CliInputOverlayPayload,
   CliInspectOverlayPayload,
   CliModelPickerOverlayPayload,
@@ -65,8 +67,10 @@ function DialogFrame(input: {
   height: number;
   theme: SessionPalette;
   size?: DialogSize;
+  verticalAlign?: "topInset" | "center";
   children: JSX.Element;
 }) {
+  const verticalAlign = input.verticalAlign ?? "topInset";
   return (
     <box
       position="absolute"
@@ -78,7 +82,8 @@ function DialogFrame(input: {
       backgroundColor={DIALOG_BACKDROP}
       flexDirection="column"
       alignItems="center"
-      paddingTop={resolveDialogTopInset(input.height)}
+      justifyContent={verticalAlign === "center" ? "center" : undefined}
+      paddingTop={verticalAlign === "center" ? 0 : resolveDialogTopInset(input.height)}
     >
       <box
         width={resolveDialogWidth(input.width, input.size)}
@@ -108,12 +113,19 @@ function DialogSelectFrame(input: {
   title: string;
   theme: SessionPalette;
   size?: DialogSize;
+  verticalAlign?: "topInset" | "center";
   search?: JSX.Element;
   children: JSX.Element;
   footer?: JSX.Element;
 }) {
   return (
-    <DialogFrame width={input.width} height={input.height} theme={input.theme} size={input.size}>
+    <DialogFrame
+      width={input.width}
+      height={input.height}
+      theme={input.theme}
+      size={input.size}
+      verticalAlign={input.verticalAlign}
+    >
       <box gap={1} paddingBottom={1}>
         <box paddingLeft={DIALOG_HORIZONTAL_PADDING} paddingRight={DIALOG_HORIZONTAL_PADDING}>
           <DialogHeader title={input.title} theme={input.theme} />
@@ -460,6 +472,74 @@ function NotificationsOverlay(input: {
         </box>
       </box>
     </DialogFrame>
+  );
+}
+
+function InboxOverlay(input: {
+  payload: CliInboxOverlayPayload;
+  theme: SessionPalette;
+  width: number;
+  height: number;
+}) {
+  const item = createMemo(() => input.payload.items[input.payload.selectedIndex]);
+  const questionCount = createMemo(
+    () => input.payload.items.filter((entry) => entry.kind === "question").length,
+  );
+  const detailLines = createMemo(() => {
+    const entry = item();
+    if (!entry) {
+      return ["No pending inbox items."];
+    }
+    if (entry.kind === "question") {
+      return ["kind: question", `source: ${entry.sourceLabel}`, "", entry.summary];
+    }
+    const notification = input.payload.notifications.find(
+      (candidate) => candidate.id === entry.notificationId,
+    );
+    if (!notification) {
+      return [`[${entry.level}] ${entry.summary}`];
+    }
+    return buildNotificationDetailLines(notification);
+  });
+  return (
+    <OverlaySurface
+      title="Inbox"
+      width={input.width}
+      height={input.height}
+      theme={input.theme}
+      footer="Enter inspect · d dismiss notification · x clear notifications · Esc close"
+    >
+      <box flexDirection="row" gap={1} flexGrow={1}>
+        <box width={34} flexShrink={0}>
+          <Show
+            when={input.payload.items.length > 0}
+            fallback={<text fg={input.theme.textMuted}>No pending inbox items.</text>}
+          >
+            <SelectionList
+              items={input.payload.items.map((entry) =>
+                entry.kind === "question"
+                  ? `question · ${entry.sourceLabel}`
+                  : `${entry.level} · ${entry.summary.split(/\r?\n/u)[0] ?? ""}`,
+              )}
+              selectedIndex={input.payload.selectedIndex}
+              theme={input.theme}
+              maxVisible={10}
+            />
+          </Show>
+        </box>
+        <box flexGrow={1} flexDirection="column">
+          <TextLineBlock
+            lines={[
+              `Pending questions: ${questionCount()}`,
+              `Notifications: ${input.payload.notifications.length}`,
+              "",
+              ...detailLines(),
+            ]}
+            color={input.theme.text}
+          />
+        </box>
+      </box>
+    </OverlaySurface>
   );
 }
 
@@ -969,6 +1049,7 @@ function CommandPaletteOverlay(input: {
       height={input.height}
       theme={input.theme}
       size="large"
+      verticalAlign="center"
       search={
         <box paddingTop={1}>
           <text fg={input.theme.textMuted}>Search: {input.payload.query}</text>
@@ -1127,6 +1208,14 @@ export function ModalOverlay(input: {
       <Match when={input.overlay.payload?.kind === "notifications"}>
         <NotificationsOverlay
           payload={input.overlay.payload as CliNotificationsOverlayPayload}
+          theme={input.theme}
+          width={input.width}
+          height={input.height}
+        />
+      </Match>
+      <Match when={input.overlay.payload?.kind === "inbox"}>
+        <InboxOverlay
+          payload={input.overlay.payload as CliInboxOverlayPayload}
           theme={input.theme}
           width={input.width}
           height={input.height}

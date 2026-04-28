@@ -2760,6 +2760,49 @@ describe("opentui solid shell runtime", () => {
     }
   });
 
+  test("renders an empty inbox overlay when ctrl+n opens inbox without pending items", async () => {
+    const { bundle } = createFakeBundle();
+    const runtime = new CliShellRuntime(bundle, {
+      cwd: process.cwd(),
+      openSession: async () => bundle,
+      createSession: async () => bundle,
+      operatorPollIntervalMs: 60_000,
+    });
+
+    await runtime.start();
+
+    const testSetup = await openTuiSolidTestRender(
+      createOpenTuiSolidElement(BrewvaOpenTuiShell, { runtime }),
+      {
+        width: 100,
+        height: 28,
+      },
+    );
+
+    try {
+      await openTuiSolidAct(async () => {
+        await runtime.handleInput({
+          key: "n",
+          ctrl: true,
+          meta: false,
+          shift: false,
+        });
+      });
+      const frame = await waitForRenderedFrame(testSetup, {
+        predicate: (value) => value.includes("Inbox") && value.includes("No pending inbox items."),
+      });
+
+      expect(runtime.getViewState().overlay.active?.payload).toMatchObject({
+        kind: "inbox",
+        selectedIndex: 0,
+      });
+      expect(frame).toContain("No pending inbox items.");
+    } finally {
+      runtime.dispose();
+      testSetup.renderer.destroy();
+    }
+  });
+
   test("renders session browser details for the current session even before replay events exist", async () => {
     const replaySessions = [
       {

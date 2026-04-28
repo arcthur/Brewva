@@ -239,7 +239,7 @@ function createWorkspaceCandidate(input: {
 function bestCandidateScore(query: string, candidate: ShellCompletionCandidate): number | null {
   const normalized = normalizeSearchQuery(query);
   if (!normalized) {
-    return candidate.suggested ? 100 : 0;
+    return candidate.kind === "command" ? 0 : candidate.suggested ? 100 : 0;
   }
 
   let best: number | null = null;

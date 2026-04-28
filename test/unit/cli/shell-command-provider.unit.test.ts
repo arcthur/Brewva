@@ -92,6 +92,35 @@ describe("shell command provider", () => {
     ]);
   });
 
+  test("slash commands are listed in slash-name order", () => {
+    const provider = new ShellCommandProvider();
+    provider.register({
+      id: "gamma",
+      title: "Gamma title",
+      category: "System",
+      slash: { name: "zeta" },
+      suggested: true,
+    });
+    provider.register({
+      id: "alpha",
+      title: "Alpha title",
+      category: "Operator",
+      slash: { name: "alpha" },
+    });
+    provider.register({
+      id: "beta",
+      title: "Beta title",
+      category: "Agent",
+      slash: { name: "beta" },
+    });
+
+    expect(provider.slashCommands().map((command) => command.slashName)).toEqual([
+      "alpha",
+      "beta",
+      "zeta",
+    ]);
+  });
+
   test("fails fast on duplicate ids, slash names, and keybindings", () => {
     const provider = new ShellCommandProvider();
     provider.register({

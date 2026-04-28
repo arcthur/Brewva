@@ -1,5 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 
+import { truncateToWidth, visibleWidth } from "@brewva/brewva-tui";
 import type { OpenTuiScrollBoxHandle } from "@brewva/brewva-tui/internal-opentui-runtime";
 import { type BoxRenderable } from "@opentui/core";
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
@@ -8,6 +9,20 @@ import type { CliShellViewState } from "../../src/shell/state/index.js";
 import { COMPLETION_Z_INDEX } from "./overlay-style.js";
 import { DEFAULT_SCROLL_ACCELERATION, SPLIT_BORDER_CHARS, type SessionPalette } from "./palette.js";
 import { completionItemAuxText } from "./utils.js";
+
+function truncateCompletionText(text: string, maxWidth: number): string {
+  const boundedWidth = Math.max(0, Math.trunc(maxWidth));
+  if (boundedWidth <= 0) {
+    return "";
+  }
+  if (visibleWidth(text) <= boundedWidth) {
+    return text;
+  }
+  if (boundedWidth === 1) {
+    return "…";
+  }
+  return `${truncateToWidth(text, boundedWidth - 1)}…`;
+}
 
 export function CompletionOverlay(input: {
   runtime: CliShellRuntime;
@@ -85,6 +100,17 @@ export function CompletionOverlay(input: {
     }
     return Math.max(0, Math.min(input.height - height, pos.y + 1));
   });
+  const contentWidth = createMemo(() => Math.max(16, position().width - 2));
+  const slashLabelColumnWidth = createMemo(() => {
+    if (input.completion.trigger !== "/") {
+      return 0;
+    }
+    const widestLabel = input.completion.items.reduce(
+      (widest, item) => Math.max(widest, visibleWidth(item.label)),
+      0,
+    );
+    return Math.min(Math.max(12, widestLabel), Math.max(12, Math.floor(contentWidth() * 0.32)));
+  });
   createEffect(() => {
     void input.completion.query;
     setPointerMode("keyboard");
@@ -137,14 +163,35 @@ export function CompletionOverlay(input: {
           <For each={input.completion.items}>
             {(item, index) => {
               const selected = createMemo(() => index() === input.completion.selectedIndex);
-              const auxText = completionItemAuxText(item);
+              const auxText = createMemo(() => completionItemAuxText(item));
+              const showSlashColumns = createMemo(
+                () => input.completion.trigger === "/" && Boolean(auxText()),
+              );
+              const labelText = createMemo(() =>
+                showSlashColumns()
+                  ? truncateCompletionText(item.label, slashLabelColumnWidth())
+                  : item.label,
+              );
+              const descriptionText = createMemo(() => {
+                const text = auxText();
+                if (!text) {
+                  return undefined;
+                }
+                if (!showSlashColumns()) {
+                  return text;
+                }
+                return truncateCompletionText(
+                  text,
+                  Math.max(1, contentWidth() - slashLabelColumnWidth() - 3),
+                );
+              });
               return (
                 <box
                   paddingLeft={1}
                   paddingRight={1}
                   backgroundColor={selected() ? input.theme.primary : undefined}
                   flexDirection="row"
-                  gap={1}
+                  gap={showSlashColumns() ? 3 : 1}
                   onMouseMove={() => setPointerMode("mouse")}
                   onMouseOver={() => {
                     if (pointerMode() !== "mouse") {
@@ -161,16 +208,18 @@ export function CompletionOverlay(input: {
                   <text
                     fg={selected() ? input.theme.selectionText : input.theme.text}
                     flexShrink={0}
+                    width={showSlashColumns() ? slashLabelColumnWidth() : undefined}
                     wrapMode="none"
                   >
-                    {item.label}
+                    {labelText()}
                   </text>
-                  <Show when={auxText}>
+                  <Show when={descriptionText()}>
                     <text
+                      flexGrow={showSlashColumns() ? 1 : undefined}
                       fg={selected() ? input.theme.selectionText : input.theme.textMuted}
                       wrapMode="none"
                     >
-                      {auxText}
+                      {descriptionText()}
                     </text>
                   </Show>
                 </box>
